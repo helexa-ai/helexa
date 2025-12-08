@@ -54,3 +54,15 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --all-features
+
+      - name: Enforce license on Rust sources (SPDX header)
+        run: |
+          missing=$(grep -RLI --include='*.rs' 'SPDX-License-Identifier: PolyForm-Shield-1.0' crates || true)
+          if [ -n "$missing" ]; then
+            echo "The following Rust files are missing the required SPDX license header:"
+            echo "$missing"
+            echo
+            echo "Please add this line at the top of each listed file:"
+            echo "// SPDX-License-Identifier: PolyForm-Shield-1.0"
+            exit 1
+          fi

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Shield-1.0
+
 use std::sync::Arc;
 
 use tracing::info;

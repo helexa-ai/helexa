@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Shield-1.0
+
 use tracing_subscriber::EnvFilter;
 
 pub fn init_tracing() {

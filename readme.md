@@ -109,5 +109,108 @@ design documentation lives under `docs/`:
 licensing
 ---------
 
-the intended licensing model is to keep the core of helexa open source to build trust
-with operators. exact license details are still to be determined.
+helexa is provided under a **source-available** model with a scheduled transition to
+a fully open source license.
+
+- until **january 1st, 2028**, the codebase is licensed under the **polyform shield license 1.0**.
+- on and after **january 1st, 2028**, this repository and all contributions made prior
+  to that date are automatically and irrevocably relicensed to **apache-2.0**.
+
+see `license.md` for the full terms and the exact legal text, including the spdx
+identifiers to use in source files.
+
+# 📝 why this license?
+
+the helexa codebase is public because **trust requires transparency**.
+our network, our operators, and the people who depend on distributed ai infrastructure deserve the ability to **audit the code**, verify our intentions, and build confidence in how helexa works.
+
+at the same time, early-stage infrastructure projects are fragile. a fully permissive license would allow a better-funded competitor to **lift the entire platform and outrun the project before it has a chance to stand on its own**. that would undermine the long-term vision of a **diverse, decentralised, globally accessible ai mesh**, especially across regions traditionally left out of centralised ai growth.
+
+for this reason, helexa uses the **polyform shield license** until **january 1st, 2028**, after which it automatically becomes **apache 2.0**.
+
+### this approach gives us:
+
+* **auditability from day one**
+  the code is public, reviewable, and modifiable for non-commercial purposes.
+
+* **protection during the fragile early years**
+  commercial rights remain with helexa while foundational work is being built, tested, and stabilised.
+
+* **a guaranteed path to full open-source freedom**
+  on january 1st, 2028, the project relicenses to **apache 2.0**—a fully permissive, industry-standard open source license. no surprises, no bait-and-switch.
+
+* **community alignment**
+  contributors know exactly how their work will be used today and how it will evolve.
+  operators and integrators get long-term clarity and stability.
+
+this model ensures that helexa can grow fast enough to serve its mission while still committing to the **open, decentralised future** we want the ecosystem to inherit.
+
+contributing
+------------
+
+we welcome contributions from operators, implementors, and researchers who share the
+goal of building a trustworthy, decentralised ai fabric.
+
+before contributing, please:
+
+1. **read the license**
+
+   - understand that, until **2028-01-01**, contributions are under the
+     **polyform shield 1.0** terms.
+   - after that date, the project transitions to **apache-2.0** for all prior
+     and future contributions.
+   - see `license.md` for the definitive legal details and spdx identifiers.
+
+2. **follow the ci and code quality gates**
+
+   changes must pass the workspace ci pipeline, which runs on pushes and pull
+   requests to `main`:
+
+   - `cargo fmt --all -- --check`
+   - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+   - `cargo test --workspace --all-features`
+
+   locally, you should run:
+
+   ```bash
+   cargo fmt --all
+   cargo clippy --workspace --all-targets --all-features
+   cargo test --workspace --all-features
+   ```
+
+   fix issues rather than suppressing them. if you must silence a lint, scope it
+   as narrowly as possible and document why.
+
+3. **include spdx headers in rust sources**
+
+   all rust source files in this workspace are expected to declare the license
+   explicitly via an spdx header:
+
+   ```rust
+   // SPDX-License-Identifier: PolyForm-Shield-1.0
+   ```
+
+   the ci workflow enforces this for pull requests by checking that all `*.rs`
+   files under `crates/` contain this header. if you add a new rust file and
+   omit the header, ci will fail with a message listing the offending paths.
+
+4. **keep scaffolds explicit**
+
+   when adding new fields or modules that are not yet fully implemented:
+
+   - use them in real code paths (e.g. logging, routing decisions).
+   - prefer `todo!()` / `unimplemented!()` over silent no-ops, so incomplete
+     behaviour is obvious during development.
+   - avoid long-lived `#[allow(dead_code)]` attributes; instead, make the
+     intention explicit and fail loudly until the implementation is ready.
+
+5. **follow architectural boundaries**
+
+   - keep business logic out of `helexa-cli`; it should only parse cli, load
+     config, and delegate to `cortex::run` / `neuron::run`.
+   - put shared protocol types and traits in `crates/protocol`.
+   - keep crates small and focused as described in `agents.md` and
+     `docs/architecture.md`.
+
+for more detailed guidance on contributing, including scaffolding patterns and
+workflow expectations, see `agents.md`.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: PolyForm-Shield-1.0
+
 use anyhow::Result;
 use serde::Deserialize;
 
