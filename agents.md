@@ -231,7 +231,16 @@ to avoid breaking ci when you submit or update a change:
 
    add or update tests alongside your changes, and keep tests close to the code they exercise.
 
-4. **keep scaffolds explicit**
+4. **license headers in rust files**
+
+   - all new `*.rs` files under `crates/` must start with:
+
+     `// SPDX-License-Identifier: PolyForm-Shield-1.0`
+
+   - ci enforces this for pull requests and will fail with a list of offending
+     files if the header is missing.
+
+5. **keep scaffolds explicit**
 
    when introducing placeholders (see *scaffolding and placeholders* above):
 
