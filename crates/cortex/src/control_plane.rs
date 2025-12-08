@@ -8,7 +8,7 @@ use anyhow::{anyhow, Result};
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tokio::time;
 use tokio_tungstenite::accept_async;
 
@@ -65,6 +65,8 @@ pub struct ConnectedNeuron {
     pub descriptor: NeuronDescriptor,
     /// Last time we received a heartbeat from this neuron.
     pub last_heartbeat: std::time::Instant,
+    /// Sender used to push control-plane messages from cortex to this neuron.
+    pub outbound_tx: Option<mpsc::UnboundedSender<CortexToNeuron>>,
 }
 
 /// Shared state tracking neurons connected over the control-plane websocket.
@@ -92,7 +94,49 @@ impl NeuronRegistry {
             neurons.push(ConnectedNeuron {
                 descriptor,
                 last_heartbeat: std::time::Instant::now(),
+                outbound_tx: None,
             });
+        }
+    }
+
+    /// Attach an outbound sender for the given neuron id so that cortex can
+    /// push `CortexToNeuron` messages (e.g. provisioning commands).
+    pub async fn set_sender_for_neuron(
+        &self,
+        neuron_id: &str,
+        tx: mpsc::UnboundedSender<CortexToNeuron>,
+    ) {
+        let mut neurons = self.inner.write().await;
+        if let Some(existing) = neurons
+            .iter_mut()
+            .find(|n| n.descriptor.node_id.as_deref() == Some(neuron_id))
+        {
+            existing.outbound_tx = Some(tx);
+        }
+    }
+
+    /// Attempt to send a control-plane message to a specific neuron by id.
+    pub async fn send_to_neuron(&self, neuron_id: &str, msg: CortexToNeuron) -> Result<(), String> {
+        let neurons = self.inner.read().await;
+        if let Some(existing) = neurons
+            .iter()
+            .find(|n| n.descriptor.node_id.as_deref() == Some(neuron_id))
+        {
+            if let Some(ref tx) = existing.outbound_tx {
+                tx.send(msg).map_err(|e| {
+                    format!(
+                        "failed to enqueue message for neuron_id={}: {:?}",
+                        neuron_id, e
+                    )
+                })
+            } else {
+                Err(format!(
+                    "no outbound sender registered for neuron_id={}",
+                    neuron_id
+                ))
+            }
+        } else {
+            Err(format!("no neuron registered with id={}", neuron_id))
         }
     }
 
@@ -190,7 +234,7 @@ async fn handle_neuron_connection(
         peer_addr
     );
 
-    let (_tx, mut rx) = ws_stream.split();
+    let (tx, mut rx) = ws_stream.split();
 
     // Expect an initial Register message.
     let first_msg = rx.next().await.ok_or_else(|| {
@@ -213,6 +257,41 @@ async fn handle_neuron_connection(
                 .unwrap_or_else(|| format!("peer-{}", peer_addr));
             info!("registered neuron_id={} from {}", id, peer_addr);
             registry.upsert_neuron(neuron).await;
+
+            // create an outbound channel + writer task for this neuron
+            let (out_tx, mut out_rx) = mpsc::unbounded_channel::<CortexToNeuron>();
+            registry.set_sender_for_neuron(&id, out_tx).await;
+
+            // clone id for use inside the writer task closure
+            let writer_id = id.clone();
+            tokio::spawn(async move {
+                use futures::SinkExt;
+                let mut sink = tx;
+                while let Some(msg) = out_rx.recv().await {
+                    match serde_json::to_string(&msg) {
+                        Ok(text) => {
+                            if let Err(e) = sink.send(Message::Text(text)).await {
+                                warn!(
+                                    "failed to send control-plane message to neuron_id={} / {}: {:?}",
+                                    writer_id, peer_addr, e
+                                );
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            warn!(
+                                "failed to serialise CortexToNeuron message for neuron_id={}: {:?}",
+                                writer_id, e
+                            );
+                        }
+                    }
+                }
+                info!(
+                    "control-plane writer task exiting for neuron_id={} / {}",
+                    writer_id, peer_addr
+                );
+            });
+
             id
         }
         other => {
@@ -297,6 +376,21 @@ async fn handle_neuron_message(
         }
     }
     Ok(())
+}
+
+/// Send a provisioning command to a specific neuron (by `node_id`) over the
+/// established websocket control-plane connection.
+///
+/// This is a low-level helper intended for admin tooling and, eventually,
+/// the orchestrator/provisioner. It returns a simple `Result` with a string
+/// error for ease of use in higher layers.
+pub async fn send_provisioning_to_neuron(
+    registry: &NeuronRegistry,
+    neuron_id: &str,
+    cmd: ProvisioningCommand,
+) -> Result<(), String> {
+    let msg = CortexToNeuron::Provisioning { cmd };
+    registry.send_to_neuron(neuron_id, msg).await
 }
 
 fn parse_ws_json<T: for<'de> Deserialize<'de>>(message: Message) -> Result<T> {
