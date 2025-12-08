@@ -6,6 +6,7 @@ use anyhow::Result;
 use tracing::info;
 
 pub mod control_plane;
+pub mod process;
 pub mod registry;
 pub mod runtime;
 
@@ -20,7 +21,8 @@ pub async fn run(config: Config) -> Result<()> {
     info!("starting neuron node: {:?}", config.node_id);
 
     let registry = registry::ModelRegistry::new(config.models_dir.clone());
-    let runtime = runtime::RuntimeManager::new(registry);
+    let process_manager = process::ProcessManager::new();
+    let runtime = runtime::RuntimeManager::new(registry, process_manager);
 
     control_plane::spawn(config.control_socket, runtime.clone());
 

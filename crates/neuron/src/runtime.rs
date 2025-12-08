@@ -7,19 +7,37 @@ use anyhow::Result;
 use tokio::sync::RwLock;
 use tracing::info;
 
+use crate::process::ProcessManager;
 use crate::registry::ModelRegistry;
 use model_runtime::{ChatRequest, ChatResponse};
 
 #[derive(Clone)]
 pub struct RuntimeManager {
     registry: Arc<RwLock<ModelRegistry>>,
+    process_manager: Arc<ProcessManager>,
 }
 
 impl RuntimeManager {
-    pub fn new(registry: ModelRegistry) -> Self {
+    /// Create a new runtime manager with an associated model registry and
+    /// process manager.
+    ///
+    /// The process manager is responsible for spawning and tracking external
+    /// backend processes (e.g. vLLM or llama.cpp instances), while the
+    /// registry owns logical model → runtime bindings.
+    pub fn new(registry: ModelRegistry, process_manager: ProcessManager) -> Self {
         Self {
             registry: Arc::new(RwLock::new(registry)),
+            process_manager: Arc::new(process_manager),
         }
+    }
+
+    /// Access the underlying process manager.
+    ///
+    /// This is primarily intended for future control-plane operations such as
+    /// explicit model load/unload directives that need to spawn or terminate
+    /// backend workers.
+    pub fn process_manager(&self) -> &Arc<ProcessManager> {
+        &self.process_manager
     }
 
     pub async fn execute_chat(&self, model_id: &str, request: ChatRequest) -> Result<ChatResponse> {

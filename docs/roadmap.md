@@ -248,9 +248,11 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
      - APIs for:
        - Listing capabilities.
        - Requesting (un)load transitions.
+       - Applying model configuration payloads received from cortex at runtime (no requirement for static per-model TOML files on disk).
    - `control_plane.rs`:
      - Implement endpoints/handlers for:
        - `load_model` and `unload_model`.
+       - Model configuration updates pushed from cortex (e.g. model metadata, runtime parameters, process wiring).
        - `announce_capabilities` response including current model states.
        - Periodic `report_health` push or on-demand status.
    - Health model:
@@ -258,6 +260,7 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
        - Recent failures
        - Concurrent request count
        - Simple moving average latency.
+     - Include configuration- and provisioning-related health (e.g. failed model config application, failed process spawn for a given model).
 
 3. **`cortex` — scheduler & provisioner**
    - `orchestrator.rs`:
@@ -267,7 +270,8 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
        - Performs simple load balancing (round-robin, least-loaded, or random among healthy).
      - Implement `Provisioner` that:
        - Ensures required models are loaded on at least one neuron.
-       - Can pre-load configured "hot" models at startup.
+       - Drives dynamic model configuration into neurons over the control channel (e.g. websockets or similar) so neurons never require a static on-disk model catalog.
+       - Can pre-load configured "hot" models by sending configuration + load directives to neurons at startup.
    - Provide configuration knobs for:
      - Minimum number of replicas per model.
      - Cooldown periods for unloading unused models.

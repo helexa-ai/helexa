@@ -73,6 +73,7 @@ crates and boundaries
 ### neuron
 
 - runs model runtimes, provides inference services.
+- learns about model configurations and provisioning directives dynamically from cortex.
 - key modules:
 
   - `runtime.rs`
@@ -85,10 +86,16 @@ crates and boundaries
     - listens on a control socket for:
       - scheduling assignments
       - provisioning commands (load/unload model)
+      - dynamic model configuration updates received from cortex
       - health checks
+    - does **not** require a preconfigured, on-disk model catalog at startup.
+      all model definitions and process wiring information are learned at runtime
+      from cortex over the control channel (e.g. websocket or similar transport).
 
   - `registry.rs`
     - tracks locally available models, their states and capabilities.
+    - is populated and updated by configuration and provisioning messages from cortex
+      rather than static files (e.g. no requirement for per-model TOML files on disk).
     - periodically publishes capability summaries to cortex via protocol messages.
 
 ### mesh
