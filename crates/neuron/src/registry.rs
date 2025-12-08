@@ -51,6 +51,14 @@ impl ModelRegistry {
         self.entries.insert(model_id, entry);
     }
 
+    /// Unregister a previously registered chat-capable model runtime.
+    ///
+    /// This is used by unload operations so that new requests are no longer
+    /// routed to a model once its backend has been torn down.
+    pub fn unregister_chat_model(&mut self, model_id: &str) {
+        self.entries.remove(model_id);
+    }
+
     pub fn get_runtime_for_model(&self, model_id: &str) -> Result<ChatRuntimeHandle> {
         // Use models_dir in a clearly intentional way while the real lookup is not implemented.
         if let Some(dir) = &self.models_dir {

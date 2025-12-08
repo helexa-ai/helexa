@@ -43,6 +43,10 @@ struct CortexOpts {
     /// optional node identity / label for operator
     #[arg(long)]
     node_id: Option<String>,
+
+    /// address for cortex control-plane websocket listener (neurons connect here)
+    #[arg(long)]
+    control_plane_socket: Option<SocketAddr>,
 }
 
 #[derive(Parser, Debug)]
@@ -62,6 +66,10 @@ struct NeuronOpts {
     /// optional node identity / label for operator
     #[arg(long)]
     node_id: Option<String>,
+
+    /// URL of the cortex control-plane websocket endpoint this neuron should connect to
+    #[arg(long)]
+    cortex_control_endpoint: String,
 }
 
 #[tokio::main]
@@ -78,6 +86,7 @@ async fn main() -> Result<()> {
                 gateway_socket: opts.gateway_socket,
                 portal_sockets: opts.portal_socket,
                 node_id: opts.node_id,
+                control_plane_socket: opts.control_plane_socket,
             };
             cortex::run(config).await?;
         }
@@ -87,6 +96,7 @@ async fn main() -> Result<()> {
                 api_socket: opts.api_socket,
                 models_dir: opts.models_dir,
                 node_id: opts.node_id,
+                cortex_control_endpoint: opts.cortex_control_endpoint,
             };
             neuron::run(config).await?;
         }

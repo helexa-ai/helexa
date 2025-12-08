@@ -1,25 +1,76 @@
 // SPDX-License-Identifier: PolyForm-Shield-1.0
 
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 
-use tracing::info;
+use futures::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use tokio::sync::mpsc;
+use tokio::time;
+use tokio_tungstenite::connect_async;
+use tokio_tungstenite::tungstenite::Message;
+use tracing::{error, info, warn};
 
 use crate::runtime::RuntimeManager;
+use model_runtime::{ChatRuntimeHandle, ProcessRuntime};
 use protocol::{ModelConfig, ModelId, NeuronControl, ProvisioningCommand, ProvisioningResponse};
 
-/// neuron implements the control-plane interface expected by cortex.
-/// for now this is just a placeholder that logs its start.
-pub fn spawn(addr: SocketAddr, runtime: RuntimeManager) {
-    info!("starting neuron control-plane on {}", addr);
+/// messages sent from neuron to cortex over the websocket.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum NeuronToCortex {
+    /// initial registration when the websocket connection is established.
+    Register { neuron: NeuronDescriptor },
+    /// periodic heartbeat including optional lightweight metrics.
+    Heartbeat {
+        neuron_id: String,
+        metrics: serde_json::Value,
+    },
+    /// provisioning response for a command previously sent by cortex.
+    ProvisioningResponse {
+        neuron_id: String,
+        response: ProvisioningResponse,
+    },
+}
 
-    let _control = NeuronControlImpl::new(runtime);
+/// messages sent from cortex to neuron over the websocket.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum CortexToNeuron {
+    Provisioning { cmd: ProvisioningCommand },
+    RequestCapabilities,
+}
 
-    // TODO: start transport server and expose NeuronControl implementation
+/// minimal descriptor for this neuron as reported to cortex.
+#[derive(Debug, Serialize)]
+struct NeuronDescriptor {
+    node_id: Option<String>,
+    label: Option<String>,
+    metadata: serde_json::Value,
+}
+
+/// neuron implements the control-plane client logic expected by cortex.
+///
+/// it connects to the configured cortex websocket endpoint, registers itself,
+/// sends periodic heartbeats, and listens for provisioning commands.
+pub fn spawn(_addr: SocketAddr, runtime: RuntimeManager) {
+    info!("starting neuron control-plane websocket client");
+
+    let control = NeuronControlImpl::new(runtime);
+    let endpoint = control.runtime.cortex_control_endpoint().to_string();
+
+    tokio::spawn(async move {
+        if let Err(e) = run_control_plane_client(endpoint, control).await {
+            error!("neuron control-plane client exited with error: {:?}", e);
+        }
+    });
 }
 
 /// example struct that will eventually implement the NeuronControl trait.
 pub struct NeuronControlImpl {
-    runtime: RuntimeManager,
+    pub(crate) runtime: RuntimeManager,
 }
 
 impl NeuronControlImpl {
@@ -58,8 +109,8 @@ impl NeuronControlImpl {
 
     /// Handle a request to load a model by:
     /// - looking up its configuration from ModelConfigState
-    /// - spawning a backend process via ProcessManager (placeholder)
-    /// - registering a runtime handle in the ModelRegistry (placeholder)
+    /// - spawning a backend process via ProcessManager
+    /// - registering a runtime handle in the ModelRegistry
     fn handle_load_model(&self, model_id: ModelId) -> ProvisioningResponse {
         let configs = self.runtime.model_configs();
         let cfg_opt = {
@@ -74,38 +125,102 @@ impl NeuronControlImpl {
             };
         };
 
+        // Determine the listen endpoint; if none is explicitly provided, derive
+        // it from backend kind and internal port allocation.
+        let listen = match futures::executor::block_on(self.runtime.derive_listen_endpoint(&cfg)) {
+            Ok(url) => url,
+            Err(e) => {
+                return ProvisioningResponse::Error {
+                    model_id: cfg.id,
+                    error: format!("failed to derive listen endpoint: {e}"),
+                }
+            }
+        };
+
+        // Spawn the backend process exactly as described in the configuration.
+        let cmd = match cfg.command.as_deref() {
+            Some(c) => c,
+            None => {
+                return ProvisioningResponse::Error {
+                    model_id: cfg.id,
+                    error: "missing command in ModelConfig; cortex must supply it".to_string(),
+                }
+            }
+        };
+
+        let args_ref: Vec<&str> = cfg.args.iter().map(String::as_str).collect();
+        let env_pairs: Vec<(String, String)> = cfg
+            .env
+            .iter()
+            .map(|e| (e.key.clone(), e.value.clone()))
+            .collect();
+
+        let process_manager = self.runtime.process_manager();
+        let worker = match process_manager.spawn_worker_with_env(
+            cmd,
+            &args_ref[..],
+            &cfg.id.0,
+            &env_pairs[..],
+        ) {
+            Ok(w) => w,
+            Err(e) => {
+                return ProvisioningResponse::Error {
+                    model_id: cfg.id,
+                    error: format!("failed to spawn backend process: {e}"),
+                }
+            }
+        };
+
         info!(
-            "handle_load_model: would spawn backend for model_id={:?} with backend_kind={} command={:?} args={:?}",
-            cfg.id, cfg.backend_kind, cfg.command, cfg.args
+            "loaded model_id={:?} with backend_kind={} on worker pid={}",
+            cfg.id, cfg.backend_kind, worker.pid
         );
 
-        // TODO:
-        // - use self.runtime.process_manager() to spawn a worker with cfg.command/args/env
-        // - construct a ProcessRuntime pointing at cfg.listen_endpoint
-        // - wrap it in ChatRuntimeHandle and register via ModelRegistry
+        // Construct a ProcessRuntime pointing at the derived listen endpoint
+        // and register it in the model registry.
+        let timeout = std::time::Duration::from_secs(30);
+        let runtime = ProcessRuntime::new(listen.clone(), timeout, Some(cfg.id.0.clone()));
+        let handle = ChatRuntimeHandle::new(Arc::new(runtime));
+
+        let registry_arc = self.runtime.registry();
+        {
+            let mut registry = futures::executor::block_on(registry_arc.write());
+            registry.register_chat_model(cfg.id.0.clone(), handle, Some(worker.pid.to_string()));
+        }
 
         ProvisioningResponse::Ok {
             model_id: cfg.id,
-            message: Some("load requested (runtime wiring not implemented yet)".to_string()),
+            message: Some(format!("model loaded and serving at {}", listen)),
         }
     }
 
     /// Handle a request to unload a model by:
     /// - instructing the process manager to terminate workers
-    /// - removing the model from the registry and config state (placeholders)
+    /// - removing the model from the registry
     fn handle_unload_model(&self, model_id: ModelId) -> ProvisioningResponse {
         info!(
-            "handle_unload_model: would terminate backend workers and unregister model_id={:?}",
+            "handle_unload_model: terminating backend workers and unregistering model_id={:?}",
             model_id
         );
 
-        // TODO:
-        // - call self.runtime.process_manager().terminate_workers_for_model(...)
-        // - remove from ModelRegistry and ModelConfigState
+        // Terminate all backend workers associated with this model.
+        let process_manager = self.runtime.process_manager();
+        process_manager.terminate_workers_for_model(&model_id.0);
+
+        // Remove the model from the registry so that new requests cannot be
+        // scheduled to it. Existing in-flight requests that already hold a
+        // handle will continue to complete as long as the backend cooperates.
+        let registry_arc = self.runtime.registry();
+        {
+            let mut registry = futures::executor::block_on(registry_arc.write());
+            registry.unregister_chat_model(&model_id.0);
+        }
 
         ProvisioningResponse::Ok {
             model_id,
-            message: Some("unload requested (runtime teardown not implemented yet)".to_string()),
+            message: Some(
+                "unload requested; backend workers terminated and model unregistered".to_string(),
+            ),
         }
     }
 }
@@ -116,8 +231,7 @@ impl NeuronControl for NeuronControlImpl {
     ///
     /// `UpsertModelConfig` updates the in-memory model configuration state.
     /// `LoadModel` and `UnloadModel` are wired to dedicated handlers that
-    /// currently log intent and return success responses; the actual process
-    /// management and registry wiring will be implemented next.
+    /// now spawn/terminate backend processes and update the model registry.
     fn apply_provisioning(&self, cmd: ProvisioningCommand) -> ProvisioningResponse {
         match cmd {
             ProvisioningCommand::UpsertModelConfig(cfg) => {
@@ -134,4 +248,130 @@ impl NeuronControl for NeuronControlImpl {
             }
         }
     }
+}
+
+/// run the neuron-side websocket control-plane client loop.
+///
+/// this connects to the given `endpoint`, registers the neuron, sends
+/// heartbeats, and dispatches provisioning commands from cortex into the
+/// local `NeuronControlImpl`.
+async fn run_control_plane_client(
+    endpoint: String,
+    control: NeuronControlImpl,
+) -> anyhow::Result<()> {
+    info!("neuron connecting to cortex control-plane at {}", endpoint);
+
+    let (ws_stream, _resp) = connect_async(&endpoint).await?;
+    info!("neuron websocket connected to cortex control-plane");
+
+    let (tx, mut rx) = ws_stream.split();
+
+    // channel for all outbound messages (heartbeats + provisioning responses)
+    let (msg_tx, mut msg_rx) = mpsc::unbounded_channel::<Message>();
+
+    // spawn single writer task owning the websocket sink
+    tokio::spawn(async move {
+        let mut sink = tx;
+        while let Some(msg) = msg_rx.recv().await {
+            if let Err(e) = sink.send(msg).await {
+                warn!("failed to send message to cortex: {:?}", e);
+                break;
+            }
+        }
+        info!("neuron control-plane writer task exiting");
+    });
+
+    // send initial registration
+    let descriptor = NeuronDescriptor {
+        node_id: control.runtime.node_id().clone(),
+        label: control.runtime.node_id().clone(),
+        metadata: serde_json::json!({
+            "backend": "neuron",
+        }),
+    };
+    let register_msg = NeuronToCortex::Register { neuron: descriptor };
+    let register_text = serde_json::to_string(&register_msg)?;
+    msg_tx.send(Message::Text(register_text))?;
+
+    // derive neuron id string for heartbeats and responses
+    let neuron_id = control
+        .runtime
+        .node_id()
+        .clone()
+        .unwrap_or_else(|| "anonymous-neuron".to_string());
+
+    // spawn heartbeat task that pushes messages into the writer channel
+    {
+        let neuron_id = neuron_id.clone();
+        let hb_tx = msg_tx.clone();
+        tokio::spawn(async move {
+            let interval = Duration::from_secs(15);
+            loop {
+                time::sleep(interval).await;
+                let hb = NeuronToCortex::Heartbeat {
+                    neuron_id: neuron_id.clone(),
+                    metrics: serde_json::json!({}),
+                };
+                match serde_json::to_string(&hb) {
+                    Ok(text) => {
+                        if let Err(e) = hb_tx.send(Message::Text(text)) {
+                            warn!("failed to enqueue heartbeat to cortex: {:?}", e);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        warn!("failed to serialise heartbeat: {:?}", e);
+                    }
+                }
+            }
+        });
+    }
+
+    // main receive loop: handle cortex → neuron messages
+    while let Some(msg) = rx.next().await {
+        match msg {
+            Ok(Message::Text(text)) => {
+                match serde_json::from_str::<CortexToNeuron>(&text) {
+                    Ok(CortexToNeuron::Provisioning { cmd }) => {
+                        let response = control.apply_provisioning(cmd);
+                        let resp_msg = NeuronToCortex::ProvisioningResponse {
+                            neuron_id: neuron_id.clone(),
+                            response,
+                        };
+                        if let Ok(text) = serde_json::to_string(&resp_msg) {
+                            if let Err(e) = msg_tx.send(Message::Text(text)) {
+                                warn!("failed to enqueue provisioning response to cortex: {:?}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Ok(CortexToNeuron::RequestCapabilities) => {
+                        // TODO: implement capability reporting once the protocol
+                        // has concrete capability structures.
+                        info!("received RequestCapabilities from cortex (not yet implemented)");
+                    }
+                    Err(e) => {
+                        warn!("failed to parse CortexToNeuron message: {:?}", e);
+                    }
+                }
+            }
+            Ok(Message::Binary(_)) => {
+                warn!("ignoring unexpected binary websocket frame from cortex");
+            }
+            Ok(Message::Close(_)) => {
+                info!("cortex closed control-plane websocket connection");
+                break;
+            }
+            Ok(other) => {
+                warn!("unexpected websocket message from cortex: {:?}", other);
+            }
+            Err(e) => {
+                warn!("websocket error in neuron control-plane client: {:?}", e);
+                break;
+            }
+        }
+    }
+
+    info!("neuron control-plane websocket client loop exiting");
+    Ok(())
 }

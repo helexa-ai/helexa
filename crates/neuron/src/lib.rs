@@ -10,11 +10,15 @@ pub mod process;
 pub mod registry;
 pub mod runtime;
 
+#[derive(Clone)]
 pub struct Config {
     pub control_socket: SocketAddr,
     pub api_socket: SocketAddr,
     pub models_dir: Option<String>,
     pub node_id: Option<String>,
+    /// URL of the cortex control-plane websocket endpoint this neuron should
+    /// connect to for registration, heartbeats and provisioning commands.
+    pub cortex_control_endpoint: String,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -22,7 +26,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     let registry = registry::ModelRegistry::new(config.models_dir.clone());
     let process_manager = process::ProcessManager::new();
-    let runtime = runtime::RuntimeManager::new(registry, process_manager);
+    let runtime = runtime::RuntimeManager::new(registry, process_manager, config.clone());
 
     control_plane::spawn(config.control_socket, runtime.clone());
 
