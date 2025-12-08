@@ -3,9 +3,9 @@ use std::net::SocketAddr;
 use anyhow::Result;
 use tracing::info;
 
+pub mod gateway;
 pub mod mesh;
 pub mod orchestrator;
-pub mod gateway;
 pub mod portal;
 pub mod shutdown;
 

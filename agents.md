@@ -181,3 +181,71 @@ when introducing new fields, structs, or modules that are not fully implemented 
   - a control-plane handler that constructs an implementation struct, logs that it is unimplemented, and then calls `todo!()`.
 
 this strategy keeps the workspace free of quietly ignored dead code while making it obvious which pieces are intentionally incomplete and need future work.
+
+continuous integration and workflow expectations
+-------------------------------------------------
+
+the main branch is expected to stay buildable, formatted, and lint-clean at all times. a github workflow runs on pushes and pull requests targeting `main` and enforces a basic set of checks:
+
+- `cargo fmt --all -- --check`
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+- `cargo test --workspace --all-features`
+
+### what the ci does
+
+the ci pipeline:
+
+- checks out the repository
+- installs the rust toolchain as pinned in `rust-toolchain.toml`
+- runs rustfmt in check mode across the entire workspace
+- runs clippy on all workspace crates and targets, treating all warnings as errors
+- runs the full workspace test suite
+
+if any of these steps fail, the workflow fails and the change cannot be merged into `main` (assuming branch protection is enabled).
+
+### contributor workflow
+
+to avoid breaking ci when you submit or update a change:
+
+1. **format before committing**
+
+   always run:
+
+   - `cargo fmt --all`
+
+   this should produce no diffs when re-run.
+
+2. **lint locally with clippy**
+
+   run:
+
+   - `cargo clippy --workspace --all-targets --all-features`
+
+   address all warnings rather than silencing them. if you genuinely need to silence a lint, prefer the narrowest possible scope (e.g. a single expression or function) and document why with a short comment.
+
+3. **run the full test suite**
+
+   before pushing:
+
+   - `cargo test --workspace --all-features`
+
+   add or update tests alongside your changes, and keep tests close to the code they exercise.
+
+4. **keep scaffolds explicit**
+
+   when introducing placeholders (see *scaffolding and placeholders* above):
+
+   - ensure any new fields are used in real code paths (logging, routing decisions, or helper methods)
+   - use `todo!()` / `unimplemented!()` in those paths so incomplete behaviour is obvious
+   - avoid adding `#[allow(dead_code)]` or broad `allow` attributes that could hide issues from clippy
+
+5. **iterate with ci feedback**
+
+   when ci fails on your pull request:
+
+   - read the failing step’s log (format, clippy, or tests)
+   - reproduce the failing command locally
+   - fix the underlying issue rather than muting it
+   - push a new commit and wait for ci to go green
+
+by following this workflow, contributors help ensure that `main` remains stable, consistent, and pleasant to work in for both humans and automated agents.

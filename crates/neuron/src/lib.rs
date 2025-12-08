@@ -3,9 +3,9 @@ use std::net::SocketAddr;
 use anyhow::Result;
 use tracing::info;
 
-pub mod runtime;
 pub mod control_plane;
 pub mod registry;
+pub mod runtime;
 
 pub struct Config {
     pub control_socket: SocketAddr,
