@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 use crate::registry::ModelRegistry;
-use model_runtime::{ChatInference, ChatRequest, ChatResponse};
+use model_runtime::{ChatRequest, ChatResponse};
 
 #[derive(Clone)]
 pub struct RuntimeManager {
@@ -20,11 +20,7 @@ impl RuntimeManager {
         }
     }
 
-    pub async fn execute_chat(
-        &self,
-        model_id: &str,
-        request: ChatRequest,
-    ) -> Result<ChatResponse> {
+    pub async fn execute_chat(&self, model_id: &str, request: ChatRequest) -> Result<ChatResponse> {
         let registry = self.registry.read().await;
         let runtime = registry.get_runtime_for_model(model_id)?;
         runtime.chat(request).await

@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
-use protocol::{ModelCapability, RoutingDecision, WorkloadClass};
 use mesh::MeshHandle;
+use protocol::{ModelCapability, RoutingDecision, WorkloadClass};
 use tracing::info;
 
 /// trait implemented by orchestrators that make scheduling decisions.
@@ -21,13 +21,25 @@ pub struct BasicScheduler {
 
 impl BasicScheduler {
     pub fn new(mesh: MeshHandle) -> Self {
+        info!(
+            "basic scheduler initialised for mesh node {}",
+            mesh.node_id()
+        );
         Self { mesh }
     }
 }
 
 impl Scheduler for BasicScheduler {
     fn schedule(&self, workload: WorkloadClass) -> RoutingDecision {
-        // TODO: use mesh state + neuron capabilities
+        // Explicitly use mesh in the scheduling path so the field is clearly intentional.
+        info!(
+            "scheduling workload {:?} using mesh node {} (placeholder implementation)",
+            workload,
+            self.mesh.node_id()
+        );
+
+        // TODO: replace this with real scheduling logic based on mesh state and neuron capabilities.
+        // For now, we still use a trivial default routing decision to keep behaviour predictable.
         RoutingDecision::default_for(workload)
     }
 }

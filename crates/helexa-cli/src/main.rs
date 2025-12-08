@@ -15,7 +15,7 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 enum Commands {
     /// run a cortex node (mesh + optional orchestrator/gateway/portal roles)
     Cortex(CortexOpts),

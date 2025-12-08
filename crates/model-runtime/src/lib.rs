@@ -1,7 +1,7 @@
 use anyhow::Result;
-use async-trait::async_trait;
+use async_trait::async_trait;
 
-/// basic chat request type understood by runtime adapters.
+/// Basic chat request type understood by runtime adapters.
 #[derive(Debug, Clone)]
 pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
@@ -22,19 +22,19 @@ pub enum ChatRole {
     Assistant,
 }
 
-/// basic chat response type.
+/// Basic chat response type.
 #[derive(Debug, Clone)]
 pub struct ChatResponse {
     pub content: String,
 }
 
-/// trait for chat-capable runtimes.
+/// Trait for chat-capable runtimes.
 #[async_trait]
 pub trait ChatInference: Send + Sync {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse>;
 }
 
-/// opaque handle to something that can do chat inference.
+/// Opaque handle to something that can do chat inference.
 #[derive(Clone)]
 pub struct ChatRuntimeHandle {
     inner: std::sync::Arc<dyn ChatInference>,

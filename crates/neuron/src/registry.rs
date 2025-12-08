@@ -1,4 +1,4 @@
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use model_runtime::ChatRuntimeHandle;
 
 /// tracks locally available models and their runtime bindings.
@@ -12,8 +12,22 @@ impl ModelRegistry {
         Self { models_dir }
     }
 
-    pub fn get_runtime_for_model(&self, _model_id: &str) -> Result<ChatRuntimeHandle> {
-        // TODO: lookup real runtime by id
-        Err(anyhow!("no runtime registered for model"))
+    pub fn get_runtime_for_model(&self, model_id: &str) -> Result<ChatRuntimeHandle> {
+        // Use models_dir in a clearly intentional way while the real lookup is not implemented.
+        if let Some(dir) = &self.models_dir {
+            tracing::info!(
+                "placeholder lookup for model {} in configured models_dir {}",
+                model_id,
+                dir
+            );
+        } else {
+            tracing::info!(
+                "placeholder lookup for model {} with no models_dir configured",
+                model_id
+            );
+        }
+
+        // TODO: replace this with a real lookup that returns a bound ChatRuntimeHandle.
+        unimplemented!("ModelRegistry::get_runtime_for_model is not implemented yet");
     }
 }
