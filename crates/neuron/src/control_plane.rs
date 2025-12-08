@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use tracing::info;
 
 use crate::runtime::RuntimeManager;
-use protocol::{NeuronControl, ProvisioningCommand, ProvisioningResponse};
+use protocol::{ModelConfig, NeuronControl, ProvisioningCommand, ProvisioningResponse};
 
 /// neuron implements the control-plane interface expected by cortex.
 /// for now this is just a placeholder that logs its start.
@@ -41,22 +41,44 @@ impl NeuronControlImpl {
         );
         unimplemented!("NeuronControlImpl::handle_placeholder is not implemented yet");
     }
+
+    /// Apply an updated model configuration by recording it in the in-memory
+    /// model config state and returning a generic success response.
+    ///
+    /// This does not yet spawn or tear down any backend processes; it only
+    /// updates configuration state so that later `LoadModel` / `UnloadModel`
+    /// commands can make use of it.
+    fn handle_upsert_model_config(&self, cfg: ModelConfig) -> ProvisioningResponse {
+        let model_id = cfg.id.clone();
+        let configs = self.runtime.model_configs();
+        {
+            // Update the in-memory configuration map.
+            let mut state = futures::executor::block_on(configs.write());
+            state.upsert(cfg);
+        }
+
+        // For now we do not persist immediately; higher layers can call
+        // `persist_model_config_state` at appropriate times (e.g. shutdown).
+        ProvisioningResponse::Ok {
+            model_id,
+            message: Some("configuration updated (no runtime changes yet)".to_string()),
+        }
+    }
 }
 
 impl NeuronControl for NeuronControlImpl {
     /// Apply a provisioning command such as model configuration updates or
     /// load/unload requests.
     ///
-    /// This implementation is intentionally minimal and uses `unimplemented!()`
-    /// so that incomplete behaviour is loud and obvious during development.
+    /// `UpsertModelConfig` is partially implemented to update the in-memory
+    /// model configuration state; `LoadModel` and `UnloadModel` remain
+    /// placeholders that should be wired into process management and the
+    /// model registry in subsequent steps.
     fn apply_provisioning(&self, cmd: ProvisioningCommand) -> ProvisioningResponse {
         match cmd {
             ProvisioningCommand::UpsertModelConfig(cfg) => {
-                info!(
-                    "received UpsertModelConfig for model_id={:?} (placeholder handler)",
-                    cfg.id
-                );
-                unimplemented!("UpsertModelConfig handling is not implemented yet")
+                info!("received UpsertModelConfig for model_id={:?}", cfg.id);
+                self.handle_upsert_model_config(cfg)
             }
             ProvisioningCommand::LoadModel { model_id } => {
                 info!(
