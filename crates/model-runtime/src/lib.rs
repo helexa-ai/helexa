@@ -97,7 +97,6 @@ struct OpenAiChatRequest {
 
 #[derive(Debug, Deserialize)]
 struct OpenAiChoiceMessage {
-    role: String,
     content: String,
 }
 
