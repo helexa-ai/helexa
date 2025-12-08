@@ -11,10 +11,15 @@ helexa is a distributed ai fabric built from two primary node roles:
   - may act as an orchestrator
   - may act as an api gateway
   - may host one or more portals (front-end + billing)
+  - exposes a websocket-based control-plane endpoint that neurons connect to
 - **neuron** — data-plane node that:
   - runs one or more model runtimes
   - exposes capabilities and health to cortex
   - executes inference work routed by cortex
+  - connects to cortex over a websocket control-plane client for:
+    - registration and identity
+    - periodic heartbeats and lightweight metrics
+    - dynamic provisioning commands (model config updates, load/unload)
 
 the system is designed so that a single cortex and a single neuron can form a minimal,
 fully functional deployment, while also scaling out to many operators and nodes.
@@ -40,6 +45,7 @@ crates and boundaries
 - maintains knowledge of:
   - local neurons (same operator)
   - remote neurons accessible through peer cortex nodes
+- exposes a websocket-based control-plane endpoint that neurons connect to.
 - key modules:
 
   - `mesh.rs`
@@ -60,7 +66,8 @@ crates and boundaries
     - owns the openai-compatible http api surface.
     - performs request classification into workload classes.
     - asks the orchestrator for routing decisions.
-    - dispatches requests to neuron(s) via the control-plane protocol.
+    - dispatches requests to neuron(s) via the control-plane protocol or directly to
+      neuron HTTP endpoints, depending on the chosen transport for inference.
 
   - `portal.rs`
     - serves front-end portals over http(s).
@@ -73,7 +80,8 @@ crates and boundaries
 ### neuron
 
 - runs model runtimes, provides inference services.
-- learns about model configurations and provisioning directives dynamically from cortex.
+- learns about model configurations and provisioning directives dynamically from cortex
+  over the websocket control-plane.
 - key modules:
 
   - `runtime.rs`
@@ -121,6 +129,15 @@ crates and boundaries
   - serialisable with serde
   - usable over different transports (http, grpc, quic, etc)
 
+- currently defines:
+  - `ModelId`, `ModelConfig`, `ModelCapability`, `WorkloadClass`.
+  - provisioning-related enums:
+    - `ProvisioningCommand` (e.g. `UpsertModelConfig`, `LoadModel`, `UnloadModel`).
+    - `ProvisioningResponse`.
+  - a `NeuronControl` trait that neuron implements to apply provisioning commands
+    in-process, while the websocket transport is responsible for carrying
+    `CortexToNeuron` / `NeuronToCortex` messages.
+
 ### model-runtime
 
 - abstraction layer over concrete model backends.
@@ -153,6 +170,13 @@ protocol traits and types are defined in `crates/protocol`. key concepts:
   - classification of a request by behaviour and resource footprint:
     - e.g. `ChatInteractive`, `ChatBulk`, `Embedding`, `VisionCaption`, etc.
 
+- `ModelConfig`
+  - describes how to start and talk to a model backend:
+    - `backend_kind` (e.g. `"vllm"`, `"llama_cpp"`, `"openai_proxy"`).
+    - `command`, `args`, `env` for spawning backend processes.
+    - optional `listen_endpoint` (base URL for OpenAI-style HTTP).
+    - free-form `metadata` for backend-specific parameters.
+
 - `NeuronDescriptor`
   - high-level description of a neuron node:
     - network endpoints
@@ -166,6 +190,9 @@ protocol traits and types are defined in `crates/protocol`. key concepts:
 
 - `Provisioner` (trait, implemented by cortex)
   - responsible for ensuring that necessary models are loaded on neurons.
+  - will use the websocket control-plane to:
+    - push `ModelConfig` values to neurons (`UpsertModelConfig`).
+    - request `LoadModel` and `UnloadModel` for specific models on specific neurons.
 
 - `NeuronControl` (trait, implemented by neuron)
   - operations invoked by cortex:
@@ -212,6 +239,9 @@ request routing flow
      - rolling latency histograms
      - error rates
      - capacity utilisation signals.
+   - neurons can also report provisioning-related outcomes back to cortex via
+     `NeuronToCortex::ProvisioningResponse`, allowing the provisioner to react
+     to failed spawns, unsupported configs, etc.
 
 multi-portal support
 --------------------
@@ -234,8 +264,11 @@ minimal deployment
 ------------------
 
 - **single cortex + single neuron** (same machine or different machines):
-  - neuron exposes control socket reachable by cortex.
-  - cortex runs mesh + orchestrator + gateway + portal.
+  - neuron connects to the cortex control-plane websocket endpoint.
+  - neuron resolves its identity via:
+    - CLI `--node-id` if supplied, otherwise
+    - `/etc/machine-id` (or fails fast if neither is available).
+  - cortex runs mesh + orchestrator + gateway + portal + control-plane server.
   - mesh can operate in a degenerate mode with a single node.
 
 - **multi-operator deployment**:

@@ -12,6 +12,7 @@ The roadmap is organised into phases:
 4. [Phase 3 — Production-Ready Gateway & Portals](#phase-3--production-ready-gateway--portals)
 5. [Phase 4 — Mesh & Multi-Operator Topology](#phase-4--mesh--multi-operator-topology)
 6. [Phase 5 — Ecosystem, Tooling & Operations](#phase-5--ecosystem-tooling--operations)
+7. [Phase 6 — Cortex Spec & Demand-Driven Provisioning](#phase-6--cortex-spec--demand-driven-provisioning)
 
 Each phase defines goals, scope boundaries, concrete milestones, and acceptance criteria.
 
@@ -23,7 +24,7 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
 
 ### Scope
 
-- Create core crates:
+- [x] Create core crates:
   - `helexa-cli`
   - `cortex`
   - `neuron`
@@ -32,84 +33,90 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
   - `model-runtime`
   - `config`
   - `util`
-- Implement shared configuration, logging, and error primitives.
-- Provide no-op or stubbed implementations of the main entrypoints:
+- [x] Implement shared configuration, logging, and error primitives.
+- [x] Provide no-op or stubbed implementations of the main entrypoints:
   - `cortex::run(config)`
   - `neuron::run(config)`
 
 ### Work items
 
 1. **Workspace structure**
-   - Define `Cargo.toml` workspace members, features, and dependency graph.
-   - Ensure each crate compiles independently with minimal dependencies.
-   - Add `rust-toolchain.toml` (already present) and basic CI checks (fmt, clippy, test).
+   - [x] Define `Cargo.toml` workspace members, features, and dependency graph.
+   - [x] Ensure each crate compiles independently with minimal dependencies.
+   - [x] Add `rust-toolchain.toml` (already present) and basic CI checks (fmt, clippy, test).
 
 2. **`util` crate**
-   - Logging helpers:
+   - [x] Logging helpers:
      - Structured logging facade (e.g. via `tracing`).
      - Simple logging configuration helper (env-driven log level).
-   - Error types:
+   - [ ] Error types:
      - Common error enum or error trait pattern usable across crates.
      - Helpers/macros for attaching context.
-   - Metrics stubs:
+   - [ ] Metrics stubs:
      - Trait(s) for metrics emission (counters, histograms, gauges).
      - No-op implementation used by default.
 
 3. **`config` crate**
-   - Config struct definitions for:
+   - [x] Config struct definitions for:
      - `CortexConfig`
      - `NeuronConfig`
      - Shared fields:
        - network sockets
        - mesh configuration
        - logging / metrics configuration
-   - Layered loading:
+   - [ ] Layered loading:
      - Defaults
      - Config file (YAML/TOML/JSON; pick one and document)
      - Environment variables
      - CLI overrides (later passed from `helexa-cli`)
-   - Validation:
+   - [ ] Validation:
      - `validate()` methods returning descriptive errors.
      - Helpful error messages for common misconfigurations (port conflicts, missing endpoints, etc).
 
 4. **`protocol` crate (v0 skeleton)**
-   - Basic type definitions (no complex semantics yet):
+   - [x] Basic type definitions (no complex semantics yet):
      - `ModelId`
      - `ModelCapability` (minimal fields)
      - `WorkloadClass` (minimal set of variants)
      - `NeuronDescriptor`
-   - Ensure types are serialisable (`serde`) and versionable (e.g. include a protocol version constant).
+   - [x] Ensure types are serialisable (`serde`) and versionable (e.g. include a protocol version constant).
 
 5. **`model-runtime` crate (v0 traits)**
-   - Define core traits:
-     - `TextInference`
+   - [x] Define core traits:
      - `ChatInference`
+   - [x] Provide:
+     - Trait method signatures with clear semantics (async).
+     - A process-backed `ProcessRuntime` that speaks OpenAI-style HTTP chat completions.
+   - [ ] Extend with:
+     - `TextInference`
      - `EmbeddingInference`
      - `VisionInference`
-   - Provide:
-     - Trait method signatures with clear semantics (sync or async).
-     - An in-memory / dummy implementation for testing:
+   - [ ] Provide an in-memory / dummy implementation for testing:
        - Returns canned responses or echoes input.
 
 6. **`helexa-cli`**
-   - Implement CLI parsing:
+   - [x] Implement CLI parsing:
      - Subcommands: `cortex`, `neuron`.
-     - Common flags: `--config`, `--log-level`, `--mesh-config` (as appropriate).
-   - Wiring:
+     - Common flags: `--config`, `--log-level`, and role-specific flags.
+   - [x] Wiring:
      - Load configuration via `config` crate.
-     - Initialise logging and metrics via `util`.
+     - Initialise logging via `util`.
      - Call `cortex::run(config)` or `neuron::run(config)`.
 
 7. **`cortex` and `neuron` skeletons**
    - For `cortex`:
-     - Define module layout: `mesh.rs`, `orchestrator.rs`, `gateway.rs`, `portal.rs`, `shutdown.rs`.
-     - Implement a `run(config)` that:
-       - Sets up a basic runtime/executor (e.g. tokio).
+     - [x] Define module layout: `mesh.rs`, `orchestrator.rs`, `gateway.rs`, `portal.rs`, `shutdown.rs`, `control_plane.rs`.
+     - [x] Implement a `run(config)` that:
+       - Sets up a basic runtime/executor (tokio).
        - Calls stub functions for mesh, orchestrator, gateway, portal.
+       - Starts the control-plane websocket server when configured.
        - Integrates a clean shutdown path (`shutdown.rs`).
    - For `neuron`:
-     - Define module layout: `runtime.rs`, `control_plane.rs`, `registry.rs`.
-     - Implement `run(config)` with stubbed components and clean shutdown.
+     - [x] Define module layout: `runtime.rs`, `control_plane.rs`, `registry.rs`.
+     - [x] Implement `run(config)` with:
+       - Control-plane websocket client startup.
+       - Stub API server startup.
+       - A `ctrl_c`-based shutdown so the process stays alive.
 
 ### Acceptance criteria
 
@@ -126,75 +133,79 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
 
 ### Scope
 
-- Implement a direct cortex ↔ neuron control channel (e.g. TCP or HTTP) without full mesh.
-- Implement minimal orchestration: single neuron target, static model mapping.
-- Implement a minimal OpenAI-compatible gateway surface:
+- [x] Implement a direct cortex ↔ neuron control channel via websocket (without full mesh).
+- [ ] Implement minimal orchestration: single neuron target, static model mapping for real requests.
+- [ ] Implement a minimal OpenAI-compatible gateway surface:
   - `/v1/chat/completions`
   - `/v1/embeddings`
-- Integrate `model-runtime` with at least one concrete backend placeholder.
+- [x] Integrate `model-runtime` with at least one concrete backend placeholder (`ProcessRuntime` HTTP bridge).
 
 ### Work items
 
 1. **`protocol` v1: control-plane MVP**
-   - Define request/response messages for:
+   - [x] Define request/response messages for:
+     - Provisioning commands (`UpsertModelConfig`, `LoadModel`, `UnloadModel`).
+   - [x] Define `NeuronControl` trait used by cortex/neuron boundary for provisioning.
+   - [x] Define DTOs for:
+     - `ModelId`, `ModelConfig`, `ProvisioningCommand`, `ProvisioningResponse`
+   - [ ] Define request/response messages for:
      - `announce_capabilities`
      - `execute_request` (chat + embedding for now)
      - `report_health` (very basic health events).
-   - Define `NeuronControl` trait used by cortex to talk to neuron(s).
-   - Define DTOs for:
-     - `ChatRequest`, `ChatResponse`
+   - [ ] Define DTOs for:
      - `EmbeddingRequest`, `EmbeddingResponse`
 
 2. **`neuron` — MVP implementation**
    - `registry.rs`:
-     - Store a static list of models (configured via config file or flags).
-     - Each model entry contains:
-       - `ModelId`
-       - `ModelCapability`
-       - `ModelRuntimeBinding` (points to a specific `model-runtime` implementation).
+     - [x] Store an in-memory map of models to `ChatRuntimeHandle` and worker identifiers.
+     - [x] Provide APIs to register and unregister chat-capable models.
    - `runtime.rs`:
-     - Implement adapter from control-plane requests to `model-runtime` traits.
-     - Start with a dummy backend (e.g. echo or simple template completion).
+     - [x] Implement adapter from provisioning commands to `ProcessManager` and `ModelRegistry`.
+     - [x] Maintain a cache-backed `ModelConfigState` so neuron remembers model configs across restarts.
    - `control_plane.rs`:
-     - Implement a simple HTTP or TCP server for control messages:
-       - JSON or protobuf over HTTP is acceptable for v1.
-       - Support:
-         - `GET /health`
-         - `POST /execute` (chat/embedding).
-         - `GET /capabilities`.
-   - Periodically publish capabilities (if needed in this phase) or allow on-demand query.
+     - [x] Implement a websocket client that:
+       - Connects to cortex.
+       - Sends `Register` and periodic `Heartbeat` messages.
+       - Receives `CortexToNeuron::Provisioning` and applies them via `NeuronControlImpl`.
+   - [ ] Periodically publish capabilities (if needed in this phase) or allow on-demand query.
 
 3. **`cortex` — direct control-channel integration**
    - `orchestrator.rs`:
-     - Implement a naïve `Scheduler`:
-       - Single hard-coded neuron endpoint based on configuration.
-       - Single model selection:
-         - Use a default model id unless user specifies override.
-     - Implement trivial `Provisioner` that does nothing (no dynamic load/unload).
+     - [x] Implement a naïve `Scheduler`:
+       - Single hard-coded behavior selecting a default model id per `WorkloadClass`.
+     - [ ] Implement `Provisioner` that uses the websocket control-plane to drive dynamic load/unload.
+   - `control_plane.rs`:
+     - [x] Implement a websocket server that:
+       - Accepts neuron connections.
+       - Tracks registrations and heartbeats in `NeuronRegistry`.
+       - Receives provisioning responses.
+       - Maintains per-neuron outbound senders for `CortexToNeuron` messages.
+     - [x] Provide a helper `send_provisioning_to_neuron` for admin/orchestrator use.
    - `gateway.rs`:
-     - Implement HTTP server with OpenAI-like endpoints:
+     - [ ] Implement HTTP server with OpenAI-like endpoints:
        - `/v1/chat/completions` → translates to `ChatRequest`.
        - `/v1/embeddings` → translates to `EmbeddingRequest`.
-     - Basic request classification to `WorkloadClass`:
+     - [ ] Basic request classification to `WorkloadClass`:
        - `ChatInteractive` for chat.
        - `Embedding` for embeddings.
-   - Implement translation between gateway types and `protocol` types.
-   - Integrate `NeuronControl` client that talks to the neuron control endpoint.
+   - [ ] Implement translation between gateway types and `protocol` types.
+   - [ ] Integrate a `NeuronControl`/control-plane client from cortex to neurons (for non-websocket transports, if needed later).
 
 4. **Config & wiring**
    - `config` crate:
-     - Extend config structs to include:
-       - Cortex: list of known neuron control endpoints.
-       - Neuron: list of models, plus runtime configuration.
+     - [ ] Extend config structs to include:
+       - Cortex: a `--spec` path and any bootstrap policy knobs.
+       - Neuron: additional runtime configuration as it grows.
    - `helexa-cli`:
-     - Add default ports and examples consistent with `readme.md`.
-     - Ensure CLI flags override config for key ports.
+     - [x] Add control-plane and role-specific flags (e.g. `--control-plane-socket`, `--cortex-control-endpoint`, `--node-id`).
+     - [x] Ensure CLI flags override config for key ports.
 
 5. **Basic observability**
-   - Use `util` logging helpers to:
-     - Log each incoming gateway request (rate-limited to avoid floods).
-     - Log each control-plane request and response (with correlation IDs).
-   - Expose a basic `/metrics` endpoint (even if only a stub) on cortex and neuron.
+   - [x] Use `util` logging helpers to:
+     - Log key lifecycle events (startup, shutdown).
+     - Log control-plane events (registration, heartbeat, provisioning, process spawn).
+   - [ ] Log each incoming gateway request (rate-limited to avoid floods).
+   - [ ] Expose a basic `/metrics` endpoint (even if only a stub) on cortex and neuron.
 
 ### Acceptance criteria
 
@@ -223,56 +234,56 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
 ### Work items
 
 1. **`protocol` v2: capabilities & workloads**
-   - Extend `ModelCapability` to include:
+   - [ ] Extend `ModelCapability` to include:
      - Workload types supported (chat, completion, embeddings, vision).
      - Max context length, throughput hints.
      - Resource hints (e.g. approximate VRAM/CPU footprint).
-   - Extend `WorkloadClass` with variants for:
+   - [x] Extend `WorkloadClass` with variants for:
      - `ChatInteractive`
-     - `ChatBatch`
-     - `EmbeddingBulk`
+     - `ChatBulk`
+     - `Embedding`
      - `VisionCaption` (placeholder).
-   - Define:
+   - [x] Define:
      - `RoutingDecision` type containing:
        - `ModelId`
        - `NeuronDescriptor` list
        - routing mode (simple for now: single target).
-   - Add messages/traits for:
+   - [x] Add messages/traits for:
      - `load_model`
      - `unload_model`
 
 2. **`neuron` — registry & health**
    - `registry.rs`:
-     - Store current model states:
+     - [ ] Store current model states:
        - `Loaded`, `Unloaded`, `Loading`, `Unloading`, `Failed`.
-     - APIs for:
-       - Listing capabilities.
-       - Requesting (un)load transitions.
+     - [x] APIs for:
+       - Registering and unregistering chat runtimes by model id.
        - Applying model configuration payloads received from cortex at runtime (no requirement for static per-model TOML files on disk).
    - `control_plane.rs`:
-     - Implement endpoints/handlers for:
-       - `load_model` and `unload_model`.
-       - Model configuration updates pushed from cortex (e.g. model metadata, runtime parameters, process wiring).
-       - `announce_capabilities` response including current model states.
-       - Periodic `report_health` push or on-demand status.
+     - [x] Implement handlers for:
+       - `UpsertModelConfig` (updates `ModelConfigState`).
+       - `LoadModel` (spawns backend processes and registers runtimes).
+       - `UnloadModel` (terminates workers and unregisters runtimes).
+     - [ ] Implement `announce_capabilities` response including current model states.
+     - [ ] Implement periodic `report_health` push or on-demand status.
    - Health model:
-     - Track basic metrics:
+     - [ ] Track basic metrics:
        - Recent failures
        - Concurrent request count
        - Simple moving average latency.
-     - Include configuration- and provisioning-related health (e.g. failed model config application, failed process spawn for a given model).
+       - Configuration- and provisioning-related health (e.g. failed model config application, failed process spawn for a given model).
 
 3. **`cortex` — scheduler & provisioner**
    - `orchestrator.rs`:
-     - Implement `Scheduler` that:
+     - [ ] Implement `Scheduler` that:
        - Uses `ModelCapability` and `WorkloadClass` to find compatible models.
        - Filters neurons by health (e.g. avoid unhealthy or overloaded).
        - Performs simple load balancing (round-robin, least-loaded, or random among healthy).
-     - Implement `Provisioner` that:
+     - [ ] Implement `Provisioner` that:
        - Ensures required models are loaded on at least one neuron.
-       - Drives dynamic model configuration into neurons over the control channel (e.g. websockets or similar) so neurons never require a static on-disk model catalog.
+       - Drives dynamic model configuration into neurons over the websocket control channel so neurons never require a static on-disk model catalog.
        - Can pre-load configured "hot" models by sending configuration + load directives to neurons at startup.
-   - Provide configuration knobs for:
+   - [ ] Provide configuration knobs for:
      - Minimum number of replicas per model.
      - Cooldown periods for unloading unused models.
 
@@ -520,6 +531,39 @@ Each phase defines goals, scope boundaries, concrete milestones, and acceptance 
 - Operators can deploy helexa with clear documentation, collect metrics, and debug issues using provided tooling.
 - Developers can extend the system with new workloads and runtime backends following documented patterns.
 - The system behaves reliably under realistic load for extended periods in test environments.
+
+---
+
+## Phase 6 — Cortex Spec & Demand-Driven Provisioning
+
+**Goal:** Allow cortex to bootstrap its understanding of model demand and provisioning policy from a declarative “spec” file (similar to chainspecs in some blockchains), and evolve that understanding at runtime based on observed traffic and metrics. Persist this demand state to the filesystem cache so it survives restarts.
+
+### Scope
+
+- [ ] Define a `CortexSpec` JSON schema that can be passed via `--spec /path/to/spec.json`:
+  - Includes:
+    - Initial `ModelConfig` entries (per model).
+    - Optional per-model weights / priorities.
+    - Optional per-model min/max replica hints.
+    - Optional global policy hints (e.g. max concurrent models per neuron).
+- [ ] Extend `cortex::Config` and CLI to accept `--spec` and load it at startup.
+- [ ] Introduce a cache-backed demand state in cortex:
+  - Backed by the `cache` crate.
+  - Stores:
+    - Per-model demand metrics (e.g. smoothed request rates).
+    - Learned capacity / concurrency hints per backend + environment.
+  - Seeded from the spec on first run, then updated at runtime.
+- [ ] Integrate the spec- and metrics-backed demand state into the `Provisioner`:
+  - At startup, when neurons register, use the spec to:
+    - Decide which models to `UpsertModelConfig` and `LoadModel` on which neurons.
+  - At runtime:
+    - Adjust load/unload decisions based on:
+      - Incoming traffic.
+      - Historical performance.
+      - Capacity metrics reported by neurons.
+- [ ] Document the distinction between:
+  - `--spec` (bootstrapping and long-lived policy/demand hints).
+  - Runtime configuration and metrics (dynamic, may override or refine spec guidance).
 
 ---
 
