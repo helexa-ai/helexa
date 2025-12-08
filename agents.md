@@ -152,3 +152,32 @@ agent guidelines
 - if you are unsure where a change belongs, prefer:
   - types/interfaces in `protocol` or domain crate (`cortex`, `neuron`)
   - glue code and wiring in the crate that owns the side-effect (e.g. network calls).
+
+scaffolding and placeholders
+----------------------------
+
+when introducing new fields, structs, or modules that are not fully implemented yet, avoid leaving them as silent dead code. instead:
+
+- **use fields in live code paths**  
+  wire them into logging, routing decisions, or helper methods so that their presence is clearly intentional (e.g. log mesh node id, log models directory, etc).
+
+- **prefer explicit `todo!()` / `unimplemented!()` over hidden no-ops**  
+  if you cannot provide a real implementation yet, call `todo!()` or `unimplemented!()` from the code path that uses the field. this ensures:
+  - the field cannot be accidentally relied on in production without being noticed.
+  - callers see a loud failure until the behaviour is defined.
+
+- **keep placeholders small and well-documented**  
+  - keep placeholder methods minimal (log + `todo!()`/`unimplemented!()`).
+  - add a concise `TODO` comment describing the intended behaviour and where the real implementation should live.
+
+- **avoid `#[allow(dead_code)]` for long-lived scaffolding**  
+  short-lived `allow` attributes are acceptable for very local work-in-progress, but for anything that is expected to live across multiple changes:
+  - prefer making the usage explicit and failing loudly.
+  - remove `allow` attributes as soon as the code is wired into real execution paths.
+
+- **examples of acceptable scaffolds**  
+  - a scheduler that logs the mesh node id and then returns a trivial routing decision, with a `TODO` pointing to future scheduling logic.
+  - a registry method that logs model lookups and then calls `unimplemented!()` until the real model-runtime binding is wired up.
+  - a control-plane handler that constructs an implementation struct, logs that it is unimplemented, and then calls `todo!()`.
+
+this strategy keeps the workspace free of quietly ignored dead code while making it obvious which pieces are intentionally incomplete and need future work.
