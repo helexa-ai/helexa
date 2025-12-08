@@ -32,5 +32,9 @@ pub async fn run(config: Config) -> Result<()> {
 
     runtime::spawn_api_server(config.api_socket, runtime).await?;
 
+    // keep the neuron process alive until a shutdown signal, mirroring cortex
+    tokio::signal::ctrl_c().await?;
+    info!("neuron node shutting down");
+
     Ok(())
 }

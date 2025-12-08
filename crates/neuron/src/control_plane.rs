@@ -261,7 +261,25 @@ async fn run_control_plane_client(
 ) -> anyhow::Result<()> {
     info!("neuron connecting to cortex control-plane at {}", endpoint);
 
-    let (ws_stream, _resp) = connect_async(&endpoint).await?;
+    // Add detailed logging around the websocket handshake so that failures are
+    // explicit in the neuron logs (in addition to the server-side errors).
+    let (ws_stream, _resp) = match connect_async(&endpoint).await {
+        Ok(ok) => {
+            info!(
+                "neuron successfully completed websocket handshake with cortex at {}",
+                endpoint
+            );
+            ok
+        }
+        Err(e) => {
+            error!(
+                "neuron failed websocket handshake with cortex at {}: {:?}",
+                endpoint, e
+            );
+            return Err(e.into());
+        }
+    };
+
     info!("neuron websocket connected to cortex control-plane");
 
     let (tx, mut rx) = ws_stream.split();
@@ -290,8 +308,23 @@ async fn run_control_plane_client(
         }),
     };
     let register_msg = NeuronToCortex::Register { neuron: descriptor };
-    let register_text = serde_json::to_string(&register_msg)?;
-    msg_tx.send(Message::Text(register_text))?;
+    let register_text = match serde_json::to_string(&register_msg) {
+        Ok(text) => text,
+        Err(e) => {
+            error!(
+                "neuron failed to serialise Register message for cortex control-plane at {}: {:?}",
+                endpoint, e
+            );
+            return Err(e.into());
+        }
+    };
+    if let Err(e) = msg_tx.send(Message::Text(register_text)) {
+        error!(
+            "neuron failed to enqueue initial Register message to cortex at {}: {:?}",
+            endpoint, e
+        );
+        return Err(e.into());
+    }
 
     // derive neuron id string for heartbeats and responses
     let neuron_id = control
@@ -343,6 +376,11 @@ async fn run_control_plane_client(
                                 warn!("failed to enqueue provisioning response to cortex: {:?}", e);
                                 break;
                             }
+                        } else if let Err(e) = serde_json::to_string(&resp_msg) {
+                            warn!(
+                                "failed to serialise provisioning response for neuron_id={}: {:?}",
+                                neuron_id, e
+                            );
                         }
                     }
                     Ok(CortexToNeuron::RequestCapabilities) => {

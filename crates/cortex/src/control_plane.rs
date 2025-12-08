@@ -11,6 +11,7 @@ use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tokio::time;
 use tokio_tungstenite::accept_async;
+
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
@@ -140,7 +141,7 @@ pub async fn start_control_plane_server(
     info!("cortex control-plane websocket listening on {}", addr);
 
     // Spawn a background task to periodically prune stale neurons.
-    let prune_registry = registry.clone();
+    let prune_registry = registry_list_clone(&registry);
     tokio::spawn(async move {
         let interval = Duration::from_secs(30);
         let timeout = Duration::from_secs(90);
@@ -152,7 +153,11 @@ pub async fn start_control_plane_server(
 
     loop {
         let (stream, peer_addr) = listener.accept().await?;
-        let registry_clone = registry.clone();
+        info!(
+            "control-plane accepted TCP connection from {} on {}",
+            peer_addr, addr
+        );
+        let registry_clone = registry_list_clone(&registry);
         let mesh_clone = mesh.clone();
         tokio::spawn(async move {
             if let Err(e) =
@@ -173,18 +178,31 @@ async fn handle_neuron_connection(
     registry: NeuronRegistry,
     _mesh: MeshHandle,
 ) -> Result<()> {
+    info!(
+        "attempting websocket upgrade for neuron control-plane connection from {}",
+        peer_addr
+    );
     let ws_stream = accept_async(stream)
         .await
         .map_err(|e| anyhow!("failed to upgrade websocket from {}: {e}", peer_addr))?;
-    info!("neuron connection upgraded to websocket from {}", peer_addr);
+    info!(
+        "neuron connection successfully upgraded to websocket from {}",
+        peer_addr
+    );
 
     let (_tx, mut rx) = ws_stream.split();
 
     // Expect an initial Register message.
-    let first_msg = rx
-        .next()
-        .await
-        .ok_or_else(|| anyhow!("neuron {} closed before sending register", peer_addr))??;
+    let first_msg = rx.next().await.ok_or_else(|| {
+        anyhow!(
+            "neuron {} closed websocket before sending initial Register message",
+            peer_addr
+        )
+    })??;
+    info!(
+        "cortex received first websocket message from neuron peer {}: {:?}",
+        peer_addr, first_msg
+    );
 
     let register: NeuronToCortex = parse_ws_json(first_msg)?;
     let neuron_id = match register {
@@ -207,7 +225,7 @@ async fn handle_neuron_connection(
     };
 
     // Spawn a task to process subsequent messages from this neuron.
-    let registry_clone = registry.clone();
+    let registry_clone = registry_list_clone(&registry);
     let neuron_id_clone = neuron_id.clone();
     tokio::spawn(async move {
         while let Some(msg) = rx.next().await {
@@ -238,10 +256,7 @@ async fn handle_neuron_connection(
         );
     });
 
-    // For now we keep the sender half idle; future revisions will use `tx` to
-    // push provisioning commands and capability requests. We retain the sink
-    // in case we want to implement simple broadcast/testing behaviour here.
-    // To keep the connection alive, just await on an infinite sleep.
+    // Keep the connection alive; all work happens in spawned tasks.
     loop {
         time::sleep(Duration::from_secs(3600)).await;
     }
@@ -301,4 +316,15 @@ fn parse_ws_json<T: for<'de> Deserialize<'de>>(message: Message) -> Result<T> {
     let parsed = serde_json::from_str::<T>(&text)
         .map_err(|e| anyhow!("failed to parse websocket JSON payload: {e}"))?;
     Ok(parsed)
+}
+
+/// Lightweight clone helper to avoid deriving Clone for the entire registry,
+/// which would encourage copying potentially large state.
+///
+/// For now `NeuronRegistry` is small (a Vec under a lock), so this is fine.
+/// If it grows more complex, consider switching to an `Arc<NeuronRegistry>`.
+fn registry_list_clone(registry: &NeuronRegistry) -> NeuronRegistry {
+    NeuronRegistry {
+        inner: registry.inner.clone(),
+    }
 }
