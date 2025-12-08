@@ -1,0 +1,12 @@
+[package]
+name = "cortex"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+
+mesh = { path = "../mesh" }
+protocol = { path = "../protocol" }

@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "crates/helexa-cli",
+    "crates/cortex",
+    "crates/neuron",
+    "crates/mesh",
+    "crates/protocol",
+    "crates/model-runtime",
+    "crates/config",
+    "crates/util",
+]
+
+resolver = "2"
