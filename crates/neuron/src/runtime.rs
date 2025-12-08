@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use tokio::sync::RwLock;
 use tracing::info;
 
@@ -102,13 +102,36 @@ impl RuntimeManager {
         // use an arbitrary high-range default that is unlikely to conflict with
         // well-known services.
         let starting_port: u16 = 9100;
+
+        // Resolve an effective neuron_id:
+        // - If the operator supplied `node_id` via CLI/config, use that.
+        // - Otherwise, fall back to the host machine-id.
+        // - If neither is available, fail fast with a clear error.
+        let effective_node_id = if let Some(ref explicit) = config.node_id {
+            explicit.clone()
+        } else {
+            let mid = std::fs::read_to_string("/etc/machine-id")
+                .map(|s| s.trim().to_string())
+                .context("failed to read /etc/machine-id for neuron identity")
+                .expect(
+                    "neuron requires either --node-id or /etc/machine-id to determine identity",
+                );
+            if mid.is_empty() {
+                panic!("neuron requires either --node-id or a non-empty /etc/machine-id to determine identity");
+            }
+            mid
+        };
+
+        let mut effective_config = config;
+        effective_config.node_id = Some(effective_node_id);
+
         Self {
             registry: Arc::new(RwLock::new(registry)),
             process_manager: Arc::new(process_manager),
             model_config_store: Arc::new(store),
             model_configs: Arc::new(RwLock::new(initial_state)),
             next_backend_port: Arc::new(RwLock::new(starting_port)),
-            config: Arc::new(config),
+            config: Arc::new(effective_config),
         }
     }
 
