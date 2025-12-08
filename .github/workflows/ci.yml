@@ -48,12 +48,9 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-        working-directory: helexa
 
       - name: Clippy lint
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-        working-directory: helexa
 
       - name: Run tests
         run: cargo test --workspace --all-features
-        working-directory: helexa
