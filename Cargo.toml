@@ -8,6 +8,7 @@ members = [
     "crates/model-runtime",
     "crates/config",
     "crates/util",
+    "crates/cache",
 ]
 
 resolver = "2"

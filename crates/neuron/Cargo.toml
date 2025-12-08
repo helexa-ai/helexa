@@ -11,3 +11,4 @@ thiserror = "1"
 
 protocol = { path = "../protocol" }
 model-runtime = { path = "../model-runtime" }
+cache = { path = "../cache" }

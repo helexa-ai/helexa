@@ -5,7 +5,7 @@ use std::net::SocketAddr;
 use tracing::info;
 
 use crate::runtime::RuntimeManager;
-use protocol::NeuronControl;
+use protocol::{NeuronControl, ProvisioningCommand, ProvisioningResponse};
 
 /// neuron implements the control-plane interface expected by cortex.
 /// for now this is just a placeholder that logs its start.
@@ -44,5 +44,34 @@ impl NeuronControlImpl {
 }
 
 impl NeuronControl for NeuronControlImpl {
-    // TODO: add async methods once the trait is async-friendly via a macro or async-trait
+    /// Apply a provisioning command such as model configuration updates or
+    /// load/unload requests.
+    ///
+    /// This implementation is intentionally minimal and uses `unimplemented!()`
+    /// so that incomplete behaviour is loud and obvious during development.
+    fn apply_provisioning(&self, cmd: ProvisioningCommand) -> ProvisioningResponse {
+        match cmd {
+            ProvisioningCommand::UpsertModelConfig(cfg) => {
+                info!(
+                    "received UpsertModelConfig for model_id={:?} (placeholder handler)",
+                    cfg.id
+                );
+                unimplemented!("UpsertModelConfig handling is not implemented yet")
+            }
+            ProvisioningCommand::LoadModel { model_id } => {
+                info!(
+                    "received LoadModel for model_id={:?} (placeholder handler)",
+                    model_id
+                );
+                unimplemented!("LoadModel handling is not implemented yet")
+            }
+            ProvisioningCommand::UnloadModel { model_id } => {
+                info!(
+                    "received UnloadModel for model_id={:?} (placeholder handler)",
+                    model_id
+                );
+                unimplemented!("UnloadModel handling is not implemented yet")
+            }
+        }
+    }
 }
