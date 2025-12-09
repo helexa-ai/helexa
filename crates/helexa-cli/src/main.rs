@@ -52,6 +52,10 @@ struct CortexOpts {
     /// address for cortex control-plane websocket listener (neurons connect here)
     #[arg(long)]
     control_plane_socket: Option<SocketAddr>,
+
+    /// address for cortex dashboard / observe websocket listener (operator UI connects here)
+    #[arg(long)]
+    dashboard_socket: Option<SocketAddr>,
 }
 
 #[derive(Parser, Debug)]
@@ -93,6 +97,7 @@ async fn main() -> Result<()> {
                 node_id: opts.node_id,
                 spec_path: opts.spec.map(Into::into),
                 control_plane_socket: opts.control_plane_socket,
+                dashboard_socket: opts.dashboard_socket,
             };
             cortex::run(config).await?;
         }

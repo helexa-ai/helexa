@@ -9,6 +9,7 @@ use tracing::info;
 pub mod control_plane;
 pub mod gateway;
 pub mod mesh;
+pub mod observe;
 pub mod orchestrator;
 pub mod portal;
 pub mod shutdown;
@@ -25,6 +26,9 @@ pub struct Config {
     /// Optional address for the cortex control-plane websocket listener that
     /// neurons will connect to for registration, heartbeats, and provisioning.
     pub control_plane_socket: Option<SocketAddr>,
+    /// Optional address for the cortex dashboard / observe websocket listener
+    /// that operator dashboards (e.g. Vite/React SPA) will connect to.
+    pub dashboard_socket: Option<SocketAddr>,
 }
 
 pub async fn run(config: Config) -> Result<()> {
@@ -47,20 +51,41 @@ pub async fn run(config: Config) -> Result<()> {
         gateway::spawn(addr, mesh_handle.clone());
     }
 
+    // Shared neuron registry for both control-plane and (future) dashboard observers.
+    let registry = control_plane::NeuronRegistry::new();
+
     if let Some(addr) = config.control_plane_socket {
-        let registry = control_plane::NeuronRegistry::new();
+        let registry_for_control = registry.clone();
         let mesh_for_control = mesh_handle.clone();
         let demand_state_for_control = demand_state.clone();
         tokio::spawn(async move {
             if let Err(e) = control_plane::start_control_plane_server(
                 addr,
                 mesh_for_control,
-                registry,
+                registry_for_control,
                 demand_state_for_control,
             )
             .await
             {
                 tracing::error!("control-plane server failed on {}: {:?}", addr, e);
+            }
+        });
+    }
+
+    if let Some(addr) = config.dashboard_socket {
+        let registry_for_dashboard = registry.clone();
+        let observe_bus = crate::observe::ObserveBus::new(1024);
+        let events_rx = observe_bus.subscribe();
+
+        // For now we only pass an empty initial neuron list; a future revision
+        // can populate this from `registry_for_dashboard.list()`.
+        let neurons_snapshot = Vec::<crate::control_plane::NeuronDescriptor>::new();
+
+        tokio::spawn(async move {
+            if let Err(e) =
+                crate::observe::start_observe_server(addr, neurons_snapshot, events_rx).await
+            {
+                tracing::error!("dashboard/observe server failed on {}: {:?}", addr, e);
             }
         });
     }

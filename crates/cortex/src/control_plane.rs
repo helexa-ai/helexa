@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PolyForm-Shield-1.0
+#![allow(clippy::unused_async)]
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -11,7 +11,6 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, RwLock};
 use tokio::time;
 use tokio_tungstenite::accept_async;
-
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
@@ -19,9 +18,13 @@ use mesh::MeshHandle;
 use protocol::ProvisioningCommand;
 
 /// Describes a neuron as seen from cortex over the control-plane websocket.
+///
+/// This is essentially the same descriptor that neurons send in their
+/// initial `Register` message. In future revisions this may be promoted
+/// to the shared `protocol` crate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeuronDescriptor {
-    /// Opaque id the neuron reports for itself (e.g. host label + uuid).
+    /// Opaque id the neuron reports for itself (e.g. machine-id or CLI node-id).
     pub node_id: Option<String>,
     /// Optional human-readable label or hostname.
     pub label: Option<String>,
@@ -30,17 +33,23 @@ pub struct NeuronDescriptor {
 }
 
 /// Messages sent from neuron to cortex over the websocket.
+///
+/// These are control-plane messages used for registration, heartbeats
+/// and provisioning responses. The websocket transport carries these
+/// as JSON-encoded frames.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum NeuronToCortex {
     /// Initial registration message sent when a neuron connects.
     Register { neuron: NeuronDescriptor },
+
     /// Periodic heartbeat containing liveness and lightweight metrics.
     Heartbeat {
         neuron_id: String,
         /// Optional summary of current load/utilisation as free-form JSON.
         metrics: serde_json::Value,
     },
+
     /// Acknowledgement or error for a provisioning command previously sent
     /// from cortex.
     ProvisioningResponse {
@@ -50,16 +59,24 @@ pub enum NeuronToCortex {
 }
 
 /// Messages sent from cortex to neuron over the websocket.
+///
+/// For now this is focussed on provisioning commands and a simple
+/// capabilities request. Future revisions may extend this with new
+/// control-plane operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CortexToNeuron {
     /// Provisioning command such as UpsertModelConfig, LoadModel, UnloadModel.
     Provisioning { cmd: ProvisioningCommand },
+
     /// Request for the neuron to publish an updated capabilities snapshot.
     RequestCapabilities,
 }
 
 /// Internal representation of a connected neuron in cortex.
+///
+/// This is a simple in-memory structure used to keep track of neurons
+/// that have registered via the control-plane websocket.
 #[derive(Debug, Clone)]
 pub struct ConnectedNeuron {
     pub descriptor: NeuronDescriptor,
@@ -70,6 +87,11 @@ pub struct ConnectedNeuron {
 }
 
 /// Shared state tracking neurons connected over the control-plane websocket.
+///
+/// This type is intentionally minimal and focussed on neuron tracking and
+/// outbound message routing. Higher-level orchestration and observability
+/// concerns should be built on top of this registry rather than embedded
+/// directly.
 #[derive(Debug, Default, Clone)]
 pub struct NeuronRegistry {
     inner: Arc<RwLock<Vec<ConnectedNeuron>>>,
@@ -82,6 +104,7 @@ impl NeuronRegistry {
         }
     }
 
+    /// Insert or update a neuron descriptor in the registry.
     pub async fn upsert_neuron(&self, descriptor: NeuronDescriptor) {
         let mut neurons = self.inner.write().await;
         if let Some(existing) = neurons
@@ -116,6 +139,9 @@ impl NeuronRegistry {
     }
 
     /// Attempt to send a control-plane message to a specific neuron by id.
+    ///
+    /// This is a low-level helper; higher-level code should prefer the
+    /// `send_provisioning_to_neuron` wrapper below.
     pub async fn send_to_neuron(&self, neuron_id: &str, msg: CortexToNeuron) -> Result<(), String> {
         let neurons = self.inner.read().await;
         if let Some(existing) = neurons
@@ -140,7 +166,8 @@ impl NeuronRegistry {
         }
     }
 
-    pub async fn update_heartbeat(&self, neuron_id: &str) {
+    /// Update heartbeat timestamp for a neuron and keep the registry fresh.
+    pub async fn update_heartbeat(&self, neuron_id: &str, _metrics: serde_json::Value) {
         let mut neurons = self.inner.write().await;
         if let Some(existing) = neurons
             .iter_mut()
@@ -158,6 +185,7 @@ impl NeuronRegistry {
         neurons.retain(|n| now.duration_since(n.last_heartbeat) <= timeout);
     }
 
+    /// List all known neurons by descriptor.
     pub async fn list(&self) -> Vec<NeuronDescriptor> {
         let neurons = self.inner.read().await;
         neurons.iter().map(|n| n.descriptor.clone()).collect()
@@ -271,7 +299,7 @@ async fn handle_neuron_connection(
             let (out_tx, mut out_rx) = mpsc::unbounded_channel::<CortexToNeuron>();
             registry.set_sender_for_neuron(&id, out_tx.clone()).await;
 
-            // clone id for use inside the writer task closure
+            // writer task logs and sends control-plane messages to this neuron
             let writer_id = id.clone();
             tokio::spawn(async move {
                 use futures::SinkExt;
@@ -301,9 +329,9 @@ async fn handle_neuron_connection(
                 );
             });
 
-            // TODO: integrate real demand state here; for now we opportunistically
-            // upsert all models from the current demand cache / spec into the
-            // first connected neuron to exercise the provisioning path.
+            // On first connection, opportunistically upsert all models from the
+            // current demand/spec state into this neuron to exercise the
+            // provisioning path.
             if let Err(e) = bootstrap_upsert_for_neuron(&id, &registry, &demand_state, out_tx).await
             {
                 warn!(
@@ -381,7 +409,7 @@ async fn handle_neuron_message(
             metrics,
         } => {
             info!("heartbeat from neuron_id={} metrics={}", hb_id, metrics);
-            registry.update_heartbeat(&hb_id).await;
+            registry.update_heartbeat(&hb_id, metrics).await;
         }
         NeuronToCortex::ProvisioningResponse {
             neuron_id: resp_id,
