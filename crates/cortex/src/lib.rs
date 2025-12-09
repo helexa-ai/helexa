@@ -85,9 +85,8 @@ pub async fn run(config: Config) -> Result<()> {
         // via `registry_for_dashboard.list()`, so we don't need to capture
         // it eagerly here.
         tokio::spawn(async move {
-            if let Err(e) =
-                observe::start_observe_server(addr, registry_for_dashboard, events_rx).await
-            {
+            let neurons_snapshot = registry_for_dashboard.list().await;
+            if let Err(e) = observe::start_observe_server(addr, neurons_snapshot, events_rx).await {
                 tracing::error!("dashboard/observe server failed on {}: {:?}", addr, e);
             }
         });

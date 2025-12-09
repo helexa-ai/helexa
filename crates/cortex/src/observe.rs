@@ -95,7 +95,7 @@ pub enum ObserveMessage {
 /// observe channel.
 pub async fn start_observe_server(
     addr: SocketAddr,
-    registry: crate::control_plane::NeuronRegistry,
+    neurons_snapshot: Vec<NeuronDescriptor>,
     events_rx: broadcast::Receiver<ObserveEvent>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
@@ -108,13 +108,10 @@ pub async fn start_observe_server(
             peer_addr, addr
         );
 
-        let registry_clone = registry.clone();
+        let neurons = neurons_snapshot.clone();
         let mut client_events_rx = events_rx.resubscribe();
 
         tokio::spawn(async move {
-            // Build a fresh snapshot at connection time so the dashboard sees
-            // the current neuron set.
-            let neurons = registry_clone.list().await;
             if let Err(e) =
                 handle_observer_connection(stream, peer_addr, neurons, &mut client_events_rx).await
             {
