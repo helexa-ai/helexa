@@ -14,6 +14,7 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
+use crate::observe::{ObserveBus, ObserveEvent};
 use mesh::MeshHandle;
 use protocol::ProvisioningCommand;
 
@@ -204,11 +205,15 @@ impl NeuronRegistry {
 /// The `mesh` handle is currently unused but included so that future
 /// revisions can integrate neuron descriptors into the distributed
 /// topology (e.g. advertising neuron presence over the mesh).
+///
+/// The `observe_publisher` is used to emit `ObserveEvent`s for the
+/// dashboard/observe websocket server.
 pub async fn start_control_plane_server(
     addr: SocketAddr,
     mesh: MeshHandle,
     registry: NeuronRegistry,
     demand_state: crate::spec::ModelDemandState,
+    observe_publisher: tokio::sync::broadcast::Sender<ObserveEvent>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("cortex control-plane websocket listening on {}", addr);
@@ -233,6 +238,7 @@ pub async fn start_control_plane_server(
         let registry_clone = registry_list_clone(&registry);
         let mesh_clone = mesh.clone();
         let demand_state_clone = demand_state.clone();
+        let observe_for_connection = observe_publisher.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_neuron_connection(
                 stream,
@@ -240,6 +246,7 @@ pub async fn start_control_plane_server(
                 registry_clone,
                 mesh_clone,
                 demand_state_clone,
+                observe_for_connection,
             )
             .await
             {
@@ -258,6 +265,7 @@ async fn handle_neuron_connection(
     registry: NeuronRegistry,
     _mesh: MeshHandle,
     demand_state: crate::spec::ModelDemandState,
+    observe_publisher: tokio::sync::broadcast::Sender<ObserveEvent>,
 ) -> Result<()> {
     info!(
         "attempting websocket upgrade for neuron control-plane connection from {}",
@@ -293,7 +301,10 @@ async fn handle_neuron_connection(
                 .clone()
                 .unwrap_or_else(|| format!("peer-{}", peer_addr));
             info!("registered neuron_id={} from {}", id, peer_addr);
-            registry.upsert_neuron(neuron).await;
+            registry.upsert_neuron(neuron.clone()).await;
+
+            // Publish registration event for dashboards.
+            let _ = observe_publisher.send(ObserveEvent::NeuronRegistered { neuron });
 
             // create an outbound channel + writer task for this neuron
             let (out_tx, mut out_rx) = mpsc::unbounded_channel::<CortexToNeuron>();
@@ -332,13 +343,22 @@ async fn handle_neuron_connection(
             // On first connection, opportunistically upsert all models from the
             // current demand/spec state into this neuron to exercise the
             // provisioning path.
-            if let Err(e) = bootstrap_upsert_for_neuron(&id, &registry, &demand_state, out_tx).await
+            if let Err(e) =
+                bootstrap_upsert_for_neuron(&id, &registry, &demand_state, out_tx.clone()).await
             {
                 warn!(
                     "failed to bootstrap UpsertModelConfig for neuron_id={}: {:?}",
                     id, e
                 );
             }
+
+            // Also publish that we intend to send provisioning commands to this neuron.
+            // Actual `ProvisioningSent` events will be emitted by the observe
+            // layer once the dashboard bus is fully integrated.
+            let _ = observe_publisher.send(ObserveEvent::NeuronHeartbeat {
+                neuron_id: id.clone(),
+                metrics: serde_json::json!({"bootstrap": true}),
+            });
 
             id
         }
@@ -390,7 +410,7 @@ async fn handle_neuron_connection(
 }
 
 async fn handle_neuron_message(
-    _neuron_id: &str,
+    neuron_id: &str,
     registry: &NeuronRegistry,
     message: Message,
 ) -> Result<()> {
@@ -409,7 +429,8 @@ async fn handle_neuron_message(
             metrics,
         } => {
             info!("heartbeat from neuron_id={} metrics={}", hb_id, metrics);
-            registry.update_heartbeat(&hb_id, metrics).await;
+            registry.update_heartbeat(&hb_id, metrics.clone()).await;
+            // Dashboard event emission will be handled via ObserveBus in a future step.
         }
         NeuronToCortex::ProvisioningResponse {
             neuron_id: resp_id,
@@ -419,6 +440,7 @@ async fn handle_neuron_message(
                 "provisioning response from neuron_id={}: {:?}",
                 resp_id, response
             );
+            // Dashboard event emission will be handled via ObserveBus in a future step.
             // TODO: integrate with orchestrator/provisioner once those traits have
             // async entrypoints for tracking provisioning results.
         }

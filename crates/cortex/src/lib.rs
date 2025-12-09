@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::observe::ObserveBus;
 use anyhow::Result;
 use tracing::info;
 
@@ -51,19 +52,23 @@ pub async fn run(config: Config) -> Result<()> {
         gateway::spawn(addr, mesh_handle.clone());
     }
 
-    // Shared neuron registry for both control-plane and (future) dashboard observers.
+    // Shared neuron registry for both control-plane and dashboard observers.
     let registry = control_plane::NeuronRegistry::new();
+    let observe_bus = ObserveBus::new(1024);
+    let observe_publisher = observe_bus.publisher();
 
     if let Some(addr) = config.control_plane_socket {
         let registry_for_control = registry.clone();
         let mesh_for_control = mesh_handle.clone();
         let demand_state_for_control = demand_state.clone();
+        let observe_for_control = observe_publisher.clone();
         tokio::spawn(async move {
             if let Err(e) = control_plane::start_control_plane_server(
                 addr,
                 mesh_for_control,
                 registry_for_control,
                 demand_state_for_control,
+                observe_for_control,
             )
             .await
             {
@@ -74,16 +79,14 @@ pub async fn run(config: Config) -> Result<()> {
 
     if let Some(addr) = config.dashboard_socket {
         let registry_for_dashboard = registry.clone();
-        let observe_bus = crate::observe::ObserveBus::new(1024);
         let events_rx = observe_bus.subscribe();
 
-        // For now we only pass an empty initial neuron list; a future revision
-        // can populate this from `registry_for_dashboard.list()`.
-        let neurons_snapshot = Vec::<crate::control_plane::NeuronDescriptor>::new();
-
+        // Initial neuron snapshot for dashboards is obtained on connection
+        // via `registry_for_dashboard.list()`, so we don't need to capture
+        // it eagerly here.
         tokio::spawn(async move {
             if let Err(e) =
-                crate::observe::start_observe_server(addr, neurons_snapshot, events_rx).await
+                observe::start_observe_server(addr, registry_for_dashboard, events_rx).await
             {
                 tracing::error!("dashboard/observe server failed on {}: {:?}", addr, e);
             }
