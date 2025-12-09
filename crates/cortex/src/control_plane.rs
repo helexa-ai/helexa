@@ -180,6 +180,7 @@ pub async fn start_control_plane_server(
     addr: SocketAddr,
     mesh: MeshHandle,
     registry: NeuronRegistry,
+    demand_state: crate::spec::ModelDemandState,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("cortex control-plane websocket listening on {}", addr);
@@ -203,9 +204,16 @@ pub async fn start_control_plane_server(
         );
         let registry_clone = registry_list_clone(&registry);
         let mesh_clone = mesh.clone();
+        let demand_state_clone = demand_state.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                handle_neuron_connection(stream, peer_addr, registry_clone, mesh_clone).await
+            if let Err(e) = handle_neuron_connection(
+                stream,
+                peer_addr,
+                registry_clone,
+                mesh_clone,
+                demand_state_clone,
+            )
+            .await
             {
                 warn!(
                     "control-plane connection from {} ended with error: {:?}",
@@ -221,6 +229,7 @@ async fn handle_neuron_connection(
     peer_addr: SocketAddr,
     registry: NeuronRegistry,
     _mesh: MeshHandle,
+    demand_state: crate::spec::ModelDemandState,
 ) -> Result<()> {
     info!(
         "attempting websocket upgrade for neuron control-plane connection from {}",
@@ -295,7 +304,8 @@ async fn handle_neuron_connection(
             // TODO: integrate real demand state here; for now we opportunistically
             // upsert all models from the current demand cache / spec into the
             // first connected neuron to exercise the provisioning path.
-            if let Err(e) = bootstrap_upsert_for_neuron(&id, &registry, out_tx).await {
+            if let Err(e) = bootstrap_upsert_for_neuron(&id, &registry, &demand_state, out_tx).await
+            {
                 warn!(
                     "failed to bootstrap UpsertModelConfig for neuron_id={}: {:?}",
                     id, e
@@ -439,13 +449,10 @@ fn registry_list_clone(registry: &NeuronRegistry) -> NeuronRegistry {
 /// this logic into a dedicated provisioner/orchestrator component.
 async fn bootstrap_upsert_for_neuron(
     neuron_id: &str,
-    registry: &NeuronRegistry,
+    _registry: &NeuronRegistry,
+    demand_state: &crate::spec::ModelDemandState,
     tx: mpsc::UnboundedSender<CortexToNeuron>,
 ) -> Result<()> {
-    // Load demand state from cache/spec.
-    let demand_store = crate::spec::DemandStore::new()?;
-    let demand_state = crate::spec::load_combined_demand_state(None, &demand_store)?;
-
     if demand_state.models.is_empty() {
         info!(
             "no models found in demand/spec state; skipping bootstrap UpsertModelConfig for neuron_id={}",

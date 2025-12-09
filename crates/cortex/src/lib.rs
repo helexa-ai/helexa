@@ -30,10 +30,12 @@ pub struct Config {
 pub async fn run(config: Config) -> Result<()> {
     info!("starting cortex node: {:?}", config.node_id);
 
-    // Load demand/spec state if provided (future orchestrator/provisioner will
-    // consume this; for now we just ensure it can be loaded at startup).
-    let demand_store = spec::DemandStore::new()?;
-    let _demand_state = spec::load_combined_demand_state(config.spec_path.clone(), &demand_store)?;
+    // Load demand/spec state if provided. The resulting state can be consumed
+    // by the future orchestrator/provisioner and is also used to seed
+    // bootstrap provisioning for newly connected neurons.
+    let demand_store = crate::spec::DemandStore::new()?;
+    let demand_state: crate::spec::ModelDemandState =
+        crate::spec::load_combined_demand_state(config.spec_path.clone(), &demand_store)?;
 
     let mesh_handle = mesh::start_mesh(config.node_id.clone()).await?;
 
@@ -48,9 +50,15 @@ pub async fn run(config: Config) -> Result<()> {
     if let Some(addr) = config.control_plane_socket {
         let registry = control_plane::NeuronRegistry::new();
         let mesh_for_control = mesh_handle.clone();
+        let demand_state_for_control = demand_state.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                control_plane::start_control_plane_server(addr, mesh_for_control, registry).await
+            if let Err(e) = control_plane::start_control_plane_server(
+                addr,
+                mesh_for_control,
+                registry,
+                demand_state_for_control,
+            )
+            .await
             {
                 tracing::error!("control-plane server failed on {}: {:?}", addr, e);
             }
