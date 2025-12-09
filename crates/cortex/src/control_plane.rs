@@ -352,14 +352,6 @@ async fn handle_neuron_connection(
                 );
             }
 
-            // Also publish that we intend to send provisioning commands to this neuron.
-            // Actual `ProvisioningSent` events will be emitted by the observe
-            // layer once the dashboard bus is fully integrated.
-            let _ = observe_publisher.send(ObserveEvent::NeuronHeartbeat {
-                neuron_id: id.clone(),
-                metrics: serde_json::json!({"bootstrap": true}),
-            });
-
             id
         }
         other => {
@@ -374,12 +366,18 @@ async fn handle_neuron_connection(
     // Spawn a task to process subsequent messages from this neuron.
     let registry_clone = registry_list_clone(&registry);
     let neuron_id_clone = neuron_id.clone();
+    let observe_for_messages = observe_publisher.clone();
     tokio::spawn(async move {
         while let Some(msg) = rx.next().await {
             match msg {
                 Ok(message) => {
-                    if let Err(e) =
-                        handle_neuron_message(&neuron_id_clone, &registry_clone, message).await
+                    if let Err(e) = handle_neuron_message(
+                        &neuron_id_clone,
+                        &registry_clone,
+                        message,
+                        &observe_for_messages,
+                    )
+                    .await
                     {
                         warn!(
                             "error handling message from neuron_id={}: {:?}",
@@ -413,6 +411,7 @@ async fn handle_neuron_message(
     neuron_id: &str,
     registry: &NeuronRegistry,
     message: Message,
+    observe_publisher: &tokio::sync::broadcast::Sender<ObserveEvent>,
 ) -> Result<()> {
     let msg: NeuronToCortex = parse_ws_json(message)?;
     match msg {
@@ -430,7 +429,12 @@ async fn handle_neuron_message(
         } => {
             info!("heartbeat from neuron_id={} metrics={}", hb_id, metrics);
             registry.update_heartbeat(&hb_id, metrics.clone()).await;
-            // Dashboard event emission will be handled via ObserveBus in a future step.
+
+            // Emit heartbeat event for dashboards.
+            let _ = observe_publisher.send(ObserveEvent::NeuronHeartbeat {
+                neuron_id: hb_id,
+                metrics,
+            });
         }
         NeuronToCortex::ProvisioningResponse {
             neuron_id: resp_id,
@@ -440,7 +444,11 @@ async fn handle_neuron_message(
                 "provisioning response from neuron_id={}: {:?}",
                 resp_id, response
             );
-            // Dashboard event emission will be handled via ObserveBus in a future step.
+            // Emit provisioning response event for dashboards.
+            let _ = observe_publisher.send(ObserveEvent::ProvisioningResponse {
+                neuron_id: resp_id,
+                response: response.clone(),
+            });
             // TODO: integrate with orchestrator/provisioner once those traits have
             // async entrypoints for tracking provisioning results.
         }
@@ -458,8 +466,14 @@ pub async fn send_provisioning_to_neuron(
     registry: &NeuronRegistry,
     neuron_id: &str,
     cmd: ProvisioningCommand,
+    observe_publisher: &tokio::sync::broadcast::Sender<crate::observe::ObserveEvent>,
 ) -> Result<(), String> {
-    let msg = CortexToNeuron::Provisioning { cmd };
+    let msg = CortexToNeuron::Provisioning { cmd: cmd.clone() };
+    // Emit a ProvisioningSent event for dashboards before enqueuing the command.
+    let _ = observe_publisher.send(crate::observe::ObserveEvent::ProvisioningSent {
+        neuron_id: neuron_id.to_string(),
+        cmd,
+    });
     registry.send_to_neuron(neuron_id, msg).await
 }
 
