@@ -260,7 +260,7 @@ async fn handle_neuron_connection(
 
             // create an outbound channel + writer task for this neuron
             let (out_tx, mut out_rx) = mpsc::unbounded_channel::<CortexToNeuron>();
-            registry.set_sender_for_neuron(&id, out_tx).await;
+            registry.set_sender_for_neuron(&id, out_tx.clone()).await;
 
             // clone id for use inside the writer task closure
             let writer_id = id.clone();
@@ -291,6 +291,16 @@ async fn handle_neuron_connection(
                     writer_id, peer_addr
                 );
             });
+
+            // TODO: integrate real demand state here; for now we opportunistically
+            // upsert all models from the current demand cache / spec into the
+            // first connected neuron to exercise the provisioning path.
+            if let Err(e) = bootstrap_upsert_for_neuron(&id, &registry, out_tx).await {
+                warn!(
+                    "failed to bootstrap UpsertModelConfig for neuron_id={}: {:?}",
+                    id, e
+                );
+            }
 
             id
         }
@@ -421,4 +431,46 @@ fn registry_list_clone(registry: &NeuronRegistry) -> NeuronRegistry {
     NeuronRegistry {
         inner: registry.inner.clone(),
     }
+}
+
+/// Bootstrap helper: send UpsertModelConfig commands for all models in the
+/// current demand/spec state to the newly connected neuron. This is a
+/// temporary harness to exercise provisioning; future versions will move
+/// this logic into a dedicated provisioner/orchestrator component.
+async fn bootstrap_upsert_for_neuron(
+    neuron_id: &str,
+    registry: &NeuronRegistry,
+    tx: mpsc::UnboundedSender<CortexToNeuron>,
+) -> Result<()> {
+    // Load demand state from cache/spec.
+    let demand_store = crate::spec::DemandStore::new()?;
+    let demand_state = crate::spec::load_combined_demand_state(None, &demand_store)?;
+
+    if demand_state.models.is_empty() {
+        info!(
+            "no models found in demand/spec state; skipping bootstrap UpsertModelConfig for neuron_id={}",
+            neuron_id
+        );
+        return Ok(());
+    }
+
+    info!(
+        "bootstrapping {} model(s) to neuron_id={} via UpsertModelConfig",
+        demand_state.models.len(),
+        neuron_id
+    );
+
+    for entry in &demand_state.models {
+        let cmd = ProvisioningCommand::UpsertModelConfig(entry.config.clone());
+        let msg = CortexToNeuron::Provisioning { cmd };
+        tx.send(msg).map_err(|e| {
+            anyhow!(
+                "failed to enqueue bootstrap UpsertModelConfig for neuron_id={}: {:?}",
+                neuron_id,
+                e
+            )
+        })?;
+    }
+
+    Ok(())
 }
