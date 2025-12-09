@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: PolyForm-Shield-1.0
 #![allow(clippy::unused_async)]
 
 use std::net::SocketAddr;
