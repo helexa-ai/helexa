@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Shield-1.0
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use tracing::info;
@@ -11,19 +12,28 @@ pub mod mesh;
 pub mod orchestrator;
 pub mod portal;
 pub mod shutdown;
+pub mod spec;
 
 pub struct Config {
     pub orchestrator_socket: Option<SocketAddr>,
     pub gateway_socket: Option<SocketAddr>,
     pub portal_sockets: Vec<SocketAddr>,
     pub node_id: Option<String>,
-    /// optional address for the cortex control-plane websocket listener that
+    /// Optional path to a cortex spec file used to bootstrap model configs
+    /// and demand hints at startup.
+    pub spec_path: Option<PathBuf>,
+    /// Optional address for the cortex control-plane websocket listener that
     /// neurons will connect to for registration, heartbeats, and provisioning.
     pub control_plane_socket: Option<SocketAddr>,
 }
 
 pub async fn run(config: Config) -> Result<()> {
     info!("starting cortex node: {:?}", config.node_id);
+
+    // Load demand/spec state if provided (future orchestrator/provisioner will
+    // consume this; for now we just ensure it can be loaded at startup).
+    let demand_store = spec::DemandStore::new()?;
+    let _demand_state = spec::load_combined_demand_state(config.spec_path.clone(), &demand_store)?;
 
     let mesh_handle = mesh::start_mesh(config.node_id.clone()).await?;
 

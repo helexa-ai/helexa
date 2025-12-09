@@ -1,0 +1,68 @@
+{
+  "name": "default",
+  "version": "0.0.1",
+  "models": [
+    {
+      "config": {
+        "id": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8",
+        "display_name": "Example Chat Model (vLLM)",
+        "backend_kind": "vllm",
+        "command": "uvx",
+        "args": [
+          "--python",
+          "3.13",
+          "vllm@latest",
+          "serve",
+          "--model",
+          "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8"
+        ],
+        "env": [],
+        "listen_endpoint": null,
+        "metadata": {}
+      },
+      "weight": 1.0,
+      "min_replicas": 0,
+      "max_replicas": 1
+    },
+    {
+      "config": {
+        "id": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+        "display_name": "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+        "backend_kind": "llama_cpp",
+        "command": "llama-server",
+        "args": [
+          "--hf-repo", "unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF",
+          "--jinja",
+          "--device", "CUDA0,CUDA1",
+          "--split-mode", "layer",
+          "--tensor-split", "1,1",
+          "--gpu-layers", "99",
+          "--flash-attn", "on",
+          "--split-mode", "row",
+          "--temp", "0.7",
+          "--top-k", "20",
+          "--top-p", "0.9",
+          "--min-p", "0",
+          "--repeat-penalty", "1.05",
+          "--ctx-size", "40960",
+          "--predict", "32768",
+          "--no-context-shift"
+        ],
+        "env": [
+          {
+            "key": "LD_LIBRARY_PATH",
+            "value": "/var/lib/llama/.local/lib64"
+          }
+        ],
+        "listen_endpoint": null,
+        "metadata": {}
+      },
+      "weight": 0.5,
+      "min_replicas": 0,
+      "max_replicas": 1
+    }
+  ],
+  "policy": {
+    "metadata": {}
+  }
+}

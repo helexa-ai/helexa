@@ -44,6 +44,11 @@ struct CortexOpts {
     #[arg(long)]
     node_id: Option<String>,
 
+    /// optional path to a cortex spec file used to bootstrap model configs
+    /// and demand hints at startup
+    #[arg(long)]
+    spec: Option<String>,
+
     /// address for cortex control-plane websocket listener (neurons connect here)
     #[arg(long)]
     control_plane_socket: Option<SocketAddr>,
@@ -86,6 +91,7 @@ async fn main() -> Result<()> {
                 gateway_socket: opts.gateway_socket,
                 portal_sockets: opts.portal_socket,
                 node_id: opts.node_id,
+                spec_path: opts.spec.map(Into::into),
                 control_plane_socket: opts.control_plane_socket,
             };
             cortex::run(config).await?;
