@@ -664,13 +664,15 @@ async fn handle_neuron_message(
             }
 
             // Emit NeuronRemoved so dashboards can update their views promptly.
-            let _ = observe_publisher.send(ObserveEvent::NeuronRemoved { neuron_id });
+            let _ = observe_publisher.send(ObserveEvent::NeuronRemoved {
+                neuron_id: neuron_id.clone(),
+            });
 
-            // NOTE: we intentionally keep model state for this neuron in the
-            // ModelProvisioningStore for now so that operators can still inspect
-            // recent provisioning history even after shutdown. A future revision
-            // may choose to clear it here and emit a ModelStateChanged with an
-            // empty model list if desired.
+            // Clear model state for this neuron and emit a ModelStateChanged
+            // event with an empty model list so dashboards can update per-model
+            // views immediately.
+            let models = Vec::new();
+            let _ = observe_publisher.send(ObserveEvent::ModelStateChanged { neuron_id, models });
         }
     }
     Ok(())

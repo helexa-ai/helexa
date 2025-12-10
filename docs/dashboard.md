@@ -182,6 +182,13 @@ export type ObserveNeuron = {
   health: "healthy" | "degraded" | "stale" | string;
 
   /**
+   * Whether cortex currently considers this neuron online. This will be `false`
+   * when the neuron has been explicitly removed (e.g. via a clean Shutdown
+   * message) or pruned due to missing heartbeats.
+   */
+  offline: boolean;
+
+  /**
    * Model provisioning state as seen by cortex for this neuron.
    * Includes configured, loaded, unloaded and failed models.
    */
@@ -472,6 +479,14 @@ Relationship to snapshot and model_state_changed:
 - After recording a response, cortex also emits a `model_state_changed` event
   for the affected neuron, carrying the updated `models` array. Dashboards that
   need live per-model updates can fold this event into their in-memory state.
+
+On clean neuron shutdown:
+
+- The neuron sends a `shutdown` control-plane message to cortex before exiting.
+- Cortex removes the neuron from its registry and emits a `neuron_removed` event.
+- Cortex also clears model state for that neuron and emits a `model_state_changed`
+  event with an empty `models` array so dashboards can immediately reflect that
+  no models are active on that neuron.
 
 ---
 

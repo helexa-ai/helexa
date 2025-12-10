@@ -30,6 +30,10 @@ pub struct ObserveNeuron {
     /// - "healthy"  => recent heartbeat within `healthy_threshold_secs`
     /// - "stale"    => no heartbeat yet or outside healthy window
     pub health: String,
+    /// Whether cortex currently considers this neuron online. This will be set
+    /// to `false` when the neuron has been explicitly removed (e.g. via a
+    /// clean Shutdown message) or pruned due to missing heartbeats.
+    pub offline: bool,
     pub models: Vec<ModelProvisioningStatus>,
 }
 
@@ -192,10 +196,17 @@ pub async fn start_observe_server(
                     .unwrap_or_else(|| "unknown".to_string());
                 let models = model_store_for_connection.list_for_neuron(&neuron_id).await;
 
+                // For now, any neuron present in the registry snapshot is treated
+                // as online; neurons that have been explicitly removed or pruned
+                // will not appear here and will instead be represented via
+                // `neuron_removed` events.
+                let offline = false;
+
                 neurons.push(ObserveNeuron {
                     descriptor: view.descriptor,
                     last_heartbeat_at,
                     health,
+                    offline,
                     models,
                 });
             }
