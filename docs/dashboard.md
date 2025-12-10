@@ -229,7 +229,7 @@ After the snapshot, cortex sends a stream of `event` messages:
 
 ### 4.1 Event union
 
-```/dev/null/dashboard-event-types.ts#L1-80
+```/dev/null/dashboard-event-types.ts#L1-100
 import type { NeuronDescriptor, ModelId, ModelProvisioningStatus } from "./dashboard-snapshot-types";
 
 export type ProvisioningCommand =
@@ -259,6 +259,11 @@ export type ObserveEvent =
       type: "model_state_changed";
       neuron_id: string;
       models: ModelProvisioningStatus[];
+    }
+  | {
+      type: "cortex_shutdown_notice";
+      reason: string | null;
+    };
     };
 ```
 
@@ -545,6 +550,41 @@ Semantics:
 - Dashboards that want live per-model state should:
   - locate the corresponding neuron by `neuron_id`,
   - replace that neuron’s `models` array with the one from the event.
+
+### 5.6 `cortex_shutdown_notice`
+
+Emitted when this cortex instance is performing a planned shutdown or restart.
+
+Example:
+
+```/dev/null/dashboard-event-cortex-shutdown-notice.json#L1-10
+{
+  "kind": "event",
+  "event": {
+    "type": "cortex_shutdown_notice",
+    "reason": "cortex is shutting down"
+  }
+}
+```
+
+Schema:
+
+```/dev/null/dashboard-event-cortex-shutdown-notice.ts#L1-6
+export type CortexShutdownNoticeEvent = {
+  type: "cortex_shutdown_notice";
+  reason: string | null;
+};
+```
+
+Semantics:
+
+- Indicates that the current `/observe` connection will close shortly as this cortex instance shuts down or restarts.
+- Dashboards should:
+  - Treat the current snapshot as about to become stale.
+  - Expect the websocket to close soon after this event.
+  - Attempt to reconnect to `/observe` after the connection closes, using a suitable backoff, to obtain a fresh snapshot from the new cortex instance.
+
+---
 
 ## 6. Late subscribers and model state
 

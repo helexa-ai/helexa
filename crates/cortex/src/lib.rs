@@ -115,6 +115,13 @@ pub async fn run(config: Config) -> Result<()> {
 
     shutdown::wait_for_signal().await;
 
+    // Inform dashboards that this cortex instance is performing a planned
+    // shutdown. Clients should treat the current snapshot as stale once the
+    // connection closes and be prepared to reconnect to a fresh instance.
+    let _ = observe_publisher.send(crate::observe::ObserveEvent::CortexShutdownNotice {
+        reason: Some("cortex is shutting down".to_string()),
+    });
+
     // Best-effort broadcast of a ShutdownNotice to all connected neurons so
     // that they can treat this as a planned outage and rely on their internal
     // reconnect logic instead of shutting themselves down.

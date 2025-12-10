@@ -69,6 +69,12 @@ pub enum ObserveEvent {
         neuron_id: String,
         models: Vec<ModelProvisioningStatus>,
     },
+    /// Emitted when this cortex instance is performing a planned shutdown or
+    /// restart. Dashboards should treat any existing snapshot as stale once
+    /// the connection closes and expect to reconnect to a fresh instance.
+    CortexShutdownNotice {
+        reason: Option<String>,
+    },
 }
 
 /// Simple broadcast-based bus for dashboard/observer subscriptions.
