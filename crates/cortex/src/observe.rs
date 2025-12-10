@@ -40,6 +40,11 @@ pub enum ObserveEvent {
     NeuronRegistered {
         neuron: NeuronDescriptor,
     },
+    /// Emitted when cortex considers a neuron to have left the cluster. This is
+    /// typically triggered when the neuron is pruned due to missing heartbeats.
+    NeuronRemoved {
+        neuron_id: String,
+    },
     NeuronHeartbeat {
         neuron_id: String,
         metrics: serde_json::Value,

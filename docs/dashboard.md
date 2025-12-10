@@ -222,7 +222,7 @@ After the snapshot, cortex sends a stream of `event` messages:
 
 ### 4.1 Event union
 
-```/dev/null/dashboard-event-types.ts#L1-60
+```/dev/null/dashboard-event-types.ts#L1-80
 import type { NeuronDescriptor, ModelId, ModelProvisioningStatus } from "./dashboard-snapshot-types";
 
 export type ProvisioningCommand =
@@ -240,6 +240,7 @@ export type ProvisioningResponseWire = any;
 
 export type ObserveEvent =
   | { type: "neuron_registered"; neuron: NeuronDescriptor }
+  | { type: "neuron_removed"; neuron_id: string }
   | { type: "neuron_heartbeat"; neuron_id: string; metrics: any }
   | { type: "provisioning_sent"; neuron_id: string; cmd: ProvisioningCommand }
   | {
@@ -298,9 +299,11 @@ Notes:
 
 ---
 
-### 5.2 `neuron_heartbeat`
+### 5.2 `neuron_removed`
 
-Emitted when cortex receives a `Heartbeat` message from a neuron via the control-plane websocket.
+Emitted when cortex considers a neuron to have left the cluster. This is typically
+triggered when the neuron is pruned from the registry due to missing heartbeats
+for longer than a configured timeout.
 
 Example:
 
@@ -331,14 +334,16 @@ export type NeuronHeartbeatEvent = {
 
 Correlation with snapshot:
 
-- The snapshot contains `last_heartbeat_at` and `health` derived from heartbeat timing.
-- Heartbeat events are primarily for **live** UIs (e.g. streaming logs, “last seen” timers) rather than as a durable state source.
+- When a neuron is pruned and a `neuron_removed` event is emitted, future snapshots
+  will no longer include that neuron in `snapshot.neurons`.
+- Dashboards that maintain their own in-memory neuron list should remove entries
+  when they receive `neuron_removed` for the corresponding `neuron_id`.
 
 ---
 
-### 5.3 `provisioning_sent`
+### 5.3 `neuron_heartbeat`
 
-Emitted whenever cortex sends a provisioning command to a neuron (e.g. `UpsertModelConfig`, `LoadModel`, `UnloadModel`) over the control-plane websocket.
+Emitted when cortex receives a `Heartbeat` message from a neuron via the control-plane websocket.
 
 Example:
 
@@ -372,7 +377,7 @@ Example:
 }
 ```
 
-Schema (simplified):
+Schema:
 
 ```/dev/null/dashboard-event-provisioning-sent.ts#L1-24
 export type ProvisioningSentEvent = {
@@ -399,11 +404,10 @@ export type ProvisioningCommand =
   | { kind: "unload_model"; model_id: ModelId };
 ```
 
-Relationship to snapshot and model_state_changed:
+Correlation with snapshot:
 
-- `provisioning_sent` is **incremental** and may be missed by late subscribers.
-- Cortex also records these commands internally; snapshot `neurons[*].models` reflects the **latest known state** even if some `provisioning_sent` events were not observed by the dashboard.
-- When a `provisioning_response` updates cortex’s internal model state, a `model_state_changed` event is emitted with the same `models` array that will appear in the next snapshot for that neuron.
+- The snapshot contains `last_heartbeat_at` and `health` derived from heartbeat timing.
+- Heartbeat events are primarily for **live** UIs (e.g. streaming logs, “last seen” timers) rather than as a durable state source.
 
 ---
 

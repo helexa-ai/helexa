@@ -294,10 +294,30 @@ impl NeuronRegistry {
 
     /// Periodically prune neurons that have not sent a heartbeat within
     /// the given timeout.
-    pub async fn prune_stale(&self, timeout: Duration) {
+    pub async fn prune_stale(
+        &self,
+        timeout: Duration,
+        observe_publisher: &tokio::sync::broadcast::Sender<crate::observe::ObserveEvent>,
+    ) {
         let mut neurons = self.inner.write().await;
         let now = std::time::Instant::now();
-        neurons.retain(|n| now.duration_since(n.last_heartbeat) <= timeout);
+
+        // Partition neurons into those we keep and those we consider stale.
+        let (kept, removed): (Vec<_>, Vec<_>) = neurons
+            .drain(..)
+            .partition(|n| now.duration_since(n.last_heartbeat) <= timeout);
+
+        // For each removed neuron that has a concrete node_id, emit a
+        // NeuronRemoved event so dashboards can update their views.
+        for n in &removed {
+            if let Some(ref id) = n.descriptor.node_id {
+                let _ = observe_publisher.send(crate::observe::ObserveEvent::NeuronRemoved {
+                    neuron_id: id.clone(),
+                });
+            }
+        }
+
+        *neurons = kept;
     }
 
     /// List all known neurons by descriptor.
@@ -363,12 +383,15 @@ pub async fn start_control_plane_server(
 
     // Spawn a background task to periodically prune stale neurons.
     let prune_registry = registry_list_clone(&registry);
+    let observe_for_prune = observe_publisher.clone();
     tokio::spawn(async move {
         let interval = Duration::from_secs(30);
         let timeout = Duration::from_secs(90);
         loop {
             time::sleep(interval).await;
-            prune_registry.prune_stale(timeout).await;
+            prune_registry
+                .prune_stale(timeout, &observe_for_prune)
+                .await;
         }
     });
 
