@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Shield-1.0
 
 use std::net::SocketAddr;
+use std::time::{Duration, SystemTime};
 
 use anyhow::{anyhow, Result};
 use futures::{SinkExt, StreamExt};
@@ -11,8 +12,24 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
-use crate::control_plane::NeuronDescriptor;
+use crate::control_plane::{NeuronDescriptor, NeuronView};
 use protocol::{ProvisioningCommand, ProvisioningResponse};
+
+/// Lightweight view of a neuron for dashboards, enriched with live health
+/// information derived from the control-plane registry.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ObserveNeuron {
+    pub descriptor: NeuronDescriptor,
+    /// Best-effort timestamp of the last heartbeat observed for this neuron.
+    /// This is derived from the internal `ConnectedNeuron::last_heartbeat`
+    /// instant and converted to a wall-clock time where possible.
+    pub last_heartbeat_at: Option<SystemTime>,
+    /// Simple health classification derived from heartbeat recency.
+    /// - "healthy"  => recent heartbeat within `healthy_threshold_secs`
+    /// - "stale"    => no heartbeat yet or outside healthy window
+    pub health: String,
+}
 
 /// Events published onto the observe bus for dashboard consumption.
 #[derive(Debug, Clone, Serialize)]
@@ -60,7 +77,10 @@ impl ObserveBus {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct ObserveSnapshot {
-    pub neurons: Vec<NeuronDescriptor>,
+    /// Enriched neuron views that include both the static descriptor (as
+    /// reported by the neuron itself) and derived health metadata such as
+    /// last heartbeat time and a coarse health classification.
+    pub neurons: Vec<ObserveNeuron>,
     // In future we can include:
     // - model demand summaries
     // - per-model/per-neuron state
@@ -86,7 +106,7 @@ pub enum ObserveMessage {
 /// here only receive:
 ///
 /// - an initial snapshot of cortex state relevant to operators
-///   (currently just the neuron list),
+///   (currently just the neuron list with health),
 /// - a continuous stream of `ObserveEvent` values representing:
 ///   - neuron registrations,
 ///   - heartbeats,
@@ -97,7 +117,7 @@ pub enum ObserveMessage {
 /// observe channel.
 pub async fn start_observe_server(
     addr: SocketAddr,
-    neurons_snapshot: Vec<NeuronDescriptor>,
+    registry: crate::control_plane::NeuronRegistry,
     events_rx: broadcast::Receiver<ObserveEvent>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
@@ -110,10 +130,57 @@ pub async fn start_observe_server(
             peer_addr, addr
         );
 
-        let neurons = neurons_snapshot.clone();
+        // Clone the shared registry handle for this connection; the underlying
+        // inner state is already behind an Arc/RwLock so this is cheap.
+        let registry_for_connection = registry.clone();
         let mut client_events_rx = events_rx.resubscribe();
 
         tokio::spawn(async move {
+            // Build an enriched snapshot with last-heartbeat and health
+            // classification for each known neuron at the time of connection.
+            //
+            // `list_with_health` exposes a `NeuronView` that includes both the
+            // descriptor and a `Duration` since last heartbeat, which we map
+            // into a coarse health bucket and an optional wall-clock timestamp.
+            let neuron_views: Vec<NeuronView> = registry_for_connection.list_with_health().await;
+
+            // Thresholds for health classification.
+            let healthy_threshold = Duration::from_secs(60);
+            let degraded_threshold = Duration::from_secs(5 * 60);
+
+            let now = SystemTime::now();
+
+            let neurons: Vec<ObserveNeuron> = neuron_views
+                .into_iter()
+                .map(|view| {
+                    let (last_heartbeat_at, health) = match view.last_heartbeat_age {
+                        None => (None, "stale".to_string()),
+                        Some(age) => {
+                            let health = if age <= healthy_threshold {
+                                "healthy".to_string()
+                            } else if age <= degraded_threshold {
+                                "degraded".to_string()
+                            } else {
+                                "stale".to_string()
+                            };
+
+                            // Best-effort conversion from "age" to an absolute
+                            // wall-clock timestamp; if `now - age` underflows,
+                            // we fall back to `None`.
+                            let last_heartbeat_at = now.checked_sub(age);
+
+                            (last_heartbeat_at, health)
+                        }
+                    };
+
+                    ObserveNeuron {
+                        descriptor: view.descriptor,
+                        last_heartbeat_at,
+                        health,
+                    }
+                })
+                .collect();
+
             if let Err(e) =
                 handle_observer_connection(stream, peer_addr, neurons, &mut client_events_rx).await
             {
@@ -129,7 +196,7 @@ pub async fn start_observe_server(
 async fn handle_observer_connection(
     stream: tokio::net::TcpStream,
     peer_addr: SocketAddr,
-    neurons: Vec<NeuronDescriptor>,
+    neurons: Vec<ObserveNeuron>,
     events_rx: &mut broadcast::Receiver<ObserveEvent>,
 ) -> Result<()> {
     let ws_stream = accept_async(stream).await.map_err(|e| {

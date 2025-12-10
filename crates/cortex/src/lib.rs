@@ -81,12 +81,10 @@ pub async fn run(config: Config) -> Result<()> {
         let registry_for_dashboard = registry.clone();
         let events_rx = observe_bus.subscribe();
 
-        // Initial neuron snapshot for dashboards is obtained on connection
-        // via `registry_for_dashboard.list()`, so we don't need to capture
-        // it eagerly here.
         tokio::spawn(async move {
-            let neurons_snapshot = registry_for_dashboard.list().await;
-            if let Err(e) = observe::start_observe_server(addr, neurons_snapshot, events_rx).await {
+            if let Err(e) =
+                observe::start_observe_server(addr, registry_for_dashboard, events_rx).await
+            {
                 tracing::error!("dashboard/observe server failed on {}: {:?}", addr, e);
             }
         });

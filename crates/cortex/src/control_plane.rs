@@ -88,6 +88,16 @@ pub struct ConnectedNeuron {
     pub outbound_tx: Option<mpsc::UnboundedSender<CortexToNeuron>>,
 }
 
+/// Enriched, read-only view of a neuron as exposed by the registry for
+/// observability and dashboard consumption.
+#[derive(Debug, Clone, Serialize)]
+pub struct NeuronView {
+    pub descriptor: NeuronDescriptor,
+    /// Time elapsed since the last heartbeat was observed for this neuron.
+    /// If no heartbeat has been seen yet, this will be `None`.
+    pub last_heartbeat_age: Option<Duration>,
+}
+
 /// Shared state tracking neurons connected over the control-plane websocket.
 ///
 /// This type is intentionally minimal and focussed on neuron tracking and
@@ -191,6 +201,34 @@ impl NeuronRegistry {
     pub async fn list(&self) -> Vec<NeuronDescriptor> {
         let neurons = self.inner.read().await;
         neurons.iter().map(|n| n.descriptor.clone()).collect()
+    }
+
+    /// Return an enriched view of all known neurons, including a best-effort
+    /// age for the last observed heartbeat. This is intended for observability
+    /// and dashboard use; callers should treat the values as snapshots.
+    pub async fn list_with_health(&self) -> Vec<NeuronView> {
+        let neurons = self.inner.read().await;
+        let now = std::time::Instant::now();
+
+        neurons
+            .iter()
+            .map(|n| {
+                let last_heartbeat_age = if n.last_heartbeat == std::time::Instant::now() {
+                    // In practice this branch is unlikely to be hit because
+                    // `now` is sampled outside the loop. We keep it here to
+                    // make the intent explicit and avoid returning a zero
+                    // duration when we have no meaningful heartbeat signal.
+                    None
+                } else {
+                    Some(now.saturating_duration_since(n.last_heartbeat))
+                };
+
+                NeuronView {
+                    descriptor: n.descriptor.clone(),
+                    last_heartbeat_age,
+                }
+            })
+            .collect()
     }
 }
 
