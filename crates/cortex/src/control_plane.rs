@@ -356,6 +356,7 @@ pub async fn start_control_plane_server(
     registry: NeuronRegistry,
     demand_state: crate::spec::ModelDemandState,
     observe_publisher: tokio::sync::broadcast::Sender<ObserveEvent>,
+    model_store: ModelProvisioningStore,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("cortex control-plane websocket listening on {}", addr);
@@ -381,6 +382,7 @@ pub async fn start_control_plane_server(
         let mesh_clone = mesh.clone();
         let demand_state_clone = demand_state.clone();
         let observe_for_connection = observe_publisher.clone();
+        let model_store_for_connection = model_store.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_neuron_connection(
                 stream,
@@ -389,6 +391,7 @@ pub async fn start_control_plane_server(
                 mesh_clone,
                 demand_state_clone,
                 observe_for_connection,
+                model_store_for_connection,
             )
             .await
             {
@@ -408,6 +411,7 @@ async fn handle_neuron_connection(
     _mesh: MeshHandle,
     demand_state: crate::spec::ModelDemandState,
     observe_publisher: tokio::sync::broadcast::Sender<ObserveEvent>,
+    model_store: ModelProvisioningStore,
 ) -> Result<()> {
     info!(
         "attempting websocket upgrade for neuron control-plane connection from {}",
@@ -485,8 +489,14 @@ async fn handle_neuron_connection(
             // On first connection, opportunistically upsert all models from the
             // current demand/spec state into this neuron to exercise the
             // provisioning path.
-            if let Err(e) =
-                bootstrap_upsert_for_neuron(&id, &registry, &demand_state, &observe_publisher).await
+            if let Err(e) = bootstrap_upsert_for_neuron(
+                &id,
+                &registry,
+                &demand_state,
+                &observe_publisher,
+                &model_store,
+            )
+            .await
             {
                 warn!(
                     "failed to bootstrap UpsertModelConfig for neuron_id={}: {:?}",
@@ -509,6 +519,7 @@ async fn handle_neuron_connection(
     let registry_clone = registry_list_clone(&registry);
     let neuron_id_clone = neuron_id.clone();
     let observe_for_messages = observe_publisher.clone();
+    let model_store_for_messages = model_store.clone();
     tokio::spawn(async move {
         while let Some(msg) = rx.next().await {
             match msg {
@@ -518,6 +529,7 @@ async fn handle_neuron_connection(
                         &registry_clone,
                         message,
                         &observe_for_messages,
+                        &model_store_for_messages,
                     )
                     .await
                     {
@@ -554,6 +566,7 @@ async fn handle_neuron_message(
     registry: &NeuronRegistry,
     message: Message,
     observe_publisher: &tokio::sync::broadcast::Sender<ObserveEvent>,
+    model_store: &ModelProvisioningStore,
 ) -> Result<()> {
     let msg: NeuronToCortex = parse_ws_json(message)?;
     match msg {
@@ -586,6 +599,10 @@ async fn handle_neuron_message(
                 "provisioning response from neuron_id={}: {:?}",
                 resp_id, response
             );
+
+            // Update model provisioning state.
+            model_store.record_response(&resp_id, &response).await;
+
             // Emit provisioning response event for dashboards.
             let _ = observe_publisher.send(ObserveEvent::ProvisioningResponse {
                 neuron_id: resp_id,
@@ -609,8 +626,13 @@ pub async fn send_provisioning_to_neuron(
     neuron_id: &str,
     cmd: ProvisioningCommand,
     observe_publisher: &tokio::sync::broadcast::Sender<ObserveEvent>,
+    model_store: &ModelProvisioningStore,
 ) -> Result<(), String> {
     let msg = CortexToNeuron::Provisioning { cmd: cmd.clone() };
+
+    // Track the command in model provisioning state.
+    model_store.record_command(neuron_id, &cmd).await;
+
     // Emit a ProvisioningSent event for dashboards before enqueuing the command.
     let _ = observe_publisher.send(ObserveEvent::ProvisioningSent {
         neuron_id: neuron_id.to_string(),
@@ -658,6 +680,7 @@ async fn bootstrap_upsert_for_neuron(
     registry: &NeuronRegistry,
     demand_state: &crate::spec::ModelDemandState,
     observe_publisher: &tokio::sync::broadcast::Sender<ObserveEvent>,
+    model_store: &ModelProvisioningStore,
 ) -> Result<()> {
     if demand_state.models.is_empty() {
         info!(
@@ -677,7 +700,7 @@ async fn bootstrap_upsert_for_neuron(
         let cmd = ProvisioningCommand::UpsertModelConfig(entry.config.clone());
         // Use the generic helper so that ProvisioningSent events are emitted
         // consistently for both bootstrap and later provisioning operations.
-        send_provisioning_to_neuron(registry, neuron_id, cmd, observe_publisher)
+        send_provisioning_to_neuron(registry, neuron_id, cmd, observe_publisher, model_store)
             .await
             .map_err(|e| {
                 anyhow!(

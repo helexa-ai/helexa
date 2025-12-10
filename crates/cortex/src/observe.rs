@@ -12,7 +12,8 @@ use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{info, warn};
 
-use crate::control_plane::{NeuronDescriptor, NeuronView};
+use crate::control_plane::{ModelProvisioningStatus, NeuronDescriptor, NeuronView};
+use crate::ModelProvisioningStore;
 use protocol::{ProvisioningCommand, ProvisioningResponse};
 
 /// Lightweight view of a neuron for dashboards, enriched with live health
@@ -29,6 +30,7 @@ pub struct ObserveNeuron {
     /// - "healthy"  => recent heartbeat within `healthy_threshold_secs`
     /// - "stale"    => no heartbeat yet or outside healthy window
     pub health: String,
+    pub models: Vec<ModelProvisioningStatus>,
 }
 
 /// Events published onto the observe bus for dashboard consumption.
@@ -118,6 +120,7 @@ pub enum ObserveMessage {
 pub async fn start_observe_server(
     addr: SocketAddr,
     registry: crate::control_plane::NeuronRegistry,
+    model_store: ModelProvisioningStore,
     events_rx: broadcast::Receiver<ObserveEvent>,
 ) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
@@ -133,6 +136,7 @@ pub async fn start_observe_server(
         // Clone the shared registry handle for this connection; the underlying
         // inner state is already behind an Arc/RwLock so this is cheap.
         let registry_for_connection = registry.clone();
+        let model_store_for_connection = model_store.clone();
         let mut client_events_rx = events_rx.resubscribe();
 
         tokio::spawn(async move {
@@ -150,36 +154,38 @@ pub async fn start_observe_server(
 
             let now = SystemTime::now();
 
-            let neurons: Vec<ObserveNeuron> = neuron_views
-                .into_iter()
-                .map(|view| {
-                    let (last_heartbeat_at, health) = match view.last_heartbeat_age {
-                        None => (None, "stale".to_string()),
-                        Some(age) => {
-                            let health = if age <= healthy_threshold {
-                                "healthy".to_string()
-                            } else if age <= degraded_threshold {
-                                "degraded".to_string()
-                            } else {
-                                "stale".to_string()
-                            };
-
-                            // Best-effort conversion from "age" to an absolute
-                            // wall-clock timestamp; if `now - age` underflows,
-                            // we fall back to `None`.
-                            let last_heartbeat_at = now.checked_sub(age);
-
-                            (last_heartbeat_at, health)
-                        }
-                    };
-
-                    ObserveNeuron {
-                        descriptor: view.descriptor,
-                        last_heartbeat_at,
-                        health,
+            let mut neurons: Vec<ObserveNeuron> = Vec::new();
+            for view in neuron_views {
+                let (last_heartbeat_at, health) = match view.last_heartbeat_age {
+                    None => (None, "stale".to_string()),
+                    Some(age) => {
+                        let health = if age <= healthy_threshold {
+                            "healthy".to_string()
+                        } else if age <= degraded_threshold {
+                            "degraded".to_string()
+                        } else {
+                            "stale".to_string()
+                        };
+                        let last_heartbeat_at = now.checked_sub(age);
+                        (last_heartbeat_at, health)
                     }
-                })
-                .collect();
+                };
+
+                // Pull model provisioning state for this neuron_id, if we know it.
+                let neuron_id = view
+                    .descriptor
+                    .node_id
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string());
+                let models = model_store_for_connection.list_for_neuron(&neuron_id).await;
+
+                neurons.push(ObserveNeuron {
+                    descriptor: view.descriptor,
+                    last_heartbeat_at,
+                    health,
+                    models,
+                });
+            }
 
             if let Err(e) =
                 handle_observer_connection(stream, peer_addr, neurons, &mut client_events_rx).await

@@ -3,6 +3,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use crate::control_plane::ModelProvisioningStore;
 use crate::observe::ObserveBus;
 use anyhow::Result;
 use tracing::info;
@@ -54,6 +55,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     // Shared neuron registry for both control-plane and dashboard observers.
     let registry = control_plane::NeuronRegistry::new();
+    let model_store = ModelProvisioningStore::new();
     let observe_bus = ObserveBus::new(1024);
     let observe_publisher = observe_bus.publisher();
 
@@ -62,6 +64,7 @@ pub async fn run(config: Config) -> Result<()> {
         let mesh_for_control = mesh_handle.clone();
         let demand_state_for_control = demand_state.clone();
         let observe_for_control = observe_publisher.clone();
+        let model_store_for_control = model_store.clone();
         tokio::spawn(async move {
             if let Err(e) = control_plane::start_control_plane_server(
                 addr,
@@ -69,6 +72,7 @@ pub async fn run(config: Config) -> Result<()> {
                 registry_for_control,
                 demand_state_for_control,
                 observe_for_control,
+                model_store_for_control,
             )
             .await
             {
@@ -80,10 +84,16 @@ pub async fn run(config: Config) -> Result<()> {
     if let Some(addr) = config.dashboard_socket {
         let registry_for_dashboard = registry.clone();
         let events_rx = observe_bus.subscribe();
+        let model_store_for_dashboard = model_store.clone();
 
         tokio::spawn(async move {
-            if let Err(e) =
-                observe::start_observe_server(addr, registry_for_dashboard, events_rx).await
+            if let Err(e) = observe::start_observe_server(
+                addr,
+                registry_for_dashboard,
+                model_store_for_dashboard,
+                events_rx,
+            )
+            .await
             {
                 tracing::error!("dashboard/observe server failed on {}: {:?}", addr, e);
             }
