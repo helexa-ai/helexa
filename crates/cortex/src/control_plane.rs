@@ -50,6 +50,25 @@ impl ModelProvisioningStore {
         }
     }
 
+    /// Restore a full set of provisioning statuses for a given neuron, replacing
+    /// any existing entries for that neuron_id. This is primarily used when
+    /// hydrating state from the on-disk cache at cortex startup.
+    pub async fn restore_statuses_for_neuron(
+        &self,
+        neuron_id: &str,
+        statuses: Vec<ModelProvisioningStatus>,
+    ) {
+        let mut map = self.inner.write().await;
+        // Remove any existing entries for this neuron.
+        map.retain(|(nid, _), _| nid != neuron_id);
+
+        // Insert the provided statuses keyed by (neuron_id, model_id_string).
+        for status in statuses {
+            let key: ModelKey = (neuron_id.to_string(), status.model_id.0.clone());
+            map.insert(key, status);
+        }
+    }
+
     /// Record that cortex has just sent a provisioning command to a neuron.
     pub async fn record_command(&self, neuron_id: &str, cmd: &ProvisioningCommand) {
         use ProvisioningCommand::*;

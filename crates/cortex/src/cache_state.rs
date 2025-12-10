@@ -202,20 +202,14 @@ pub async fn load_cortex_state_from_cache(
     // Rebuild model provisioning state. The store is keyed by neuron_id,
     // which matches the `node_id` on NeuronDescriptor.
     for (neuron_id, models) in state.models_by_neuron {
-        // `ModelProvisioningStore` currently exposes a read-only query
-        // interface (`list_for_neuron`). To support restoration we expect
-        // it to provide a dedicated "restore" or "set" method. Until that
-        // exists, this loop is a placeholder to document the intended
-        // wiring.
-        //
-        // Example API:
-        //
-        //   model_store.restore_statuses_for_neuron(&neuron_id, models).await;
-        //
-        // For now, we simply ignore the loaded models to avoid lying about
-        // state; the presence of this comment indicates where the store's
-        // API should be extended.
-        let _ = (neuron_id, models);
+        // Restore the full set of provisioning statuses for this neuron_id
+        // into the in-memory ModelProvisioningStore. This replaces any
+        // existing entries for the neuron and ensures that dashboards and
+        // higher-level components see a consistent view immediately after
+        // startup, even before new provisioning events occur.
+        model_store
+            .restore_statuses_for_neuron(&neuron_id, models)
+            .await;
     }
 
     Ok(())
