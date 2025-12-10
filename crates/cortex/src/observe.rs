@@ -52,6 +52,14 @@ pub enum ObserveEvent {
         neuron_id: String,
         response: ProvisioningResponse,
     },
+    /// Emitted whenever cortex updates its internal view of model provisioning
+    /// state for a given neuron. This is typically triggered after processing
+    /// a provisioning response, and mirrors the data that will be reflected in
+    /// the next snapshot under `ObserveNeuron.models`.
+    ModelStateChanged {
+        neuron_id: String,
+        models: Vec<ModelProvisioningStatus>,
+    },
 }
 
 /// Simple broadcast-based bus for dashboard/observer subscriptions.

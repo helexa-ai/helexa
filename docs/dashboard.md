@@ -222,8 +222,8 @@ After the snapshot, cortex sends a stream of `event` messages:
 
 ### 4.1 Event union
 
-```/dev/null/dashboard-event-types.ts#L1-40
-import type { NeuronDescriptor, ModelId } from "./dashboard-snapshot-types";
+```/dev/null/dashboard-event-types.ts#L1-60
+import type { NeuronDescriptor, ModelId, ModelProvisioningStatus } from "./dashboard-snapshot-types";
 
 export type ProvisioningCommand =
   | { kind: "upsert_model_config"; config: any }   // see protocol docs for full shape
@@ -246,6 +246,11 @@ export type ObserveEvent =
       type: "provisioning_response";
       neuron_id: string;
       response: ProvisioningResponseWire;
+    }
+  | {
+      type: "model_state_changed";
+      neuron_id: string;
+      models: ModelProvisioningStatus[];
     };
 ```
 
@@ -394,10 +399,11 @@ export type ProvisioningCommand =
   | { kind: "unload_model"; model_id: ModelId };
 ```
 
-Relationship to snapshot:
+Relationship to snapshot and model_state_changed:
 
 - `provisioning_sent` is **incremental** and may be missed by late subscribers.
 - Cortex also records these commands internally; snapshot `neurons[*].models` reflects the **latest known state** even if some `provisioning_sent` events were not observed by the dashboard.
+- When a `provisioning_response` updates cortex’s internal model state, a `model_state_changed` event is emitted with the same `models` array that will appear in the next snapshot for that neuron.
 
 ---
 
@@ -453,14 +459,73 @@ export type ProvisioningResponseEvent = {
 export type ProvisioningResponseWire = any;
 ```
 
-Relationship to snapshot:
+Relationship to snapshot and model_state_changed:
 
 - Cortex updates its internal `ModelProvisioningStore` on every response.
 - Snapshot `neurons[*].models[*].last_response` and `effective_status` expose
   the **latest** provisioning outcome, so late subscribers still see current
   model status without needing historical events.
+- After recording a response, cortex also emits a `model_state_changed` event
+  for the affected neuron, carrying the updated `models` array. Dashboards that
+  need live per-model updates can fold this event into their in-memory state.
 
 ---
+
+### 5.5 `model_state_changed`
+
+Emitted whenever cortex updates its internal view of model provisioning state for
+a particular neuron. This typically happens immediately after handling a
+`provisioning_response` from that neuron.
+
+Example:
+
+```/dev/null/dashboard-event-model-state-changed.json#L1-24
+{
+  "kind": "event",
+  "event": {
+    "type": "model_state_changed",
+    "neuron_id": "785b03f697304c88baf539e50e15e44a",
+    "models": [
+      {
+        "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+        "last_cmd_kind": "load_model",
+        "last_response": {
+          "Ok": {
+            "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+            "message": "model loaded and serving at http://127.0.0.1:8060"
+          }
+        },
+        "effective_status": "loaded"
+      }
+    ]
+  }
+}
+```
+
+Schema:
+
+```/dev/null/dashboard-event-model-state-changed.ts#L1-10
+import type { ModelProvisioningStatus } from "./dashboard-snapshot-types";
+
+export type ModelStateChangedEvent = {
+  type: "model_state_changed";
+  neuron_id: string;
+  models: ModelProvisioningStatus[];
+};
+```
+
+Semantics:
+
+- `models` is the **full set** of model provisioning statuses currently known
+  for that neuron at the time of the event.
+- The payload is derived from the same internal store that powers the snapshot:
+  for a given neuron, `models` in `model_state_changed` matches
+  `snapshot.neurons[*].models` for that neuron at that moment.
+- Dashboards that only care about eventual consistency can ignore this event
+  and rely solely on snapshots.
+- Dashboards that want live per-model state should:
+  - locate the corresponding neuron by `neuron_id`,
+  - replace that neuron’s `models` array with the one from the event.
 
 ## 6. Late subscribers and model state
 

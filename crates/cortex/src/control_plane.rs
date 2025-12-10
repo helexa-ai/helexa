@@ -605,8 +605,17 @@ async fn handle_neuron_message(
 
             // Emit provisioning response event for dashboards.
             let _ = observe_publisher.send(ObserveEvent::ProvisioningResponse {
-                neuron_id: resp_id,
+                neuron_id: resp_id.clone(),
                 response: response.clone(),
+            });
+
+            // After updating the model store, emit a ModelStateChanged event so
+            // dashboards can refresh per-model status for this neuron without
+            // waiting for a new snapshot.
+            let models = model_store.list_for_neuron(&resp_id).await;
+            let _ = observe_publisher.send(ObserveEvent::ModelStateChanged {
+                neuron_id: resp_id,
+                models,
             });
             // TODO: integrate with orchestrator/provisioner once those traits have
             // async entrypoints for tracking provisioning results.
