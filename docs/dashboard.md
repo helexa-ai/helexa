@@ -1,114 +1,216 @@
 # helexa dashboard websocket protocol
 
-This document describes the initial websocket protocol exposed by a cortex node for use by operator dashboards and other observability clients.
+This document describes the websocket protocol exposed by a cortex node for use by
+operator dashboards and other observability clients.
 
-For now there is a single dashboard-oriented websocket endpoint:
-
-- `ws://<cortex-host>:<dashboard-socket>` (the exact port is configured via `--dashboard-socket`)
-
-This endpoint is **read-only** from cortex’s perspective:
+The endpoint is **read-only** from cortex’s perspective:
 
 - Clients receive:
   - A **snapshot** of current state immediately after connection.
   - A **stream of events** describing control-plane activity between cortex and neurons.
-- Clients are free to send messages, but current implementations ignore them (they are only used to detect disconnects). Future work will add operator commands on this channel.
+- Clients may send messages (used only to detect disconnects for now); they are otherwise
+  ignored. Future work may introduce operator commands on this channel.
 
-The protocol is JSON-based. All messages are encoded as UTF‑8 text frames.
+All messages are JSON, encoded as UTF‑8 text websocket frames.
 
 ---
 
-## 1. Connecting to the dashboard websocket
-
-### URL
+## 1. Endpoint
 
 Given a cortex process started with:
 
-```bash
+```/dev/null/dashboard-example-run.md#L1-6
 helexa cortex \
-  --dashboard-socket 0.0.0.0:9051 \
+  --dashboard-socket 0.0.0.0:8090 \
   ...
 ```
 
 Dashboard clients should connect to:
 
-- `ws://<cortex-host>:9051`
+- `ws://<cortex-host>:8090`
 
-For example:
+For example (TypeScript):
 
-```ts
-const ws = new WebSocket("ws://localhost:9051");
+```/dev/null/dashboard-example-connect.ts#L1-5
+const ws = new WebSocket("ws://localhost:8090");
+
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data);
+  // handle snapshot/event
+};
 ```
 
-No query parameters or subprotocol negotiation are required at this time.
+There is no subprotocol negotiation or required query parameters.
 
 ---
 
-## 2. Message envelope
+## 2. Top-level message envelope
 
-All outbound messages from cortex to the client share a common envelope type:
+All outbound messages from cortex share a common envelope:
 
-```json
+```/dev/null/dashboard-envelope.json#L1-6
 {
-  "kind": "<string>",
-  ...
+  "kind": "snapshot" | "event",
+  // if kind == "snapshot":
+  "snapshot": { ... },
+  // if kind == "event":
+  "event": { ... }
 }
 ```
 
 Where:
 
-- `kind` is one of:
-  - `"snapshot"` — the initial state, sent exactly once per connection.
-  - `"event"` — one or more events streamed after the snapshot is sent.
+- `kind: "snapshot"` — the initial state, sent **exactly once per connection**.
+- `kind: "event"` — subsequent streaming events sent after the snapshot.
 
-### 2.1 Snapshot message
+TypeScript-style typings:
 
-This is the first message the client will receive after the websocket is successfully upgraded.
+```/dev/null/dashboard-types-top-level.ts#L1-15
+export type ObserveMessage =
+  | { kind: "snapshot"; snapshot: ObserveSnapshot }
+  | { kind: "event"; event: ObserveEvent };
+```
 
-```json
+---
+
+## 3. Snapshot message
+
+Immediately after the websocket is upgraded, cortex sends a **single** snapshot:
+
+```/dev/null/dashboard-snapshot-example.json#L1-30
 {
   "kind": "snapshot",
   "snapshot": {
     "neurons": [
       {
-        "node_id": "785b03f697304c88baf539e50e15e44a",
-        "label": "785b03f697304c88baf539e50e15e44a",
-        "metadata": {
-          "backend": "neuron"
-        }
+        "descriptor": {
+          "node_id": "785b03f697304c88baf539e50e15e44a",
+          "label": "785b03f697304c88baf539e50e15e44a",
+          "metadata": {
+            "backend": "neuron"
+          }
+        },
+        "last_heartbeat_at": "2025-12-10T03:43:25.600000Z",
+        "health": "healthy",
+        "models": [
+          {
+            "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+            "last_cmd_kind": "load_model",
+            "last_response": {
+              "Ok": {
+                "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+                "message": "model loaded and serving at http://127.0.0.1:8060"
+              }
+            },
+            "effective_status": "loaded"
+          }
+        ]
       }
     ]
   }
 }
 ```
 
-#### Shape
+### 3.1 Snapshot schema
 
-```ts
-type ObserveSnapshot = {
-  neurons: NeuronDescriptor[];
+```/dev/null/dashboard-snapshot-types.ts#L1-42
+export type ModelId = { 0: string }; // serde encoding of ModelId(pub String)
+
+export type ModelProvisioningStatus = {
+  model_id: ModelId;
+
+  /**
+   * Last provisioning command kind cortex sent for this (neuron, model).
+   * Examples:
+   *  - "upsert_model_config"
+   *  - "load_model"
+   *  - "unload_model"
+   */
+  last_cmd_kind: string;
+
+  /**
+   * Most recent provisioning response from the neuron, if any.
+   *
+   * This mirrors the Rust enum:
+   *   enum ProvisioningResponse {
+   *     Ok { model_id: ModelId, message: Option<String> },
+   *     Error { model_id: ModelId, error: String },
+   *   }
+   *
+   * Under serde’s default representation this becomes:
+   *   { "Ok": { "model_id": { "0": "..." }, "message": "..." } }
+   *   { "Error": { "model_id": { "0": "..." }, "error": "..." } }
+   */
+  last_response: any | null;
+
+  /**
+   * Coarse derived status as seen by cortex, e.g.:
+   *  - "configured"  (after successful UpsertModelConfig)
+   *  - "loading"     (LoadModel sent, no response yet)
+   *  - "loaded"      (LoadModel + Ok)
+   *  - "unloading"   (UnloadModel sent, no response yet)
+   *  - "unloaded"    (UnloadModel + Ok)
+   *  - "failed"      (any Error response)
+   *  - "unknown"     (insufficient information)
+   */
+  effective_status: string;
 };
 
-type SnapshotMessage = {
-  kind: "snapshot";
-  snapshot: ObserveSnapshot;
+export type NeuronDescriptor = {
+  node_id: string | null;  // machine-id or CLI --node-id
+  label: string | null;    // human-friendly label; currently often same as node_id
+  metadata: any;           // backend-specific and host metadata (os/arch/gpu/etc)
+};
+
+export type ObserveNeuron = {
+  descriptor: NeuronDescriptor;
+
+  /**
+   * Best-effort wall-clock timestamp of the last heartbeat observed by cortex.
+   * May be null if:
+   *  - no heartbeat has been observed yet, or
+   *  - conversion from internal clocks to SystemTime underflowed.
+   */
+  last_heartbeat_at: string | null;
+
+  /**
+   * Coarse health classification derived from heartbeat recency:
+   *  - "healthy"  : recent heartbeat (<= 60s)
+   *  - "degraded" : heartbeat present but a bit old (<= 5min)
+   *  - "stale"    : no heartbeat yet, or last heartbeat older than 5min
+   */
+  health: "healthy" | "degraded" | "stale" | string;
+
+  /**
+   * Model provisioning state as seen by cortex for this neuron.
+   * Includes configured, loaded, unloaded and failed models.
+   */
+  models: ModelProvisioningStatus[];
+};
+
+export type ObserveSnapshot = {
+  neurons: ObserveNeuron[];
 };
 ```
 
-Where:
+### 3.2 Snapshot semantics
 
-```ts
-type NeuronDescriptor = {
-  node_id: string | null;  // machine-id or CLI --node-id, if known
-  label: string | null;    // human-friendly label; currently same as node_id
-  metadata: any;           // reserved for OS/arch/GPU/etc; currently minimal
-};
-```
+- The snapshot is **per websocket connection**:
+  - Sent exactly once, immediately after upgrade.
+  - Reflects cortex’s current view at that moment.
+- It is **authoritative** for dashboard state:
+  - Clients should treat the snapshot as “source of truth as of now”.
+  - After applying it, clients fold incremental `event` messages on top.
 
-### 2.2 Event message
+If the websocket disconnects, the client’s state is considered stale; upon reconnection, the new snapshot replaces any in-memory state.
+
+---
+
+## 4. Event stream
 
 After the snapshot, cortex sends a stream of `event` messages:
 
-```json
+```/dev/null/dashboard-event-envelope.json#L1-6
 {
   "kind": "event",
   "event": {
@@ -118,42 +220,48 @@ After the snapshot, cortex sends a stream of `event` messages:
 }
 ```
 
-#### Shape
+### 4.1 Event union
 
-```ts
-type EventMessage = {
-  kind: "event";
-  event: ObserveEvent;
-};
-```
+```/dev/null/dashboard-event-types.ts#L1-40
+import type { NeuronDescriptor, ModelId } from "./dashboard-snapshot-types";
 
----
+export type ProvisioningCommand =
+  | { kind: "upsert_model_config"; config: any }   // see protocol docs for full shape
+  | { kind: "load_model"; model_id: ModelId }
+  | { kind: "unload_model"; model_id: ModelId };
 
-## 3. Event types
+/**
+ * ProvisioningResponse is encoded using serde’s default enum representation:
+ *
+ *  { "Ok":    { "model_id": { "0": "..." }, "message": "..." } }
+ *  { "Error": { "model_id": { "0": "..." }, "error": "..." } }
+ */
+export type ProvisioningResponseWire = any;
 
-`ObserveEvent` is a tagged union (discriminated by `type`):
-
-```ts
-type ObserveEvent =
+export type ObserveEvent =
   | { type: "neuron_registered"; neuron: NeuronDescriptor }
   | { type: "neuron_heartbeat"; neuron_id: string; metrics: any }
   | { type: "provisioning_sent"; neuron_id: string; cmd: ProvisioningCommand }
   | {
       type: "provisioning_response";
       neuron_id: string;
-      response: ProvisioningResponse;
+      response: ProvisioningResponseWire;
     };
 ```
 
-Each event type is described below.
+The following sections describe each event type.
 
-### 3.1 `neuron_registered`
+---
 
-Emitted whenever cortex registers a neuron via the control-plane websocket (first register, or re‑register with updated metadata).
+## 5. Event types
 
-#### Example
+### 5.1 `neuron_registered`
 
-```json
+Emitted whenever cortex registers a neuron via the control-plane websocket, or when a neuron re-registers to refresh its metadata.
+
+Example:
+
+```/dev/null/dashboard-event-neuron-registered.json#L1-16
 {
   "kind": "event",
   "event": {
@@ -169,22 +277,29 @@ Emitted whenever cortex registers a neuron via the control-plane websocket (firs
 }
 ```
 
-#### Schema
+Schema:
 
-```ts
-type NeuronRegisteredEvent = {
+```/dev/null/dashboard-event-neuron-registered.ts#L1-6
+export type NeuronRegisteredEvent = {
   type: "neuron_registered";
   neuron: NeuronDescriptor;
 };
 ```
 
-### 3.2 `neuron_heartbeat`
+Notes:
+
+- This event is **incremental**; dashboards still rely on the snapshot to know the full neuron set at connect time.
+- A re-register updates the descriptor in cortex and may be used to reflect changes in host metadata.
+
+---
+
+### 5.2 `neuron_heartbeat`
 
 Emitted when cortex receives a `Heartbeat` message from a neuron via the control-plane websocket.
 
-#### Example
+Example:
 
-```json
+```/dev/null/dashboard-event-neuron-heartbeat.json#L1-12
 {
   "kind": "event",
   "event": {
@@ -195,31 +310,34 @@ Emitted when cortex receives a `Heartbeat` message from a neuron via the control
 }
 ```
 
-The `metrics` field is a free-form JSON object; current implementations send `{}` but future versions may include:
+Schema:
 
-- basic load indicators,
-- error counters,
-- resource utilisation hints.
-
-#### Schema
-
-```ts
-type NeuronHeartbeatEvent = {
+```/dev/null/dashboard-event-neuron-heartbeat.ts#L1-7
+export type NeuronHeartbeatEvent = {
   type: "neuron_heartbeat";
   neuron_id: string;
-  metrics: any; // JSON-serialisable object
+  /**
+   * Free-form JSON metrics object. Current implementations send `{}` but
+   * future versions may include load, error counts, resource utilisation, etc.
+   */
+  metrics: any;
 };
 ```
 
-### 3.3 `provisioning_sent`
+Correlation with snapshot:
 
-Emitted whenever cortex sends a provisioning command to a neuron (e.g., `UpsertModelConfig`, `LoadModel`, `UnloadModel`) over the control-plane websocket.
+- The snapshot contains `last_heartbeat_at` and `health` derived from heartbeat timing.
+- Heartbeat events are primarily for **live** UIs (e.g. streaming logs, “last seen” timers) rather than as a durable state source.
 
-This includes **bootstrap provisioning** driven by the spec/demand state as well as future manual or algorithmic provisioning commands.
+---
 
-#### Example
+### 5.3 `provisioning_sent`
 
-```json
+Emitted whenever cortex sends a provisioning command to a neuron (e.g. `UpsertModelConfig`, `LoadModel`, `UnloadModel`) over the control-plane websocket.
+
+Example:
+
+```/dev/null/dashboard-event-provisioning-sent.json#L1-38
 {
   "kind": "event",
   "event": {
@@ -228,8 +346,8 @@ This includes **bootstrap provisioning** driven by the spec/demand state as well
     "cmd": {
       "kind": "upsert_model_config",
       "config": {
-        "id": { "0": "example-chat-model" },
-        "display_name": "Example Chat Model (vLLM)",
+        "id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+        "display_name": "Qwen3 Coder 30B GPTQ Int8",
         "backend_kind": "vllm",
         "command": "uvx",
         "args": [
@@ -249,47 +367,47 @@ This includes **bootstrap provisioning** driven by the spec/demand state as well
 }
 ```
 
-#### Schema
+Schema (simplified):
 
-```ts
-type ProvisioningSentEvent = {
+```/dev/null/dashboard-event-provisioning-sent.ts#L1-24
+export type ProvisioningSentEvent = {
   type: "provisioning_sent";
   neuron_id: string;
   cmd: ProvisioningCommand;
 };
-```
 
-Where `ProvisioningCommand` mirrors the control-plane protocol:
-
-```ts
-type ProvisioningCommand =
-  | { kind: "upsert_model_config"; config: ModelConfig }
+export type ProvisioningCommand =
+  | {
+      kind: "upsert_model_config";
+      config: {
+        id: ModelId;
+        display_name: string | null;
+        backend_kind: string;
+        command: string | null;
+        args: string[];
+        env: { key: string; value: string }[];
+        listen_endpoint: string | null;
+        metadata: any;
+      };
+    }
   | { kind: "load_model"; model_id: ModelId }
   | { kind: "unload_model"; model_id: ModelId };
-
-type ModelId = { 0: string }; // current serde shape for ModelId(pub String)
-
-type ModelConfig = {
-  id: ModelId;
-  display_name: string | null;
-  backend_kind: string;      // e.g. "vllm", "llama_cpp", "openai_proxy"
-  command: string | null;    // program to exec (e.g. "uvx", "llama-server")
-  args: string[];            // argv[] for the command
-  env: { key: string; value: string }[];
-  listen_endpoint: string | null; // base URL, if provided; otherwise derived
-  metadata: any;                  // backend-specific configuration
-};
 ```
 
-> Note: The `ModelId` encoding (`{ "0": "example-chat-model" }`) reflects the current `ModelId(pub String)` serde derivation. A more ergonomic JSON mapping may be introduced later; clients should treat it as an opaque identifier for now.
+Relationship to snapshot:
 
-### 3.4 `provisioning_response`
+- `provisioning_sent` is **incremental** and may be missed by late subscribers.
+- Cortex also records these commands internally; snapshot `neurons[*].models` reflects the **latest known state** even if some `provisioning_sent` events were not observed by the dashboard.
 
-Emitted whenever cortex receives a `ProvisioningResponse` from a neuron (acknowledging or rejecting a provisioning command).
+---
 
-#### Example
+### 5.4 `provisioning_response`
 
-```json
+Emitted whenever cortex receives a `ProvisioningResponse` from a neuron, acknowledging or rejecting a command.
+
+Example:
+
+```/dev/null/dashboard-event-provisioning-response.json#L1-20
 {
   "kind": "event",
   "event": {
@@ -297,150 +415,167 @@ Emitted whenever cortex receives a `ProvisioningResponse` from a neuron (acknowl
     "neuron_id": "785b03f697304c88baf539e50e15e44a",
     "response": {
       "Ok": {
-        "model_id": { "0": "example-chat-model" },
-        "message": "configuration updated"
+        "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GPTQ-Int8" },
+        "message": "model loaded and serving at http://127.0.0.1:8060"
       }
     }
   }
 }
 ```
 
-The exact shape of `ProvisioningResponse` mirrors the Rust enum:
+Error example:
 
-```rust
-pub enum ProvisioningResponse {
-    Ok { model_id: ModelId, message: Option<String> },
-    Error { model_id: ModelId, error: String },
+```/dev/null/dashboard-event-provisioning-response-error.json#L1-14
+{
+  "kind": "event",
+  "event": {
+    "type": "provisioning_response",
+    "neuron_id": "785b03f697304c88baf539e50e15e44a",
+    "response": {
+      "Error": {
+        "model_id": { "0": "QuantTrio/Qwen3-Coder-30B-A3B-Instruct-GGPTQ-Int8" },
+        "error": "failed to spawn backend process: <details>"
+      }
+    }
+  }
 }
 ```
 
-Under serde’s default enum encoding, the JSON will look like:
+Schema:
 
-```json
-{ "Ok": { "model_id": { "0": "..." }, "message": "..." } }
-```
-
-or:
-
-```json
-{ "Error": { "model_id": { "0": "..." }, "error": "..." } }
-```
-
-#### Schema
-
-```ts
-type ProvisioningResponseEvent = {
+```/dev/null/dashboard-event-provisioning-response.ts#L1-12
+export type ProvisioningResponseEvent = {
   type: "provisioning_response";
   neuron_id: string;
-  response: any; // serde-encoded enum: { Ok: {...} } | { Error: {...} }
+  response: ProvisioningResponseWire; // { Ok: {...} } | { Error: {...} }
 };
+
+export type ProvisioningResponseWire = any;
 ```
 
-Clients should:
+Relationship to snapshot:
 
-- Detect whether `response.Ok` or `response.Error` is present.
-- Extract `model_id` and `message`/`error` fields accordingly.
+- Cortex updates its internal `ModelProvisioningStore` on every response.
+- Snapshot `neurons[*].models[*].last_response` and `effective_status` expose
+  the **latest** provisioning outcome, so late subscribers still see current
+  model status without needing historical events.
 
 ---
 
-## 4. Client responsibilities and expectations
+## 6. Late subscribers and model state
 
-### 4.1 Connection lifecycle
+Late subscribers (dashboards that connect after provisioning has happened) may have missed:
 
-- Connect to `ws://<cortex-host>:<dashboard-socket>`.
-- Expect the first message to be a `snapshot`.
-- Then process `event` messages until:
-  - The server closes the connection,
-  - The client closes it, or
-  - An error occurs.
+- `provisioning_sent` events,
+- `provisioning_response` events.
 
-If the connection drops, the client should:
+However:
 
-- Consider its local view stale, and
-- Reconnect to rebuild state via a new snapshot.
+- Cortex tracks per-model, per-neuron provisioning state in-memory.
+- The **snapshot** includes the current state for each neuron:
 
-### 4.2 Message ordering and de-duplication
+  - For each `ObserveNeuron`:
+    - `models[*].last_cmd_kind` — last command cortex sent.
+    - `models[*].last_response` — most recent `Ok` / `Error` from the neuron.
+    - `models[*].effective_status` — derived status (`configured`, `loaded`, `failed`, …).
 
-- Snapshot reflects the state at the moment of connection.
-- Events are **not guaranteed to be strictly ordered across connections**.
-- Within a single connection, order reflects the order seen by cortex, but network delays or reconnects may cause replays or gaps.
-- Clients should be resilient:
-  - Use `neuron_id` and `model_id` as stable identifiers.
-  - Treat events as *observations* rather than strict commands.
+Because of this:
 
-### 4.3 Client → server messages
+- A late-subscribing dashboard can always render:
+  - Which models are configured on which neurons.
+  - Which models are currently loaded/unloaded.
+  - Which models failed to load/unload (and why), based on the `Error` payload.
+
+The incremental events (`provisioning_sent`, `provisioning_response`) are primarily useful for:
+
+- Live streaming logs / activity views.
+- Real-time feedback as an operator triggers provisioning.
+
+---
+
+## 7. Client responsibilities and patterns
+
+### 7.1 Connection lifecycle
+
+A typical dashboard lifecycle:
+
+```/dev/null/dashboard-client-pattern.ts#L1-40
+const ws = new WebSocket("ws://localhost:8090");
+
+type State = {
+  snapshot: ObserveSnapshot | null;
+  events: ObserveEvent[];
+};
+
+const state: State = { snapshot: null, events: [] };
+
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data) as ObserveMessage;
+  if (msg.kind === "snapshot") {
+    state.snapshot = msg.snapshot;
+    state.events = [];
+  } else if (msg.kind === "event") {
+    state.events.push(msg.event);
+    // Optional: fold incremental updates into derived UI state
+  }
+};
+
+ws.onclose = () => {
+  // Consider state.snapshot stale; reconnect to rebuild.
+};
+```
+
+Guidelines:
+
+- Always handle the **first message** as a snapshot.
+- Treat any disconnect as losing source-of-truth:
+  - On reconnect, discard previous snapshot and events.
+  - Replace with the new snapshot.
+
+### 7.2 Folding events
+
+The simplest (and robust) approach:
+
+- Use the snapshot as the **only** source of truth for structured state.
+- Use events only for:
+  - logging / timelines,
+  - transient UI updates (e.g. a toast when provisioning succeeds/fails).
+
+More advanced clients may:
+
+- Maintain an in-memory view of neurons and models.
+- Apply incremental changes based on:
+  - `neuron_registered` (add/update a neuron),
+  - `neuron_heartbeat` (update last-seen timestamp client-side),
+  - `provisioning_sent` / `provisioning_response` (update a model’s status).
+
+Even in that case, the snapshot remains the canonical “reset point” used on reconnect.
+
+---
+
+## 8. Client → server messages
 
 Currently:
 
-- Any messages sent from the dashboard to the `/observe` websocket are ignored and only used to detect disconnects.
-- Future revisions will use client messages for:
-  - Adjusting config,
-  - Updating weights and policies,
-  - Other operator actions.
+- Any messages sent by the client on this websocket are:
+  - ignored by cortex for business logic,
+  - used only to detect disconnects / liveness at the transport level.
 
-Clients should:
+Future protocol revisions may introduce:
 
-- Not rely on any particular effect from sending messages at this time.
-- Expect that any non-close messages may be silently ignored.
+- Operator-initiated provisioning,
+- Demand / capacity adjustments,
+- Administrative actions on neurons or models.
 
----
+Dashboards should:
 
-## 5. Example TypeScript typings for the SPA
-
-For a Vite/React TS dashboard, a minimal typings layer might look like:
-
-```ts
-export type NeuronDescriptor = {
-  node_id: string | null;
-  label: string | null;
-  metadata: any;
-};
-
-export type ModelId = { 0: string };
-
-export type ModelConfig = {
-  id: ModelId;
-  display_name: string | null;
-  backend_kind: string;
-  command: string | null;
-  args: string[];
-  env: { key: string; value: string }[];
-  listen_endpoint: string | null;
-  metadata: any;
-};
-
-export type ProvisioningCommand =
-  | { kind: "upsert_model_config"; config: ModelConfig }
-  | { kind: "load_model"; model_id: ModelId }
-  | { kind: "unload_model"; model_id: ModelId };
-
-export type ProvisioningResponseWire = any; // { Ok: {...} } | { Error: {...} }
-
-export type ObserveEvent =
-  | { type: "neuron_registered"; neuron: NeuronDescriptor }
-  | { type: "neuron_heartbeat"; neuron_id: string; metrics: any }
-  | { type: "provisioning_sent"; neuron_id: string; cmd: ProvisioningCommand }
-  | { type: "provisioning_response"; neuron_id: string; response: ProvisioningResponseWire };
-
-export type ObserveSnapshot = {
-  neurons: NeuronDescriptor[];
-};
-
-export type ObserveMessage =
-  | { kind: "snapshot"; snapshot: ObserveSnapshot }
-  | { kind: "event"; event: ObserveEvent };
-```
-
-Client logic can:
-
-- On `snapshot`:
-  - Replace its local `neurons` state with `snapshot.neurons`.
-- On `event`:
-  - Switch on `event.type` and update state accordingly:
-    - Add/update neurons on `neuron_registered`.
-    - Update last-seen heartbeat timestamp/metrics on `neuron_heartbeat`.
-    - Log provisioning flows on `provisioning_sent` / `provisioning_response`.
+- Not depend on any server-side effect from sending messages at this time.
+- Be prepared for new `event.type` variants and extended payloads as the system evolves.
 
 ---
 
-This document describes the **current** `/observe` protocol as implemented in the cortex codebase. As the system evolves (e.g. richer capabilities, demand state, operator commands), this document should be updated to reflect new message types and semantics.
+This document describes the current `/observe` protocol as implemented in the cortex
+codebase, including enriched neuron snapshots with heartbeat-based health and per-model
+provisioning state. As the platform grows, new event types and snapshot fields may be
+introduced; dashboard implementations should handle unknown fields and extra `event.type`
+variants gracefully.
