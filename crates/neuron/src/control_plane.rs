@@ -20,6 +20,37 @@ use crate::runtime::RuntimeManager;
 use model_runtime::{ChatRuntimeHandle, ProcessRuntime};
 use protocol::{ModelConfig, ModelId, NeuronControl, ProvisioningCommand, ProvisioningResponse};
 
+/// Simple exponential backoff helper for reconnect attempts.
+struct Backoff {
+    current: Duration,
+    initial: Duration,
+    max: Duration,
+}
+
+impl Backoff {
+    fn new(initial_secs: u64, max_secs: u64) -> Self {
+        let initial = Duration::from_secs(initial_secs);
+        let max = Duration::from_secs(max_secs);
+        Self {
+            current: initial,
+            initial,
+            max,
+        }
+    }
+
+    fn next_delay(&mut self) -> Duration {
+        let delay = self.current;
+        let next = self.current * 2;
+        self.current = if next > self.max { self.max } else { next };
+        delay
+    }
+
+    #[allow(dead_code)]
+    fn reset(&mut self) {
+        self.current = self.initial;
+    }
+}
+
 /// messages sent from neuron to cortex over the websocket.
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -48,8 +79,17 @@ enum NeuronToCortex {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum CortexToNeuron {
-    Provisioning { cmd: ProvisioningCommand },
+    Provisioning {
+        cmd: ProvisioningCommand,
+    },
     RequestCapabilities,
+    /// planned shutdown notification from cortex. neurons should not shut
+    /// themselves down; they should keep serving in-flight work and rely on
+    /// their reconnect logic to resume control-plane connectivity once cortex
+    /// comes back.
+    ShutdownNotice {
+        reason: Option<String>,
+    },
 }
 
 /// minimal descriptor for this neuron as reported to cortex.
@@ -64,15 +104,36 @@ struct NeuronDescriptor {
 ///
 /// it connects to the configured cortex websocket endpoint, registers itself,
 /// sends periodic heartbeats, and listens for provisioning commands.
+///
+/// this function now supervises the control-plane client with an exponential
+/// backoff loop so that neurons can survive cortex outages and restarts
+/// without requiring manual intervention.
 pub fn spawn(_addr: SocketAddr, runtime: RuntimeManager) {
     info!("starting neuron control-plane websocket client");
 
-    let control = NeuronControlImpl::new(runtime);
+    let control = Arc::new(NeuronControlImpl::new(runtime));
     let endpoint = control.runtime.cortex_control_endpoint().to_string();
 
     tokio::spawn(async move {
-        if let Err(e) = run_control_plane_client(endpoint, control).await {
-            error!("neuron control-plane client exited with error: {:?}", e);
+        let mut backoff = Backoff::new(30, 3600); // 30s initial, up to 1h
+        loop {
+            match run_control_plane_client(endpoint.clone(), Arc::clone(&control)).await {
+                Ok(()) => {
+                    info!("neuron control-plane client exited cleanly");
+                    // Treat a clean exit as process-level shutdown and stop
+                    // supervising reconnects.
+                    break;
+                }
+                Err(e) => {
+                    warn!(
+                        "neuron control-plane client disconnected or failed: {:?}",
+                        e
+                    );
+                    let delay = backoff.next_delay();
+                    warn!("will retry cortex control-plane connection in {:?}", delay);
+                    time::sleep(delay).await;
+                }
+            }
         }
     });
 }
@@ -266,7 +327,7 @@ impl NeuronControl for NeuronControlImpl {
 /// local `NeuronControlImpl`.
 async fn run_control_plane_client(
     endpoint: String,
-    control: NeuronControlImpl,
+    control: Arc<NeuronControlImpl>,
 ) -> anyhow::Result<()> {
     info!("neuron connecting to cortex control-plane at {}", endpoint);
 
@@ -435,6 +496,18 @@ async fn run_control_plane_client(
                         // TODO: implement capability reporting once the protocol
                         // has concrete capability structures.
                         info!("received RequestCapabilities from cortex (not yet implemented)");
+                    }
+                    Ok(CortexToNeuron::ShutdownNotice { reason }) => {
+                        // planned cortex shutdown; treat subsequent disconnect as
+                        // a planned outage so that higher-level reconnect logic
+                        // can avoid unloading models aggressively.
+                        info!(
+                            "received ShutdownNotice from cortex control-plane: {:?}",
+                            reason
+                        );
+                        // in a follow-up change, this method can accept a shared
+                        // flag (e.g. Arc<AtomicBool>) to record the planned
+                        // shutdown state for the reconnect supervisor.
                     }
                     Err(e) => {
                         warn!("failed to parse CortexToNeuron message: {:?}", e);

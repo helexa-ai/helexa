@@ -202,6 +202,12 @@ pub enum CortexToNeuron {
 
     /// Request for the neuron to publish an updated capabilities snapshot.
     RequestCapabilities,
+
+    /// Planned shutdown notification from cortex to neurons. Neurons should
+    /// not shut themselves down; they should continue serving in-flight work
+    /// and rely on their reconnect logic to resume control-plane connectivity
+    /// once cortex comes back.
+    ShutdownNotice { reason: Option<String> },
 }
 
 /// Internal representation of a connected neuron in cortex.
@@ -243,6 +249,28 @@ impl NeuronRegistry {
         Self {
             inner: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    /// Broadcast a planned ShutdownNotice to all connected neurons that have
+    /// an outbound sender registered. This is used during graceful cortex
+    /// shutdown so that neurons can treat the outage as planned and rely on
+    /// their internal reconnect logic instead of shutting themselves down.
+    pub async fn broadcast_shutdown_notice(&self) -> Result<()> {
+        let neurons = self.inner.read().await;
+        for n in neurons.iter() {
+            if let Some(ref tx) = n.outbound_tx {
+                let msg = CortexToNeuron::ShutdownNotice {
+                    reason: Some("cortex is shutting down".to_string()),
+                };
+                if let Err(e) = tx.send(msg) {
+                    warn!(
+                        "failed to enqueue ShutdownNotice for neuron_id={:?}: {:?}",
+                        n.descriptor.node_id, e
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Insert or update a neuron descriptor in the registry.
@@ -744,6 +772,16 @@ fn registry_list_clone(registry: &NeuronRegistry) -> NeuronRegistry {
     NeuronRegistry {
         inner: registry.inner.clone(),
     }
+}
+
+/// Broadcast a planned ShutdownNotice to all connected neurons that have
+/// an outbound sender registered. This is used during graceful cortex
+/// shutdown so that neurons can treat the outage as planned and rely on
+/// their internal reconnect logic instead of shutting themselves down.
+///
+/// This is a convenience wrapper around the NeuronRegistry method.
+pub async fn broadcast_shutdown_notice(registry: &NeuronRegistry) -> Result<()> {
+    registry.broadcast_shutdown_notice().await
 }
 
 /// Bootstrap helper: send UpsertModelConfig commands for all models in the

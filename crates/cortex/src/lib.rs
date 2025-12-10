@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use crate::control_plane::ModelProvisioningStore;
+use crate::control_plane::{ModelProvisioningStore, NeuronRegistry};
 use crate::observe::ObserveBus;
 use anyhow::Result;
 use tracing::info;
@@ -56,7 +56,7 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     // Shared neuron registry for both control-plane and dashboard observers.
-    let registry = control_plane::NeuronRegistry::new();
+    let registry = NeuronRegistry::new();
     let model_store = ModelProvisioningStore::new();
     let observe_bus = ObserveBus::new(1024);
     let observe_publisher = observe_bus.publisher();
@@ -114,6 +114,13 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     shutdown::wait_for_signal().await;
+
+    // Best-effort broadcast of a ShutdownNotice to all connected neurons so
+    // that they can treat this as a planned outage and rely on their internal
+    // reconnect logic instead of shutting themselves down.
+    if let Err(e) = control_plane::broadcast_shutdown_notice(&registry).await {
+        tracing::warn!("failed to broadcast ShutdownNotice to neurons: {:?}", e);
+    }
 
     // Before shutting down, attempt to persist a best-effort snapshot of
     // the current cortex state (online neurons + model provisioning) to
