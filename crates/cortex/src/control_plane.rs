@@ -299,32 +299,29 @@ impl NeuronRegistry {
         }
     }
 
-    /// Periodically prune neurons that have not sent a heartbeat within
-    /// the given timeout.
+    /// Periodically mark neurons that have not sent a heartbeat within
+    /// the given timeout as offline and emit NeuronRemoved events.
+    ///
+    /// Offline neurons are retained in the registry so that snapshots can
+    /// continue to include them; the dashboard decides whether or not to
+    /// display offline entries.
     pub async fn prune_stale(
         &self,
         timeout: Duration,
         observe_publisher: &tokio::sync::broadcast::Sender<crate::observe::ObserveEvent>,
     ) {
-        let mut neurons = self.inner.write().await;
+        let neurons = self.inner.read().await;
         let now = std::time::Instant::now();
 
-        // Partition neurons into those we keep and those we consider stale.
-        let (kept, removed): (Vec<_>, Vec<_>) = neurons
-            .drain(..)
-            .partition(|n| now.duration_since(n.last_heartbeat) <= timeout);
-
-        // For each removed neuron that has a concrete node_id, emit a
-        // NeuronRemoved event so dashboards can update their views.
-        for n in &removed {
-            if let Some(ref id) = n.descriptor.node_id {
-                let _ = observe_publisher.send(crate::observe::ObserveEvent::NeuronRemoved {
-                    neuron_id: id.clone(),
-                });
+        for n in neurons.iter() {
+            if now.duration_since(n.last_heartbeat) > timeout {
+                if let Some(ref id) = n.descriptor.node_id {
+                    let _ = observe_publisher.send(crate::observe::ObserveEvent::NeuronRemoved {
+                        neuron_id: id.clone(),
+                    });
+                }
             }
         }
-
-        *neurons = kept;
     }
 
     /// List all known neurons by descriptor.
@@ -656,14 +653,10 @@ async fn handle_neuron_message(
                 neuron_id, reason
             );
 
-            // Remove the neuron from the registry immediately instead of
-            // waiting for the periodic prune task.
-            {
-                let mut neurons = registry.inner.write().await;
-                neurons.retain(|n| n.descriptor.node_id.as_deref() != Some(&neuron_id));
-            }
-
-            // Emit NeuronRemoved so dashboards can update their views promptly.
+            // Do not remove the neuron from the registry; keep it so that
+            // snapshots can continue to include it as offline. The prune task
+            // and this shutdown handler both emit NeuronRemoved events so that
+            // dashboards can update their in-memory views.
             let _ = observe_publisher.send(ObserveEvent::NeuronRemoved {
                 neuron_id: neuron_id.clone(),
             });
