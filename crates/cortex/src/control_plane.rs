@@ -161,6 +161,13 @@ pub enum NeuronToCortex {
         neuron_id: String,
         response: protocol::ProvisioningResponse,
     },
+
+    /// Explicit notification that a neuron is shutting down voluntarily and
+    /// will no longer send heartbeats or accept work.
+    Shutdown {
+        neuron_id: String,
+        reason: Option<String>,
+    },
 }
 
 /// Messages sent from cortex to neuron over the websocket.
@@ -642,6 +649,28 @@ async fn handle_neuron_message(
             });
             // TODO: integrate with orchestrator/provisioner once those traits have
             // async entrypoints for tracking provisioning results.
+        }
+        NeuronToCortex::Shutdown { neuron_id, reason } => {
+            info!(
+                "received Shutdown from neuron_id={} reason={:?}",
+                neuron_id, reason
+            );
+
+            // Remove the neuron from the registry immediately instead of
+            // waiting for the periodic prune task.
+            {
+                let mut neurons = registry.inner.write().await;
+                neurons.retain(|n| n.descriptor.node_id.as_deref() != Some(&neuron_id));
+            }
+
+            // Emit NeuronRemoved so dashboards can update their views promptly.
+            let _ = observe_publisher.send(ObserveEvent::NeuronRemoved { neuron_id });
+
+            // NOTE: we intentionally keep model state for this neuron in the
+            // ModelProvisioningStore for now so that operators can still inspect
+            // recent provisioning history even after shutdown. A future revision
+            // may choose to clear it here and emit a ModelStateChanged with an
+            // empty model list if desired.
         }
     }
     Ok(())

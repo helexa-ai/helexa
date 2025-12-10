@@ -13,6 +13,9 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
+#[cfg(unix)]
+use tokio::signal::unix::{signal, SignalKind};
+
 use crate::runtime::RuntimeManager;
 use model_runtime::{ChatRuntimeHandle, ProcessRuntime};
 use protocol::{ModelConfig, ModelId, NeuronControl, ProvisioningCommand, ProvisioningResponse};
@@ -32,6 +35,12 @@ enum NeuronToCortex {
     ProvisioningResponse {
         neuron_id: String,
         response: ProvisioningResponse,
+    },
+    /// explicit shutdown notification indicating that this neuron is exiting
+    /// gracefully and will no longer send heartbeats or accept work.
+    Shutdown {
+        neuron_id: String,
+        reason: Option<String>,
     },
 }
 
@@ -356,6 +365,45 @@ async fn run_control_plane_client(
                         warn!("failed to serialise heartbeat: {:?}", e);
                     }
                 }
+            }
+        });
+    }
+
+    // spawn shutdown signal handler that will notify cortex before exit
+    {
+        let neuron_id = neuron_id.clone();
+        let shutdown_tx = msg_tx.clone();
+        tokio::spawn(async move {
+            // Prefer SIGTERM on Unix; fall back to Ctrl+C elsewhere.
+            #[cfg(unix)]
+            {
+                let mut sigterm = match signal(SignalKind::terminate()) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("failed to register SIGTERM handler: {:?}", e);
+                        return;
+                    }
+                };
+
+                sigterm.recv().await;
+                info!("neuron received SIGTERM; notifying cortex of shutdown");
+            }
+
+            #[cfg(not(unix))]
+            {
+                if let Err(e) = tokio::signal::ctrl_c().await {
+                    warn!("failed to await ctrl_c for shutdown: {:?}", e);
+                    return;
+                }
+                info!("neuron received ctrl_c; notifying cortex of shutdown");
+            }
+
+            let msg = NeuronToCortex::Shutdown {
+                neuron_id: neuron_id.clone(),
+                reason: Some("process exiting".to_string()),
+            };
+            if let Ok(text) = serde_json::to_string(&msg) {
+                let _ = shutdown_tx.send(Message::Text(text));
             }
         });
     }
