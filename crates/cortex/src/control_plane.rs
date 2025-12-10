@@ -21,7 +21,7 @@ use mesh::MeshHandle;
 use protocol::{ModelId, ProvisioningCommand, ProvisioningResponse};
 
 /// Coarse, derived status for a model on a specific neuron.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelProvisioningStatus {
     pub model_id: ModelId,
     /// Last provisioning command kind issued by cortex for this (neuron, model).

@@ -8,6 +8,8 @@ use crate::observe::ObserveBus;
 use anyhow::Result;
 use tracing::info;
 
+mod cache_state;
+
 pub mod control_plane;
 pub mod gateway;
 pub mod mesh;
@@ -59,6 +61,13 @@ pub async fn run(config: Config) -> Result<()> {
     let observe_bus = ObserveBus::new(1024);
     let observe_publisher = observe_bus.publisher();
 
+    // Best-effort restore of prior cortex state (online neurons + model
+    // provisioning) from the JSON-backed cache store. Failures are logged
+    // but do not prevent startup.
+    if let Err(e) = cache_state::load_cortex_state_from_cache(&registry, &model_store).await {
+        tracing::warn!("failed to load cortex state from cache: {:?}", e);
+    }
+
     if let Some(addr) = config.control_plane_socket {
         let registry_for_control = registry.clone();
         let mesh_for_control = mesh_handle.clone();
@@ -105,6 +114,15 @@ pub async fn run(config: Config) -> Result<()> {
     }
 
     shutdown::wait_for_signal().await;
+
+    // Before shutting down, attempt to persist a best-effort snapshot of
+    // the current cortex state (online neurons + model provisioning) to
+    // the JSON-backed cache store. This is non-fatal; shutdown proceeds
+    // even if the save fails.
+    if let Err(e) = cache_state::save_cortex_state_to_cache(&registry, &model_store).await {
+        tracing::warn!("failed to save cortex state to cache: {:?}", e);
+    }
+
     info!("cortex node shutting down");
 
     Ok(())
