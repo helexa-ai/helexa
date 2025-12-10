@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Shield-1.0
 #![allow(clippy::unused_async)]
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,7 +18,109 @@ use tracing::{info, warn};
 
 use crate::observe::ObserveEvent;
 use mesh::MeshHandle;
-use protocol::ProvisioningCommand;
+use protocol::{ModelId, ProvisioningCommand, ProvisioningResponse};
+
+/// Coarse, derived status for a model on a specific neuron.
+#[derive(Debug, Clone, Serialize)]
+pub struct ModelProvisioningStatus {
+    pub model_id: ModelId,
+    /// Last provisioning command kind issued by cortex for this (neuron, model).
+    /// Examples: "upsert_model_config", "load_model", "unload_model".
+    pub last_cmd_kind: String,
+    /// Most recent provisioning response from the neuron, if any.
+    pub last_response: Option<ProvisioningResponse>,
+    /// Derived status such as "configured", "loaded", "unloaded", "failed".
+    pub effective_status: String,
+}
+
+/// Internal map key: (neuron_id, model_id_string).
+type ModelKey = (String, String);
+
+/// In-memory store tracking per-model provisioning state as seen by cortex.
+/// Intended for observability and dashboard snapshots, not durable persistence.
+#[derive(Debug, Default, Clone)]
+pub struct ModelProvisioningStore {
+    inner: Arc<RwLock<HashMap<ModelKey, ModelProvisioningStatus>>>,
+}
+
+impl ModelProvisioningStore {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Record that cortex has just sent a provisioning command to a neuron.
+    pub async fn record_command(&self, neuron_id: &str, cmd: &ProvisioningCommand) {
+        use ProvisioningCommand::*;
+        let (model_id, kind_str) = match cmd {
+            UpsertModelConfig(cfg) => (cfg.id.clone(), "upsert_model_config".to_string()),
+            LoadModel { model_id } => (model_id.clone(), "load_model".to_string()),
+            UnloadModel { model_id } => (model_id.clone(), "unload_model".to_string()),
+        };
+
+        let key: ModelKey = (neuron_id.to_string(), model_id.0.clone());
+        let mut map = self.inner.write().await;
+        let entry = map.entry(key).or_insert_with(|| ModelProvisioningStatus {
+            model_id: model_id.clone(),
+            last_cmd_kind: kind_str.clone(),
+            last_response: None,
+            effective_status: "unknown".to_string(),
+        });
+
+        entry.last_cmd_kind = kind_str.clone();
+        // Update effective_status heuristically when a command is sent.
+        entry.effective_status = match kind_str.as_str() {
+            "upsert_model_config" => "configured".to_string(),
+            "load_model" => "loading".to_string(),
+            "unload_model" => "unloading".to_string(),
+            _ => entry.effective_status.clone(),
+        };
+    }
+
+    /// Record a provisioning response from a neuron and update effective status.
+    pub async fn record_response(&self, neuron_id: &str, response: &ProvisioningResponse) {
+        let (model_id, is_ok) = match response {
+            ProvisioningResponse::Ok { model_id, .. } => (model_id.clone(), true),
+            ProvisioningResponse::Error { model_id, .. } => (model_id.clone(), false),
+        };
+
+        let key: ModelKey = (neuron_id.to_string(), model_id.0.clone());
+        let mut map = self.inner.write().await;
+        let entry = map.entry(key).or_insert_with(|| ModelProvisioningStatus {
+            model_id: model_id.clone(),
+            last_cmd_kind: "unknown".to_string(),
+            last_response: None,
+            effective_status: "unknown".to_string(),
+        });
+
+        entry.last_response = Some(response.clone());
+        entry.effective_status = if is_ok {
+            match entry.last_cmd_kind.as_str() {
+                "upsert_model_config" => "configured".to_string(),
+                "load_model" => "loaded".to_string(),
+                "unload_model" => "unloaded".to_string(),
+                _ => "ok".to_string(),
+            }
+        } else {
+            "failed".to_string()
+        };
+    }
+
+    /// Get a snapshot of all model statuses for a given neuron.
+    pub async fn list_for_neuron(&self, neuron_id: &str) -> Vec<ModelProvisioningStatus> {
+        let map = self.inner.read().await;
+        map.iter()
+            .filter_map(|((nid, _), v)| {
+                if nid == neuron_id {
+                    Some(v.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
 
 /// Describes a neuron as seen from cortex over the control-plane websocket.
 ///
