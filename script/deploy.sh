@@ -45,6 +45,10 @@ _deploy_file() {
     local sync_type
     local sync_target
     local deploy_command
+    local firewall_service_name
+    local firewall_ports
+    local firewall_ports_csv
+    local firewall_script
 
     if [[ $(file --brief ${sync_source}) == *"ELF"* ]]; then
         file_type="binary"
@@ -62,6 +66,15 @@ _deploy_file() {
         HELEXA_NEURON_API_PORT=${target_api_port} \
         HELEXA_CORTEX_SPEC_PATH=${cortex_spec_path} \
         envsubst < ${sync_source} > ${configured_sync_source}
+
+        firewall_service_name=$(basename ${sync_source} .service)
+        if [[ "${firewall_service_name}" == "helexa-cortex" ]]; then
+            firewall_ports="${target_api_port} ${cortex_ws_port} ${cortex_dash_ws_port}"
+        elif [[ "${firewall_service_name}" == "helexa-neuron" ]]; then
+            firewall_ports="${target_api_port}"
+        fi
+        firewall_ports_csv=${firewall_ports// /,}
+        firewall_script="if command -v firewall-cmd &> /dev/null && systemctl is-active --quiet firewalld; then if ! sudo firewall-cmd --info-service=${firewall_service_name} &> /dev/null; then sudo firewall-cmd --permanent --new-service=${firewall_service_name}; for port in ${firewall_ports}; do sudo firewall-cmd --permanent --service=${firewall_service_name} --add-port=\${port}/tcp &> /dev/null; done; fi; if [ \"\$(sudo firewall-cmd --query-service=${firewall_service_name})\" != \"yes\" ]; then sudo firewall-cmd --zone=\$(sudo firewall-cmd --get-default-zone) --add-service ${firewall_service_name} --permanent &> /dev/null; sudo firewall-cmd --reload &> /dev/null; fi; elif command -v ufw &> /dev/null && systemctl is-active --quiet ufw; then printf \"[${firewall_service_name}]\ntitle=${firewall_service_name}\ndescription=${firewall_service_name} service\nports=${firewall_ports_csv}/tcp\n\" | sudo tee /etc/ufw/applications.d/${firewall_service_name} > /dev/null; sudo ufw allow ${firewall_service_name}; fi"
     elif [[ "${sync_source}" == *.json ]]; then
         file_type="spec"
     else
@@ -76,7 +89,7 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_unit_path}/$(basename ${sync_source})
-            deploy_command="(id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username}) && sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target} && sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl restart $(basename ${sync_source})"
+            deploy_command="(id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username}) && sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target} && sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl restart $(basename ${sync_source}) && ${firewall_script}"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_spec_path}/$(basename ${sync_source})
@@ -90,7 +103,7 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_unit_path}/$(basename ${sync_source})
-            deploy_command="ssh ${target_ssh_username}@${target_ip} '((systemctl is-active --quiet $(basename ${sync_source}) && sudo systemctl stop $(basename ${sync_source})) || true) && (id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username})' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target} && ssh ${target_ssh_username}@${target_ip} 'sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl start $(basename ${sync_source})'"
+            deploy_command="ssh ${target_ssh_username}@${target_ip} '((systemctl is-active --quiet $(basename ${sync_source}) && sudo systemctl stop $(basename ${sync_source})) || true) && (id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username})' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target} && ssh ${target_ssh_username}@${target_ip} 'sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl start $(basename ${sync_source}) && ${firewall_script}'"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_spec_path}/$(basename ${sync_source})
