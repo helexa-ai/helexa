@@ -96,6 +96,8 @@ enum CortexToNeuron {
 #[derive(Debug, Serialize)]
 struct NeuronDescriptor {
     node_id: Option<String>,
+    hostname: String,
+    domain: Option<String>,
     label: Option<String>,
     metadata: serde_json::Value,
 }
@@ -370,8 +372,22 @@ async fn run_control_plane_client(
     });
 
     // send initial registration
+    let hostname = std::env::var("HOSTNAME")
+        .or_else(|_| std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string()))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let domain = std::fs::read_to_string("/etc/resolv.conf")
+        .ok()
+        .and_then(|c| {
+            c.lines()
+                .find(|l| l.starts_with("search ") || l.starts_with("domain "))
+                .and_then(|l| l.split_whitespace().nth(1).map(String::from))
+        });
+
     let descriptor = NeuronDescriptor {
         node_id: control.runtime.node_id().clone(),
+        hostname,
+        domain,
         label: control.runtime.node_id().clone(),
         metadata: serde_json::json!({
             "backend": "neuron",

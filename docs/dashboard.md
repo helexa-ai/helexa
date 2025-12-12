@@ -158,6 +158,8 @@ export type ModelProvisioningStatus = {
 
 export type NeuronDescriptor = {
   node_id: string | null;  // machine-id or CLI --node-id
+  hostname: string;
+  domain: string | null;
   label: string | null;    // human-friendly label; currently often same as node_id
   metadata: any;           // backend-specific and host metadata (os/arch/gpu/etc)
 };
@@ -286,6 +288,8 @@ Example:
     "type": "neuron_registered",
     "neuron": {
       "node_id": "785b03f697304c88baf539e50e15e44a",
+      "hostname": "worker-01",
+      "domain": "cluster.local",
       "label": "785b03f697304c88baf539e50e15e44a",
       "metadata": {
         "backend": "neuron"

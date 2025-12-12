@@ -150,6 +150,8 @@ impl ModelProvisioningStore {
 pub struct NeuronDescriptor {
     /// Opaque id the neuron reports for itself (e.g. machine-id or CLI node-id).
     pub node_id: Option<String>,
+    pub hostname: String,
+    pub domain: Option<String>,
     /// Optional human-readable label or hostname.
     pub label: Option<String>,
     /// Free-form metadata provided by neuron (os, arch, gpu summary, etc).
