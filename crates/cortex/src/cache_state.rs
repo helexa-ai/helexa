@@ -92,7 +92,7 @@ impl CachedCortexState {
 /// - Only neurons that:
 ///   - have a stable `node_id`, and
 ///   - have a reasonably recent heartbeat
-///   are persisted.
+///     are persisted.
 /// - Neurons that have never heartbeated, or whose last heartbeat is older
 ///   than `persist_threshold`, are treated as offline and omitted.
 /// - Model state is persisted only for neurons that are included in the
