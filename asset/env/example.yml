@@ -1,0 +1,86 @@
+---
+comments:
+  - >
+    each orchestration deployment requires a single cortex node.
+    the cortex is responsible for coordinating neuron(s) and neuron configurations according to external demands.
+    the cortex proxies external api requests to local neuron(s) or to other cortex peers if local capacity is unavailable.
+  - >
+    each orchestration deployment may include none, one or many neuron node(s).
+    a neuron runs large language and diffusion models on its cpu(s) and/or gpu(s).
+    if no neurons are available, cortex will forward incoming requests to other cortex peers.
+  - >
+    this file is used to configure one or more deployments of a complete helexa cortex and neuron(s) environment.
+    it is assumed that such a deployment is run from an operator's workstation.
+    it is assumed that the operator has ssh (key-based, not password-based) access to each cortex and neuron node via the superuser account for each system.
+    key-based ssh access is enabled by adding the operator's ssh public key (often found in ~/.ssh/id_rsa.pub or ~/.ssh/id_ed25519.pub),
+    to the ~/.ssh/authorized_keys file (of the superuser account) on each cortex and neuron node.
+    passwordless sudo can be enabled by creating a file named /etc/sudoers.d/<superuser-username> with the following content:
+    <superuser-username> ALL=(ALL) NOPASSWD:ALL
+    to create such a file for a user named "ubuntu", run the following command (on each system):
+    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/ubuntu
+  - >
+    at a minimum, an operator must replace the name, hostname, ip, ssh-port and superuser-username for each cortex and neuron node with values which are valid in the operator's environment.
+    it is recommended that the username and home directory of the helexa system user be left as "helexa" and "/var/lib/helexa",
+    unless the operator will also manage updates to the systemd unit files for the respective services.
+    api and ws port numbers can be set at the operator's discretion.
+    the default values will allow for cortex and one neuron to share the same host if that is the operator's preference.
+orchestrations:
+  - name: my-awesome-homelab
+    cortex:
+      # a friendly name for the cortex node, displayed in the dashboard.
+      name: mr-bossy-boots
+
+      # the hostname of the cortex node. do not include the domain name.
+      hostname: sharon
+
+      # the ip address of the cortex node on the local network.
+      ip: 192.168.1.101
+      ssh:
+        # the port number for the ssh connection to the cortex node.
+        port: 22
+      superuser:
+        # the username for the superuser account on the cortex node. this account requires passwordless sudo access. it is only used to install and update helexa.
+        username: ubuntu
+      helexa:
+        # the username for the helexa system user account on the cortex node. this account is used to run the systemd helexa-cortex service.
+        username: helexa
+        # the home directory for the helexa system user account on the cortex node.
+        home: /var/lib/helexa
+      ws:
+        # the port number that the cortex node listens on for websocket connections from neurons. this port must be open on the host firewall but not on the router firewall.
+        port: 9301
+    neurons:
+      - # a friendly name for the neuron node, displayed in the dashboard.
+        name: my-one-gpu-rig
+
+        # the hostname of the neuron node. do not include the domain name.
+        hostname: bigbob
+
+        # the ip address of the neuron node on the local network.
+        ip: 192.168.1.111
+        ssh:
+          # the port number for the ssh connection to the neuron node.
+          port: 22
+        superuser:
+          # the username for the superuser account on the neuron node. this account requires passwordless sudo access. it is only used to install and update helexa.
+          username: ubuntu
+        helexa:
+          # the username for the helexa system user account on the neuron node. this account is used to run the systemd helexa-neuron service.
+          username: helexa
+          # the home directory for the helexa system user account on the neuron node.
+          home: /var/lib/helexa
+        api:
+          # the port number for the openai api server on the neuron node.
+          port: 9302
+      - name: my-six-gpu-rig
+        hostname: tinytim
+        ip: 192.168.1.112
+        ssh:
+          port: 22
+        superuser:
+          username: ubuntu
+        helexa:
+          username: helexa
+          home: /var/lib/helexa
+        api:
+          port: 9302

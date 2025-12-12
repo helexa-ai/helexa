@@ -1,0 +1,16 @@
+[Unit]
+Description=Helexa Neuron Service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/lib/helexa
+EnvironmentFile=neuron.env
+ExecStart=/usr/local/bin/helexa neuron \
+    --api-socket 0.0.0.0:${HELEXA_NEURON_API_PORT} \
+    --cortex-control-endpoint ws://${HELEXA_CORTEX_HOST}:${HELEXA_CORTEX_WS_PORT}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -3,3 +3,5 @@
 **/*.rs.bk
 Cargo.lock
 legacy/
+asset/env/.*.env
+asset/env/.*.yml
