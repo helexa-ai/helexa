@@ -6,7 +6,7 @@ After=network.target
 User=${HELEXA_NEURON_USERNAME}
 Group=${HELEXA_NEURON_USERNAME}
 Type=simple
-WorkingDirectory=/var/lib/helexa
+WorkingDirectory=${HELEXA_NEURON_HOME}
 EnvironmentFile=neuron.env
 ExecStart=/usr/local/bin/helexa neuron \
     --api-socket 0.0.0.0:${HELEXA_NEURON_API_PORT} \

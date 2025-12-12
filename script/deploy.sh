@@ -34,10 +34,11 @@ _deploy_file() {
     local target_ssh_port=${6}
     local target_api_port=${7}
     local target_service_username=${8}
-    local cortex_ip=${9}
-    local cortex_ws_port=${10}
-    local cortex_dash_ws_port=${11}
-    local cortex_spec_path=${12}
+    local target_service_home=${9}
+    local cortex_ip=${10}
+    local cortex_ws_port=${11}
+    local cortex_dash_ws_port=${12}
+    local cortex_spec_path=${13}
 
     if [[ $(file --brief ${sync_source}) == *"ELF"* ]]; then
         file_type="binary"
@@ -45,7 +46,9 @@ _deploy_file() {
         file_type="unit"
         configured_sync_source=${local_staging_path}/${target_name}-$(basename ${sync_source})
         HELEXA_CORTEX_USERNAME=${target_service_username} \
+        HELEXA_CORTEX_HOME=${target_service_home} \
         HELEXA_NEURON_USERNAME=${target_service_username} \
+        HELEXA_NEURON_HOME=${target_service_home} \
         HELEXA_CORTEX_HOST=${cortex_ip} \
         HELEXA_CORTEX_DASH_WS_PORT=${cortex_dash_ws_port} \
         HELEXA_CORTEX_WS_PORT=${cortex_ws_port} \
@@ -67,7 +70,7 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_unit_path}/$(basename ${sync_source})
-            deploy_command="sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            deploy_command="(id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username}) && sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target}"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_spec_path}/$(basename ${sync_source})
@@ -81,7 +84,7 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_unit_path}/$(basename ${sync_source})
-            deploy_command="rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            deploy_command="ssh ${target_ssh_username}@${target_ip} '((systemctl is-active --quiet $(basename ${sync_source}) && sudo systemctl stop $(basename ${sync_source})) || true) && (id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username})' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target}"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_spec_path}/$(basename ${sync_source})
@@ -141,6 +144,7 @@ cortex_ssh_username=$(_decode_property ${base64_cortex} .superuser.username)
 cortex_ssh_port=$(_decode_property ${base64_cortex} .ssh.port)
 cortex_api_port=$(_decode_property ${base64_cortex} .api.port)
 cortex_service_username=$(_decode_property ${base64_cortex} .helexa.username)
+cortex_service_home=$(_decode_property ${base64_cortex} .helexa.home)
 echo "  cortex: ${cortex_name} (${cortex_ip})"
 for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/systemd/helexa-cortex.service ${repo_path}/asset/spec/default.json; do
     _deploy_file \
@@ -152,6 +156,7 @@ for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/systemd
         ${cortex_ssh_port} \
         ${cortex_api_port} \
         ${cortex_service_username} \
+        ${cortex_service_home} \
         ${cortex_ip} \
         ${cortex_ws_port} \
         ${cortex_dash_ws_port} \
@@ -167,6 +172,7 @@ for base64_neuron in ${base64_neurons[@]}; do
     neuron_ssh_port=$(_decode_property ${base64_neuron} .ssh.port)
     neuron_api_port=$(_decode_property ${base64_neuron} .api.port)
     neuron_service_username=$(_decode_property ${base64_neuron} .helexa.username)
+    neuron_service_home=$(_decode_property ${base64_neuron} .helexa.home)
     echo "  neuron: ${neuron_name} (${neuron_ip})"
     for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/systemd/helexa-neuron.service; do
         _deploy_file \
@@ -178,6 +184,7 @@ for base64_neuron in ${base64_neurons[@]}; do
             ${neuron_ssh_port} \
             ${neuron_api_port} \
             ${neuron_service_username} \
+            ${neuron_service_home} \
             ${cortex_ip} \
             ${cortex_ws_port} \
             ${cortex_dash_ws_port}
