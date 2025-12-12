@@ -60,35 +60,29 @@ for base64_neuron in ${base64_neurons[@]}; do
     echo "  neuron: ${neuron_name} (${neuron_ip})"
     for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/systemd/helexa-neuron.service; do
         if [ "${neuron_hostname}" = "$(hostname -s)" ]; then
-            case ${sync_source} in
-                ${repo_path}/target/release/helexa)
-                    sync_type="local binary"
-                    sync_target=${target_binary_path}/helexa
-                    deploy_command="sudo install --owner root --group root --mode ${target_binary_perm} ${sync_source} ${sync_target}"
-                    ;;
-                ${repo_path}/asset/systemd/helexa-neuron.service)
-                    sync_type="local unit"
-                    sync_target=${target_unit_path}/helexa-neuron.service
-                    configured_sync_source=/tmp/${neuron_name}-helexa-neuron.service
-                    HELEXA_CORTEX_HOST=${cortex_ip} HELEXA_CORTEX_WS_PORT=${cortex_ws_port} HELEXA_NEURON_API_PORT=${neuron_api_port} envsubst < ${sync_source} > ${configured_sync_source}
-                    deploy_command="sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target}"
-                    ;;
-            esac
+            if [[ $(file --brief ${sync_source}) == *"ELF"* ]]; then
+                sync_type="local binary"
+                sync_target=${target_binary_path}/$(basename ${sync_source})
+                deploy_command="sudo install --owner root --group root --mode ${target_binary_perm} ${sync_source} ${sync_target}"
+            elif [[ "${sync_source}" == *.service ]]; then
+                sync_type="local unit"
+                sync_target=${target_unit_path}/$(basename ${sync_source})
+                configured_sync_source=/tmp/${neuron_name}-$(basename ${sync_source})
+                HELEXA_CORTEX_HOST=${cortex_ip} HELEXA_CORTEX_WS_PORT=${cortex_ws_port} HELEXA_NEURON_API_PORT=${neuron_api_port} envsubst < ${sync_source} > ${configured_sync_source}
+                deploy_command="sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            fi
         else
-            case ${sync_source} in
-                ${repo_path}/target/release/helexa)
-                    sync_type="remote binary"
-                    sync_target=${neuron_ssh_username}@${neuron_ip}:${target_binary_path}/helexa
-                    deploy_command="rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${neuron_ssh_port}' --chown root:root --chmod ${target_binary_perm} ${sync_source} ${sync_target}"
-                    ;;
-                ${repo_path}/asset/systemd/helexa-neuron.service)
-                    sync_type="remote unit"
-                    sync_target=${neuron_ssh_username}@${neuron_ip}:${target_unit_path}/helexa-neuron.service
-                    configured_sync_source=/tmp/${neuron_name}-helexa-neuron.service
-                    HELEXA_CORTEX_HOST=${cortex_ip} HELEXA_CORTEX_WS_PORT=${cortex_ws_port} envsubst < ${sync_source} > ${configured_sync_source}
-                    deploy_command="rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${neuron_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target}"
-                    ;;
-            esac
+            if [[ $(file --brief ${sync_source}) == *"ELF"* ]]; then
+                sync_type="remote binary"
+                sync_target=${neuron_ssh_username}@${neuron_ip}:${target_binary_path}/$(basename ${sync_source})
+                deploy_command="rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${neuron_ssh_port}' --chown root:root --chmod ${target_binary_perm} ${sync_source} ${sync_target}"
+            elif [[ "${sync_source}" == *.service ]]; then
+                sync_type="remote unit"
+                sync_target=${neuron_ssh_username}@${neuron_ip}:${target_unit_path}/$(basename ${sync_source})
+                configured_sync_source=/tmp/${neuron_name}-$(basename ${sync_source})
+                HELEXA_CORTEX_HOST=${cortex_ip} HELEXA_CORTEX_WS_PORT=${cortex_ws_port} envsubst < ${sync_source} > ${configured_sync_source}
+                deploy_command="rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${neuron_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            fi
         fi
         if eval ${deploy_command}; then
             echo "    ${sync_type} install success"
