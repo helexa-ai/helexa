@@ -1,0 +1,20 @@
+[Unit]
+Description=Helexa Cortex Service
+After=network.target
+
+[Service]
+User=${HELEXA_CORTEX_USERNAME}
+Group=${HELEXA_CORTEX_USERNAME}
+Type=simple
+WorkingDirectory=/var/lib/helexa
+EnvironmentFile=cortex.env
+ExecStart=/usr/local/bin/helexa cortex \
+    --dashboard-socket 0.0.0.0:${HELEXA_CORTEX_DASH_WS_PORT} \
+    --control-plane-socket 0.0.0.0:${HELEXA_CORTEX_WS_PORT} \
+    --gateway-socket 0.0.0.0:${HELEXA_CORTEX_API_PORT} \
+    --spec ${HELEXA_CORTEX_SPEC_PATH}
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

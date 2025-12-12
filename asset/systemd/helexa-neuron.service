@@ -3,6 +3,8 @@ Description=Helexa Neuron Service
 After=network.target
 
 [Service]
+User=${HELEXA_NEURON_USERNAME}
+Group=${HELEXA_NEURON_USERNAME}
 Type=simple
 WorkingDirectory=/var/lib/helexa
 EnvironmentFile=neuron.env
