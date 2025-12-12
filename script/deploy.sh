@@ -7,6 +7,7 @@ target_unit_path=/etc/systemd/system
 target_unit_perm=644
 target_spec_path=/usr/local/share/helexa
 target_spec_perm=755
+target_spec_file_perm=644
 local_staging_path=/tmp/helexa
 target_orchestration=${1}
 
@@ -39,6 +40,11 @@ _deploy_file() {
     local cortex_ws_port=${11}
     local cortex_dash_ws_port=${12}
     local cortex_spec_path=${13}
+    local file_type
+    local configured_sync_source
+    local sync_type
+    local sync_target
+    local deploy_command
 
     if [[ $(file --brief ${sync_source}) == *"ELF"* ]]; then
         file_type="binary"
@@ -70,11 +76,11 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_unit_path}/$(basename ${sync_source})
-            deploy_command="(id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username}) && sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            deploy_command="(id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username}) && sudo install --owner root --group root --mode ${target_unit_perm} ${configured_sync_source} ${sync_target} && sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl restart $(basename ${sync_source})"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="local ${file_type}"
             sync_target=${target_spec_path}/$(basename ${sync_source})
-            deploy_command="sudo mkdir -p --mode ${target_spec_perm} ${target_spec_path} && sudo install --owner root --group root --mode ${target_spec_perm} ${sync_source} ${sync_target}"
+            deploy_command="sudo mkdir -p --mode ${target_spec_perm} ${target_spec_path} && sudo install --owner root --group root --mode ${target_spec_file_perm} ${sync_source} ${sync_target}"
         fi
     else
         if [ "${file_type}" = "binary" ]; then
@@ -84,11 +90,11 @@ _deploy_file() {
         elif [ "${file_type}" = "unit" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_unit_path}/$(basename ${sync_source})
-            deploy_command="ssh ${target_ssh_username}@${target_ip} '((systemctl is-active --quiet $(basename ${sync_source}) && sudo systemctl stop $(basename ${sync_source})) || true) && (id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username})' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target}"
+            deploy_command="ssh ${target_ssh_username}@${target_ip} '((systemctl is-active --quiet $(basename ${sync_source}) && sudo systemctl stop $(basename ${sync_source})) || true) && (id ${target_service_username} &>/dev/null || sudo useradd --system --create-home --home ${target_service_home} ${target_service_username})' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_unit_perm} ${configured_sync_source} ${sync_target} && ssh ${target_ssh_username}@${target_ip} 'sudo systemctl daemon-reload && sudo systemctl enable $(basename ${sync_source}) && sudo systemctl start $(basename ${sync_source})'"
         elif [ "${file_type}" = "spec" ]; then
             sync_type="remote ${file_type}"
             sync_target=${target_ssh_username}@${target_ip}:${target_spec_path}/$(basename ${sync_source})
-            deploy_command="ssh ${target_ssh_username}@${target_ip} 'sudo mkdir -p --mode ${target_spec_perm} ${target_spec_path}' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_spec_perm} ${sync_source} ${sync_target}"
+            deploy_command="ssh ${target_ssh_username}@${target_ip} 'sudo mkdir -p --mode ${target_spec_perm} ${target_spec_path}' && rsync --archive --compress --rsync-path 'sudo rsync' --rsh 'ssh -p ${target_ssh_port}' --chown root:root --chmod ${target_spec_file_perm} ${sync_source} ${sync_target}"
         fi
     fi
     if eval ${deploy_command}; then
@@ -146,7 +152,7 @@ cortex_api_port=$(_decode_property ${base64_cortex} .api.port)
 cortex_service_username=$(_decode_property ${base64_cortex} .helexa.username)
 cortex_service_home=$(_decode_property ${base64_cortex} .helexa.home)
 echo "  cortex: ${cortex_name} (${cortex_ip})"
-for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/systemd/helexa-cortex.service ${repo_path}/asset/spec/default.json; do
+for sync_source in ${repo_path}/target/release/helexa ${repo_path}/asset/spec/default.json ${repo_path}/asset/systemd/helexa-cortex.service; do
     _deploy_file \
         ${sync_source} \
         ${cortex_name} \
@@ -187,6 +193,7 @@ for base64_neuron in ${base64_neurons[@]}; do
             ${neuron_service_home} \
             ${cortex_ip} \
             ${cortex_ws_port} \
-            ${cortex_dash_ws_port}
+            ${cortex_dash_ws_port} \
+            ""
     done
 done
