@@ -46,9 +46,19 @@ orchestrations:
         username: helexa
         # the home directory for the helexa system user account on the cortex node.
         home: /var/lib/helexa
+      api:
+        # the port number that the cortex node listens on for http api requests.
+        port: 9300
       ws:
         # the port number that the cortex node listens on for websocket connections from neurons. this port must be open on the host firewall but not on the router firewall.
         port: 9301
+      dash:
+        http:
+          # the port number that the cortex node serves the dashboard web interface on.
+          port: 9303
+        ws:
+          # the port number that the cortex node listens on for dashboard websocket connections.
+          port: 9304
     neurons:
       - # a friendly name for the neuron node, displayed in the dashboard.
         name: my-one-gpu-rig
