@@ -2,6 +2,7 @@
 
 use crate::proxy;
 use crate::router;
+use crate::router::RouteDecision;
 use crate::state::CortexState;
 use axum::Router;
 use axum::body::Bytes;
@@ -13,6 +14,7 @@ use chrono::Utc;
 use cortex_core::node::{CortexModelEntry, ModelLocation};
 use serde_json::{Value, json};
 use std::sync::Arc;
+use std::time::Instant;
 
 pub fn api_routes() -> Router<Arc<CortexState>> {
     Router::new()
@@ -42,18 +44,15 @@ async fn chat_completions(
 
     touch_model(&fleet, &route.node_name, &model_id).await;
 
-    match proxy::forward_request(
-        &fleet.http_client,
+    proxy_with_metrics(
+        &fleet,
         &route,
         "/v1/chat/completions",
         headers,
         body,
+        &model_id,
     )
     .await
-    {
-        Ok(resp) => resp,
-        Err(e) => e.into_response(),
-    }
 }
 
 /// `POST /v1/completions` — proxy completions endpoint.
@@ -74,11 +73,7 @@ async fn completions(
 
     touch_model(&fleet, &route.node_name, &model_id).await;
 
-    match proxy::forward_request(&fleet.http_client, &route, "/v1/completions", headers, body).await
-    {
-        Ok(resp) => resp,
-        Err(e) => e.into_response(),
-    }
+    proxy_with_metrics(&fleet, &route, "/v1/completions", headers, body, &model_id).await
 }
 
 /// `POST /v1/messages` — accept Anthropic format, translate, proxy, translate back.
@@ -110,21 +105,36 @@ async fn anthropic_messages(
 
     touch_model(&fleet, &route.node_name, &model_id).await;
 
+    let labels = [
+        ("model", model_id.clone()),
+        ("node", route.node_name.clone()),
+    ];
+    metrics::counter!("cortex_requests_total", &labels).increment(1);
+    if route.cold_start {
+        metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
+    }
+    let start = Instant::now();
+
     if is_streaming {
         // TODO: streaming Anthropic translation requires converting SSE format.
         // For now, proxy the OpenAI SSE stream directly (clients that can handle
         // OpenAI SSE will work; full Anthropic SSE translation is a follow-up).
-        match proxy::forward_request(
+        let result = proxy::forward_request(
             &fleet.http_client,
             &route,
             "/v1/chat/completions",
             headers,
             openai_body,
         )
-        .await
-        {
+        .await;
+        metrics::histogram!("cortex_request_duration_seconds", &labels)
+            .record(start.elapsed().as_secs_f64());
+        match result {
             Ok(resp) => resp,
-            Err(e) => e.into_response(),
+            Err(e) => {
+                metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+                e.into_response()
+            }
         }
     } else {
         // Non-streaming: proxy, buffer full response, translate back to Anthropic.
@@ -138,10 +148,14 @@ async fn anthropic_messages(
 
         let upstream_resp = match upstream_resp {
             Ok(r) => r,
-            Err(e) => return error_response(502, &format!("upstream request failed: {e}")),
+            Err(e) => {
+                metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+                return error_response(502, &format!("upstream request failed: {e}"));
+            }
         };
 
         if !upstream_resp.status().is_success() {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
             let status = upstream_resp.status().as_u16();
             let body = upstream_resp.text().await.unwrap_or_default();
             return error_response(status, &format!("upstream error: {body}"));
@@ -150,6 +164,7 @@ async fn anthropic_messages(
         let body_bytes = match upstream_resp.bytes().await {
             Ok(b) => b,
             Err(e) => {
+                metrics::counter!("cortex_request_errors_total", &labels).increment(1);
                 return error_response(502, &format!("failed to read upstream response: {e}"));
             }
         };
@@ -158,10 +173,13 @@ async fn anthropic_messages(
             match serde_json::from_slice(&body_bytes) {
                 Ok(r) => r,
                 Err(e) => {
+                    metrics::counter!("cortex_request_errors_total", &labels).increment(1);
                     return error_response(502, &format!("failed to parse upstream response: {e}"));
                 }
             };
 
+        metrics::histogram!("cortex_request_duration_seconds", &labels)
+            .record(start.elapsed().as_secs_f64());
         let anthropic_resp = cortex_core::translate::openai_to_anthropic(openai_resp);
         Json(json!(anthropic_resp)).into_response()
     }
@@ -215,6 +233,42 @@ async fn health(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+/// Proxy a request with metrics instrumentation.
+async fn proxy_with_metrics(
+    fleet: &CortexState,
+    route: &RouteDecision,
+    path: &str,
+    headers: HeaderMap,
+    body: Bytes,
+    model_id: &str,
+) -> Response {
+    let labels = [
+        ("model", model_id.to_string()),
+        ("node", route.node_name.clone()),
+    ];
+
+    metrics::counter!("cortex_requests_total", &labels).increment(1);
+    if route.cold_start {
+        metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
+    }
+
+    let start = Instant::now();
+    let result = proxy::forward_request(&fleet.http_client, route, path, headers, body).await;
+    let duration = start.elapsed();
+
+    match result {
+        Ok(resp) => {
+            metrics::histogram!("cortex_request_duration_seconds", &labels)
+                .record(duration.as_secs_f64());
+            resp
+        }
+        Err(e) => {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            e.into_response()
+        }
+    }
+}
 
 /// Update `last_accessed` timestamp for a model on a node (drives LRU eviction).
 async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {

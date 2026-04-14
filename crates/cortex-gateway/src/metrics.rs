@@ -18,10 +18,21 @@ pub fn install(listen: &str) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to install Prometheus exporter: {e}"))?;
 
     tracing::info!("prometheus metrics exporter on {addr}");
+    describe_metrics();
+    Ok(())
+}
 
-    // Register histograms and counters used by the proxy layer.
-    // The `metrics` crate lazily creates metrics on first use, but
-    // describing them up front gives Prometheus proper HELP/TYPE lines.
+/// Install a recorder for testing (no HTTP listener). Returns a handle
+/// that can render the current metrics as Prometheus text.
+pub fn install_test_recorder() -> Result<metrics_exporter_prometheus::PrometheusHandle> {
+    let handle = PrometheusBuilder::new()
+        .install_recorder()
+        .map_err(|e| anyhow::anyhow!("failed to install test recorder: {e}"))?;
+    describe_metrics();
+    Ok(handle)
+}
+
+fn describe_metrics() {
     metrics::describe_histogram!(
         "cortex_request_duration_seconds",
         "Total request latency in seconds"
@@ -44,6 +55,4 @@ pub fn install(listen: &str) -> Result<()> {
         "cortex_cold_starts_total",
         "Total number of cold-start model loads"
     );
-
-    Ok(())
 }

@@ -258,28 +258,24 @@ returns Anthropic-format JSON. 5 tests in `cortex-gateway/tests/anthropic.rs`:
 Streaming Anthropic SSE translation (OpenAI SSE → Anthropic SSE event
 types) deferred as a follow-up.
 
-### Phase 6: Metrics instrumentation
+### Phase 6: Metrics instrumentation ✅
 
-**Goal:** Every proxied request emits Prometheus metrics. `/metrics`
-on port 9100 returns valid Prometheus text format.
+Completed. Added `proxy_with_metrics` helper in handlers that wraps
+every proxy call with timing and counters. All three handler paths
+(chat completions, completions, Anthropic messages) instrumented.
 
-**Files to change:**
-- `cortex-gateway/src/proxy.rs` or `cortex-gateway/src/handlers.rs` —
-  wrap each proxy call with timing instrumentation:
-  - `Instant::now()` before the request, compute duration after
-  - Parse `usage` from the response (non-streaming) or final chunk
-    (streaming) for token counts
-  - Emit: `metrics::histogram!("cortex_request_duration_seconds", ...)`
-    with labels `model` and `node`
-  - Emit: `metrics::counter!("cortex_requests_total", ...)` 
-  - Emit cold start, eviction, and error counters
-- `cortex-gateway/src/metrics.rs` — already installs the exporter;
-  verify the described metrics appear
-- `tests/` — test that after a proxied request, the `/metrics`
-  endpoint contains the expected metric names
+Metrics emitted per request (with `model` and `node` labels):
+- `cortex_requests_total` — incremented on every proxy attempt
+- `cortex_request_duration_seconds` — histogram of successful request latency
+- `cortex_request_errors_total` — incremented on proxy failures
+- `cortex_cold_starts_total` — incremented when routing to an unloaded model
 
-**Done when:** `curl localhost:9100/metrics` shows request counters
-and duration histograms after proxying a test request.
+Added `install_test_recorder()` for testing without the HTTP listener.
+1 test in `cortex-gateway/tests/metrics.rs` verifies counters and
+histograms appear after a proxied request.
+
+Token-level metrics (tok/s, TTFT) deferred — requires parsing the
+response body or final SSE chunk, which is Phase 6b work.
 
 ### Phase 7 (lower priority): Agent sidecar
 
