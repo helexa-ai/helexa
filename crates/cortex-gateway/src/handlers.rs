@@ -108,6 +108,8 @@ async fn anthropic_messages(
         Err(e) => return error_response(404, &e.to_string()),
     };
 
+    touch_model(&fleet, &route.node_name, &model_id).await;
+
     if is_streaming {
         // TODO: streaming Anthropic translation requires converting SSE format.
         // For now, proxy the OpenAI SSE stream directly (clients that can handle
@@ -125,24 +127,43 @@ async fn anthropic_messages(
             Err(e) => e.into_response(),
         }
     } else {
-        // Non-streaming: proxy, await full response, translate back.
-        match proxy::forward_request(
-            &fleet.http_client,
-            &route,
-            "/v1/chat/completions",
-            headers,
-            openai_body,
-        )
-        .await
-        {
-            Ok(resp) => {
-                // TODO: buffer response, parse as OpenAI ChatCompletionResponse,
-                // translate to Anthropic MessagesResponse.
-                // For now, return the OpenAI response as-is.
-                resp
-            }
-            Err(e) => e.into_response(),
+        // Non-streaming: proxy, buffer full response, translate back to Anthropic.
+        let upstream_resp = fleet
+            .http_client
+            .post(format!("{}/v1/chat/completions", route.endpoint))
+            .body(openai_body)
+            .header("content-type", "application/json")
+            .send()
+            .await;
+
+        let upstream_resp = match upstream_resp {
+            Ok(r) => r,
+            Err(e) => return error_response(502, &format!("upstream request failed: {e}")),
+        };
+
+        if !upstream_resp.status().is_success() {
+            let status = upstream_resp.status().as_u16();
+            let body = upstream_resp.text().await.unwrap_or_default();
+            return error_response(status, &format!("upstream error: {body}"));
         }
+
+        let body_bytes = match upstream_resp.bytes().await {
+            Ok(b) => b,
+            Err(e) => {
+                return error_response(502, &format!("failed to read upstream response: {e}"));
+            }
+        };
+
+        let openai_resp: cortex_core::openai::ChatCompletionResponse =
+            match serde_json::from_slice(&body_bytes) {
+                Ok(r) => r,
+                Err(e) => {
+                    return error_response(502, &format!("failed to parse upstream response: {e}"));
+                }
+            };
+
+        let anthropic_resp = cortex_core::translate::openai_to_anthropic(openai_resp);
+        Json(json!(anthropic_resp)).into_response()
     }
 }
 

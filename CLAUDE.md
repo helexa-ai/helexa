@@ -243,30 +243,20 @@ request routing) deferred — requires per-model VRAM tracking which is
 not yet populated. The `evict_lru_on_node` function is callable and
 tested for when that integration is added.
 
-### Phase 5: Anthropic translation
+### Phase 5: Anthropic translation ✅
 
-**Goal:** `POST /v1/messages` accepts Anthropic-format requests, proxies
-to mistral.rs in OpenAI format, returns Anthropic-format responses.
+Completed. Non-streaming Anthropic round-trip implemented: handler
+buffers upstream OpenAI response, translates via `openai_to_anthropic`,
+returns Anthropic-format JSON. 5 tests in `cortex-gateway/tests/anthropic.rs`:
+- `test_anthropic_to_openai_round_trip` — full request/response translation
+  with stop_reason mapping ("stop" → "end_turn") and usage field names
+- `test_anthropic_with_system_prompt` — system field translated to system message
+- `test_anthropic_with_content_blocks` — array content blocks handled
+- `test_anthropic_model_not_found` — 404 for unknown model
+- `test_anthropic_invalid_request` — 400 for malformed request
 
-**Files to change:**
-- `cortex-core/src/translate.rs` — the scaffold has a working
-  `anthropic_to_openai` and `openai_to_anthropic`. Extend to handle:
-  - Multi-block content (images, tool use, tool results)
-  - `stop_reason` mapping (`end_turn`, `max_tokens`, `tool_use`)
-  - Usage token counts
-- `cortex-gateway/src/handlers.rs` — the `anthropic_messages` handler
-  currently has TODO comments for response translation and streaming.
-  Implement non-streaming first (buffer upstream response, translate,
-  return). Then streaming (convert OpenAI SSE to Anthropic SSE event
-  types: `message_start`, `content_block_start`, `content_block_delta`,
-  `content_block_stop`, `message_delta`, `message_stop`).
-- `tests/` — round-trip test:
-  1. Send Anthropic-format request to cortex
-  2. Assert the proxied request to mock backend is valid OpenAI format
-  3. Assert the response back to the client is valid Anthropic format
-
-**Done when:** Non-streaming Anthropic round-trip test passes. Streaming
-is a bonus — flag it as a follow-up if complex.
+Streaming Anthropic SSE translation (OpenAI SSE → Anthropic SSE event
+types) deferred as a follow-up.
 
 ### Phase 6: Metrics instrumentation
 
