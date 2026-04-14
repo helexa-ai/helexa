@@ -211,22 +211,13 @@ no healthy nodes, missing model field. Test helpers in `tests/common/mod.rs`
 provide `spawn_mock_backend()` and `spawn_gateway()` using axum as the
 mock mistral.rs backend.
 
-### Phase 2: Streaming SSE passthrough
+### Phase 2: Streaming SSE passthrough ✅
 
-**Goal:** `"stream": true` requests proxy SSE chunks in real time.
-
-**Files to change:**
-- `cortex-gateway/src/proxy.rs` — the current implementation already
-  uses `reqwest::Response::bytes_stream()` piped into `axum::body::Body`.
-  Verify this actually works for SSE by testing with a mock that emits
-  `data: {...}\n\n` chunks with delays between them.
-- `tests/` — streaming integration test:
-  1. Mock backend sends 5 SSE chunks with 100ms between each
-  2. Assert cortex forwards each chunk as it arrives (not buffered)
-  3. Assert the `data: [DONE]` terminator is forwarded
-
-**Done when:** Streaming test passes. Manual test against a real
-mistral.rs instance confirms chunks arrive incrementally.
+Completed. The existing `Body::from_stream(bytes_stream())` proxy works
+for SSE out of the box. 2 integration tests in `cortex-gateway/tests/streaming.rs`:
+- `test_streaming_sse_passthrough` — 5 chunks with 50ms delays, verifies
+  incremental delivery (time spread between first and last chunk)
+- `test_streaming_done_terminator` — verifies `data: [DONE]` is forwarded
 
 ### Phase 3: Poller + live `/v1/models`
 
