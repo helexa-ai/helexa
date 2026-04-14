@@ -219,22 +219,14 @@ for SSE out of the box. 2 integration tests in `cortex-gateway/tests/streaming.r
   incremental delivery (time spread between first and last chunk)
 - `test_streaming_done_terminator` — verifies `data: [DONE]` is forwarded
 
-### Phase 3: Poller + live `/v1/models`
+### Phase 3: Poller + live `/v1/models` ✅
 
-**Goal:** The background poller refreshes node state from real (or mock)
-mistral.rs instances. `GET /v1/models` returns live, aggregated data.
-
-**Files to change:**
-- `cortex-gateway/src/poller.rs` — already implemented but needs testing
-- `cortex-gateway/src/handlers.rs` — the `list_models` handler reads
-  from `CortexState`; verify it reflects poller updates
-- `tests/` — test that:
-  1. Mock backend serves `/v1/models` with 2 models (1 loaded, 1 unloaded)
-  2. After poller runs, `GET /v1/models` on cortex returns both with
-     correct status and node attribution
-
-**Done when:** Poller test passes. The router in Phase 1 now routes
-based on live-polled state instead of seed data.
+Completed. Extracted `poll_once()` from `poll_loop()` for testability.
+4 tests in `cortex-gateway/tests/poller.rs`:
+- `test_poller_discovers_models` — 2 models (loaded + unloaded) discovered with correct status
+- `test_poller_updates_gateway_models_endpoint` — `/v1/models` reflects polled state with node attribution
+- `test_poller_marks_unreachable_node_unhealthy` — unreachable node flipped to unhealthy
+- `test_poller_removes_stale_models` — model removed from upstream is pruned from state
 
 ### Phase 4: Eviction
 

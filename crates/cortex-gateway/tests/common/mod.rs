@@ -130,10 +130,38 @@ pub async fn spawn_streaming_mock_backend(chunk_count: usize, chunk_delay: Durat
     format!("http://{addr}")
 }
 
+/// Spawns a mock backend with a custom `/v1/models` response.
+pub async fn spawn_mock_backend_with_models(models_response: Value) -> String {
+    let app = Router::new()
+        .route("/v1/chat/completions", post(mock_chat_completions))
+        .route(
+            "/v1/models",
+            get(move || {
+                let resp = models_response.clone();
+                async move { Json(resp) }
+            }),
+        );
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    format!("http://{addr}")
+}
+
 /// Spawns the cortex gateway with a single node pointing at `mock_url`.
 /// The node is pre-seeded as healthy with one loaded model ("test-model").
 /// Returns the gateway's base URL.
 pub async fn spawn_gateway(mock_url: &str) -> String {
+    let (_, url) = spawn_gateway_with_state(mock_url).await;
+    url
+}
+
+/// Like `spawn_gateway` but also returns the shared `CortexState` so tests
+/// can call `poll_once` or inspect state directly.
+pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, String) {
     let config = GatewayConfig {
         gateway: GatewaySettings {
             listen: "127.0.0.1:0".into(),
@@ -170,7 +198,7 @@ pub async fn spawn_gateway(mock_url: &str) -> String {
         );
     }
 
-    let app = cortex_gateway::build_app(fleet);
+    let app = cortex_gateway::build_app(Arc::clone(&fleet));
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -178,5 +206,5 @@ pub async fn spawn_gateway(mock_url: &str) -> String {
         axum::serve(listener, app).await.unwrap();
     });
 
-    format!("http://{addr}")
+    (fleet, format!("http://{addr}"))
 }

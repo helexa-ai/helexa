@@ -12,10 +12,15 @@ const POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// Runs forever, polling all nodes on a fixed interval.
 pub async fn poll_loop(fleet: Arc<CortexState>) {
     loop {
-        for nc in &fleet.node_configs {
-            poll_node(&fleet, &nc.name, &nc.endpoint).await;
-        }
+        poll_once(&fleet).await;
         tokio::time::sleep(POLL_INTERVAL).await;
+    }
+}
+
+/// Poll all nodes once. Used by `poll_loop` and available for testing.
+pub async fn poll_once(fleet: &CortexState) {
+    for nc in &fleet.node_configs {
+        poll_node(fleet, &nc.name, &nc.endpoint).await;
     }
 }
 
