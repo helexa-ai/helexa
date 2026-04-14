@@ -1,0 +1,57 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cortex-core",
+    "crates/cortex-gateway",
+    "crates/cortex-agent",
+    "crates/cortex-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0"
+repository = "https://git.lair.cafe/helexa/cortex"
+
+[workspace.dependencies]
+# async runtime
+tokio = { version = "1", features = ["full"] }
+
+# web framework
+axum = { version = "0.8", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+
+# serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# http client (for proxying to mistralrs backends)
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# time
+chrono = { version = "0.4", features = ["serde"] }
+
+# config
+figment = { version = "0.10", features = ["toml", "env"] }
+
+# error handling
+anyhow = "1"
+thiserror = "2"
+
+# futures / streams (for SSE proxying)
+futures = "0.3"
+tokio-stream = "0.1"
+eventsource-stream = "0.2"
+
+# workspace crates
+cortex-core = { path = "crates/cortex-core" }
+cortex-gateway = { path = "crates/cortex-gateway" }
+cortex-agent = { path = "crates/cortex-agent" }

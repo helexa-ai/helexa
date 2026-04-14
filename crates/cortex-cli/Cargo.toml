@@ -1,0 +1,20 @@
+[package]
+name = "cortex-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cortex"
+path = "src/main.rs"
+
+[dependencies]
+cortex-core.workspace = true
+cortex-gateway.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+clap = { version = "4", features = ["derive"] }

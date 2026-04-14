@@ -1,0 +1,45 @@
+# cortex.example.toml — example configuration
+#
+# Copy to cortex.toml and adjust for your environment.
+#
+# Environment variable overrides use CORTEX_ prefix with __ separators:
+#   CORTEX_GATEWAY__LISTEN=0.0.0.0:9000
+
+[gateway]
+listen = "0.0.0.0:8000"
+metrics_listen = "0.0.0.0:9100"
+
+[eviction]
+strategy = "lru"
+# Restart mistralrs after this many load/unload cycles to defragment VRAM.
+# Set to 0 to disable.
+defrag_after_cycles = 50
+
+# -- Nodes ---------------------------------------------------------------
+# Each [[nodes]] entry declares a mistral.rs instance in the fleet.
+# Models are discovered by polling the node's /v1/models endpoint.
+# Pinned models are never evicted.
+
+[[nodes]]
+name = "gpu-large"
+endpoint = "http://gpu-large.internal:8080"
+vram_mb = 49152           # e.g. 2x RTX 4090 (48 GB combined)
+pinned = [
+    "your-org/large-model",
+]
+
+[[nodes]]
+name = "gpu-medium"
+endpoint = "http://gpu-medium.internal:8080"
+vram_mb = 24576           # e.g. RTX 4090 (24 GB)
+pinned = [
+    "your-org/medium-model",
+]
+
+[[nodes]]
+name = "gpu-small"
+endpoint = "http://gpu-small.internal:8080"
+vram_mb = 12288           # e.g. RTX 3060 (12 GB)
+pinned = [
+    "your-org/embedding-model",
+]

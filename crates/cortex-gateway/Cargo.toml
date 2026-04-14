@@ -1,0 +1,25 @@
+[package]
+name = "cortex-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cortex-core.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tracing.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+chrono.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+futures.workspace = true
+tokio-stream.workspace = true
+eventsource-stream.workspace = true
+bytes = "1"
