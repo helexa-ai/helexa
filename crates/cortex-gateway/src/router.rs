@@ -28,7 +28,10 @@ pub enum RouteError {
 }
 
 /// Resolve which node should serve a request for the given model.
-pub async fn resolve(fleet: &Arc<CortexState>, model_id: &str) -> Result<RouteDecision, RouteError> {
+pub async fn resolve(
+    fleet: &Arc<CortexState>,
+    model_id: &str,
+) -> Result<RouteDecision, RouteError> {
     let nodes = fleet.nodes.read().await;
 
     // Pass 1: find a node where the model is already loaded.
@@ -62,13 +65,11 @@ pub async fn resolve(fleet: &Arc<CortexState>, model_id: &str) -> Result<RouteDe
         }
     }
 
-    loaded_candidate
-        .or(unloaded_candidate)
-        .ok_or_else(|| {
-            if nodes.values().any(|n| n.healthy) {
-                RouteError::ModelNotFound(model_id.to_string())
-            } else {
-                RouteError::NoHealthyNodes
-            }
-        })
+    loaded_candidate.or(unloaded_candidate).ok_or_else(|| {
+        if nodes.values().any(|n| n.healthy) {
+            RouteError::ModelNotFound(model_id.to_string())
+        } else {
+            RouteError::NoHealthyNodes
+        }
+    })
 }

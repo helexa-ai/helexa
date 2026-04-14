@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Format, lint, build, test
+    runs-on: fedora
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check formatting
+        run: cargo fmt --check --all
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace
+
+  rpm:
+    name: Build SRPM
+    runs-on: fedora
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version: ${VERSION}"
+
+      - name: Stamp version into spec
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
+          echo "Stamped version ${VERSION}"
+
+      - name: Generate source tarball
+        run: |
+          set -ex
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          tar czf /tmp/cortex-${VERSION}.tar.gz \
+            --transform "s,^\.,cortex-${VERSION}," \
+            --exclude='./target' \
+            --exclude='./.git' \
+            --exclude='*.tar.gz' \
+            --exclude='*.src.rpm' \
+            .
+          mv /tmp/cortex-${VERSION}.tar.gz .
+
+      - name: Vendor Rust dependencies
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          cargo vendor vendor/
+          tar czf cortex-${VERSION}-vendor.tar.gz vendor/
+          rm -rf vendor/
+
+      - name: Build SRPM
+        run: |
+          rpmbuild -bs cortex.spec \
+            --define "_sourcedir $(pwd)" \
+            --define "_srcrpmdir $(pwd)"
+
+      - name: Upload SRPM artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: srpm
+          path: '*.src.rpm'
+
+  copr:
+    name: Publish to COPR
+    runs-on: fedora
+    needs: rpm
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download SRPM
+        uses: actions/download-artifact@v3
+        with:
+          name: srpm
+
+      - name: Configure copr-cli
+        run: |
+          mkdir -p ~/.config
+          echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
+
+      - name: Submit build to COPR
+        run: copr-cli build cortex *.src.rpm

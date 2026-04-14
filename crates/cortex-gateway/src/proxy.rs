@@ -39,8 +39,8 @@ pub async fn forward_request(
 
     let upstream_resp = req_builder.send().await.map_err(ProxyError::Upstream)?;
 
-    let status = StatusCode::from_u16(upstream_resp.status().as_u16())
-        .unwrap_or(StatusCode::BAD_GATEWAY);
+    let status =
+        StatusCode::from_u16(upstream_resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
 
     let resp_headers = upstream_resp.headers().clone();
     let stream = upstream_resp.bytes_stream();

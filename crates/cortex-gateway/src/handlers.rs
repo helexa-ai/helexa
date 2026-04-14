@@ -3,15 +3,14 @@
 use crate::proxy;
 use crate::router;
 use crate::state::CortexState;
+use axum::Router;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
-use axum::Router;
 use cortex_core::node::{CortexModelEntry, ModelLocation};
-use cortex_core::openai::ChatCompletionRequest;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub fn api_routes() -> Router<Arc<CortexState>> {
@@ -40,8 +39,14 @@ async fn chat_completions(
         Err(e) => return error_response(404, &e.to_string()),
     };
 
-    match proxy::forward_request(&fleet.http_client, &route, "/v1/chat/completions", headers, body)
-        .await
+    match proxy::forward_request(
+        &fleet.http_client,
+        &route,
+        "/v1/chat/completions",
+        headers,
+        body,
+    )
+    .await
     {
         Ok(resp) => resp,
         Err(e) => e.into_response(),
@@ -64,8 +69,7 @@ async fn completions(
         Err(e) => return error_response(404, &e.to_string()),
     };
 
-    match proxy::forward_request(&fleet.http_client, &route, "/v1/completions", headers, body)
-        .await
+    match proxy::forward_request(&fleet.http_client, &route, "/v1/completions", headers, body).await
     {
         Ok(resp) => resp,
         Err(e) => e.into_response(),
@@ -161,10 +165,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
         }
     }
 
-    let data: Vec<Value> = model_map
-        .values()
-        .map(|e| json!(e))
-        .collect();
+    let data: Vec<Value> = model_map.values().map(|e| json!(e)).collect();
 
     Json(json!({
         "object": "list",

@@ -34,18 +34,12 @@ pub fn install(listen: &str) -> Result<()> {
         "cortex_tokens_per_second",
         "Generation throughput in tokens per second"
     );
-    metrics::describe_counter!(
-        "cortex_requests_total",
-        "Total number of proxied requests"
-    );
+    metrics::describe_counter!("cortex_requests_total", "Total number of proxied requests");
     metrics::describe_counter!(
         "cortex_request_errors_total",
         "Total number of failed proxy requests"
     );
-    metrics::describe_counter!(
-        "cortex_evictions_total",
-        "Total number of model evictions"
-    );
+    metrics::describe_counter!("cortex_evictions_total", "Total number of model evictions");
     metrics::describe_counter!(
         "cortex_cold_starts_total",
         "Total number of cold-start model loads"

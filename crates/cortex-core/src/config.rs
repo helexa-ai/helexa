@@ -54,11 +54,12 @@ impl GatewayConfig {
     /// Load configuration from a TOML file, with environment variable overrides.
     /// Env vars are prefixed with `CORTEX_` and use `__` as a separator
     /// (e.g. `CORTEX_GATEWAY__LISTEN=0.0.0.0:9000`).
-    pub fn load(path: impl AsRef<Path>) -> Result<Self, figment::Error> {
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<figment::Error>> {
         Figment::new()
             .merge(Toml::file(path))
             .merge(Env::prefixed("CORTEX_").split("__"))
             .extract()
+            .map_err(Box::new)
     }
 }
 

@@ -64,11 +64,7 @@ async fn poll_node(fleet: &CortexState, name: &str, endpoint: &str) {
 
                     node.healthy = true;
                     node.last_poll = Some(Utc::now());
-                    tracing::debug!(
-                        node = name,
-                        models = models_resp.data.len(),
-                        "poll ok"
-                    );
+                    tracing::debug!(node = name, models = models_resp.data.len(), "poll ok");
                 }
                 Err(e) => {
                     tracing::warn!(node = name, error = %e, "failed to parse /v1/models response");

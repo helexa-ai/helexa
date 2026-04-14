@@ -3,14 +3,12 @@
 //! This is a stateless transformation — no context is carried between requests.
 
 use crate::anthropic::{
-    AnthropicContent, AnthropicMessage, AnthropicUsage, ContentBlock, MessagesRequest,
-    MessagesResponse, SystemPrompt,
+    AnthropicContent, AnthropicUsage, ContentBlock, MessagesRequest, MessagesResponse, SystemPrompt,
 };
 use crate::openai::{
-    ChatCompletionChoice, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, Usage,
-    MessageContent,
+    ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageContent, Usage,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 /// Convert an Anthropic Messages request into an OpenAI ChatCompletion request.
 pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
@@ -45,9 +43,7 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
                         .to_string();
                     MessageContent::Text(text)
                 } else {
-                    MessageContent::Parts(
-                        blocks.into_iter().map(|b| json!(b)).collect(),
-                    )
+                    MessageContent::Parts(blocks.into_iter().map(|b| json!(b)).collect())
                 }
             }
         };

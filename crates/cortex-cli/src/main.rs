@@ -42,9 +42,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Serve { config } => {
-            let cfg = GatewayConfig::load(&config).map_err(|e| {
-                anyhow::anyhow!("failed to load config from '{config}': {e}")
-            })?;
+            let cfg = GatewayConfig::load(&config)
+                .map_err(|e| anyhow::anyhow!("failed to load config from '{config}': {e}"))?;
 
             tracing::info!(
                 nodes = cfg.nodes.len(),
