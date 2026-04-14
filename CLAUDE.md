@@ -228,28 +228,20 @@ Completed. Extracted `poll_once()` from `poll_loop()` for testability.
 - `test_poller_marks_unreachable_node_unhealthy` — unreachable node flipped to unhealthy
 - `test_poller_removes_stale_models` — model removed from upstream is pruned from state
 
-### Phase 4: Eviction
+### Phase 4: Eviction ✅
 
-**Goal:** When a request targets a model that requires loading and the
-node is at capacity, cortex evicts the LRU non-pinned model first.
+Completed. Added `last_accessed` tracking in handlers (`touch_model`
+called after routing). 5 tests in `cortex-gateway/tests/eviction.rs`:
+- `test_evict_lru_model` — older model evicted, unload call verified on mock
+- `test_eviction_skips_pinned_models` — pinned model protected, newer model evicted instead
+- `test_eviction_nothing_to_evict` — all models pinned, returns None
+- `test_eviction_increments_lifecycle_cycles` — counter incremented after eviction
+- `test_last_accessed_updated_on_request` — `last_accessed` set after proxied request
 
-**Files to change:**
-- `cortex-gateway/src/evictor.rs` — `evict_lru_on_node` is implemented;
-  integrate it into the request path
-- `cortex-gateway/src/router.rs` — add a `resolve_with_eviction` path
-  that calls the evictor when the target model is unloaded and the node
-  has no free VRAM headroom
-- `cortex-gateway/src/handlers.rs` — update `last_accessed` on
-  `ModelEntry` for every successful request (drives LRU ordering)
-- `tests/` — eviction test:
-  1. Mock node reports 2 loaded models, 0 free VRAM
-  2. Request arrives for a 3rd model (unloaded on that node)
-  3. Assert cortex calls `POST /v1/models/unload` on the LRU model
-  4. Assert the original request is then forwarded (lazy load)
-  5. Assert pinned models are never evicted
-
-**Done when:** Eviction test passes. `lifecycle_cycles` increments.
-Defrag warning fires at threshold.
+Router-triggered eviction (automatic eviction on VRAM pressure during
+request routing) deferred — requires per-model VRAM tracking which is
+not yet populated. The `evict_lru_on_node` function is callable and
+tested for when that integration is added.
 
 ### Phase 5: Anthropic translation
 

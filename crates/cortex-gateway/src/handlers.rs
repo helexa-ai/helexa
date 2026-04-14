@@ -9,6 +9,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
+use chrono::Utc;
 use cortex_core::node::{CortexModelEntry, ModelLocation};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -39,6 +40,8 @@ async fn chat_completions(
         Err(e) => return error_response(404, &e.to_string()),
     };
 
+    touch_model(&fleet, &route.node_name, &model_id).await;
+
     match proxy::forward_request(
         &fleet.http_client,
         &route,
@@ -68,6 +71,8 @@ async fn completions(
         Ok(r) => r,
         Err(e) => return error_response(404, &e.to_string()),
     };
+
+    touch_model(&fleet, &route.node_name, &model_id).await;
 
     match proxy::forward_request(&fleet.http_client, &route, "/v1/completions", headers, body).await
     {
@@ -189,6 +194,16 @@ async fn health(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
+
+/// Update `last_accessed` timestamp for a model on a node (drives LRU eviction).
+async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {
+    let mut nodes = fleet.nodes.write().await;
+    if let Some(node) = nodes.get_mut(node_name)
+        && let Some(entry) = node.models.get_mut(model_id)
+    {
+        entry.last_accessed = Some(Utc::now());
+    }
+}
 
 fn extract_model(body: &[u8]) -> Option<String> {
     let v: Value = serde_json::from_slice(body).ok()?;
