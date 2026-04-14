@@ -120,6 +120,19 @@ pinned = ["your-org/embedding-model"]
 cargo build --release
 ```
 
+## CI
+
+Every push triggers format, lint, and test checks. Ensure these pass
+locally before pushing:
+
+```sh
+cargo fmt --check --all                    # must be clean
+cargo clippy --workspace -- -D warnings   # warnings are errors
+cargo test --workspace                     # all tests must pass
+```
+
+Tagged releases (`v*`) additionally build an SRPM and publish to COPR.
+
 ## Running
 
 ```sh

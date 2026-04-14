@@ -103,6 +103,21 @@ cargo test                      # run all tests
 cargo clippy --workspace        # lint
 ```
 
+## CI
+
+Gitea Actions runs on every push to any branch. All three checks must
+pass before merging:
+
+```sh
+cargo fmt --check --all                    # formatting
+cargo clippy --workspace -- -D warnings   # lint (warnings are errors)
+cargo test --workspace                     # tests
+```
+
+Run these locally before pushing. `cargo fmt --all` fixes formatting
+automatically. Clippy warnings must be resolved, not suppressed with
+`#[allow(...)]` unless there is a clear rationale.
+
 ## Environment
 
 - Targets Fedora 43 (systemd, SELinux enforcing)
