@@ -23,6 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure sccache with S3 support
+        run: |
+          if sccache --version 2>/dev/null && sccache --show-stats 2>/dev/null; then
+            echo "sccache with S3 support already installed"
+          else
+            cargo install sccache --features s3 --locked
+          fi
+
       - name: Check formatting
         run: cargo fmt --check --all
 
