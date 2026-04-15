@@ -134,7 +134,6 @@ jobs:
     name: Publish cortex to COPR
     runs-on: fedora
     needs: srpm-cortex
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download SRPM
         uses: actions/download-artifact@v3
@@ -153,7 +152,6 @@ jobs:
     name: Publish neuron to COPR
     runs-on: fedora
     needs: srpm-neuron
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download SRPM
         uses: actions/download-artifact@v3
@@ -167,3 +165,29 @@ jobs:
 
       - name: Submit build to COPR
         run: copr-cli build helexa/neuron *.src.rpm
+
+  bump-version:
+    name: Bump version in source
+    runs-on: fedora
+    needs: [copr-cortex, copr-neuron]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITEA_TOKEN }}
+
+      - name: Stamp version and push
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
+          cargo check --workspace 2>/dev/null || true
+          git config user.name "Gitea Actions"
+          git config user.email "actions@git.lair.cafe"
+          git add Cargo.toml Cargo.lock cortex.spec neuron.spec
+          if git diff --cached --quiet; then
+            echo "Version already at ${VERSION}"
+          else
+            git commit -m "chore: bump version to ${VERSION}"
+            git push origin HEAD:main
+          fi
