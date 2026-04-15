@@ -46,7 +46,7 @@ async fn main() -> Result<()> {
                 .map_err(|e| anyhow::anyhow!("failed to load config from '{config}': {e}"))?;
 
             tracing::info!(
-                nodes = cfg.nodes.len(),
+                neurons = cfg.neurons.len(),
                 listen = %cfg.gateway.listen,
                 "starting cortex"
             );

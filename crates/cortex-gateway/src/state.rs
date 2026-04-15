@@ -1,4 +1,5 @@
-use cortex_core::config::{EvictionSettings, GatewayConfig, NodeConfig};
+use cortex_core::catalogue::ModelCatalogue;
+use cortex_core::config::{EvictionSettings, GatewayConfig, NeuronEndpoint};
 use cortex_core::node::NodeState;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -6,23 +7,22 @@ use tokio::sync::RwLock;
 /// Shared fleet state, protected by a RwLock for concurrent reader access.
 pub struct CortexState {
     pub nodes: RwLock<HashMap<String, NodeState>>,
-    pub node_configs: Vec<NodeConfig>,
+    pub neuron_configs: Vec<NeuronEndpoint>,
     pub eviction: EvictionSettings,
+    pub catalogue: ModelCatalogue,
     pub http_client: reqwest::Client,
 }
 
 impl CortexState {
     pub fn from_config(config: &GatewayConfig) -> Self {
         let mut nodes = HashMap::new();
-        for nc in &config.nodes {
+        for nc in &config.neurons {
             nodes.insert(
                 nc.name.clone(),
                 NodeState {
                     name: nc.name.clone(),
                     endpoint: nc.endpoint.clone(),
-                    vram_mb: nc.vram_mb,
-                    pinned: nc.pinned.clone(),
-                    healthy: false, // will be set by first poll
+                    healthy: false,
                     models: HashMap::new(),
                     lifecycle_cycles: 0,
                     last_poll: None,
@@ -30,10 +30,13 @@ impl CortexState {
             );
         }
 
+        let catalogue = ModelCatalogue::load(&config.models_config);
+
         Self {
             nodes: RwLock::new(nodes),
-            node_configs: config.nodes.clone(),
+            neuron_configs: config.neurons.clone(),
             eviction: config.eviction.clone(),
+            catalogue,
             http_client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(300))
                 .build()

@@ -1,29 +1,19 @@
 //! Model eviction logic.
 //!
-//! The evictor runs as a background task. When the router determines that a
-//! model needs to be loaded on a node but VRAM is tight, it can request
-//! eviction via a channel. The evictor then:
-//!   1. Identifies the LRU model on that node (excluding pinned models)
-//!   2. Calls `POST /v1/models/unload` on the node
-//!   3. Increments the lifecycle cycle counter (for defrag tracking)
+//! The evictor identifies the LRU model on a node (excluding pinned models),
+//! calls neuron's `POST /models/unload` to free the model, and updates
+//! local state.
 
 use crate::state::CortexState;
-use cortex_core::node::{ModelLifecycleRequest, ModelStatus};
+use cortex_core::node::ModelStatus;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Runs forever. Currently a placeholder that periodically checks for
-/// eviction opportunities. In the future, this will be driven by a
-/// channel from the router when VRAM pressure is detected.
+/// Runs forever. Placeholder for future channel-driven eviction.
 pub async fn eviction_loop(fleet: Arc<CortexState>) {
-    // TODO: Replace this polling approach with a channel-driven design
-    // where the router sends eviction requests when it detects that a
-    // model load would exceed available VRAM.
     loop {
         tokio::time::sleep(Duration::from_secs(30)).await;
-        // Placeholder: the actual eviction logic is in `evict_lru_on_node`,
-        // called on demand by the router.
-        let _ = &fleet; // suppress unused warning
+        let _ = &fleet;
     }
 }
 
@@ -33,18 +23,19 @@ pub async fn evict_lru_on_node(
     fleet: &CortexState,
     node_name: &str,
 ) -> anyhow::Result<Option<String>> {
-    let (endpoint, candidate) = {
+    let (neuron_endpoint, candidate) = {
         let nodes = fleet.nodes.read().await;
         let Some(node) = nodes.get(node_name) else {
             anyhow::bail!("node '{node_name}' not found");
         };
 
-        // Find the loaded model with the oldest last_accessed, excluding pinned.
+        // Find the loaded model with the oldest last_accessed,
+        // excluding models pinned on this neuron (from catalogue).
         let candidate = node
             .models
             .values()
             .filter(|m| m.status == ModelStatus::Loaded)
-            .filter(|m| !node.pinned.contains(&m.id))
+            .filter(|m| !fleet.catalogue.is_pinned(&m.id, node_name))
             .min_by_key(|m| m.last_accessed)
             .map(|m| m.id.clone());
 
@@ -58,18 +49,16 @@ pub async fn evict_lru_on_node(
 
     tracing::info!(node = node_name, model = %model_id, "evicting model");
 
-    let url = format!("{endpoint}/v1/models/unload");
+    // Call neuron's unload endpoint.
+    let url = format!("{neuron_endpoint}/models/unload");
     let resp = fleet
         .http_client
         .post(&url)
-        .json(&ModelLifecycleRequest {
-            model_id: model_id.clone(),
-        })
+        .json(&serde_json::json!({ "model_id": model_id }))
         .send()
         .await?;
 
     if resp.status().is_success() {
-        // Update local state.
         let mut nodes = fleet.nodes.write().await;
         if let Some(node) = nodes.get_mut(node_name) {
             if let Some(entry) = node.models.get_mut(&model_id) {
@@ -77,14 +66,13 @@ pub async fn evict_lru_on_node(
             }
             node.lifecycle_cycles += 1;
 
-            // Check if we should flag for defrag.
             if fleet.eviction.defrag_after_cycles > 0
                 && node.lifecycle_cycles >= fleet.eviction.defrag_after_cycles
             {
                 tracing::warn!(
                     node = node_name,
                     cycles = node.lifecycle_cycles,
-                    "VRAM fragmentation threshold reached — consider restarting mistralrs"
+                    "VRAM fragmentation threshold reached — consider restarting harness"
                 );
             }
         }

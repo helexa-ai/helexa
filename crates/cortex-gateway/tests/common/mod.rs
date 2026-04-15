@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
 use axum::body::Body;
+use axum::extract::Path;
 use axum::http::header;
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use cortex_core::config::{
-    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NodeConfig,
+    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NeuronEndpoint,
 };
 use cortex_core::node::{ModelEntry, ModelStatus};
 use cortex_gateway::state::CortexState;
@@ -16,20 +17,52 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 
-/// Spawns a mock mistral.rs backend on a random port.
-/// Returns the base URL (e.g. "http://127.0.0.1:12345").
-pub async fn spawn_mock_backend() -> String {
-    let app = Router::new()
-        .route("/v1/chat/completions", post(mock_chat_completions))
-        .route("/v1/models", get(mock_list_models));
-
+/// Spawns a mock neuron that serves:
+/// - GET /models (returns one loaded "test-model")
+/// - GET /models/:id/endpoint (returns the inference URL)
+/// - POST /models/unload (accepts unload requests)
+/// - GET /v1/chat/completions + POST /v1/chat/completions (inference)
+/// Returns the neuron base URL.
+pub async fn spawn_mock_neuron() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
+
+    let app = Router::new()
+        .route("/models", get(mock_neuron_list_models))
+        .route(
+            "/models/{model_id}/endpoint",
+            get(move |Path(_model_id): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
+            }),
+        )
+        .route(
+            "/models/unload",
+            post(|Json(_body): Json<Value>| async { Json(json!({"status": "unloaded"})) }),
+        )
+        .route("/v1/chat/completions", post(mock_chat_completions))
+        .route("/v1/models", get(mock_v1_models));
+
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
-    format!("http://{addr}")
+    base_url
+}
+
+async fn mock_neuron_list_models() -> Json<Value> {
+    Json(json!([
+        {"id": "test-model", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": 8000}
+    ]))
+}
+
+async fn mock_v1_models() -> Json<Value> {
+    Json(json!({
+        "object": "list",
+        "data": [{"id": "test-model", "object": "model", "status": "loaded"}]
+    }))
 }
 
 async fn mock_chat_completions(Json(body): Json<Value>) -> Json<Value> {
@@ -59,21 +92,22 @@ async fn mock_chat_completions(Json(body): Json<Value>) -> Json<Value> {
     }))
 }
 
-async fn mock_list_models() -> Json<Value> {
-    Json(json!({
-        "object": "list",
-        "data": [{
-            "id": "test-model",
-            "object": "model",
-            "status": "loaded"
-        }]
-    }))
-}
+/// Spawns a mock neuron that returns SSE streaming responses for chat completions.
+pub async fn spawn_streaming_mock_neuron(chunk_count: usize, chunk_delay: Duration) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
 
-/// Spawns a mock mistral.rs backend that returns SSE streaming responses.
-/// Each chunk is delayed by `chunk_delay` to prove the proxy streams incrementally.
-pub async fn spawn_streaming_mock_backend(chunk_count: usize, chunk_delay: Duration) -> String {
     let app = Router::new()
+        .route("/models", get(mock_neuron_list_models))
+        .route(
+            "/models/{model_id}/endpoint",
+            get(move |Path(_model_id): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
+            }),
+        )
         .route(
             "/v1/chat/completions",
             post(move |Json(body): Json<Value>| async move {
@@ -118,40 +152,51 @@ pub async fn spawn_streaming_mock_backend(chunk_count: usize, chunk_delay: Durat
                     .body(Body::from_stream(stream))
                     .unwrap()
             }),
-        )
-        .route("/v1/models", get(mock_list_models));
+        );
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
-    format!("http://{addr}")
+    base_url
 }
 
-/// Spawns a mock backend with a custom `/v1/models` response.
-pub async fn spawn_mock_backend_with_models(models_response: Value) -> String {
+/// Spawns a mock neuron with a custom models list.
+pub async fn spawn_mock_neuron_with_models(models_response: Value) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
+
     let app = Router::new()
-        .route("/v1/chat/completions", post(mock_chat_completions))
         .route(
-            "/v1/models",
+            "/models",
             get(move || {
                 let resp = models_response.clone();
                 async move { Json(resp) }
             }),
-        );
+        )
+        .route(
+            "/models/{model_id}/endpoint",
+            get(move |Path(_model_id): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
+            }),
+        )
+        .route(
+            "/models/unload",
+            post(|Json(_body): Json<Value>| async { Json(json!({"status": "unloaded"})) }),
+        )
+        .route("/v1/chat/completions", post(mock_chat_completions));
 
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
-    format!("http://{addr}")
+    base_url
 }
 
-/// Spawns the cortex gateway with a single node pointing at `mock_url`.
+/// Spawns the cortex gateway with a single neuron pointing at `mock_url`.
 /// The node is pre-seeded as healthy with one loaded model ("test-model").
 /// Returns the gateway's base URL.
 pub async fn spawn_gateway(mock_url: &str) -> String {
@@ -159,8 +204,7 @@ pub async fn spawn_gateway(mock_url: &str) -> String {
     url
 }
 
-/// Like `spawn_gateway` but also returns the shared `CortexState` so tests
-/// can call `poll_once` or inspect state directly.
+/// Like `spawn_gateway` but also returns the shared `CortexState`.
 pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, String) {
     let config = GatewayConfig {
         gateway: GatewaySettings {
@@ -171,18 +215,16 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "mock-node".into(),
             endpoint: mock_url.to_string(),
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
 
     // Seed the node as healthy with a loaded model.
-    // (Bypasses the poller, which is not running in tests.)
     {
         let mut nodes = fleet.nodes.write().await;
         let node = nodes.get_mut("mock-node").expect("node must exist");

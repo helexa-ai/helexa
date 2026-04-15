@@ -2,13 +2,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Runtime state of a single node in the fleet.
+/// Runtime state of a single neuron in the fleet.
 #[derive(Debug, Clone)]
 pub struct NodeState {
     pub name: String,
+    /// Base URL of the neuron daemon (e.g. "http://beast.internal:9090").
     pub endpoint: String,
-    pub vram_mb: u64,
-    pub pinned: Vec<String>,
     pub healthy: bool,
     pub models: HashMap<String, ModelEntry>,
     /// Number of load/unload cycles since last process restart.
@@ -27,7 +26,7 @@ pub struct ModelEntry {
     pub vram_estimate_mb: Option<u64>,
 }
 
-/// Model lifecycle status, matching the mistral.rs API.
+/// Model lifecycle status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelStatus {
@@ -51,24 +50,4 @@ pub struct ModelLocation {
     pub node: String,
     pub status: ModelStatus,
     pub vram_estimate_mb: Option<u64>,
-}
-
-/// Response from mistral.rs `GET /v1/models`.
-/// This is the upstream format we parse when polling nodes.
-#[derive(Debug, Clone, Deserialize)]
-pub struct MistralModelsResponse {
-    pub data: Vec<MistralModelEntry>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct MistralModelEntry {
-    pub id: String,
-    #[serde(default)]
-    pub status: Option<String>,
-}
-
-/// Request body for mistral.rs model lifecycle endpoints.
-#[derive(Debug, Clone, Serialize)]
-pub struct ModelLifecycleRequest {
-    pub model_id: String,
 }

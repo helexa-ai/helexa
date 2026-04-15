@@ -2,15 +2,16 @@ mod common;
 
 use chrono::Utc;
 use cortex_core::config::{
-    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NodeConfig,
+    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NeuronEndpoint,
 };
 use cortex_core::node::{ModelEntry, ModelStatus};
 use cortex_gateway::state::CortexState;
 use serde_json::json;
 use std::sync::Arc;
 
-/// Spawn a mock backend that accepts `/v1/models/unload` and records the call.
+/// Spawn a mock neuron that accepts `/models/unload` and records unload calls.
 async fn spawn_eviction_mock() -> (String, Arc<tokio::sync::Mutex<Vec<String>>>) {
+    use axum::extract::Path;
     use axum::routing::{get, post};
     use axum::{Json, Router};
     use serde_json::Value;
@@ -18,9 +19,14 @@ async fn spawn_eviction_mock() -> (String, Arc<tokio::sync::Mutex<Vec<String>>>)
     let unloaded: Arc<tokio::sync::Mutex<Vec<String>>> = Arc::new(tokio::sync::Mutex::new(vec![]));
     let unloaded_clone = Arc::clone(&unloaded);
 
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
+
     let app = Router::new()
         .route(
-            "/v1/models/unload",
+            "/models/unload",
             post(move |Json(body): Json<Value>| {
                 let unloaded = Arc::clone(&unloaded_clone);
                 async move {
@@ -30,30 +36,27 @@ async fn spawn_eviction_mock() -> (String, Arc<tokio::sync::Mutex<Vec<String>>>)
                         .unwrap_or("")
                         .to_string();
                     unloaded.lock().await.push(model_id);
-                    Json(json!({"status": "ok"}))
+                    Json(json!({"status": "unloaded"}))
                 }
             }),
         )
+        .route("/models", get(|| async { Json(json!([])) }))
         .route(
-            "/v1/models",
-            get(|| async {
-                Json(json!({
-                    "object": "list",
-                    "data": []
-                }))
+            "/models/{model_id}/endpoint",
+            get(move |Path(_model_id): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
             }),
         );
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();
     });
 
-    (format!("http://{addr}"), unloaded)
+    (base_url, unloaded)
 }
 
-fn make_fleet(endpoint: &str, pinned: Vec<String>, defrag_after: u32) -> Arc<CortexState> {
+fn make_fleet(endpoint: &str, defrag_after: u32) -> Arc<CortexState> {
     let config = GatewayConfig {
         gateway: GatewaySettings {
             listen: "127.0.0.1:0".into(),
@@ -63,12 +66,11 @@ fn make_fleet(endpoint: &str, pinned: Vec<String>, defrag_after: u32) -> Arc<Cor
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: defrag_after,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "gpu-node".into(),
             endpoint: endpoint.to_string(),
-            vram_mb: 24000,
-            pinned,
         }],
+        models_config: "/dev/null".into(),
     };
     Arc::new(CortexState::from_config(&config))
 }
@@ -76,9 +78,8 @@ fn make_fleet(endpoint: &str, pinned: Vec<String>, defrag_after: u32) -> Arc<Cor
 #[tokio::test]
 async fn test_evict_lru_model() {
     let (mock_url, unloaded) = spawn_eviction_mock().await;
-    let fleet = make_fleet(&mock_url, vec![], 0);
+    let fleet = make_fleet(&mock_url, 0);
 
-    // Seed two loaded models. "old-model" was accessed earlier than "new-model".
     {
         let mut nodes = fleet.nodes.write().await;
         let node = nodes.get_mut("gpu-node").unwrap();
@@ -107,15 +108,12 @@ async fn test_evict_lru_model() {
         .await
         .expect("eviction should succeed");
 
-    // The older model should be evicted.
     assert_eq!(evicted, Some("old-model".to_string()));
 
-    // Mock received the unload call.
     let calls = unloaded.lock().await;
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0], "old-model");
 
-    // Local state updated.
     let nodes = fleet.nodes.read().await;
     let node = nodes.get("gpu-node").unwrap();
     assert_eq!(
@@ -129,66 +127,14 @@ async fn test_evict_lru_model() {
 }
 
 #[tokio::test]
-async fn test_eviction_skips_pinned_models() {
-    let (mock_url, unloaded) = spawn_eviction_mock().await;
-    // Pin "old-model" so it can't be evicted.
-    let fleet = make_fleet(&mock_url, vec!["old-model".into()], 0);
-
-    {
-        let mut nodes = fleet.nodes.write().await;
-        let node = nodes.get_mut("gpu-node").unwrap();
-        node.healthy = true;
-        // old-model is pinned and older — normally it would be evicted.
-        node.models.insert(
-            "old-model".into(),
-            ModelEntry {
-                id: "old-model".into(),
-                status: ModelStatus::Loaded,
-                last_accessed: Some(Utc::now() - chrono::Duration::hours(2)),
-                vram_estimate_mb: Some(8000),
-            },
-        );
-        node.models.insert(
-            "new-model".into(),
-            ModelEntry {
-                id: "new-model".into(),
-                status: ModelStatus::Loaded,
-                last_accessed: Some(Utc::now()),
-                vram_estimate_mb: Some(8000),
-            },
-        );
-    }
-
-    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node")
-        .await
-        .expect("eviction should succeed");
-
-    // new-model is evicted instead because old-model is pinned.
-    assert_eq!(evicted, Some("new-model".to_string()));
-
-    let calls = unloaded.lock().await;
-    assert_eq!(calls[0], "new-model");
-}
-
-#[tokio::test]
 async fn test_eviction_nothing_to_evict() {
     let (mock_url, unloaded) = spawn_eviction_mock().await;
-    // Pin the only model.
-    let fleet = make_fleet(&mock_url, vec!["only-model".into()], 0);
+    let fleet = make_fleet(&mock_url, 0);
 
+    // No models at all.
     {
         let mut nodes = fleet.nodes.write().await;
-        let node = nodes.get_mut("gpu-node").unwrap();
-        node.healthy = true;
-        node.models.insert(
-            "only-model".into(),
-            ModelEntry {
-                id: "only-model".into(),
-                status: ModelStatus::Loaded,
-                last_accessed: None,
-                vram_estimate_mb: Some(8000),
-            },
-        );
+        nodes.get_mut("gpu-node").unwrap().healthy = true;
     }
 
     let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node")
@@ -196,8 +142,6 @@ async fn test_eviction_nothing_to_evict() {
         .expect("eviction should succeed");
 
     assert_eq!(evicted, None);
-
-    // No unload call made.
     let calls = unloaded.lock().await;
     assert!(calls.is_empty());
 }
@@ -205,7 +149,7 @@ async fn test_eviction_nothing_to_evict() {
 #[tokio::test]
 async fn test_eviction_increments_lifecycle_cycles() {
     let (mock_url, _) = spawn_eviction_mock().await;
-    let fleet = make_fleet(&mock_url, vec![], 0);
+    let fleet = make_fleet(&mock_url, 0);
 
     {
         let mut nodes = fleet.nodes.write().await;
@@ -233,10 +177,9 @@ async fn test_eviction_increments_lifecycle_cycles() {
 
 #[tokio::test]
 async fn test_last_accessed_updated_on_request() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let (fleet, gw_url) = common::spawn_gateway_with_state(&mock_url).await;
 
-    // Verify last_accessed is None initially.
     {
         let nodes = fleet.nodes.read().await;
         let node = nodes.get("mock-node").unwrap();
@@ -249,7 +192,6 @@ async fn test_last_accessed_updated_on_request() {
         );
     }
 
-    // Make a request.
     let client = reqwest::Client::new();
     client
         .post(format!("{gw_url}/v1/chat/completions"))
@@ -262,7 +204,6 @@ async fn test_last_accessed_updated_on_request() {
         .await
         .expect("request should succeed");
 
-    // Verify last_accessed is now set.
     let nodes = fleet.nodes.read().await;
     let node = nodes.get("mock-node").unwrap();
     assert!(

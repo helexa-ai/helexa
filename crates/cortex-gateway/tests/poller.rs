@@ -1,7 +1,7 @@
 mod common;
 
 use cortex_core::config::{
-    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NodeConfig,
+    EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NeuronEndpoint,
 };
 use cortex_core::node::ModelStatus;
 use cortex_gateway::state::CortexState;
@@ -10,14 +10,11 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_poller_discovers_models() {
-    // Mock backend reports 2 models: one loaded, one unloaded.
-    let mock_url = common::spawn_mock_backend_with_models(json!({
-        "object": "list",
-        "data": [
-            { "id": "model-a", "object": "model", "status": "loaded" },
-            { "id": "model-b", "object": "model", "status": "unloaded" }
-        ]
-    }))
+    // Mock neuron reports 2 models via /models endpoint (neuron format).
+    let mock_url = common::spawn_mock_neuron_with_models(json!([
+        {"id": "model-a", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": 8000},
+        {"id": "model-b", "harness": "mistralrs", "status": "unloaded", "devices": [], "vram_used_mb": null}
+    ]))
     .await;
 
     let config = GatewayConfig {
@@ -29,17 +26,15 @@ async fn test_poller_discovers_models() {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "test-node".into(),
             endpoint: mock_url,
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
 
-    // Before polling: node is unhealthy, no models.
     {
         let nodes = fleet.nodes.read().await;
         let node = nodes.get("test-node").unwrap();
@@ -47,10 +42,8 @@ async fn test_poller_discovers_models() {
         assert!(node.models.is_empty());
     }
 
-    // Poll once.
     cortex_gateway::poller::poll_once(&fleet).await;
 
-    // After polling: node is healthy, both models discovered with correct status.
     {
         let nodes = fleet.nodes.read().await;
         let node = nodes.get("test-node").unwrap();
@@ -69,14 +62,10 @@ async fn test_poller_discovers_models() {
 
 #[tokio::test]
 async fn test_poller_updates_gateway_models_endpoint() {
-    // Mock backend with 2 models.
-    let mock_url = common::spawn_mock_backend_with_models(json!({
-        "object": "list",
-        "data": [
-            { "id": "model-x", "object": "model", "status": "loaded" },
-            { "id": "model-y", "object": "model", "status": "loaded" }
-        ]
-    }))
+    let mock_url = common::spawn_mock_neuron_with_models(json!([
+        {"id": "model-x", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null},
+        {"id": "model-y", "harness": "mistralrs", "status": "loaded", "devices": [1], "vram_used_mb": null}
+    ]))
     .await;
 
     let config = GatewayConfig {
@@ -88,20 +77,16 @@ async fn test_poller_updates_gateway_models_endpoint() {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "poll-node".into(),
             endpoint: mock_url,
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
-
-    // Poll to discover models and mark node healthy.
     cortex_gateway::poller::poll_once(&fleet).await;
 
-    // Start gateway with the polled state.
     let app = cortex_gateway::build_app(Arc::clone(&fleet));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -109,7 +94,6 @@ async fn test_poller_updates_gateway_models_endpoint() {
         axum::serve(listener, app).await.unwrap();
     });
 
-    // Query /v1/models on the gateway.
     let client = reqwest::Client::new();
     let resp = client
         .get(format!("http://{addr}/v1/models"))
@@ -127,7 +111,6 @@ async fn test_poller_updates_gateway_models_endpoint() {
     assert!(ids.contains(&"model-x"));
     assert!(ids.contains(&"model-y"));
 
-    // Verify node attribution in locations.
     for model in data {
         let locations = model["locations"].as_array().expect("locations array");
         assert_eq!(locations.len(), 1);
@@ -146,17 +129,15 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "dead-node".into(),
-            endpoint: "http://127.0.0.1:1".into(), // unreachable
-            vram_mb: 24000,
-            pinned: vec![],
+            endpoint: "http://127.0.0.1:1".into(),
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
 
-    // Manually mark healthy to verify poller flips it.
     {
         let mut nodes = fleet.nodes.write().await;
         nodes.get_mut("dead-node").unwrap().healthy = true;
@@ -170,14 +151,10 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
 
 #[tokio::test]
 async fn test_poller_removes_stale_models() {
-    // Start with a mock that reports 2 models.
-    let mock_url = common::spawn_mock_backend_with_models(json!({
-        "object": "list",
-        "data": [
-            { "id": "keep-me", "object": "model", "status": "loaded" },
-            { "id": "drop-me", "object": "model", "status": "loaded" }
-        ]
-    }))
+    let mock_url = common::spawn_mock_neuron_with_models(json!([
+        {"id": "keep-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null},
+        {"id": "drop-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null}
+    ]))
     .await;
 
     let config = GatewayConfig {
@@ -189,35 +166,27 @@ async fn test_poller_removes_stale_models() {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "test-node".into(),
             endpoint: mock_url,
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
     cortex_gateway::poller::poll_once(&fleet).await;
 
-    // Verify both models exist.
     {
         let nodes = fleet.nodes.read().await;
         assert_eq!(nodes.get("test-node").unwrap().models.len(), 2);
     }
 
-    // Now spin up a new mock that only reports one model, and re-point the node.
-    let new_mock_url = common::spawn_mock_backend_with_models(json!({
-        "object": "list",
-        "data": [
-            { "id": "keep-me", "object": "model", "status": "loaded" }
-        ]
-    }))
+    // New mock with only one model.
+    let new_mock_url = common::spawn_mock_neuron_with_models(json!([
+        {"id": "keep-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null}
+    ]))
     .await;
 
-    // Update the node endpoint to point at the new mock.
-    // We can't change node_configs (they're immutable), so instead we'll
-    // create a new fleet with the updated endpoint and poll that.
     let config2 = GatewayConfig {
         gateway: GatewaySettings {
             listen: "127.0.0.1:0".into(),
@@ -227,17 +196,16 @@ async fn test_poller_removes_stale_models() {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![NodeConfig {
+        neurons: vec![NeuronEndpoint {
             name: "test-node".into(),
             endpoint: new_mock_url,
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
 
     let fleet2 = Arc::new(CortexState::from_config(&config2));
 
-    // Seed the stale model so we can verify it gets removed.
+    // Seed stale model.
     {
         let mut nodes = fleet2.nodes.write().await;
         let node = nodes.get_mut("test-node").unwrap();

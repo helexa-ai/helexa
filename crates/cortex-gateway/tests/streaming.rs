@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 async fn test_streaming_sse_passthrough() {
     let chunk_count = 5;
     let chunk_delay = Duration::from_millis(50);
-    let mock_url = common::spawn_streaming_mock_backend(chunk_count, chunk_delay).await;
+    let mock_url = common::spawn_streaming_mock_neuron(chunk_count, chunk_delay).await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
@@ -33,7 +33,6 @@ async fn test_streaming_sse_passthrough() {
         "text/event-stream"
     );
 
-    // Collect SSE chunks as they arrive, recording arrival times.
     let start = Instant::now();
     let mut chunk_times = Vec::new();
     let mut chunks = Vec::new();
@@ -51,7 +50,6 @@ async fn test_streaming_sse_passthrough() {
         }
     }
 
-    // Verify we got all content chunks plus [DONE].
     assert!(
         chunks.len() >= chunk_count + 1,
         "expected at least {} chunks (got {}): {:?}",
@@ -60,10 +58,8 @@ async fn test_streaming_sse_passthrough() {
         chunks,
     );
 
-    // The last chunk should be [DONE].
     assert_eq!(chunks.last().unwrap(), "[DONE]");
 
-    // Verify the content chunks contain expected tokens.
     for i in 0..chunk_count {
         let chunk_json: serde_json::Value =
             serde_json::from_str(&chunks[i]).expect("chunk should be valid JSON");
@@ -73,10 +69,6 @@ async fn test_streaming_sse_passthrough() {
         );
     }
 
-    // Verify streaming behavior: total time should reflect incremental delivery,
-    // not a single batch. With 5 chunks at 50ms each + [DONE], we expect ~300ms total.
-    // If buffered, all chunks would arrive at once after ~300ms with no spread.
-    // We verify that the last chunk arrived noticeably after the first.
     let first = chunk_times.first().unwrap();
     let last = chunk_times.last().unwrap();
     let spread = *last - *first;
@@ -88,7 +80,7 @@ async fn test_streaming_sse_passthrough() {
 
 #[tokio::test]
 async fn test_streaming_done_terminator() {
-    let mock_url = common::spawn_streaming_mock_backend(2, Duration::from_millis(10)).await;
+    let mock_url = common::spawn_streaming_mock_neuron(2, Duration::from_millis(10)).await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();

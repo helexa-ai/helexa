@@ -9,7 +9,15 @@ use std::path::Path;
 pub struct GatewayConfig {
     pub gateway: GatewaySettings,
     pub eviction: EvictionSettings,
-    pub nodes: Vec<NodeConfig>,
+    /// Neuron endpoints (replaces old NodeConfig with static vram_mb/pinned).
+    pub neurons: Vec<NeuronEndpoint>,
+    /// Path to the model catalogue file (default: "models.toml").
+    #[serde(default = "default_models_path")]
+    pub models_config: String,
+}
+
+fn default_models_path() -> String {
+    "models.toml".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,8 +32,7 @@ pub struct GatewaySettings {
 pub struct EvictionSettings {
     /// Eviction strategy: "lru" or "priority"
     pub strategy: EvictionStrategy,
-    /// Restart the mistralrs process after this many load/unload cycles
-    /// to reclaim fragmented VRAM. 0 = never.
+    /// Number of load/unload cycles before flagging for defrag. 0 = never.
     #[serde(default)]
     pub defrag_after_cycles: u32,
 }
@@ -37,23 +44,19 @@ pub enum EvictionStrategy {
     Priority,
 }
 
+/// A neuron endpoint in the fleet. Hardware details come from
+/// neuron's /discovery endpoint, not from config.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeConfig {
-    /// Human-readable node name (e.g. "gpu-large")
+pub struct NeuronEndpoint {
+    /// Human-readable node name (e.g. "beast")
     pub name: String,
-    /// Base URL of the mistralrs HTTP server (e.g. "http://gpu-large.internal:8080")
+    /// Base URL of the neuron daemon (e.g. "http://beast.internal:9090")
     pub endpoint: String,
-    /// Total VRAM in MB across all GPUs on this node
-    pub vram_mb: u64,
-    /// Model IDs that should never be evicted from this node
-    #[serde(default)]
-    pub pinned: Vec<String>,
 }
 
 impl GatewayConfig {
     /// Load configuration from a TOML file, with environment variable overrides.
-    /// Env vars are prefixed with `CORTEX_` and use `__` as a separator
-    /// (e.g. `CORTEX_GATEWAY__LISTEN=0.0.0.0:9000`).
+    /// Env vars are prefixed with `CORTEX_` and use `__` as a separator.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<figment::Error>> {
         Figment::new()
             .merge(Toml::file(path))
@@ -74,7 +77,8 @@ impl Default for GatewayConfig {
                 strategy: EvictionStrategy::Lru,
                 defrag_after_cycles: 50,
             },
-            nodes: vec![],
+            neurons: vec![],
+            models_config: default_models_path(),
         }
     }
 }

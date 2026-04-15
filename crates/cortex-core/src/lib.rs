@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod catalogue;
 pub mod config;
 pub mod discovery;
 pub mod harness;

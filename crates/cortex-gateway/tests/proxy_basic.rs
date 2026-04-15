@@ -4,7 +4,7 @@ use serde_json::json;
 
 #[tokio::test]
 async fn test_chat_completion_proxy() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
@@ -33,7 +33,7 @@ async fn test_chat_completion_proxy() {
 
 #[tokio::test]
 async fn test_health_endpoint() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
@@ -53,7 +53,7 @@ async fn test_health_endpoint() {
 
 #[tokio::test]
 async fn test_list_models() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
@@ -75,7 +75,7 @@ async fn test_list_models() {
 
 #[tokio::test]
 async fn test_model_not_found() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
@@ -112,12 +112,11 @@ async fn test_no_healthy_nodes() {
             strategy: cortex_core::config::EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        nodes: vec![cortex_core::config::NodeConfig {
+        neurons: vec![cortex_core::config::NeuronEndpoint {
             name: "dead-node".into(),
             endpoint: "http://127.0.0.1:1".into(),
-            vram_mb: 24000,
-            pinned: vec![],
         }],
+        models_config: "/dev/null".into(),
     };
     let fleet = std::sync::Arc::new(cortex_gateway::state::CortexState::from_config(&config));
 
@@ -153,7 +152,7 @@ async fn test_no_healthy_nodes() {
 
 #[tokio::test]
 async fn test_missing_model_field() {
-    let mock_url = common::spawn_mock_backend().await;
+    let mock_url = common::spawn_mock_neuron().await;
     let gw_url = common::spawn_gateway(&mock_url).await;
 
     let client = reqwest::Client::new();
