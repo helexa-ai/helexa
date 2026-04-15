@@ -3,8 +3,8 @@ resolver = "2"
 members = [
     "crates/cortex-core",
     "crates/cortex-gateway",
-    "crates/cortex-agent",
     "crates/cortex-cli",
+    "crates/neuron",
 ]
 
 [workspace.package]
@@ -46,6 +46,12 @@ figment = { version = "0.10", features = ["toml", "env"] }
 anyhow = "1"
 thiserror = "2"
 
+# async traits
+async-trait = "0.1"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
 # futures / streams (for SSE proxying)
 futures = "0.3"
 tokio-stream = "0.1"
@@ -54,4 +60,3 @@ eventsource-stream = "0.2"
 # workspace crates
 cortex-core = { path = "crates/cortex-core" }
 cortex-gateway = { path = "crates/cortex-gateway" }
-cortex-agent = { path = "crates/cortex-agent" }

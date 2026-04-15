@@ -1,20 +1,28 @@
 [package]
-name = "cortex-cli"
+name = "cortex-neuron"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "cortex_neuron"
+path = "src/lib.rs"
+
 [[bin]]
-name = "cortex"
+name = "cortex-neuron"
 path = "src/main.rs"
 
 [dependencies]
 cortex-core.workspace = true
-cortex-gateway.workspace = true
 tokio.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
-reqwest.workspace = true
-serde_json.workspace = true
 clap.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+reqwest.workspace = true
