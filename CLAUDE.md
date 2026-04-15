@@ -547,7 +547,7 @@ branch → PR. CI (fmt, clippy, test) must pass before merge.
 ### Phase 7: neuron scaffold and discovery ✅
 
 Completed. Deleted `cortex-agent`, created `crates/neuron/` (binary:
-`cortex-neuron`). Added shared types to cortex-core: `discovery.rs`
+`neuron`). Added shared types to cortex-core: `discovery.rs`
 (DeviceInfo, DiscoveryResponse, DeviceHealth, HealthResponse) and
 `harness.rs` (Harness async trait, HarnessConfig, ModelSpec, ModelInfo).
 
@@ -598,7 +598,7 @@ grenade COPR repo.
 **Steps:**
 1. `neuron.spec` — RPM spec file for the neuron binary. Install to
    `/usr/libexec/cortex/neuron`. Systemd unit
-   `cortex-neuron.service`. Config at `/etc/cortex/neuron.toml`.
+   `neuron.service`. Config at `/etc/cortex/neuron.toml`.
 2. Update `cortex.spec` — ensure the cortex binary, config, and
    `models.toml` are packaged correctly.
 3. Gitea Actions CI job: on tag push, build SRPM, submit to COPR.
@@ -608,12 +608,12 @@ grenade COPR repo.
    # on the gateway host:
    dnf install cortex
    # on each GPU node:
-   dnf install cortex-neuron
+   dnf install neuron
    ```
 
-**Done when:** `dnf install cortex-neuron` on a Fedora 43 host drops
-the binary, config, and systemd unit. `systemctl start cortex-neuron`
-runs discovery and serves `/discovery`.
+**Done when:** `dnf install neuron` on a Fedora 43 host drops the
+binary, config, and systemd unit. `systemctl start neuron` runs
+discovery and serves `/discovery`.
 
 ### Phase 11: llama.cpp harness stub
 

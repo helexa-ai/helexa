@@ -1,13 +1,13 @@
 use anyhow::Result;
 use clap::Parser;
-use cortex_neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health};
+use neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
-#[command(name = "cortex-neuron")]
+#[command(name = "neuron")]
 #[command(about = "Per-node daemon for cortex inference clusters")]
 #[command(version)]
 struct Args {
@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info,cortex_neuron=debug")),
+                .unwrap_or_else(|_| EnvFilter::new("info,neuron=debug")),
         )
         .init();
 
@@ -69,7 +69,7 @@ async fn main() -> Result<()> {
 
     let app = api::neuron_routes().with_state(state);
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
-    tracing::info!("cortex-neuron listening on {addr}");
+    tracing::info!("neuron listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
 

@@ -1,7 +1,7 @@
 use cortex_core::discovery::{DeviceInfo, DiscoveryResponse};
-use cortex_neuron::api::{self, NeuronState};
-use cortex_neuron::harness::HarnessRegistry;
-use cortex_neuron::health::HealthCache;
+use neuron::api::{self, NeuronState};
+use neuron::harness::HarnessRegistry;
+use neuron::health::HealthCache;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::RwLock;
