@@ -556,50 +556,17 @@ serves `GET /discovery` and `GET /health`. Pure parsing functions
 separated from command execution for testability. 9 unit tests for
 nvidia-smi CSV parsing, 3 integration tests for the HTTP endpoints.
 
-### Phase 8: neuron harness — mistral.rs implementation
+### Phase 8: neuron harness — mistral.rs implementation ✅
 
-**Goal:** neuron can manage mistral.rs: start/stop the process, list
-models, load/unload models, and report the inference endpoint.
+Completed. Full `Harness` trait implementation for mistral.rs in
+`neuron/src/harness/mistralrs.rs`: list_models, load_model, unload_model,
+inference_endpoint, health, start/stop (systemd). `HarnessRegistry` in
+`harness/mod.rs` maps harness name → `Box<dyn Harness>`, built from
+`neuron.toml` config. Four new neuron API endpoints: `GET /models`,
+`POST /models/load`, `POST /models/unload`, `GET /models/:id/endpoint`.
 
-**Steps:**
-1. In `crates/neuron/src/harness/mistralrs.rs`:
-   - Implement the `Harness` trait.
-   - `start()` — invoke `systemctl start mistralrs.service` (or a
-     configured unit name). Wait for the health endpoint to respond.
-   - `stop()` — `systemctl stop mistralrs.service`.
-   - `health()` — `GET {mistralrs_endpoint}/health`.
-   - `list_models()` — `GET {mistralrs_endpoint}/v1/models`, parse the
-     response including the `status` field.
-   - `load_model()` — `POST {mistralrs_endpoint}/v1/models/reload`.
-   - `unload_model()` — `POST {mistralrs_endpoint}/v1/models/unload`.
-   - `inference_endpoint()` — return `mistralrs_endpoint` (mistral.rs
-     routes internally by model name in the request body).
-2. In `crates/neuron/src/harness/mod.rs`:
-   - A `HarnessRegistry` that maps harness name → `Box<dyn Harness>`.
-   - On neuron startup, register the mistralrs harness (configured with
-     the local mistralrs endpoint, e.g. `http://localhost:8080`).
-3. Add neuron API endpoints:
-   - `GET /models` — aggregate across all registered harnesses.
-   - `POST /models/load` — dispatch to the correct harness.
-   - `POST /models/unload` — dispatch to the correct harness.
-   - `GET /models/{model_id}/endpoint` — ask the harness.
-4. neuron config (`neuron.toml`):
-   ```toml
-   port = 9090
-   
-   [[harnesses]]
-   name = "mistralrs"
-   endpoint = "http://localhost:8080"
-   systemd_unit = "mistralrs.service"
-   ```
-5. Tests:
-   - Mock HTTP server standing in for mistral.rs. Test that the harness
-     implementation correctly translates list/load/unload calls.
-   - Integration test: start neuron with mock mistralrs backend, call
-     `GET /models`, assert it returns models from the mock.
-
-**Done when:** neuron manages a (mock) mistral.rs instance. All API
-endpoints return correct data. Tests pass.
+Config via `neuron.toml` (figment + env override). Integration test
+covers full model lifecycle through neuron → mock mistral.rs backend.
 
 ### Phase 9: cortex talks to neurons
 

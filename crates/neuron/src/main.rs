@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
-use cortex_neuron::{api, discovery, health};
+use cortex_neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health};
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -10,9 +11,13 @@ use tracing_subscriber::EnvFilter;
 #[command(about = "Per-node daemon for cortex inference clusters")]
 #[command(version)]
 struct Args {
-    /// Port to listen on.
-    #[arg(short, long, default_value = "9090")]
-    port: u16,
+    /// Port to listen on (overrides config file).
+    #[arg(short, long)]
+    port: Option<u16>,
+
+    /// Path to the neuron config file.
+    #[arg(short, long, default_value = "neuron.toml")]
+    config: String,
 }
 
 #[tokio::main]
@@ -25,15 +30,26 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+
+    let cfg = NeuronConfig::load(&args.config).unwrap_or_else(|e| {
+        tracing::warn!(path = %args.config, error = %e, "config not found, using defaults");
+        NeuronConfig::default()
+    });
+
+    let port = args.port.unwrap_or(cfg.port);
     let start_time = Instant::now();
 
     tracing::info!("running hardware discovery");
-    let discovery_result = discovery::discover_system().await?;
+    let mut discovery_result = discovery::discover_system().await?;
     tracing::info!(
         hostname = %discovery_result.hostname,
         devices = discovery_result.devices.len(),
         "discovery complete"
     );
+
+    // Build harness registry from config.
+    let registry = HarnessRegistry::from_configs(&cfg.harnesses);
+    discovery_result.harnesses = registry.names();
 
     let health_cache = Arc::new(health::HealthCache::new());
     health_cache
@@ -48,10 +64,11 @@ async fn main() -> Result<()> {
     let state = Arc::new(api::NeuronState {
         discovery: discovery_result,
         health_cache,
+        registry: RwLock::new(registry),
     });
 
     let app = api::neuron_routes().with_state(state);
-    let addr: std::net::SocketAddr = format!("0.0.0.0:{}", args.port).parse()?;
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
     tracing::info!("cortex-neuron listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
