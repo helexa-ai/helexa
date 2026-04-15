@@ -1,0 +1,16 @@
+# neuron.example.toml — example configuration
+#
+# Copy to /etc/cortex/neuron.toml and adjust for your environment.
+#
+# Environment variable overrides use NEURON_ prefix with __ separators:
+#   NEURON_PORT=9090
+
+port = 9090
+
+# -- Harnesses ---------------------------------------------------------------
+# Each [[harnesses]] entry declares an inference engine managed by neuron.
+
+[[harnesses]]
+name = "mistralrs"
+endpoint = "http://localhost:8080"
+systemd_unit = "mistralrs.service"

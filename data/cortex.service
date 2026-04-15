@@ -1,0 +1,15 @@
+[Unit]
+Description=Cortex — inference gateway for multi-node GPU clusters
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cortex serve --config /etc/cortex/cortex.toml
+Restart=on-failure
+RestartSec=5
+User=cortex
+Group=cortex
+
+[Install]
+WantedBy=multi-user.target

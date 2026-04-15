@@ -1,0 +1,15 @@
+[Unit]
+Description=Neuron — per-node GPU discovery and harness daemon for cortex
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/neuron --config /etc/cortex/neuron.toml
+Restart=on-failure
+RestartSec=5
+User=cortex
+Group=cortex
+
+[Install]
+WantedBy=multi-user.target

@@ -1,7 +1,7 @@
-Name:           cortex
+Name:           neuron
 Version:        0.1.0
 Release:        1%{?dist}
-Summary:        Inference gateway for multi-node GPU clusters
+Summary:        Per-node GPU discovery and harness management daemon for cortex
 
 License:        GPL-3.0-or-later
 URL:            https://git.lair.cafe/helexa/cortex
@@ -18,10 +18,9 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 
 %description
-Cortex is a Rust reverse-proxy that sits in front of multiple inference
-nodes (via neuron daemons) and presents a unified OpenAI and Anthropic
-compatible API surface. It handles model routing, lifecycle management,
-request translation, and metrics collection.
+Neuron is a per-node daemon for cortex inference clusters. It discovers
+local GPU hardware via nvidia-smi, manages inference harnesses (mistral.rs,
+llama.cpp), and exposes an HTTP API for model lifecycle management.
 
 %prep
 %autosetup
@@ -36,36 +35,34 @@ directory = "vendor"
 EOF
 
 %build
-cargo build --release -p cortex-cli
+cargo build --release -p neuron
 
 %install
-install -Dm755 target/release/cortex %{buildroot}%{_bindir}/cortex
-install -Dm644 data/cortex.service %{buildroot}%{_unitdir}/cortex.service
+install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
+install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
 install -dm750 %{buildroot}%{_sysconfdir}/cortex
-install -Dm640 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
-install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
+install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
 
 %pre
 getent group cortex >/dev/null || groupadd -r cortex
 getent passwd cortex >/dev/null || useradd -r -g cortex -d /var/lib/cortex -s /sbin/nologin cortex
 
 %post
-%systemd_post cortex.service
+%systemd_post neuron.service
 
 %preun
-%systemd_preun cortex.service
+%systemd_preun neuron.service
 
 %postun
-%systemd_postun_with_restart cortex.service
+%systemd_postun_with_restart neuron.service
 
 %files
 %license LICENSE
 %doc README.md
-%{_bindir}/cortex
-%{_unitdir}/cortex.service
+%{_bindir}/neuron
+%{_unitdir}/neuron.service
 %dir %attr(750,root,cortex) %{_sysconfdir}/cortex
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/cortex.toml
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/models.toml
+%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/neuron.toml
 
 %changelog
 * Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1

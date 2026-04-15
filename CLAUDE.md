@@ -590,30 +590,22 @@ Topology-aware placement (min_devices, min_device_vram_mb) deferred —
 the router currently routes based on polled model status. Catalogue
 placement matching can be added incrementally.
 
-### Phase 10: neuron packaging (RPM)
+### Phase 10: RPM packaging ✅
 
-**Goal:** `neuron` and `cortex` are installable via `dnf` from the
-grenade COPR repo.
+Completed. Both packages have RPM specs, systemd units, and example configs.
+CI builds parallel SRPMs on tag push and publishes to separate COPR repos.
 
-**Steps:**
-1. `neuron.spec` — RPM spec file for the neuron binary. Install to
-   `/usr/libexec/cortex/neuron`. Systemd unit
-   `neuron.service`. Config at `/etc/cortex/neuron.toml`.
-2. Update `cortex.spec` — ensure the cortex binary, config, and
-   `models.toml` are packaged correctly.
-3. Gitea Actions CI job: on tag push, build SRPM, submit to COPR.
-4. Document the install path:
-   ```sh
-   dnf copr enable grenade/cortex
-   # on the gateway host:
-   dnf install cortex
-   # on each GPU node:
-   dnf install neuron
-   ```
+- `cortex.spec` → `helexa/cortex` COPR: binary, systemd unit, config files
+- `neuron.spec` → `helexa/neuron` COPR: binary, systemd unit, config
+- `data/cortex.service`, `data/neuron.service` — systemd units
+- `cortex.example.toml`, `neuron.example.toml`, `models.example.toml`
+- CI: parallel `srpm-cortex` + `srpm-neuron` jobs, then parallel COPR publish
 
-**Done when:** `dnf install neuron` on a Fedora 43 host drops the
-binary, config, and systemd unit. `systemctl start neuron` runs
-discovery and serves `/discovery`.
+Install:
+```sh
+dnf copr enable helexa/cortex && dnf install cortex    # gateway host
+dnf copr enable helexa/neuron && dnf install neuron    # GPU nodes
+```
 
 ### Phase 11: llama.cpp harness stub
 

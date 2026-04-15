@@ -26,8 +26,8 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
-  rpm:
-    name: Build SRPM
+  srpm-cortex:
+    name: Build cortex SRPM
     runs-on: fedora
     needs: check
     if: startsWith(github.ref, 'refs/tags/v')
@@ -39,14 +39,12 @@ jobs:
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Building version: ${VERSION}"
 
-      - name: Stamp version into spec
+      - name: Stamp version
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
           sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
-          echo "Stamped version ${VERSION}"
 
       - name: Generate source tarball
         run: |
@@ -77,19 +75,71 @@ jobs:
       - name: Upload SRPM artifact
         uses: actions/upload-artifact@v3
         with:
-          name: srpm
+          name: srpm-cortex
           path: '*.src.rpm'
 
-  copr:
-    name: Publish to COPR
+  srpm-neuron:
+    name: Build neuron SRPM
     runs-on: fedora
-    needs: rpm
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp version
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
+
+      - name: Generate source tarball
+        run: |
+          set -ex
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          tar czf /tmp/neuron-${VERSION}.tar.gz \
+            --transform "s,^\.,neuron-${VERSION}," \
+            --exclude='./target' \
+            --exclude='./.git' \
+            --exclude='*.tar.gz' \
+            --exclude='*.src.rpm' \
+            .
+          mv /tmp/neuron-${VERSION}.tar.gz .
+
+      - name: Vendor Rust dependencies
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          cargo vendor vendor/
+          tar czf neuron-${VERSION}-vendor.tar.gz vendor/
+          rm -rf vendor/
+
+      - name: Build SRPM
+        run: |
+          rpmbuild -bs neuron.spec \
+            --define "_sourcedir $(pwd)" \
+            --define "_srcrpmdir $(pwd)"
+
+      - name: Upload SRPM artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: srpm-neuron
+          path: '*.src.rpm'
+
+  copr-cortex:
+    name: Publish cortex to COPR
+    runs-on: fedora
+    needs: srpm-cortex
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download SRPM
         uses: actions/download-artifact@v3
         with:
-          name: srpm
+          name: srpm-cortex
 
       - name: Configure copr-cli
         run: |
@@ -97,4 +147,23 @@ jobs:
           echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
 
       - name: Submit build to COPR
-        run: copr-cli build cortex *.src.rpm
+        run: copr-cli build helexa/cortex *.src.rpm
+
+  copr-neuron:
+    name: Publish neuron to COPR
+    runs-on: fedora
+    needs: srpm-neuron
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download SRPM
+        uses: actions/download-artifact@v3
+        with:
+          name: srpm-neuron
+
+      - name: Configure copr-cli
+        run: |
+          mkdir -p ~/.config
+          echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
+
+      - name: Submit build to COPR
+        run: copr-cli build helexa/neuron *.src.rpm
