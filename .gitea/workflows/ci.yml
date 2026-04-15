@@ -172,10 +172,10 @@ jobs:
     needs: [copr-cortex, copr-neuron]
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITEA_TOKEN }}
 
       - name: Stamp version and push
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
@@ -189,5 +189,6 @@ jobs:
             echo "Version already at ${VERSION}"
           else
             git commit -m "chore: bump version to ${VERSION}"
+            git remote set-url origin "https://gitea-actions:${GITEA_TOKEN}@git.lair.cafe/helexa/cortex.git"
             git push origin HEAD:main
           fi
