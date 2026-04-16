@@ -20,6 +20,7 @@ BuildRequires:  pkgconfig(openssl)
 BuildRequires:  systemd-rpm-macros
 
 Requires(pre):  shadow-utils
+Requires:       systemd
 
 %description
 Neuron is a per-node daemon for cortex inference clusters. It discovers
@@ -44,12 +45,12 @@ cargo build --release -p neuron
 %install
 install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
 install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
+install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex-neuron.conf
 install -dm750 %{buildroot}%{_sysconfdir}/cortex
 install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
 
 %pre
-getent group cortex >/dev/null || groupadd -r cortex
-getent passwd cortex >/dev/null || useradd -r -g cortex -d /var/lib/cortex -s /sbin/nologin cortex
+%sysusers_create_compat %{_builddir}/%{name}-%{version}/data/cortex-sysusers.conf
 
 %post
 %systemd_post neuron.service
@@ -65,6 +66,7 @@ getent passwd cortex >/dev/null || useradd -r -g cortex -d /var/lib/cortex -s /s
 %doc README.md
 %{_bindir}/neuron
 %{_unitdir}/neuron.service
+%{_sysusersdir}/cortex-neuron.conf
 %dir %attr(750,root,cortex) %{_sysconfdir}/cortex
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/neuron.toml
 

@@ -20,6 +20,7 @@ BuildRequires:  pkgconfig(openssl)
 BuildRequires:  systemd-rpm-macros
 
 Requires(pre):  shadow-utils
+Requires:       systemd
 
 %description
 Cortex is a Rust reverse-proxy that sits in front of multiple inference
@@ -45,13 +46,13 @@ cargo build --release -p cortex-cli
 %install
 install -Dm755 target/release/cortex %{buildroot}%{_bindir}/cortex
 install -Dm644 data/cortex.service %{buildroot}%{_unitdir}/cortex.service
+install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex-gateway.conf
 install -dm750 %{buildroot}%{_sysconfdir}/cortex
 install -Dm640 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
 install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 
 %pre
-getent group cortex >/dev/null || groupadd -r cortex
-getent passwd cortex >/dev/null || useradd -r -g cortex -d /var/lib/cortex -s /sbin/nologin cortex
+%sysusers_create_compat %{_builddir}/%{name}-%{version}/data/cortex-sysusers.conf
 
 %post
 %systemd_post cortex.service
@@ -67,6 +68,7 @@ getent passwd cortex >/dev/null || useradd -r -g cortex -d /var/lib/cortex -s /s
 %doc README.md
 %{_bindir}/cortex
 %{_unitdir}/cortex.service
+%{_sysusersdir}/cortex-gateway.conf
 %dir %attr(750,root,cortex) %{_sysconfdir}/cortex
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/cortex.toml
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/models.toml
