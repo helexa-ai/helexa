@@ -66,6 +66,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Determine version
         id: version
@@ -78,6 +80,9 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
           sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
+
+      - name: Generate changelog entry
+        run: bash .gitea/scripts/generate-rpm-changelog.sh cortex.spec "${{ steps.version.outputs.VERSION }}"
 
       - name: Generate source tarball
         run: |
@@ -118,6 +123,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Determine version
         id: version
@@ -130,6 +137,9 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
           sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
+
+      - name: Generate changelog entry
+        run: bash .gitea/scripts/generate-rpm-changelog.sh neuron.spec "${{ steps.version.outputs.VERSION }}"
 
       - name: Generate source tarball
         run: |
