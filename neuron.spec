@@ -13,6 +13,10 @@ ExclusiveArch:  x86_64
 BuildRequires:  rust >= 1.85
 BuildRequires:  cargo
 BuildRequires:  gcc
+BuildRequires:  gcc-c++
+BuildRequires:  cmake
+BuildRequires:  perl-interpreter
+BuildRequires:  pkgconfig(openssl)
 BuildRequires:  systemd-rpm-macros
 
 Requires(pre):  shadow-utils
