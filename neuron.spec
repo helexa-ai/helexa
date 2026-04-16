@@ -22,6 +22,15 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 Requires:       systemd
 
+# systemd-rpm-macros ships a unit dep generator that parses User=/Group=
+# from our .service file and emits Requires: user(neuron)/group(neuron).
+# rpm's sysusers provides-generator emits the unversioned form for groups
+# but only a versioned user(neuron) = <base64> for users with GECOS/home/
+# shell. Provide the unversioned user(neuron) explicitly so dnf can resolve
+# the auto-generated Requires. Without this, dnf5 silently filters the
+# package and reports "Nothing to do".
+Provides:       user(neuron)
+
 %description
 Neuron is a per-node daemon for cortex inference clusters. It discovers
 local GPU hardware via nvidia-smi, manages inference harnesses (mistral.rs,
