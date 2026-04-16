@@ -595,19 +595,24 @@ placement matching can be added incrementally.
 Completed. Both packages have RPM specs, systemd units, and example configs.
 CI builds parallel SRPMs on tag push and publishes to separate COPR repos.
 
-- `cortex.spec` → `helexa/cortex` COPR: binary, systemd unit, config files
-- `helexa-neuron.spec` → `helexa/helexa-neuron` COPR: binary, systemd unit,
-  config. Package renamed from `neuron` to avoid collision with Fedora's
-  NEURON neural-simulation package (https://src.fedoraproject.org/rpms/neuron);
-  binary, systemd unit, system user, and config dir stay as `neuron`.
+- `cortex.spec` — installs the `cortex` binary. Package name keeps the
+  short `cortex` because no Fedora package collides with it.
+- `helexa-neuron.spec` — installs the `neuron` binary under package name
+  `helexa-neuron`. Renamed from bare `neuron` to avoid collision with
+  Fedora's NEURON neural-simulation package
+  (https://src.fedoraproject.org/rpms/neuron); binary, systemd unit,
+  system user, and config dir all stay named `neuron` since those are
+  project-local contexts.
 - `data/cortex.service`, `data/neuron.service` — systemd units
 - `cortex.example.toml`, `neuron.example.toml`, `models.example.toml`
-- CI: parallel `srpm-cortex` + `srpm-neuron` jobs, then parallel COPR publish
+- CI: parallel `srpm-cortex` + `srpm-neuron` jobs, then parallel COPR
+  publish to a single project `helexa/helexa` hosting both packages.
 
 Install:
 ```sh
-dnf copr enable helexa/cortex && dnf install cortex                    # gateway host
-dnf copr enable helexa/helexa-neuron && dnf install helexa-neuron      # GPU nodes
+dnf copr enable helexa/helexa
+dnf install cortex                # gateway host
+dnf install helexa-neuron         # GPU nodes
 ```
 
 ### Phase 11: llama.cpp harness stub

@@ -192,7 +192,7 @@ jobs:
       - name: Publish to COPR
         uses: https://git.lair.cafe/actions/copr-publish@v1
         with:
-          project: helexa/cortex
+          project: helexa/helexa
           srpm: "*.src.rpm"
           copr-config: ${{ secrets.COPR_CONFIG }}
 
@@ -209,7 +209,7 @@ jobs:
       - name: Publish to COPR
         uses: https://git.lair.cafe/actions/copr-publish@v1
         with:
-          project: helexa/helexa-neuron
+          project: helexa/helexa
           srpm: "*.src.rpm"
           copr-config: ${{ secrets.COPR_CONFIG }}
 
