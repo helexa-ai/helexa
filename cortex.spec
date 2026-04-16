@@ -1,5 +1,5 @@
 Name:           cortex
-Version:        0.1.12
+Version:        0.1.14
 Release:        1%{?dist}
 Summary:        Inference gateway for multi-node GPU clusters
 
@@ -83,5 +83,10 @@ install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %config(noreplace) %{_sysconfdir}/cortex/models.toml
 
 %changelog
+* Thu Apr 16 2026 Gitea Actions <actions@git.lair.cafe> - 0.1.14-1
+- ci: publish both packages to a single helexa/helexa COPR project
+- fix(rpm): rename neuron package to helexa-neuron
+- ci: commit generated %changelog entries back to main
+
 * Wed Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
 - Initial package
