@@ -5,3 +5,4 @@
 .vscode/
 cortex.toml
 doc/plan/*
+script/deploy.sh
