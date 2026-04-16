@@ -168,6 +168,8 @@ jobs:
     runs-on: fedora
     needs: srpm-cortex
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download SRPM
         uses: actions/download-artifact@v3
         with:
@@ -179,13 +181,15 @@ jobs:
           echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
 
       - name: Submit build to COPR
-        run: copr-cli build helexa/cortex *.src.rpm
+        run: bash .gitea/scripts/copr-build.sh helexa/cortex *.src.rpm
 
   copr-neuron:
     name: Publish neuron to COPR
     runs-on: fedora
     needs: srpm-neuron
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download SRPM
         uses: actions/download-artifact@v3
         with:
@@ -197,7 +201,7 @@ jobs:
           echo "${{ secrets.COPR_CONFIG }}" > ~/.config/copr
 
       - name: Submit build to COPR
-        run: copr-cli build helexa/neuron *.src.rpm
+        run: bash .gitea/scripts/copr-build.sh helexa/neuron *.src.rpm
 
   bump-version:
     name: Bump version in source
