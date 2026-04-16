@@ -2,8 +2,8 @@ name: CI
 
 on:
   push:
-    branches: ['**']
-    tags: ['v*']
+    branches: ["**"]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -98,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: srpm-cortex
-          path: '*.src.rpm'
+          path: "*.src.rpm"
 
   srpm-neuron:
     name: Build neuron SRPM
@@ -150,7 +150,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: srpm-neuron
-          path: '*.src.rpm'
+          path: "*.src.rpm"
 
   copr-cortex:
     name: Publish cortex to COPR
