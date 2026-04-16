@@ -596,15 +596,18 @@ Completed. Both packages have RPM specs, systemd units, and example configs.
 CI builds parallel SRPMs on tag push and publishes to separate COPR repos.
 
 - `cortex.spec` → `helexa/cortex` COPR: binary, systemd unit, config files
-- `neuron.spec` → `helexa/neuron` COPR: binary, systemd unit, config
+- `helexa-neuron.spec` → `helexa/helexa-neuron` COPR: binary, systemd unit,
+  config. Package renamed from `neuron` to avoid collision with Fedora's
+  NEURON neural-simulation package (https://src.fedoraproject.org/rpms/neuron);
+  binary, systemd unit, system user, and config dir stay as `neuron`.
 - `data/cortex.service`, `data/neuron.service` — systemd units
 - `cortex.example.toml`, `neuron.example.toml`, `models.example.toml`
 - CI: parallel `srpm-cortex` + `srpm-neuron` jobs, then parallel COPR publish
 
 Install:
 ```sh
-dnf copr enable helexa/cortex && dnf install cortex    # gateway host
-dnf copr enable helexa/neuron && dnf install neuron    # GPU nodes
+dnf copr enable helexa/cortex && dnf install cortex                    # gateway host
+dnf copr enable helexa/helexa-neuron && dnf install helexa-neuron      # GPU nodes
 ```
 
 ### Phase 11: llama.cpp harness stub

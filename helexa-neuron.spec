@@ -1,7 +1,10 @@
-Name:           neuron
+Name:           helexa-neuron
 Version:        0.1.12
 Release:        1%{?dist}
 Summary:        Per-node GPU discovery and harness management daemon for cortex
+# Package name disambiguates from Fedora's existing "neuron" package
+# (NEURON neural simulation environment from Yale). Binary, systemd
+# unit, and system user are still called "neuron" for brevity.
 
 License:        GPL-3.0-or-later
 URL:            https://git.lair.cafe/helexa/cortex

@@ -139,37 +139,37 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
-          sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" helexa-neuron.spec
 
       - name: Generate changelog entry
         uses: https://git.lair.cafe/actions/rpm-changelog@v1
         with:
-          spec: neuron.spec
+          spec: helexa-neuron.spec
           version: ${{ steps.version.outputs.VERSION }}
 
       - name: Generate source tarball
         run: |
           set -ex
           VERSION="${{ steps.version.outputs.VERSION }}"
-          tar czf /tmp/neuron-${VERSION}.tar.gz \
-            --transform "s,^\.,neuron-${VERSION}," \
+          tar czf /tmp/helexa-neuron-${VERSION}.tar.gz \
+            --transform "s,^\.,helexa-neuron-${VERSION}," \
             --exclude='./target' \
             --exclude='./.git' \
             --exclude='*.tar.gz' \
             --exclude='*.src.rpm' \
             .
-          mv /tmp/neuron-${VERSION}.tar.gz .
+          mv /tmp/helexa-neuron-${VERSION}.tar.gz .
 
       - name: Vendor Rust dependencies
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           cargo vendor vendor/
-          tar czf neuron-${VERSION}-vendor.tar.gz vendor/
+          tar czf helexa-neuron-${VERSION}-vendor.tar.gz vendor/
           rm -rf vendor/
 
       - name: Build SRPM
         run: |
-          rpmbuild -bs neuron.spec \
+          rpmbuild -bs helexa-neuron.spec \
             --define "_sourcedir $(pwd)" \
             --define "_srcrpmdir $(pwd)"
 
@@ -209,7 +209,7 @@ jobs:
       - name: Publish to COPR
         uses: https://git.lair.cafe/actions/copr-publish@v1
         with:
-          project: helexa/neuron
+          project: helexa/helexa-neuron
           srpm: "*.src.rpm"
           copr-config: ${{ secrets.COPR_CONFIG }}
 
@@ -231,7 +231,7 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
           sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
-          sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" helexa-neuron.spec
           cargo check --workspace 2>/dev/null || true
 
       - name: Generate cortex changelog entry
@@ -240,10 +240,10 @@ jobs:
           spec: cortex.spec
           version: ${{ steps.version.outputs.VERSION }}
 
-      - name: Generate neuron changelog entry
+      - name: Generate helexa-neuron changelog entry
         uses: https://git.lair.cafe/actions/rpm-changelog@v1
         with:
-          spec: neuron.spec
+          spec: helexa-neuron.spec
           version: ${{ steps.version.outputs.VERSION }}
 
       - name: Commit and push
@@ -253,7 +253,7 @@ jobs:
           VERSION="${{ steps.version.outputs.VERSION }}"
           git config user.name "Gitea Actions"
           git config user.email "actions@git.lair.cafe"
-          git add Cargo.toml Cargo.lock cortex.spec neuron.spec
+          git add Cargo.toml Cargo.lock cortex.spec helexa-neuron.spec
           if git diff --cached --quiet; then
             echo "Nothing to commit for ${VERSION}"
           else
