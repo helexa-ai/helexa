@@ -1,5 +1,5 @@
 Name:           helexa-neuron
-Version:        0.1.14
+Version:        0.1.16
 Release:        1%{?dist}
 Summary:        Per-node GPU discovery and harness management daemon for cortex
 # Package name disambiguates from Fedora's existing "neuron" package
@@ -83,6 +83,11 @@ install -Dm644 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 %config(noreplace) %{_sysconfdir}/neuron/neuron.toml
 
 %changelog
+* Thu Apr 16 2026 Gitea Actions <actions@git.lair.cafe> - 0.1.16-1
+- chore: ignore local deploy script
+- chore: move default ports out of common-collision ranges
+- ci: drop actions/cache for cargo registry and target
+
 * Thu Apr 16 2026 Gitea Actions <actions@git.lair.cafe> - 0.1.14-1
 - ci: publish both packages to a single helexa/helexa COPR project
 - fix(rpm): rename neuron package to helexa-neuron
