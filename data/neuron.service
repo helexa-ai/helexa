@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/neuron --config /etc/cortex/neuron.toml
+ExecStart=/usr/bin/neuron --config /etc/neuron/neuron.toml
 Restart=on-failure
 RestartSec=5
 User=cortex

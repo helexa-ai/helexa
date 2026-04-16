@@ -52,8 +52,8 @@ cargo build --release -p neuron
 install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
 install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
 install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/neuron.conf
-install -dm750 %{buildroot}%{_sysconfdir}/cortex
-install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
+install -dm750 %{buildroot}%{_sysconfdir}/neuron
+install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 
 %pre
 %sysusers_create_compat %{_builddir}/%{name}-%{version}/data/cortex-sysusers.conf
@@ -73,8 +73,8 @@ install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
 %{_bindir}/neuron
 %{_unitdir}/neuron.service
 %{_sysusersdir}/neuron.conf
-%dir %attr(750,root,cortex) %{_sysconfdir}/cortex
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/neuron.toml
+%dir %attr(750,root,cortex) %{_sysconfdir}/neuron
+%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/neuron/neuron.toml
 
 %changelog
 * Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
