@@ -45,7 +45,7 @@ cargo build --release -p neuron
 %install
 install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
 install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
-install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex-neuron.conf
+install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/neuron.conf
 install -dm750 %{buildroot}%{_sysconfdir}/cortex
 install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
 
@@ -66,7 +66,7 @@ install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/cortex/neuron.toml
 %doc README.md
 %{_bindir}/neuron
 %{_unitdir}/neuron.service
-%{_sysusersdir}/cortex-neuron.conf
+%{_sysusersdir}/neuron.conf
 %dir %attr(750,root,cortex) %{_sysconfdir}/cortex
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/neuron.toml
 

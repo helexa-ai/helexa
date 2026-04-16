@@ -46,7 +46,7 @@ cargo build --release -p cortex-cli
 %install
 install -Dm755 target/release/cortex %{buildroot}%{_bindir}/cortex
 install -Dm644 data/cortex.service %{buildroot}%{_unitdir}/cortex.service
-install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex-gateway.conf
+install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex.conf
 install -dm750 %{buildroot}%{_sysconfdir}/cortex
 install -Dm640 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
 install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
@@ -68,7 +68,7 @@ install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %doc README.md
 %{_bindir}/cortex
 %{_unitdir}/cortex.service
-%{_sysusersdir}/cortex-gateway.conf
+%{_sysusersdir}/cortex.conf
 %dir %attr(750,root,cortex) %{_sysconfdir}/cortex
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/cortex.toml
 %config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/models.toml
