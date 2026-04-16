@@ -1,5 +1,5 @@
 Name:           neuron
-Version:        0.1.3
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        Per-node GPU discovery and harness management daemon for cortex
 
