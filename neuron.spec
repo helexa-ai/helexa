@@ -22,11 +22,11 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 Requires:       systemd
 
-# rpm's sysusers provides-generator only emits versioned user(cortex) when
-# the u-line has GECOS/home/shell fields. %attr(,,cortex) in %files emits
-# an unversioned Requires: user(cortex), so we provide it explicitly.
-Provides:       user(cortex)
-Provides:       group(cortex)
+# rpm's sysusers provides-generator only emits versioned user(neuron) when
+# the u-line has GECOS/home/shell fields. %attr(,,neuron) in %files emits
+# an unversioned Requires: user(neuron), so we provide it explicitly.
+Provides:       user(neuron)
+Provides:       group(neuron)
 
 %description
 Neuron is a per-node daemon for cortex inference clusters. It discovers
@@ -51,12 +51,12 @@ cargo build --release -p neuron
 %install
 install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
 install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
-install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/neuron.conf
+install -Dm644 data/neuron-sysusers.conf %{buildroot}%{_sysusersdir}/neuron.conf
 install -dm750 %{buildroot}%{_sysconfdir}/neuron
 install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 
 %pre
-%sysusers_create_compat %{_builddir}/%{name}-%{version}/data/cortex-sysusers.conf
+%sysusers_create_compat %{_builddir}/%{name}-%{version}/data/neuron-sysusers.conf
 
 %post
 %systemd_post neuron.service
@@ -73,8 +73,8 @@ install -Dm640 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 %{_bindir}/neuron
 %{_unitdir}/neuron.service
 %{_sysusersdir}/neuron.conf
-%dir %attr(750,root,cortex) %{_sysconfdir}/neuron
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/neuron/neuron.toml
+%dir %attr(750,root,neuron) %{_sysconfdir}/neuron
+%config(noreplace) %attr(640,root,neuron) %{_sysconfdir}/neuron/neuron.toml
 
 %changelog
 * Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1

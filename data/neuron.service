@@ -8,8 +8,8 @@ Type=simple
 ExecStart=/usr/bin/neuron --config /etc/neuron/neuron.toml
 Restart=on-failure
 RestartSec=5
-User=cortex
-Group=cortex
+User=neuron
+Group=neuron
 
 [Install]
 WantedBy=multi-user.target
