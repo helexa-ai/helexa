@@ -125,7 +125,8 @@ automatically. Clippy warnings must be resolved, not suppressed with
   - One or more GPU nodes running mistral.rs on port 8080
   - Optionally a metrics-only node (no GPU) for Prometheus/Grafana
 - Each node runs `mistralrs serve` on port 8080
-- Gateway listens on port 8000 (API) and 9100 (metrics)
+- Gateway listens on port 31313 (API) and 31314 (metrics)
+- neuron listens on port 13131 on each GPU host
 - TLS terminated at gateway or via nginx; internal traffic is plaintext over WireGuard
 
 ## Conventions
@@ -380,7 +381,7 @@ processes (one process per loaded model, each on its own port).
 
 ## neuron API
 
-neuron exposes an HTTP API on port 9090 that cortex polls and calls.
+neuron exposes an HTTP API on port 13131 that cortex polls and calls.
 
 ```
 GET  /discovery
@@ -424,8 +425,8 @@ endpoint. cortex.toml shrinks to:
 
 ```toml
 [gateway]
-listen = "0.0.0.0:8000"
-metrics_listen = "0.0.0.0:9100"
+listen = "0.0.0.0:31313"
+metrics_listen = "0.0.0.0:31314"
 
 [eviction]
 strategy = "lru"
@@ -433,15 +434,15 @@ defrag_after_cycles = 50
 
 [[neurons]]
 name = "beast"
-endpoint = "http://beast.hanzalova.internal:9090"
+endpoint = "http://beast.hanzalova.internal:13131"
 
 [[neurons]]
 name = "benjy"
-endpoint = "http://benjy.kosherinata.internal:9090"
+endpoint = "http://benjy.hanzalova.internal:13131"
 
 [[neurons]]
 name = "quadbrat"
-endpoint = "http://quadbrat.hanzalova.internal:9090"
+endpoint = "http://quadbrat.hanzalova.internal:13131"
 ```
 
 On startup and periodically, cortex calls `GET /discovery` and
@@ -521,7 +522,7 @@ cortex/
 │   │       └── metrics.rs      # prometheus exporter (unchanged)
 │   ├── neuron/                 # node plane (replaces cortex-agent)
 │   │   └── src/
-│   │       ├── main.rs         # binary entrypoint, axum server on :9090
+│   │       ├── main.rs         # binary entrypoint, axum server on :13131
 │   │       ├── discovery.rs    # nvidia-smi, device enumeration
 │   │       ├── health.rs       # runtime GPU polling
 │   │       ├── api.rs          # HTTP handlers for /discovery, /models, etc.

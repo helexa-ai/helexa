@@ -23,7 +23,7 @@ enum Commands {
     /// Print the fleet status (models, nodes, health).
     Status {
         /// Gateway API endpoint to query.
-        #[arg(short, long, default_value = "http://localhost:8000")]
+        #[arg(short, long, default_value = "http://localhost:31313")]
         endpoint: String,
     },
 }
