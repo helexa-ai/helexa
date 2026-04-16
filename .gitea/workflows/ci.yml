@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Ensure sccache with S3 support
+        env:
+          RUSTC_WRAPPER: ""
         run: |
           if sccache --version 2>/dev/null && sccache --show-stats 2>/dev/null; then
             echo "sccache with S3 support already installed"
