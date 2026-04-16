@@ -71,5 +71,5 @@ install -Dm644 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 %config(noreplace) %{_sysconfdir}/neuron/neuron.toml
 
 %changelog
-* Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
+* Wed Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
 - Initial package
