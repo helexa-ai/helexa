@@ -219,21 +219,43 @@ jobs:
     needs: [copr-cortex, copr-neuron]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Stamp version and push
-        env:
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+      - name: Determine version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp version
         run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
+          VERSION="${{ steps.version.outputs.VERSION }}"
           sed -i '/\[workspace\.package\]/,/\[/{ s/^version = ".*"/version = "'"${VERSION}"'"/ }' Cargo.toml
           sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
           sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
           cargo check --workspace 2>/dev/null || true
+
+      - name: Generate cortex changelog entry
+        uses: https://git.lair.cafe/actions/rpm-changelog@v1
+        with:
+          spec: cortex.spec
+          version: ${{ steps.version.outputs.VERSION }}
+
+      - name: Generate neuron changelog entry
+        uses: https://git.lair.cafe/actions/rpm-changelog@v1
+        with:
+          spec: neuron.spec
+          version: ${{ steps.version.outputs.VERSION }}
+
+      - name: Commit and push
+        env:
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.VERSION }}"
           git config user.name "Gitea Actions"
           git config user.email "actions@git.lair.cafe"
           git add Cargo.toml Cargo.lock cortex.spec neuron.spec
           if git diff --cached --quiet; then
-            echo "Version already at ${VERSION}"
+            echo "Nothing to commit for ${VERSION}"
           else
             git commit -m "chore: bump version to ${VERSION}"
             git remote set-url origin "https://gitea-actions:${GITEA_TOKEN}@git.lair.cafe/helexa/cortex.git"
