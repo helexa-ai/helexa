@@ -1,5 +1,5 @@
 Name:           cortex
-Version:        0.1.5
+Version:        0.1.7
 Release:        1%{?dist}
 Summary:        Inference gateway for multi-node GPU clusters
 
