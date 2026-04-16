@@ -74,5 +74,5 @@ install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %config(noreplace) %{_sysconfdir}/cortex/models.toml
 
 %changelog
-* Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
+* Wed Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
 - Initial package
