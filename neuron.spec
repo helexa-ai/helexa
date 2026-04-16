@@ -22,6 +22,12 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 Requires:       systemd
 
+# rpm's sysusers provides-generator only emits versioned user(cortex) when
+# the u-line has GECOS/home/shell fields. %attr(,,cortex) in %files emits
+# an unversioned Requires: user(cortex), so we provide it explicitly.
+Provides:       user(cortex)
+Provides:       group(cortex)
+
 %description
 Neuron is a per-node daemon for cortex inference clusters. It discovers
 local GPU hardware via nvidia-smi, manages inference harnesses (mistral.rs,

@@ -22,6 +22,12 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 Requires:       systemd
 
+# rpm's sysusers provides-generator only emits versioned user(cortex) when
+# the u-line has GECOS/home/shell fields. %attr(,,cortex) in %files emits
+# an unversioned Requires: user(cortex), so we provide it explicitly.
+Provides:       user(cortex)
+Provides:       group(cortex)
+
 %description
 Cortex is a Rust reverse-proxy that sits in front of multiple inference
 nodes (via neuron daemons) and presents a unified OpenAI and Anthropic
