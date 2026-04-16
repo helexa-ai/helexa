@@ -8,6 +8,7 @@ on:
     branches: [main]
 
 env:
+  CARGO_INCREMENTAL: "0"
   RUSTC_WRAPPER: sccache
   SCCACHE_BUCKET: sccache
   SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
@@ -22,6 +23,19 @@ jobs:
     runs-on: fedora
     steps:
       - uses: actions/checkout@v4
+
+      - name: Cache cargo registry and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Ensure sccache with S3 support
         env:
@@ -38,9 +52,6 @@ jobs:
 
       - name: Clippy
         run: cargo clippy --workspace -- -D warnings
-
-      - name: Build
-        run: cargo build --workspace
 
       - name: Test
         run: cargo test --workspace
