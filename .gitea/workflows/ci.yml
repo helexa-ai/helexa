@@ -82,7 +82,10 @@ jobs:
           sed -i "s/^Version:.*/Version:        ${VERSION}/" cortex.spec
 
       - name: Generate changelog entry
-        run: bash .gitea/scripts/generate-rpm-changelog.sh cortex.spec "${{ steps.version.outputs.VERSION }}"
+        uses: https://git.lair.cafe/actions/rpm-changelog@v1
+        with:
+          spec: cortex.spec
+          version: ${{ steps.version.outputs.VERSION }}
 
       - name: Generate source tarball
         run: |
@@ -139,7 +142,10 @@ jobs:
           sed -i "s/^Version:.*/Version:        ${VERSION}/" neuron.spec
 
       - name: Generate changelog entry
-        run: bash .gitea/scripts/generate-rpm-changelog.sh neuron.spec "${{ steps.version.outputs.VERSION }}"
+        uses: https://git.lair.cafe/actions/rpm-changelog@v1
+        with:
+          spec: neuron.spec
+          version: ${{ steps.version.outputs.VERSION }}
 
       - name: Generate source tarball
         run: |
