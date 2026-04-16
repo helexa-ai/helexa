@@ -1,6 +1,6 @@
 # neuron.example.toml — example configuration
 #
-# Copy to /etc/cortex/neuron.toml and adjust for your environment.
+# Copy to /etc/neuron/neuron.toml and adjust for your environment.
 #
 # Environment variable overrides use NEURON_ prefix with __ separators:
 #   NEURON_PORT=9090
