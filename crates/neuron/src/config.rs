@@ -17,7 +17,7 @@ pub struct NeuronConfig {
 }
 
 fn default_port() -> u16 {
-    9090
+    13131
 }
 
 impl NeuronConfig {
@@ -33,7 +33,7 @@ impl NeuronConfig {
 impl Default for NeuronConfig {
     fn default() -> Self {
         Self {
-            port: 9090,
+            port: 13131,
             harnesses: vec![],
         }
     }

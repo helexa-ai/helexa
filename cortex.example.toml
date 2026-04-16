@@ -3,11 +3,11 @@
 # Copy to cortex.toml and adjust for your environment.
 #
 # Environment variable overrides use CORTEX_ prefix with __ separators:
-#   CORTEX_GATEWAY__LISTEN=0.0.0.0:9000
+#   CORTEX_GATEWAY__LISTEN=0.0.0.0:31313
 
 [gateway]
-listen = "0.0.0.0:8000"
-metrics_listen = "0.0.0.0:9100"
+listen = "0.0.0.0:31313"
+metrics_listen = "0.0.0.0:31314"
 
 [eviction]
 strategy = "lru"

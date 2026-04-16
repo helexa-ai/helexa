@@ -6,7 +6,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone)]
 pub struct NodeState {
     pub name: String,
-    /// Base URL of the neuron daemon (e.g. "http://beast.internal:9090").
+    /// Base URL of the neuron daemon (e.g. "http://beast.internal:13131").
     pub endpoint: String,
     pub healthy: bool,
     pub models: HashMap<String, ModelEntry>,

@@ -22,9 +22,9 @@ fn default_models_path() -> String {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewaySettings {
-    /// Address to listen on for API requests (e.g. "0.0.0.0:8000")
+    /// Address to listen on for API requests (e.g. "0.0.0.0:31313")
     pub listen: String,
-    /// Address to listen on for Prometheus metrics (e.g. "0.0.0.0:9100")
+    /// Address to listen on for Prometheus metrics (e.g. "0.0.0.0:31314")
     pub metrics_listen: String,
 }
 
@@ -50,7 +50,7 @@ pub enum EvictionStrategy {
 pub struct NeuronEndpoint {
     /// Human-readable node name (e.g. "beast")
     pub name: String,
-    /// Base URL of the neuron daemon (e.g. "http://beast.internal:9090")
+    /// Base URL of the neuron daemon (e.g. "http://beast.internal:13131")
     pub endpoint: String,
 }
 
@@ -70,8 +70,8 @@ impl Default for GatewayConfig {
     fn default() -> Self {
         Self {
             gateway: GatewaySettings {
-                listen: "0.0.0.0:8000".into(),
-                metrics_listen: "0.0.0.0:9100".into(),
+                listen: "0.0.0.0:31313".into(),
+                metrics_listen: "0.0.0.0:31314".into(),
             },
             eviction: EvictionSettings {
                 strategy: EvictionStrategy::Lru,

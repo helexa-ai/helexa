@@ -88,8 +88,8 @@ WantedBy=multi-user.target
 ```toml
 # cortex.toml
 [gateway]
-listen = "0.0.0.0:8000"
-metrics_listen = "0.0.0.0:9100"
+listen = "0.0.0.0:31313"
+metrics_listen = "0.0.0.0:31314"
 
 [eviction]
 strategy = "lru"        # lru | priority
@@ -143,7 +143,7 @@ cortex serve --config cortex.toml
 cortex status
 
 # list all models across nodes
-curl http://localhost:8000/v1/models
+curl http://localhost:31313/v1/models
 ```
 
 ## License

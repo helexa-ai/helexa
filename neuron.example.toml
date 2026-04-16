@@ -3,9 +3,9 @@
 # Copy to /etc/neuron/neuron.toml and adjust for your environment.
 #
 # Environment variable overrides use NEURON_ prefix with __ separators:
-#   NEURON_PORT=9090
+#   NEURON_PORT=13131
 
-port = 9090
+port = 13131
 
 # -- Harnesses ---------------------------------------------------------------
 # Each [[harnesses]] entry declares an inference engine managed by neuron.
