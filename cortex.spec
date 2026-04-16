@@ -22,12 +22,6 @@ BuildRequires:  systemd-rpm-macros
 Requires(pre):  shadow-utils
 Requires:       systemd
 
-# rpm's sysusers provides-generator only emits versioned user(cortex) when
-# the u-line has GECOS/home/shell fields. %attr(,,cortex) in %files emits
-# an unversioned Requires: user(cortex), so we provide it explicitly.
-Provides:       user(cortex)
-Provides:       group(cortex)
-
 %description
 Cortex is a Rust reverse-proxy that sits in front of multiple inference
 nodes (via neuron daemons) and presents a unified OpenAI and Anthropic
@@ -53,9 +47,9 @@ cargo build --release -p cortex-cli
 install -Dm755 target/release/cortex %{buildroot}%{_bindir}/cortex
 install -Dm644 data/cortex.service %{buildroot}%{_unitdir}/cortex.service
 install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex.conf
-install -dm750 %{buildroot}%{_sysconfdir}/cortex
-install -Dm640 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
-install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
+install -dm755 %{buildroot}%{_sysconfdir}/cortex
+install -Dm644 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
+install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 
 %pre
 %sysusers_create_compat %{_builddir}/%{name}-%{version}/data/cortex-sysusers.conf
@@ -75,9 +69,9 @@ install -Dm640 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %{_bindir}/cortex
 %{_unitdir}/cortex.service
 %{_sysusersdir}/cortex.conf
-%dir %attr(750,root,cortex) %{_sysconfdir}/cortex
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/cortex.toml
-%config(noreplace) %attr(640,root,cortex) %{_sysconfdir}/cortex/models.toml
+%dir %{_sysconfdir}/cortex
+%config(noreplace) %{_sysconfdir}/cortex/cortex.toml
+%config(noreplace) %{_sysconfdir}/cortex/models.toml
 
 %changelog
 * Tue Apr 15 2026 Rob Thijssen <grenade@rob.tn> - 0.1.0-1
