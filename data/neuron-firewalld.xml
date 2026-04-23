@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-neuron</short>
+  <description>Neuron — per-node GPU discovery and harness daemon for cortex</description>
+  <port protocol="tcp" port="13131"/>
+</service>

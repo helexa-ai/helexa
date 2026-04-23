@@ -21,6 +21,7 @@ BuildRequires:  systemd-rpm-macros
 
 Requires(pre):  shadow-utils
 Requires:       systemd
+Requires:       firewalld-filesystem
 
 # systemd-rpm-macros ships a unit dep generator that parses User=/Group=
 # from our .service file and emits Requires: user(cortex)/group(cortex).
@@ -56,6 +57,7 @@ cargo build --release -p cortex-cli
 install -Dm755 target/release/cortex %{buildroot}%{_bindir}/cortex
 install -Dm644 data/cortex.service %{buildroot}%{_unitdir}/cortex.service
 install -Dm644 data/cortex-sysusers.conf %{buildroot}%{_sysusersdir}/cortex.conf
+install -Dm644 data/cortex-firewalld.xml %{buildroot}%{_prefix}/lib/firewalld/services/cortex.xml
 install -dm755 %{buildroot}%{_sysconfdir}/cortex
 install -Dm644 cortex.example.toml %{buildroot}%{_sysconfdir}/cortex/cortex.toml
 install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
@@ -78,6 +80,7 @@ install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %{_bindir}/cortex
 %{_unitdir}/cortex.service
 %{_sysusersdir}/cortex.conf
+%{_prefix}/lib/firewalld/services/cortex.xml
 %dir %{_sysconfdir}/cortex
 %config(noreplace) %{_sysconfdir}/cortex/cortex.toml
 %config(noreplace) %{_sysconfdir}/cortex/models.toml

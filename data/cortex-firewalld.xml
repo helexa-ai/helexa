@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>cortex</short>
+  <description>Cortex — inference gateway for multi-node GPU clusters</description>
+  <port protocol="tcp" port="31313"/>
+  <port protocol="tcp" port="31314"/>
+</service>

@@ -24,6 +24,7 @@ BuildRequires:  systemd-rpm-macros
 
 Requires(pre):  shadow-utils
 Requires:       systemd
+Requires:       firewalld-filesystem
 
 # systemd-rpm-macros ships a unit dep generator that parses User=/Group=
 # from our .service file and emits Requires: user(neuron)/group(neuron).
@@ -58,6 +59,7 @@ cargo build --release -p neuron
 install -Dm755 target/release/neuron %{buildroot}%{_bindir}/neuron
 install -Dm644 data/neuron.service %{buildroot}%{_unitdir}/neuron.service
 install -Dm644 data/neuron-sysusers.conf %{buildroot}%{_sysusersdir}/neuron.conf
+install -Dm644 data/neuron-firewalld.xml %{buildroot}%{_prefix}/lib/firewalld/services/helexa-neuron.xml
 install -dm755 %{buildroot}%{_sysconfdir}/neuron
 install -Dm644 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 
@@ -79,6 +81,7 @@ install -Dm644 neuron.example.toml %{buildroot}%{_sysconfdir}/neuron/neuron.toml
 %{_bindir}/neuron
 %{_unitdir}/neuron.service
 %{_sysusersdir}/neuron.conf
+%{_prefix}/lib/firewalld/services/helexa-neuron.xml
 %dir %{_sysconfdir}/neuron
 %config(noreplace) %{_sysconfdir}/neuron/neuron.toml
 
