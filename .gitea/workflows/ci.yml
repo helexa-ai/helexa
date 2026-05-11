@@ -18,38 +18,33 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
 
 jobs:
-  check:
-    name: Format, lint, build, test
+  fmt:
+    name: Format
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
+      - run: cargo fmt --check --all
 
-      - name: Ensure sccache with S3 support
-        env:
-          RUSTC_WRAPPER: ""
-        run: |
-          if sccache --version 2>/dev/null && sccache --show-stats 2>/dev/null; then
-            echo "sccache with S3 support already installed"
-          else
-            cargo install sccache --features s3 --locked
-          fi
+  clippy:
+    name: Clippy
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo clippy --workspace -- -D warnings
+      - run: sccache --show-stats
 
-      - name: Check formatting
-        run: cargo fmt --check --all
-
-      - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace
-
-      - name: Show sccache stats
-        run: sccache --show-stats
+  test:
+    name: Test
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo test --workspace
+      - run: sccache --show-stats
 
   srpm-cortex:
     name: Build cortex SRPM
     runs-on: rpm
-    needs: check
+    needs: [fmt, clippy, test]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
@@ -109,7 +104,7 @@ jobs:
   srpm-neuron:
     name: Build neuron SRPM
     runs-on: rpm
-    needs: check
+    needs: [fmt, clippy, test]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
