@@ -78,11 +78,21 @@ async fn main() -> Result<()> {
         candle,
     });
 
-    let app = api::neuron_routes().with_state(state);
+    let app = api::neuron_routes().with_state(Arc::clone(&state));
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
     tracing::info!("neuron listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(startup::shutdown_signal())
+        .await?;
+
+    // Deactivation: serve has returned (graceful shutdown signal
+    // received and connections drained). Release CUDA contexts / VRAM
+    // by unloading every model before exiting; systemd's TimeoutStopSec
+    // bounds how long this phase may take.
+    let registry = state.registry.read().await;
+    startup::unload_all_models(&registry).await;
+    tracing::info!("shutdown complete");
 
     Ok(())
 }

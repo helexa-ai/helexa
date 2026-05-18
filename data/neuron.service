@@ -15,6 +15,11 @@ Group=neuron
 # materialise on first activation. systemd's default TimeoutStartSec
 # (90s) is far too short; allow 30 minutes.
 TimeoutStartSec=1800s
+# On stop, neuron drains in-flight requests then unloads every model
+# to release CUDA contexts cleanly. Allow generous time for big-model
+# unloads; systemd will SIGKILL after this bound.
+TimeoutStopSec=120s
+KillSignal=SIGTERM
 
 [Install]
 WantedBy=multi-user.target

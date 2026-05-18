@@ -1,12 +1,14 @@
-//! Activation-time orchestration.
+//! Activation- and deactivation-time orchestration.
 //!
-//! Wired from `main.rs` after the harness registry is built and before
-//! the HTTP listener binds. Kept in its own module so the logic is
+//! Wired from `main.rs` around the HTTP listener — activation runs
+//! before bind, deactivation runs after axum returns from its
+//! graceful-shutdown future. Kept in its own module so the logic is
 //! unit-testable without spinning up a full neuron process.
 
 use crate::harness::HarnessRegistry;
 use cortex_core::harness::ModelSpec;
 use std::time::Instant;
+use tokio::signal;
 
 /// Load each spec sequentially against the registry, treating
 /// individual failures as warnings rather than fatal errors.
@@ -32,6 +34,63 @@ pub async fn load_default_models(registry: &HarnessRegistry, specs: &[ModelSpec]
                 error = %e,
                 elapsed_ms = start.elapsed().as_millis() as u64,
                 "failed to load default model, continuing"
+            ),
+        }
+    }
+}
+
+/// Future that resolves on SIGINT (Ctrl-C) or SIGTERM (systemd stop).
+///
+/// Wired into `axum::serve(...).with_graceful_shutdown(shutdown_signal())`
+/// so the HTTP listener stops accepting new connections, lets in-flight
+/// requests drain, and then yields control back to main for cleanup.
+pub async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c().await.ok();
+    };
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("install SIGTERM handler")
+            .recv()
+            .await;
+    };
+    tokio::select! {
+        _ = ctrl_c => tracing::info!("received SIGINT, shutting down"),
+        _ = terminate => tracing::info!("received SIGTERM, shutting down"),
+    }
+}
+
+/// Unload every model currently registered. Called from `main.rs` after
+/// axum's graceful shutdown future resolves, so CUDA contexts and VRAM
+/// are released before the process exits rather than left to the OS to
+/// reclaim. Per-model failures are logged and skipped — keep cleanup
+/// going even when one harness is unhealthy.
+pub async fn unload_all_models(registry: &HarnessRegistry) {
+    let listed = match registry.list_all_models().await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to list models during shutdown");
+            return;
+        }
+    };
+
+    if listed.is_empty() {
+        return;
+    }
+
+    tracing::info!(count = listed.len(), "unloading models for shutdown");
+    for model in listed {
+        let start = Instant::now();
+        match registry.unload_model(&model.id).await {
+            Ok(()) => tracing::info!(
+                model = %model.id,
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "unloaded"
+            ),
+            Err(e) => tracing::warn!(
+                model = %model.id,
+                error = %e,
+                "unload failed during shutdown"
             ),
         }
     }
