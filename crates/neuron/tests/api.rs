@@ -273,10 +273,11 @@ async fn test_chat_completions_model_not_loaded() {
     assert_eq!(resp.status(), 404);
 }
 
-/// `/v1/chat/completions` with `stream: true` returns 501 until Stage 4
-/// wires up SSE.
+/// `/v1/chat/completions` with `stream: true` returns 404 when the
+/// model isn't loaded — same surface as the non-streaming path. The
+/// streaming code only kicks in once the model lookup succeeds.
 #[tokio::test]
-async fn test_chat_completions_streaming_not_yet_implemented() {
+async fn test_chat_completions_streaming_model_not_loaded() {
     use cortex_core::harness::HarnessConfig;
     use neuron::config::HarnessSettings;
 
@@ -306,12 +307,12 @@ async fn test_chat_completions_streaming_not_yet_implemented() {
     let resp = reqwest::Client::new()
         .post(format!("{url}/v1/chat/completions"))
         .json(&json!({
-            "model": "anything",
+            "model": "definitely/not-loaded",
             "messages": [{"role": "user", "content": "hi"}],
             "stream": true
         }))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 501);
+    assert_eq!(resp.status(), 404);
 }
