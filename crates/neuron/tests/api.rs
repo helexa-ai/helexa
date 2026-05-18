@@ -135,17 +135,21 @@ async fn test_models_empty_registry() {
     assert!(body.as_array().unwrap().is_empty());
 }
 
-/// Verify the candle harness registers and the load endpoint returns a
-/// "not implemented" error in Stage 1 (Stage 2 wires up actual loading).
+/// Verify the candle harness registers, list is empty by default, and a
+/// load attempt for an obviously-bogus model id returns a 4xx error
+/// without crashing the daemon. Real load/unload exercising actual GGUF
+/// download is covered by `tests/candle_lifecycle.rs` (cuda-integration).
 #[tokio::test]
-async fn test_candle_harness_registers_but_load_unimplemented() {
+async fn test_candle_harness_registers_and_rejects_bogus_model() {
     use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
 
     let registry = HarnessRegistry::from_configs(
         &[HarnessConfig {
             name: "candle".into(),
         }],
         "http://localhost:13131",
+        &HarnessSettings::default(),
     );
 
     let health_cache = Arc::new(HealthCache::new());
@@ -165,7 +169,6 @@ async fn test_candle_harness_registers_but_load_unimplemented() {
 
     let client = reqwest::Client::new();
 
-    // GET /models — candle harness has no models loaded yet.
     let resp = client
         .get(format!("{neuron_url}/models"))
         .send()
@@ -175,12 +178,22 @@ async fn test_candle_harness_registers_but_load_unimplemented() {
     let models: Vec<serde_json::Value> = resp.json().await.unwrap();
     assert!(models.is_empty());
 
-    // POST /models/load — Stage 1 skeleton returns an error.
+    // Sending a wrong-harness spec should be rejected synchronously
+    // without touching the network or the model registry.
     let resp = client
         .post(format!("{neuron_url}/models/load"))
-        .json(&json!({"model_id": "some-model", "harness": "candle"}))
+        .json(&json!({"model_id": "definitely/not-real", "harness": "not-candle"}))
         .send()
         .await
         .unwrap();
     assert_eq!(resp.status(), 400);
+
+    // Registry still empty.
+    let resp = client
+        .get(format!("{neuron_url}/models"))
+        .send()
+        .await
+        .unwrap();
+    let models: Vec<serde_json::Value> = resp.json().await.unwrap();
+    assert!(models.is_empty());
 }

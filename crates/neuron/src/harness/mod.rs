@@ -84,12 +84,19 @@ impl HarnessRegistry {
     /// `bind_url` is the URL where this neuron serves inference (its own
     /// listen address). In-process harnesses (currently the only kind)
     /// return this URL from `inference_endpoint`.
-    pub fn from_configs(configs: &[HarnessConfig], bind_url: &str) -> Self {
+    pub fn from_configs(
+        configs: &[HarnessConfig],
+        bind_url: &str,
+        settings: &crate::config::HarnessSettings,
+    ) -> Self {
         let mut registry = Self::new();
         for config in configs {
             match config.name.as_str() {
                 "candle" => {
-                    registry.register(Box::new(candle::CandleHarness::new(bind_url.to_string())));
+                    registry.register(Box::new(candle::CandleHarness::new(
+                        bind_url.to_string(),
+                        settings.candle.hf_cache.clone(),
+                    )));
                 }
                 other => {
                     tracing::warn!(harness = other, "unknown harness type, skipping");

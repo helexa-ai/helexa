@@ -12,6 +12,18 @@ path = "src/lib.rs"
 name = "neuron"
 path = "src/main.rs"
 
+[features]
+default = []
+# Enables CUDA acceleration in candle. Without this feature, candle
+# compiles for CPU only and Device::new_cuda calls fall back to CPU.
+cuda = [
+    "candle-core/cuda",
+    "candle-nn/cuda",
+    "candle-transformers/cuda",
+]
+# Reserved for GPU-only integration tests in later stages.
+cuda-integration = ["cuda"]
+
 [dependencies]
 cortex-core.workspace = true
 tokio.workspace = true
@@ -26,6 +38,15 @@ async-trait.workspace = true
 clap.workspace = true
 figment.workspace = true
 toml.workspace = true
+
+# candle for in-process inference. CUDA support is gated behind the
+# crate's `cuda` feature (default off) so the workspace builds on
+# non-CUDA hosts and CI runners.
+candle-core = "0.10.2"
+candle-nn = "0.10.2"
+candle-transformers = "0.10.2"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+hf-hub = { version = "0.4", features = ["tokio"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -6,7 +6,7 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeuronConfig {
@@ -14,6 +14,25 @@ pub struct NeuronConfig {
     pub port: u16,
     #[serde(default)]
     pub harnesses: Vec<HarnessConfig>,
+    /// Per-harness configuration. Currently only `candle` is recognised.
+    #[serde(default)]
+    pub harness: HarnessSettings,
+}
+
+/// Settings for individual harness implementations. Each harness owns
+/// its own sub-table so users only configure the harnesses they enable.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HarnessSettings {
+    #[serde(default)]
+    pub candle: CandleHarnessConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CandleHarnessConfig {
+    /// HuggingFace cache directory for model weights.
+    /// When unset, defers to hf-hub's default (~/.cache/huggingface).
+    #[serde(default)]
+    pub hf_cache: Option<PathBuf>,
 }
 
 fn default_port() -> u16 {
@@ -35,6 +54,7 @@ impl Default for NeuronConfig {
         Self {
             port: 13131,
             harnesses: vec![],
+            harness: HarnessSettings::default(),
         }
     }
 }

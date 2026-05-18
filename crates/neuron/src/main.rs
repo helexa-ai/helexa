@@ -51,7 +51,7 @@ async fn main() -> Result<()> {
     // Build harness registry from config. In-process harnesses (candle)
     // need to know neuron's own bind URL so they can return it from
     // inference_endpoint.
-    let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url);
+    let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url, &cfg.harness);
     discovery_result.harnesses = registry.names();
 
     let health_cache = Arc::new(health::HealthCache::new());

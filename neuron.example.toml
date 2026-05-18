@@ -8,9 +8,17 @@
 port = 13131
 
 # -- Harnesses ---------------------------------------------------------------
-# Each [[harnesses]] entry declares an inference engine. Currently only
+# Each [[harnesses]] entry enables an inference engine. Currently only
 # "candle" is supported — it runs in-process and uses huggingface/candle
-# for inference on local CUDA devices.
+# for inference on local CUDA devices (or CPU when CUDA is unavailable).
 
 [[harnesses]]
 name = "candle"
+
+# -- Candle harness settings -------------------------------------------------
+# Optional tuning for the candle harness.
+
+[harness.candle]
+# HuggingFace cache directory for model weights. When unset, hf-hub's
+# default (~/.cache/huggingface) is used.
+# hf_cache = "/var/lib/neuron/hf-cache"
