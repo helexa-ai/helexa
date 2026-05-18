@@ -51,18 +51,18 @@ async fn test_streaming_sse_passthrough() {
     }
 
     assert!(
-        chunks.len() >= chunk_count + 1,
-        "expected at least {} chunks (got {}): {:?}",
-        chunk_count + 1,
+        chunks.len() > chunk_count,
+        "expected more than {} chunks (got {}): {:?}",
+        chunk_count,
         chunks.len(),
         chunks,
     );
 
     assert_eq!(chunks.last().unwrap(), "[DONE]");
 
-    for i in 0..chunk_count {
+    for (i, chunk) in chunks.iter().enumerate().take(chunk_count) {
         let chunk_json: serde_json::Value =
-            serde_json::from_str(&chunks[i]).expect("chunk should be valid JSON");
+            serde_json::from_str(chunk).expect("chunk should be valid JSON");
         assert_eq!(
             chunk_json["choices"][0]["delta"]["content"],
             format!("token{i}")

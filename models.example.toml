@@ -6,7 +6,7 @@
 
 [[models]]
 id = "your-org/large-model"
-harness = "mistralrs"
+harness = "candle"
 quant = "Q4_K_M"
 vram_mb = 19000
 min_devices = 2
@@ -15,7 +15,7 @@ pinned_on = ["gpu-large"]
 
 [[models]]
 id = "your-org/medium-model"
-harness = "mistralrs"
+harness = "candle"
 quant = "Q6_K"
 vram_mb = 12000
 min_devices = 1
@@ -23,7 +23,7 @@ pinned_on = ["gpu-medium"]
 
 [[models]]
 id = "your-org/embedding-model"
-harness = "mistralrs"
+harness = "candle"
 quant = "Q8_0"
 vram_mb = 8000
 min_devices = 1

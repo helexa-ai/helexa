@@ -27,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.8"
 
-# http client (for proxying to mistralrs backends)
+# http client (for proxying to neuron backends)
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
 # observability

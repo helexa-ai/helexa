@@ -3,7 +3,7 @@
 //! These are a subset sufficient for chat completions (streaming + non-streaming).
 //! Fields not relevant to proxying are captured as `serde_json::Value` via
 //! `#[serde(flatten)]` so we forward them without needing to enumerate every
-//! extension field mistral.rs supports.
+//! extension field a backend might support.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -22,7 +22,7 @@ pub struct ChatCompletionRequest {
     pub max_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
-    /// All other fields (tools, response_format, mistral.rs extensions, etc.)
+    /// All other fields (tools, response_format, backend extensions, etc.)
     #[serde(flatten)]
     pub extra: Value,
 }

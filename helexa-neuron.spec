@@ -37,8 +37,9 @@ Provides:       user(neuron)
 
 %description
 Neuron is a per-node daemon for cortex inference clusters. It discovers
-local GPU hardware via nvidia-smi, manages inference harnesses (mistral.rs,
-llama.cpp), and exposes an HTTP API for model lifecycle management.
+local GPU hardware via nvidia-smi, runs in-process inference via
+huggingface/candle, and exposes an HTTP API for model lifecycle
+management (load, unload, list, inference endpoint).
 
 %prep
 %autosetup

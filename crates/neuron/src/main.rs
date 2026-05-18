@@ -37,6 +37,7 @@ async fn main() -> Result<()> {
     });
 
     let port = args.port.unwrap_or(cfg.port);
+    let bind_url = format!("http://localhost:{port}");
     let start_time = Instant::now();
 
     tracing::info!("running hardware discovery");
@@ -47,8 +48,10 @@ async fn main() -> Result<()> {
         "discovery complete"
     );
 
-    // Build harness registry from config.
-    let registry = HarnessRegistry::from_configs(&cfg.harnesses);
+    // Build harness registry from config. In-process harnesses (candle)
+    // need to know neuron's own bind URL so they can return it from
+    // inference_endpoint.
+    let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url);
     discovery_result.harnesses = registry.names();
 
     let health_cache = Arc::new(health::HealthCache::new());

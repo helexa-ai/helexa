@@ -2,7 +2,7 @@
 //!
 //! These mirror the `/v1/messages` format used by the Anthropic API.
 //! The gateway accepts these, translates to OpenAI format, proxies to
-//! mistral.rs, then translates the response back.
+//! the inference backend (neuron), then translates the response back.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

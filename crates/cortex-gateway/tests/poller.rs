@@ -12,8 +12,8 @@ use std::sync::Arc;
 async fn test_poller_discovers_models() {
     // Mock neuron reports 2 models via /models endpoint (neuron format).
     let mock_url = common::spawn_mock_neuron_with_models(json!([
-        {"id": "model-a", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": 8000},
-        {"id": "model-b", "harness": "mistralrs", "status": "unloaded", "devices": [], "vram_used_mb": null}
+        {"id": "model-a", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": 8000},
+        {"id": "model-b", "harness": "candle", "status": "unloaded", "devices": [], "vram_used_mb": null}
     ]))
     .await;
 
@@ -63,8 +63,8 @@ async fn test_poller_discovers_models() {
 #[tokio::test]
 async fn test_poller_updates_gateway_models_endpoint() {
     let mock_url = common::spawn_mock_neuron_with_models(json!([
-        {"id": "model-x", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null},
-        {"id": "model-y", "harness": "mistralrs", "status": "loaded", "devices": [1], "vram_used_mb": null}
+        {"id": "model-x", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": null},
+        {"id": "model-y", "harness": "candle", "status": "loaded", "devices": [1], "vram_used_mb": null}
     ]))
     .await;
 
@@ -152,8 +152,8 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
 #[tokio::test]
 async fn test_poller_removes_stale_models() {
     let mock_url = common::spawn_mock_neuron_with_models(json!([
-        {"id": "keep-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null},
-        {"id": "drop-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null}
+        {"id": "keep-me", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": null},
+        {"id": "drop-me", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": null}
     ]))
     .await;
 
@@ -183,7 +183,7 @@ async fn test_poller_removes_stale_models() {
 
     // New mock with only one model.
     let new_mock_url = common::spawn_mock_neuron_with_models(json!([
-        {"id": "keep-me", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": null}
+        {"id": "keep-me", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": null}
     ]))
     .await;
 

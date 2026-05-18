@@ -9,13 +9,13 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for a harness instance on a neuron.
+///
+/// All current harnesses are in-process (candle); per-harness tuning
+/// (cache paths, device policies, etc.) lives in dedicated config
+/// blocks rather than on this struct.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HarnessConfig {
     pub name: String,
-    /// Base URL of the harness (e.g. "http://localhost:8080" for mistral.rs).
-    pub endpoint: Option<String>,
-    /// Systemd unit name, if the harness is managed via systemd.
-    pub systemd_unit: Option<String>,
 }
 
 /// Health status of a harness process.
@@ -47,16 +47,24 @@ pub struct ModelInfo {
 }
 
 /// What an inference harness must do, from neuron's perspective.
+///
+/// All current harnesses are in-process — they share neuron's address
+/// space and lifecycle. `start`/`stop` therefore default to no-ops; a
+/// future process-supervising harness would override them.
 #[async_trait]
 pub trait Harness: Send + Sync {
-    /// Human-readable name (e.g. "mistralrs", "llamacpp", "comfyui").
+    /// Human-readable name (e.g. "candle").
     fn name(&self) -> &str;
 
-    /// Start the harness process if it is not already running.
-    async fn start(&self, config: &HarnessConfig) -> Result<()>;
+    /// Start the harness. Default no-op for in-process harnesses.
+    async fn start(&self, _config: &HarnessConfig) -> Result<()> {
+        Ok(())
+    }
 
-    /// Stop the harness process gracefully.
-    async fn stop(&self) -> Result<()>;
+    /// Stop the harness. Default no-op for in-process harnesses.
+    async fn stop(&self) -> Result<()> {
+        Ok(())
+    }
 
     /// Health check. Returns the harness process status.
     async fn health(&self) -> HarnessHealth;

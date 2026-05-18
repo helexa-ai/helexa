@@ -8,9 +8,9 @@
 port = 13131
 
 # -- Harnesses ---------------------------------------------------------------
-# Each [[harnesses]] entry declares an inference engine managed by neuron.
+# Each [[harnesses]] entry declares an inference engine. Currently only
+# "candle" is supported — it runs in-process and uses huggingface/candle
+# for inference on local CUDA devices.
 
 [[harnesses]]
-name = "mistralrs"
-endpoint = "http://localhost:8080"
-systemd_unit = "mistralrs.service"
+name = "candle"

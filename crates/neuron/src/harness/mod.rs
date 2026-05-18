@@ -1,7 +1,6 @@
 //! Harness registry — maps harness names to trait implementations.
 
-pub mod llamacpp;
-pub mod mistralrs;
+pub mod candle;
 
 use anyhow::Result;
 use cortex_core::harness::{Harness, HarnessConfig, ModelInfo, ModelSpec};
@@ -81,19 +80,16 @@ impl HarnessRegistry {
     }
 
     /// Build a registry from harness configs.
-    pub fn from_configs(configs: &[HarnessConfig]) -> Self {
+    ///
+    /// `bind_url` is the URL where this neuron serves inference (its own
+    /// listen address). In-process harnesses (currently the only kind)
+    /// return this URL from `inference_endpoint`.
+    pub fn from_configs(configs: &[HarnessConfig], bind_url: &str) -> Self {
         let mut registry = Self::new();
         for config in configs {
             match config.name.as_str() {
-                "mistralrs" => {
-                    if let Some(endpoint) = &config.endpoint {
-                        registry.register(Box::new(mistralrs::MistralRsHarness::new(
-                            endpoint.clone(),
-                            config.systemd_unit.clone(),
-                        )));
-                    } else {
-                        tracing::warn!("mistralrs harness missing endpoint, skipping");
-                    }
+                "candle" => {
+                    registry.register(Box::new(candle::CandleHarness::new(bind_url.to_string())));
                 }
                 other => {
                     tracing::warn!(harness = other, "unknown harness type, skipping");

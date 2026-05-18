@@ -616,58 +616,45 @@ dnf install cortex                # gateway host
 dnf install helexa-neuron         # GPU nodes
 ```
 
-### Phase 11: llama.cpp harness stub
+## 2026-05-18 addendum: candle-native pivot
 
-**Goal:** Prove the harness abstraction works with a second engine.
+Phases 11 (llama.cpp harness) and 12 (mistral.rs COPR) below are
+**superseded**. The project no longer treats mistral.rs or llama.cpp as
+dependencies — both are conceptually out of scope. neuron becomes a
+candle-native inference daemon, with `Harness` retained as an
+internal seam for adding future engines (vision/audio/diffusion) but
+its only implementation being in-process candle.
 
-**Steps:**
-1. `crates/neuron/src/harness/llamacpp.rs` — implement the `Harness`
-   trait for llama.cpp's `llama-server`.
-   - `start()` — launch `llama-server` with the correct model path,
-     `--port`, `--n-gpu-layers`, `--tensor-split` args. Track the
-     child process.
-   - `stop()` — send SIGTERM to the child process.
-   - `list_models()` — llama-server serves one model per process, so
-     return a single-element list.
-   - `load_model()` — start a new llama-server process for this model.
-   - `unload_model()` — stop the process.
-   - `inference_endpoint()` — return `http://localhost:{assigned_port}`.
-2. Port allocation: neuron assigns ports from a range (e.g. 8100-8199)
-   to llama-server instances.
-3. Register in `HarnessRegistry` when configured:
-   ```toml
-   [[harnesses]]
-   name = "llamacpp"
-   binary = "/usr/local/bin/llama-server"
-   port_range = [8100, 8199]
-   ```
-4. Tests: mock llama-server (simple HTTP server returning canned
-   responses), test load/unload/endpoint lifecycle.
+The full staged plan for this pivot lives at
+`~/.claude/plans/create-a-more-aggressive-calm-naur.md`. Summary:
 
-**Done when:** A model with `harness = "llamacpp"` in `models.toml` can
-be loaded and served through cortex. Tests pass with mock llama-server.
+- **Stage 1 (this commit):** delete `mistralrs.rs` and `llamacpp.rs`,
+  scaffold inert `CandleHarness`, drop `endpoint`/`systemd_unit` from
+  `HarnessConfig`, default no-op `start`/`stop` on the `Harness` trait.
+- **Stages 2–4:** wire up candle model load/unload (quantized Qwen3
+  first), add OpenAI-compatible inference endpoint in neuron, then SSE
+  streaming.
+- **Stages 5–6:** load-on-activation (default models in config) and
+  unload-on-deactivation (graceful shutdown).
+- **Stages 7–8:** multi-GPU tensor parallelism and broader model/quant
+  coverage.
 
-### Phase 12 (lower priority): mistral.rs COPR packaging
+Sections of this document that describe mistral.rs HTTP behaviour
+("mistral.rs API gotchas") are retained as historical context for
+Phases 1–10 — they document what was true while the project depended
+on mistral.rs. They do not describe current behaviour.
 
-**Goal:** Fedora RPMs for mistral.rs built against specific CUDA versions.
+---
 
-**Steps:**
-1. `mistralrs-cuda.spec` — RPM spec that clones a pinned mistral.rs git
-   tag, builds with `--features cuda`, links against the system CUDA
-   toolkit. Produces `mistralrs-cuda13-server` (CUDA 13.x / sm_120) and
-   `mistralrs-cuda12-server` (CUDA 12.x / sm_89). Install binary to
-   `/usr/local/bin/mistralrs`.
-2. COPR build config: enable the NVIDIA CUDA repo as a build dependency.
-   Pin the CUDA toolkit version in `BuildRequires`.
-3. Gitea Actions or manual workflow: bump the mistral.rs tag in the spec,
-   trigger COPR rebuild.
-4. neuron's mistralrs harness config references which binary/package
-   provides the mistral.rs binary. neuron could warn at startup if the
-   installed mistral.rs CUDA version doesn't match the discovered driver.
+### Phase 11 (superseded): llama.cpp harness stub
 
-**Done when:** `dnf install mistralrs-cuda13-server` on beast provides a
-working `mistralrs` binary built for Blackwell GPUs. `dnf install
-mistralrs-cuda12-server` on benjy provides one built for Ada GPUs.
+~~Originally planned as a second engine to prove the harness
+abstraction.~~ Replaced by the candle harness work in the 2026-05-18
+addendum above. llama.cpp's any-model/any-hardware breadth is no
+longer in scope for helexa.
 
-This is a separate repo/spec — not part of the cortex workspace — but
-tightly coupled operationally. Track it as a sibling project.
+### Phase 12 (superseded): mistral.rs COPR packaging
+
+~~Originally planned to ship CUDA-versioned mistral.rs RPMs.~~ Replaced
+by the candle harness work in the 2026-05-18 addendum above. With
+mistral.rs out of the dependency tree, there is nothing to package.

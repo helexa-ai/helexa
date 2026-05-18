@@ -22,6 +22,7 @@ use tokio::net::TcpListener;
 /// - GET /models/:id/endpoint (returns the inference URL)
 /// - POST /models/unload (accepts unload requests)
 /// - GET /v1/chat/completions + POST /v1/chat/completions (inference)
+///
 /// Returns the neuron base URL.
 pub async fn spawn_mock_neuron() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -54,7 +55,7 @@ pub async fn spawn_mock_neuron() -> String {
 
 async fn mock_neuron_list_models() -> Json<Value> {
     Json(json!([
-        {"id": "test-model", "harness": "mistralrs", "status": "loaded", "devices": [0], "vram_used_mb": 8000}
+        {"id": "test-model", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": 8000}
     ]))
 }
 

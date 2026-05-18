@@ -1,22 +1,23 @@
 # cortex
 
-A Rust reverse-proxy and fleet management layer for multi-node
-[mistral.rs](https://github.com/EricLBuehler/mistral.rs) inference clusters.
+A Rust reverse-proxy and fleet management layer for multi-node GPU inference
+clusters. Cortex sits in front of one or more `neuron` daemons (each running
+candle-based inference on a local GPU host) and presents a unified OpenAI +
+Anthropic compatible API surface.
 
 ## Problem
 
 Running local LLMs across multiple GPU nodes (different VRAM tiers, different
 model affinities) requires a unified API surface that:
 
-- Presents a **single `/v1/models` catalogue** merging every model across every
-  node.
-- **Routes requests** to the correct node based on where a model is loaded (or
-  *can* be loaded).
-- Manages **model lifecycle** — unload cold models, reload on demand, pin
-  critical ones — using the mistral.rs
-  `/v1/models/{unload,reload,status}` HTTP API (PR #1828+).
+- Presents a **single `/v1/models` catalogue** merging every model that can be
+  served by any neuron in the fleet.
+- **Routes requests** to the correct node based on where a model is loaded
+  (or can be loaded), handling cold-load and eviction transparently.
+- Manages **model lifecycle** — load on demand, unload cold models, pin
+  critical ones — by calling each neuron's `/models/{load,unload}` API.
 - Translates between **OpenAI and Anthropic** request/response envelopes so
-  every client in the homelab speaks whichever dialect it prefers.
+  every client speaks whichever dialect it prefers.
 - Captures **per-request metrics** (tokens, tok/s, TTFT, latency) and exposes
   them as Prometheus counters/histograms.
 
@@ -30,18 +31,17 @@ model affinities) requires a unified API surface that:
        └────────────────┴──────┬───────┴───────────────┘
                                │
                     ┌──────────▼──────────┐
-                    │   cortex     │
-                    │   (cortex-gateway)      │
+                    │      cortex         │
+                    │  (cortex-gateway)   │
                     │                     │
                     │  Router · Metrics   │
                     │  Evictor · Translate│
                     └──┬──────┬────────┬──┘
                        │      │        │
             ┌──────────▼┐  ┌──▼─────┐  ┌▼──────────┐
-            │ gpu-large │  │gpu-med │  │ gpu-small │
-            │ mistralrs │  │mistral │  │ mistralrs │
-            │ serve     │  │rs serve│  │ serve     │
-            │ :8080     │  │ :8080  │  │  :8080    │
+            │  neuron   │  │ neuron │  │  neuron   │
+            │  :13131   │  │ :13131 │  │  :13131   │
+            │  candle   │  │ candle │  │  candle   │
             └───────────┘  └────────┘  └───────────┘
                   private network (.internal)
 ```
@@ -50,43 +50,29 @@ model affinities) requires a unified API surface that:
 
 | Crate | Purpose |
 |---|---|
-| `cortex-core` | Shared types: config, node/model state, metrics, OpenAI/Anthropic request/response envelopes |
-| `cortex-gateway` | Axum HTTP server: proxy, router, evictor, metrics exporter |
-| `cortex-agent` | Per-node sidecar: polls local mistralrs, reports to gateway, handles restart/defrag |
+| `cortex-core` | Shared types: config, node/model state, metrics, OpenAI/Anthropic envelopes, harness trait, discovery types |
+| `cortex-gateway` | Axum HTTP server: proxy, router, evictor, poller, metrics exporter |
+| `neuron` | Per-node daemon: GPU discovery, in-process candle inference, model lifecycle API |
 | `cortex-cli` | CLI entrypoint (`cortex serve`, `cortex status`, etc.) |
 
 ## Node setup
 
-Each GPU node runs `mistralrs serve` with a multi-model config. Models are
-declared but start **unloaded** — mistral.rs lazy-loads on first request and
-the gateway can explicitly unload/reload via the HTTP API.
+Each GPU node runs `neuron` (listening on `:13131`). Neuron uses
+huggingface/candle for in-process inference — there is no external
+inference subprocess to manage.
 
-Example node systemd unit:
+The neuron RPM (`helexa-neuron`) ships a systemd unit:
 
-```ini
-# /etc/systemd/system/mistralrs.service
-[Unit]
-Description=mistral.rs inference server
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=/usr/local/bin/mistralrs serve \
-    --from-config /etc/mistralrs/config.toml \
-    --port 8080
-Restart=on-failure
-RestartSec=5
-Environment=CUDA_VISIBLE_DEVICES=0,1
-
-[Install]
-WantedBy=multi-user.target
+```sh
+dnf copr enable helexa/helexa
+dnf install helexa-neuron
+systemctl enable --now neuron
 ```
 
 ## Gateway config
 
 ```toml
-# cortex.toml
+# /etc/cortex/cortex.toml
 [gateway]
 listen = "0.0.0.0:31313"
 metrics_listen = "0.0.0.0:31314"
@@ -95,24 +81,16 @@ metrics_listen = "0.0.0.0:31314"
 strategy = "lru"        # lru | priority
 defrag_after_cycles = 50
 
-[[nodes]]
-name = "gpu-large"
-endpoint = "http://gpu-large.internal:8080"
-vram_mb = 49_152        # e.g. 2x RTX 4090
-pinned = ["your-org/large-model"]
+[[neurons]]
+name = "beast"
+endpoint = "http://beast.internal:13131"
 
-[[nodes]]
-name = "gpu-medium"
-endpoint = "http://gpu-medium.internal:8080"
-vram_mb = 24_576        # e.g. RTX 4090
-pinned = ["your-org/medium-model"]
-
-[[nodes]]
-name = "gpu-small"
-endpoint = "http://gpu-small.internal:8080"
-vram_mb = 12_288        # e.g. RTX 3060
-pinned = ["your-org/embedding-model"]
+[[neurons]]
+name = "benjy"
+endpoint = "http://benjy.internal:13131"
 ```
+
+Model placement profiles live in `models.toml` — see `models.example.toml`.
 
 ## Building
 
@@ -131,13 +109,14 @@ cargo clippy --workspace -- -D warnings   # warnings are errors
 cargo test --workspace                     # all tests must pass
 ```
 
-Tagged releases (`v*`) additionally build an SRPM and publish to COPR.
+Tagged releases (`v*`) additionally build SRPMs for both `cortex` and
+`helexa-neuron` and publish to COPR.
 
 ## Running
 
 ```sh
 # start the gateway
-cortex serve --config cortex.toml
+cortex serve --config /etc/cortex/cortex.toml
 
 # check fleet status
 cortex status

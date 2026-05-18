@@ -135,50 +135,18 @@ async fn test_models_empty_registry() {
     assert!(body.as_array().unwrap().is_empty());
 }
 
-/// Spawn a mock mistral.rs backend and a neuron with the mistralrs harness
-/// pointing at it, then test the full model lifecycle through neuron's API.
+/// Verify the candle harness registers and the load endpoint returns a
+/// "not implemented" error in Stage 1 (Stage 2 wires up actual loading).
 #[tokio::test]
-async fn test_models_via_mistralrs_harness() {
-    use axum::routing::{get, post};
-    use axum::{Json, Router};
+async fn test_candle_harness_registers_but_load_unimplemented() {
     use cortex_core::harness::HarnessConfig;
-    use serde_json::Value;
 
-    // Mock mistral.rs backend.
-    let mock_app = Router::new()
-        .route(
-            "/v1/models",
-            get(|| async {
-                Json(json!({
-                    "data": [
-                        {"id": "test-model", "status": "loaded"},
-                        {"id": "other-model", "status": "unloaded"}
-                    ]
-                }))
-            }),
-        )
-        .route(
-            "/v1/models/unload",
-            post(|Json(_body): Json<Value>| async { Json(json!({"status": "ok"})) }),
-        )
-        .route(
-            "/v1/models/reload",
-            post(|Json(_body): Json<Value>| async { Json(json!({"status": "ok"})) }),
-        );
-
-    let mock_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mock_addr = mock_listener.local_addr().unwrap();
-    tokio::spawn(async move {
-        axum::serve(mock_listener, mock_app).await.unwrap();
-    });
-    let mock_url = format!("http://{mock_addr}");
-
-    // Build neuron with mistralrs harness pointing at mock.
-    let registry = HarnessRegistry::from_configs(&[HarnessConfig {
-        name: "mistralrs".into(),
-        endpoint: Some(mock_url.clone()),
-        systemd_unit: None,
-    }]);
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:13131",
+    );
 
     let health_cache = Arc::new(HealthCache::new());
     let state = Arc::new(NeuronState {
@@ -197,7 +165,7 @@ async fn test_models_via_mistralrs_harness() {
 
     let client = reqwest::Client::new();
 
-    // GET /models — should return models from mock mistralrs.
+    // GET /models — candle harness has no models loaded yet.
     let resp = client
         .get(format!("{neuron_url}/models"))
         .send()
@@ -205,45 +173,14 @@ async fn test_models_via_mistralrs_harness() {
         .unwrap();
     assert_eq!(resp.status(), 200);
     let models: Vec<serde_json::Value> = resp.json().await.unwrap();
-    assert_eq!(models.len(), 2);
-    assert_eq!(models[0]["id"], "test-model");
-    assert_eq!(models[0]["harness"], "mistralrs");
-    assert_eq!(models[0]["status"], "loaded");
-    assert_eq!(models[1]["id"], "other-model");
-    assert_eq!(models[1]["status"], "unloaded");
+    assert!(models.is_empty());
 
-    // GET /models/test-model/endpoint — should return mock URL.
-    let resp = client
-        .get(format!("{neuron_url}/models/test-model/endpoint"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["url"], mock_url);
-
-    // POST /models/unload — should succeed.
-    let resp = client
-        .post(format!("{neuron_url}/models/unload"))
-        .json(&json!({"model_id": "test-model"}))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["status"], "unloaded");
-
-    // POST /models/load — should succeed.
+    // POST /models/load — Stage 1 skeleton returns an error.
     let resp = client
         .post(format!("{neuron_url}/models/load"))
-        .json(&json!({
-            "model_id": "test-model",
-            "harness": "mistralrs"
-        }))
+        .json(&json!({"model_id": "some-model", "harness": "candle"}))
         .send()
         .await
         .unwrap();
-    assert_eq!(resp.status(), 200);
-    let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body["status"], "loaded");
+    assert_eq!(resp.status(), 400);
 }
