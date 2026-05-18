@@ -16,6 +16,13 @@ env:
   SCCACHE_S3_USE_SSL: "false"
   AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
+  # fmt, clippy, and test all run in parallel on the same `rust` runner
+  # and would otherwise share /root/.cache/act/<hash>/hostexecutor/target/,
+  # racing each other's cargo temp files (.tmpXXXXXX) and failing builds
+  # mid-compile. Give each job its own target directory so the invocations
+  # don't collide. sccache still backs the actual rustc cache, so the
+  # rebuild penalty is small.
+  CARGO_TARGET_DIR: target-${{ github.job }}
 
 jobs:
   fmt:
