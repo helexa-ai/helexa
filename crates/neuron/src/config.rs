@@ -1,6 +1,6 @@
 //! Neuron configuration loaded from neuron.toml.
 
-use cortex_core::harness::HarnessConfig;
+use cortex_core::harness::{HarnessConfig, ModelSpec};
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
@@ -17,6 +17,12 @@ pub struct NeuronConfig {
     /// Per-harness configuration. Currently only `candle` is recognised.
     #[serde(default)]
     pub harness: HarnessSettings,
+    /// Models to auto-load when the neuron service activates. Each entry
+    /// is loaded sequentially before the HTTP listener binds. A failure
+    /// on any single entry logs a warning and proceeds — broken entries
+    /// don't prevent the rest of the fleet from starting.
+    #[serde(default)]
+    pub default_models: Vec<ModelSpec>,
 }
 
 /// Settings for individual harness implementations. Each harness owns
@@ -55,6 +61,7 @@ impl Default for NeuronConfig {
             port: 13131,
             harnesses: vec![],
             harness: HarnessSettings::default(),
+            default_models: vec![],
         }
     }
 }

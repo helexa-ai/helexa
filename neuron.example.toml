@@ -22,3 +22,19 @@ name = "candle"
 # HuggingFace cache directory for model weights. When unset, hf-hub's
 # default (~/.cache/huggingface) is used.
 # hf_cache = "/var/lib/neuron/hf-cache"
+
+# -- Default models ----------------------------------------------------------
+# Models listed here are loaded automatically when the neuron service
+# activates. Loading is sequential — a slow or failing entry doesn't
+# block the rest of the fleet, but it does push out the time before
+# neuron starts serving HTTP, so keep the list short. Operators can
+# load additional models on demand via POST /models/load.
+#
+# Make sure data/neuron.service's TimeoutStartSec is generous enough to
+# cover the slowest entry's first-time download + materialisation.
+
+# [[default_models]]
+# model_id = "Qwen/Qwen3-0.6B-GGUF"
+# harness = "candle"
+# quant = "Q4_K_M"
+# devices = [0]

@@ -10,6 +10,11 @@ Restart=on-failure
 RestartSec=5
 User=neuron
 Group=neuron
+# Loading default_models from neuron.toml happens before the HTTP
+# listener binds; large models can take many minutes to download and
+# materialise on first activation. systemd's default TimeoutStartSec
+# (90s) is far too short; allow 30 minutes.
+TimeoutStartSec=1800s
 
 [Install]
 WantedBy=multi-user.target

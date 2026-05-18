@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health};
+use neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health, startup};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
@@ -54,6 +54,12 @@ async fn main() -> Result<()> {
     let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url, &cfg.harness);
     discovery_result.harnesses = registry.names();
     let candle = registry.candle();
+
+    // Activation: load default models before binding the listener.
+    // Each load may take tens of seconds to several minutes depending
+    // on model size and HF cache state — keep TimeoutStartSec in the
+    // systemd unit generous enough to cover the slowest entry.
+    startup::load_default_models(&registry, &cfg.default_models).await;
 
     let health_cache = Arc::new(health::HealthCache::new());
     health_cache
