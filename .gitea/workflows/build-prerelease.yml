@@ -57,20 +57,13 @@ jobs:
   build-cortex:
     name: Build cortex binary
     needs: prepare
+    # runner-rust image already provides rust/cargo/clippy/rustfmt via
+    # dnf — no rustup install step needed.
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-
-      - name: Install/update Rust toolchain
-        run: |
-          if command -v rustup &> /dev/null; then
-            rustup update stable
-          else
-            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs | sh -s -- -y
-          fi
-          echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Build cortex (release)
         run: cargo build --release -p cortex-cli
@@ -115,20 +108,13 @@ jobs:
             build_jobs: 8
             nvcc_threads: 4
             cargo_features: "cuda cudnn flash-attn"
+    # runner-cuda-13.0 extends runner-rust, so rust/cargo are already
+    # present via dnf — no rustup install step needed.
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-
-      - name: Install/update Rust toolchain
-        run: |
-          if command -v rustup &> /dev/null; then
-            rustup update stable
-          else
-            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs | sh -s -- -y
-          fi
-          echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
