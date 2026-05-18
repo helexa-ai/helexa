@@ -5,10 +5,18 @@ pub mod candle;
 use anyhow::Result;
 use cortex_core::harness::{Harness, HarnessConfig, ModelInfo, ModelSpec};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Registry of available harness implementations.
+///
+/// Holds an `Arc<dyn Harness>` per harness for generic lifecycle dispatch
+/// (load/unload/list_models). When a candle harness is registered, a typed
+/// `Arc<CandleHarness>` is also cached so inference routes can bypass the
+/// dyn-Trait dispatch and reach harness-specific methods (chat completion,
+/// streaming, etc.).
 pub struct HarnessRegistry {
-    harnesses: HashMap<String, Box<dyn Harness>>,
+    harnesses: HashMap<String, Arc<dyn Harness>>,
+    candle: Option<Arc<candle::CandleHarness>>,
 }
 
 impl Default for HarnessRegistry {
@@ -21,16 +29,23 @@ impl HarnessRegistry {
     pub fn new() -> Self {
         Self {
             harnesses: HashMap::new(),
+            candle: None,
         }
     }
 
-    pub fn register(&mut self, harness: Box<dyn Harness>) {
+    pub fn register(&mut self, harness: Arc<dyn Harness>) {
         self.harnesses.insert(harness.name().to_string(), harness);
     }
 
     /// List all registered harness names.
     pub fn names(&self) -> Vec<String> {
         self.harnesses.keys().cloned().collect()
+    }
+
+    /// Typed handle to the candle harness, if registered. Used by inference
+    /// routes that need methods beyond the `Harness` trait surface.
+    pub fn candle(&self) -> Option<Arc<candle::CandleHarness>> {
+        self.candle.clone()
     }
 
     /// List models from all registered harnesses.
@@ -93,10 +108,12 @@ impl HarnessRegistry {
         for config in configs {
             match config.name.as_str() {
                 "candle" => {
-                    registry.register(Box::new(candle::CandleHarness::new(
+                    let harness = Arc::new(candle::CandleHarness::new(
                         bind_url.to_string(),
                         settings.candle.hf_cache.clone(),
-                    )));
+                    ));
+                    registry.candle = Some(Arc::clone(&harness));
+                    registry.harnesses.insert("candle".into(), harness);
                 }
                 other => {
                     tracing::warn!(harness = other, "unknown harness type, skipping");

@@ -14,6 +14,7 @@ async fn spawn_neuron(discovery: DiscoveryResponse) -> String {
         discovery,
         health_cache,
         registry: RwLock::new(registry),
+        candle: None,
     });
 
     let app = api::neuron_routes().with_state(state);
@@ -152,11 +153,13 @@ async fn test_candle_harness_registers_and_rejects_bogus_model() {
         &HarnessSettings::default(),
     );
 
+    let candle = registry.candle();
     let health_cache = Arc::new(HealthCache::new());
     let state = Arc::new(NeuronState {
         discovery: fake_discovery(),
         health_cache,
         registry: RwLock::new(registry),
+        candle,
     });
 
     let app = api::neuron_routes().with_state(state);
@@ -196,4 +199,119 @@ async fn test_candle_harness_registers_and_rejects_bogus_model() {
         .unwrap();
     let models: Vec<serde_json::Value> = resp.json().await.unwrap();
     assert!(models.is_empty());
+}
+
+/// `/v1/chat/completions` returns 503 when no candle harness is registered.
+#[tokio::test]
+async fn test_chat_completions_no_candle_harness() {
+    let registry = HarnessRegistry::new();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle: None,
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/chat/completions"))
+        .json(&json!({
+            "model": "anything",
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 503);
+}
+
+/// `/v1/chat/completions` returns 404 when the requested model isn't loaded.
+#[tokio::test]
+async fn test_chat_completions_model_not_loaded() {
+    use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
+
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let candle = registry.candle();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle,
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/chat/completions"))
+        .json(&json!({
+            "model": "definitely/not-loaded",
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
+
+/// `/v1/chat/completions` with `stream: true` returns 501 until Stage 4
+/// wires up SSE.
+#[tokio::test]
+async fn test_chat_completions_streaming_not_yet_implemented() {
+    use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
+
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let candle = registry.candle();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle,
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/chat/completions"))
+        .json(&json!({
+            "model": "anything",
+            "messages": [{"role": "user", "content": "hi"}],
+            "stream": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 501);
 }

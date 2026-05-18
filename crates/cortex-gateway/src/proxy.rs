@@ -1,4 +1,4 @@
-//! Streaming HTTP reverse proxy to mistral.rs backends.
+//! Streaming HTTP reverse proxy to neuron backends.
 //!
 //! For streaming requests, SSE chunks are forwarded as they arrive.
 //! The proxy captures timing information for metrics but does not

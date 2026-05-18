@@ -5,7 +5,7 @@ use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "cortex")]
-#[command(about = "Unified inference gateway for multi-node mistral.rs clusters")]
+#[command(about = "Unified inference gateway for multi-node GPU clusters")]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]

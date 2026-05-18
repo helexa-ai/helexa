@@ -60,10 +60,7 @@ async fn test_candle_qwen3_load_unload_lifecycle() {
         .await
         .expect("load_model should succeed");
 
-    let models = registry
-        .list_all_models()
-        .await
-        .expect("list_all_models");
+    let models = registry.list_all_models().await.expect("list_all_models");
     assert_eq!(models.len(), 1, "expected exactly one loaded model");
     assert_eq!(models[0].id, model_id);
     assert_eq!(models[0].harness, "candle");

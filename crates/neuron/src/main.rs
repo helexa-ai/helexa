@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
     // inference_endpoint.
     let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url, &cfg.harness);
     discovery_result.harnesses = registry.names();
+    let candle = registry.candle();
 
     let health_cache = Arc::new(health::HealthCache::new());
     health_cache
@@ -68,6 +69,7 @@ async fn main() -> Result<()> {
         discovery: discovery_result,
         health_cache,
         registry: RwLock::new(registry),
+        candle,
     });
 
     let app = api::neuron_routes().with_state(state);

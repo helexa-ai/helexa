@@ -1,6 +1,7 @@
 //! HTTP API handlers for the neuron daemon.
 
 use crate::harness::HarnessRegistry;
+use crate::harness::candle::{CandleHarness, InferenceError};
 use crate::health::HealthCache;
 use axum::Router;
 use axum::extract::{Path, State};
@@ -9,6 +10,7 @@ use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelSpec;
+use cortex_core::openai::ChatCompletionRequest;
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -18,6 +20,10 @@ pub struct NeuronState {
     pub discovery: DiscoveryResponse,
     pub health_cache: Arc<HealthCache>,
     pub registry: RwLock<HarnessRegistry>,
+    /// Typed handle to the candle harness for inference routes. Cached at
+    /// startup so `/v1/chat/completions` doesn't have to hold the registry
+    /// read lock or perform dyn-Trait dispatch per request.
+    pub candle: Option<Arc<CandleHarness>>,
 }
 
 /// Build the neuron API router.
@@ -29,6 +35,7 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/load", post(load_model))
         .route("/models/unload", post(unload_model))
         .route("/models/{model_id}/endpoint", get(model_endpoint))
+        .route("/v1/chat/completions", post(chat_completions))
 }
 
 async fn discovery_handler(State(state): State<Arc<NeuronState>>) -> Json<DiscoveryResponse> {
@@ -98,6 +105,43 @@ async fn model_endpoint(
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("model '{}' not loaded", model_id)})),
+        )
+            .into_response(),
+    }
+}
+
+/// OpenAI-compatible chat completions. Non-streaming for Stage 3; the
+/// streaming path is added in Stage 4.
+async fn chat_completions(
+    State(state): State<Arc<NeuronState>>,
+    Json(req): Json<ChatCompletionRequest>,
+) -> impl IntoResponse {
+    let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "candle harness not enabled on this neuron"})),
+        )
+            .into_response();
+    };
+
+    if req.stream.unwrap_or(false) {
+        return (
+            StatusCode::NOT_IMPLEMENTED,
+            Json(json!({"error": "streaming responses arrive in Stage 4"})),
+        )
+            .into_response();
+    }
+
+    match candle.chat_completion(req).await {
+        Ok(resp) => Json(resp).into_response(),
+        Err(InferenceError::ModelNotLoaded(id)) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
+        )
+            .into_response(),
+        Err(InferenceError::Other(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
         )
             .into_response(),
     }
