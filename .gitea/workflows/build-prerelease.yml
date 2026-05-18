@@ -1,0 +1,319 @@
+name: build-prerelease
+
+# Manually-dispatched workflow that builds CUDA-flavoured neuron binaries
+# (and a single cortex binary), packages each as a Fedora RPM, signs
+# them, and publishes to the `unstable` channel at rpm.lair.cafe.
+#
+# Trigger from the Gitea UI: Actions → build-prerelease → Run workflow.
+# Optionally provide a `ref` to build from a non-default branch.
+#
+# The published packages are versioned as e.g.
+#   helexa-neuron-blackwell-0.1.16-0.1.20260518gitabcdef0.fc43.x86_64
+# so they sort BELOW the eventual 0.1.16-1 stable release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (branch / tag / commit). Defaults to the workflow's branch."
+        required: false
+        default: ""
+
+concurrency:
+  group: prerelease-build
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  prepare:
+    name: Resolve version stamps
+    runs-on: rust
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      release: ${{ steps.info.outputs.release }}
+      short_sha: ${{ steps.info.outputs.short_sha }}
+      commit_date: ${{ steps.info.outputs.commit_date }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - id: info
+        run: |
+          set -eux
+          VERSION=$(awk -F\" '/^version[[:space:]]*=/ { print $2; exit }' Cargo.toml)
+          SHORT_SHA=$(git rev-parse --short=7 HEAD)
+          COMMIT_DATE=$(git log -1 --format=%cd --date=format:%Y%m%d HEAD)
+          # Prerelease release stamp sorts before "1" (the stable release).
+          RELEASE="0.1.${COMMIT_DATE}git${SHORT_SHA}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release=${RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "commit_date=${COMMIT_DATE}" >> "$GITHUB_OUTPUT"
+
+  build-cortex:
+    name: Build cortex binary
+    needs: prepare
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install/update Rust toolchain
+        run: |
+          if command -v rustup &> /dev/null; then
+            rustup update stable
+          else
+            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs | sh -s -- -y
+          fi
+          echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build cortex (release)
+        run: cargo build --release -p cortex-cli
+
+      - name: Stage binary
+        run: |
+          mkdir --parents artifacts
+          cp target/release/cortex artifacts/cortex
+          ./artifacts/cortex --version || true
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: cortex-fc43
+          path: artifacts/cortex
+          retention-days: 1
+
+  build-neuron:
+    name: Build neuron-${{ matrix.flavour }}
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavour: ada
+            compute_cap: "89"
+            runner: cuda-13.0
+            cuda_home: /usr/local/cuda-13.0
+            build_jobs: 8
+            nvcc_threads: 4
+            cargo_features: "cuda cudnn flash-attn"
+          - flavour: blackwell
+            compute_cap: "120"
+            runner: cuda-13.0
+            cuda_home: /usr/local/cuda-13.0
+            build_jobs: 8
+            nvcc_threads: 4
+            cargo_features: "cuda cudnn flash-attn"
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Install/update Rust toolchain
+        run: |
+          if command -v rustup &> /dev/null; then
+            rustup update stable
+          else
+            curl --proto '=https' --tlsv1.2 --silent --show-error --fail https://sh.rustup.rs | sh -s -- -y
+          fi
+          echo "${HOME}/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build neuron with CUDA (${{ matrix.flavour }})
+        run: |
+          set -eux
+          export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
+          export LD_LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LD_LIBRARY_PATH:-}"
+          export LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LIBRARY_PATH:-}"
+          cargo build --release -p neuron --features "${{ matrix.cargo_features }}"
+        env:
+          CUDA_COMPUTE_CAP: ${{ matrix.compute_cap }}
+          CARGO_BUILD_JOBS: ${{ matrix.build_jobs }}
+          NVCC_THREADS: ${{ matrix.nvcc_threads }}
+
+      - name: Stage binary
+        run: |
+          mkdir --parents artifacts
+          cp target/release/neuron artifacts/neuron-${{ matrix.flavour }}
+          file "artifacts/neuron-${{ matrix.flavour }}"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: neuron-${{ matrix.flavour }}-fc43
+          path: artifacts/neuron-${{ matrix.flavour }}
+          retention-days: 1
+
+  package-cortex:
+    name: Package cortex RPM
+    needs: [prepare, build-cortex]
+    runs-on: rpm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: cortex-fc43
+          path: artifacts/
+
+      - name: Build RPM
+        run: |
+          set -eux
+          rm -f ~/.rpmmacros
+          rpmdev-setuptree
+          cp artifacts/cortex ~/rpmbuild/SOURCES/
+          cp data/cortex.service ~/rpmbuild/SOURCES/
+          cp data/cortex-sysusers.conf ~/rpmbuild/SOURCES/
+          cp data/cortex-firewalld.xml ~/rpmbuild/SOURCES/
+          cp cortex.example.toml ~/rpmbuild/SOURCES/
+          cp models.example.toml ~/rpmbuild/SOURCES/
+          cp LICENSE ~/rpmbuild/SOURCES/
+          rpmbuild -bb rpm/cortex-prerelease.spec \
+            --define "cortex_version ${{ needs.prepare.outputs.version }}" \
+            --define "cortex_prerelease ${{ needs.prepare.outputs.release }}" \
+            --undefine dist \
+            --define "dist .fc43"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rpm-cortex-fc43
+          path: ~/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 7
+
+  package-neuron:
+    name: Package helexa-neuron-${{ matrix.flavour }} RPM
+    needs: [prepare, build-neuron]
+    runs-on: rpm
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavour: ada
+          - flavour: blackwell
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: neuron-${{ matrix.flavour }}-fc43
+          path: artifacts/
+
+      - name: Build RPM
+        run: |
+          set -eux
+          rm -f ~/.rpmmacros
+          rpmdev-setuptree
+          cp artifacts/neuron-${{ matrix.flavour }} ~/rpmbuild/SOURCES/
+          cp data/neuron.service ~/rpmbuild/SOURCES/
+          cp data/neuron-sysusers.conf ~/rpmbuild/SOURCES/
+          cp data/neuron-firewalld.xml ~/rpmbuild/SOURCES/
+          cp neuron.example.toml ~/rpmbuild/SOURCES/
+          cp LICENSE ~/rpmbuild/SOURCES/
+          rpmbuild -bb rpm/helexa-neuron-prerelease.spec \
+            --define "neuron_version ${{ needs.prepare.outputs.version }}" \
+            --define "neuron_flavour ${{ matrix.flavour }}" \
+            --define "neuron_prerelease ${{ needs.prepare.outputs.release }}" \
+            --undefine dist \
+            --define "dist .fc43"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rpm-neuron-${{ matrix.flavour }}-fc43
+          path: ~/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 7
+
+  publish:
+    name: Publish to rpm.lair.cafe (unstable)
+    needs: [package-cortex, package-neuron]
+    runs-on: rpm
+    concurrency:
+      group: rpm-publish
+      cancel-in-progress: false
+    env:
+      RPM_REPO_HOST: oolon.kosherinata.internal
+      FEDORA_VERSION: "43"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Download all built RPMs
+        uses: actions/download-artifact@v3
+        with:
+          path: rpms/
+          pattern: rpm-*-fc43
+
+      - name: Flatten RPM artifacts
+        run: |
+          set -eux
+          find rpms/ -name '*.rpm' -exec mv --target-directory=rpms/ {} +
+          find rpms/ -mindepth 1 -type d -empty -delete
+          ls -la rpms/
+
+      - name: Check for sequoia-sq
+        run: |
+          if ! command -v sq &> /dev/null; then
+            echo "ERROR: sequoia-sq is not installed. Install with: sudo dnf install sequoia-sq"
+            exit 1
+          fi
+
+      - name: Import signing key
+        run: |
+          echo "${{ secrets.RPM_SIGNING_KEY }}" | gpg --batch --import
+          fpr=$(gpg --batch --with-colons --list-keys "${{ secrets.RPM_SIGNING_KEY_ID }}" | awk -F: '/^fpr:/ { print $10; exit }')
+          echo "${fpr}:6:" | gpg --batch --import-ownertrust
+          sed "s/@GPG_NAME@/${{ secrets.RPM_SIGNING_KEY_ID }}/" rpm/rpmmacros > ~/.rpmmacros
+
+      - name: Sign RPMs
+        run: |
+          set -eux
+          for rpm in rpms/*.rpm; do
+            echo "signing ${rpm}..."
+            rpm --addsign "${rpm}"
+          done
+
+      - name: Set up SSH for rsync
+        run: |
+          install --directory --mode 700 ~/.ssh
+          echo "${RSYNC_SSH_KEY}" | install --mode 600 /dev/stdin ~/.ssh/id_ed25519
+        env:
+          RSYNC_SSH_KEY: ${{ secrets.RSYNC_SSH_KEY }}
+
+      - name: Test SSH connectivity
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new "gitea_ci@${RPM_REPO_HOST}" exit
+
+      - name: Ensure unstable repo directory exists
+        run: |
+          ssh "gitea_ci@${RPM_REPO_HOST}" \
+            "mkdir --parents /var/www/rpm/fedora/${FEDORA_VERSION}/x86_64/unstable"
+
+      - name: Sync RPMs to unstable repo
+        run: |
+          rsync \
+            --archive \
+            --verbose \
+            --chmod D755,F644 \
+            rpms/*.rpm \
+            "gitea_ci@${RPM_REPO_HOST}:/var/www/rpm/fedora/${FEDORA_VERSION}/x86_64/unstable/"
+
+      - name: Update unstable repo metadata
+        run: |
+          ssh "gitea_ci@${RPM_REPO_HOST}" \
+            "cd /var/www/rpm/fedora/${FEDORA_VERSION}/x86_64/unstable && createrepo_c --update ."
+
+      - name: Generate packages.json manifest
+        run: |
+          scp script/generate-packages-json.py "gitea_ci@${RPM_REPO_HOST}:/tmp/"
+          ssh "gitea_ci@${RPM_REPO_HOST}" \
+            "python3 /tmp/generate-packages-json.py \
+              --repodata-dir /var/www/rpm/fedora/${FEDORA_VERSION}/x86_64/unstable/repodata \
+              --output /var/www/rpm/fedora/${FEDORA_VERSION}/x86_64/unstable/packages.json \
+              --base-url https://rpm.lair.cafe/fedora/${FEDORA_VERSION}/x86_64/unstable"

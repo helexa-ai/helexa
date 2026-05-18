@@ -21,6 +21,18 @@ cuda = [
     "candle-nn/cuda",
     "candle-transformers/cuda",
 ]
+# Use cuDNN for convolution / attention kernels. Requires CUDA.
+cudnn = [
+    "cuda",
+    "candle-core/cudnn",
+    "candle-nn/cudnn",
+    "candle-transformers/cudnn",
+]
+# FlashAttention kernels. Requires CUDA.
+flash-attn = [
+    "cuda",
+    "candle-transformers/flash-attn",
+]
 # Reserved for GPU-only integration tests in later stages.
 cuda-integration = ["cuda"]
 
