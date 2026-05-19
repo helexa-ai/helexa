@@ -404,6 +404,19 @@ impl Harness for CandleHarness {
             }
         }
 
+        // Stage 7a-i scaffolds tensor-parallel worker subprocesses but
+        // does not yet route inference through them. Refuse TP loads
+        // for now with a clear marker so the request surface is honest.
+        let tp_size = spec.tensor_parallel.unwrap_or(1);
+        if tp_size > 1 {
+            anyhow::bail!(
+                "tensor_parallel={tp_size} requested for '{}': TP worker \
+                 lifecycle is in place (Stage 7a-i) but TP-aware Qwen3 \
+                 inference lands in Stage 7b; single-GPU loads only for now",
+                spec.model_id
+            );
+        }
+
         let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
         let device = Self::pick_device(&devices)?;
 

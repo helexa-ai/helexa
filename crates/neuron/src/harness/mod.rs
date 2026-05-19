@@ -1,6 +1,7 @@
 //! Harness registry — maps harness names to trait implementations.
 
 pub mod candle;
+pub mod tp;
 
 use anyhow::Result;
 use cortex_core::harness::{Harness, HarnessConfig, ModelInfo, ModelSpec};

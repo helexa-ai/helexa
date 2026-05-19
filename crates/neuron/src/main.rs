@@ -1,21 +1,52 @@
 use anyhow::Result;
 use clap::Parser;
-use neuron::{api, config::NeuronConfig, discovery, harness::HarnessRegistry, health, startup};
+use neuron::{
+    api,
+    config::NeuronConfig,
+    discovery,
+    harness::{HarnessRegistry, tp},
+    health, startup,
+};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
+/// Top-level CLI. The same binary runs as either the public neuron
+/// daemon (default) or a tensor-parallel worker subprocess (when
+/// `--worker` is set) spawned by the leader on the same host.
 #[derive(Parser)]
 #[command(name = "neuron")]
 #[command(about = "Per-node daemon for cortex inference clusters")]
 #[command(version)]
 struct Args {
-    /// Port to listen on (overrides config file).
+    /// Run in tensor-parallel worker mode. The leader process spawns
+    /// one of these per non-zero NCCL rank and drives it over
+    /// newline-delimited JSON on stdin/stdout. Worker mode skips
+    /// discovery, the HTTP listener, and the health poller — it's a
+    /// pure RPC loop.
+    #[arg(long, default_value_t = false)]
+    worker: bool,
+
+    /// NCCL rank for worker mode. Ignored when `--worker` is not set.
+    #[arg(long, default_value_t = 0)]
+    rank: u32,
+
+    /// Total NCCL world size for worker mode. Ignored when `--worker`
+    /// is not set.
+    #[arg(long, default_value_t = 1)]
+    tp_size: u32,
+
+    /// CUDA device index for worker mode. Ignored when `--worker` is
+    /// not set.
+    #[arg(long, default_value_t = 0)]
+    cuda_device: u32,
+
+    /// Port to listen on (overrides config file). Daemon mode only.
     #[arg(short, long)]
     port: Option<u16>,
 
-    /// Path to the neuron config file.
+    /// Path to the neuron config file. Daemon mode only.
     #[arg(short, long, default_value = "neuron.toml")]
     config: String,
 }
@@ -23,6 +54,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("info,neuron=debug")),
@@ -31,6 +63,19 @@ async fn main() -> Result<()> {
 
     let args = Args::parse();
 
+    if args.worker {
+        return tp::worker::run(tp::worker::WorkerConfig {
+            rank: args.rank,
+            world_size: args.tp_size,
+            cuda_device: args.cuda_device,
+        })
+        .await;
+    }
+
+    daemon(args).await
+}
+
+async fn daemon(args: Args) -> Result<()> {
     let cfg = NeuronConfig::load(&args.config).unwrap_or_else(|e| {
         tracing::warn!(path = %args.config, error = %e, "config not found, using defaults");
         NeuronConfig::default()
