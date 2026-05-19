@@ -24,6 +24,7 @@ cuda = [
     "candle-nn/cuda",
     "candle-transformers/cuda",
     "dep:cudarc",
+    "dep:half",
 ]
 # Use cuDNN for convolution / attention kernels. Requires CUDA.
 cudnn = [
@@ -68,6 +69,10 @@ candle-transformers = "0.10.2"
 # TP worker pool can call cudarc::nccl::{Comm, Id} directly. Gated on
 # the `cuda` feature; same toolchain requirement as candle's CUDA path.
 cudarc = { version = "0.19", optional = true, default-features = false, features = ["nccl", "cuda-version-from-build-system"] }
+# Used by the AllReduce CustomOp1 to type-dispatch on bf16/f16 candle
+# storages. Matches candle-core's pinned major version to avoid double-
+# compiling the `half` crate at conflicting versions.
+half = { version = "2.5", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.4", features = ["tokio"] }
 

@@ -21,7 +21,6 @@
 #![cfg(feature = "cuda")]
 
 use candle_core::backend::BackendStorage;
-use candle_core::cuda_backend::WrapErr;
 use candle_core::{CpuStorage, CudaStorage, CustomOp1, DType, Layout, Result, Shape};
 use cudarc::nccl::{Comm, ReduceOp};
 use half::{bf16, f16};
@@ -87,7 +86,7 @@ impl CustomOp1 for AllReduce {
             DType::BF16 => {
                 let src = s.as_cuda_slice::<bf16>()?;
                 require_contiguous(src, l)?;
-                let mut dst = unsafe { dev.alloc::<bf16>(elem_count) }.w()?;
+                let mut dst = unsafe { dev.alloc::<bf16>(elem_count) }?;
                 self.comm
                     .all_reduce(src, &mut dst, &ReduceOp::Sum)
                     .map_err(|e| candle_core::Error::Msg(format!("nccl all_reduce bf16: {e:?}")))?;
@@ -96,7 +95,7 @@ impl CustomOp1 for AllReduce {
             DType::F16 => {
                 let src = s.as_cuda_slice::<f16>()?;
                 require_contiguous(src, l)?;
-                let mut dst = unsafe { dev.alloc::<f16>(elem_count) }.w()?;
+                let mut dst = unsafe { dev.alloc::<f16>(elem_count) }?;
                 self.comm
                     .all_reduce(src, &mut dst, &ReduceOp::Sum)
                     .map_err(|e| candle_core::Error::Msg(format!("nccl all_reduce f16: {e:?}")))?;
@@ -105,7 +104,7 @@ impl CustomOp1 for AllReduce {
             DType::F32 => {
                 let src = s.as_cuda_slice::<f32>()?;
                 require_contiguous(src, l)?;
-                let mut dst = unsafe { dev.alloc::<f32>(elem_count) }.w()?;
+                let mut dst = unsafe { dev.alloc::<f32>(elem_count) }?;
                 self.comm
                     .all_reduce(src, &mut dst, &ReduceOp::Sum)
                     .map_err(|e| candle_core::Error::Msg(format!("nccl all_reduce f32: {e:?}")))?;
