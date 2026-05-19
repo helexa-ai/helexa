@@ -118,7 +118,9 @@ mod cuda_impl {
     /// the leader to mint the shared communicator id which is then
     /// broadcast to every worker via the RPC `Init` message.
     pub fn generate_comm_id_hex() -> Result<String, String> {
-        let id = Id::new().map_err(|e| format!("Id::new(): {e}"))?;
+        // NcclError lacks a Display impl in cudarc 0.19.x — surface
+        // via Debug throughout this module.
+        let id = Id::new().map_err(|e| format!("Id::new(): {e:?}"))?;
         let bytes_u8: [u8; NCCL_ID_BYTES] = std::array::from_fn(|i| id.internal()[i] as u8);
         Ok(encode_hex(&bytes_u8))
     }
@@ -169,7 +171,7 @@ mod cuda_impl {
         let comm = Comm::from_rank(stream, cfg.rank as usize, cfg.world_size as usize, id)
             .map_err(|e| {
                 format!(
-                    "Comm::from_rank(rank={}, world={}) failed: {e}",
+                    "Comm::from_rank(rank={}, world={}) failed: {e:?}",
                     cfg.rank, cfg.world_size
                 )
             })?;
@@ -182,15 +184,18 @@ mod cuda_impl {
     fn try_sanity_check(comm: &Comm) -> Result<u32, String> {
         let stream = comm.stream().clone();
         let input = stream
-            .memcpy_stod(&[1u32])
+            .clone_htod(&[1u32])
             .map_err(|e| format!("htod sentinel: {e}"))?;
         let mut output = stream
             .alloc_zeros::<u32>(1)
             .map_err(|e| format!("alloc output: {e}"))?;
+        // cudarc::nccl::NcclError doesn't impl Display in 0.19.x —
+        // surface via Debug so we still see the variant + ncclResult
+        // code instead of a generic "{e}" failure.
         comm.all_reduce(&input, &mut output, &ReduceOp::Sum)
-            .map_err(|e| format!("all_reduce: {e}"))?;
+            .map_err(|e| format!("all_reduce: {e:?}"))?;
         let result = stream
-            .memcpy_dtov(&output)
+            .clone_dtoh(&output)
             .map_err(|e| format!("dtoh result: {e}"))?;
         Ok(result[0])
     }
