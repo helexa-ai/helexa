@@ -29,8 +29,8 @@ BASE="http://${HOST}:${PORT}"
 # Reasoning probe — concrete, low-temperature answer that small models
 # can still get right. "Paris" is a strong signal of basic competence
 # beyond gibberish.
-PROBE_PROMPT='What is the capital of France? Respond with the city name only, no punctuation.'
-EXPECT_SUBSTR='Paris'
+PROBE_PROMPT='What is the capital of Georgia (Caucasus)? Respond with the city name only, no punctuation.'
+EXPECT_SUBSTR='Tbilisi'
 # Qwen3 prepends <think>...</think> reasoning before the answer when the
 # chat template enables thinking mode, which eats most of a small token
 # budget. 256 leaves enough room for thinking + final answer.
@@ -67,18 +67,22 @@ is_loaded() {
 }
 
 trigger_load() {
-    say "POST /models/load ${MODEL_ID} (quant=${QUANT}, device=[0])"
+    say "POST /models/load ${MODEL_ID} (quant=${QUANT:-<dense>}, device=[0])"
     say "  (synchronous; may take a minute on first run while HF downloads)"
+    # Build the payload via jq so the optional `quant` field is
+    # omitted entirely when empty — that's the signal to the harness
+    # to take the dense safetensors load path rather than GGUF.
     local payload
-    payload=$(cat <<EOF
-{
-    "model_id": "${MODEL_ID}",
-    "harness": "candle",
-    "quant": "${QUANT}",
-    "devices": [0]
-}
-EOF
-    )
+    if [[ -z "${QUANT}" ]]; then
+        payload=$(jq -n -c \
+            --arg id "${MODEL_ID}" \
+            '{model_id: $id, harness: "candle", devices: [0]}')
+    else
+        payload=$(jq -n -c \
+            --arg id "${MODEL_ID}" \
+            --arg q "${QUANT}" \
+            '{model_id: $id, harness: "candle", quant: $q, devices: [0]}')
+    fi
     # --write-out captures the response code on a separate line so we
     # can surface a real diagnostic instead of relying on --fail.
     local resp http_code body

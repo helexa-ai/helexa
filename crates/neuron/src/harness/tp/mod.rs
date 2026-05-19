@@ -213,8 +213,7 @@ impl WorkerPool {
         // Swap out the leader's NcclState into a fresh empty one so we
         // can move it into spawn_blocking; restore after the task
         // returns. (NcclState isn't Clone — it owns a real NCCL Comm.)
-        let mut leader_state =
-            std::mem::take(&mut self.leader_nccl);
+        let mut leader_state = std::mem::take(&mut self.leader_nccl);
         let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
             let resp = leader_state.init(leader_cfg, &comm_id_for_leader);
             (leader_state, resp)
@@ -269,8 +268,7 @@ impl WorkerPool {
 
         // 2. Leader's own all_reduce, in spawn_blocking. NCCL operations
         //    block until every rank participates.
-        let mut leader_state =
-            std::mem::take(&mut self.leader_nccl);
+        let mut leader_state = std::mem::take(&mut self.leader_nccl);
         let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
             let resp = leader_state.sanity_check();
             (leader_state, resp)
