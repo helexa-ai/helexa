@@ -12,6 +12,11 @@ name: build-prerelease
 # so they sort BELOW the eventual 0.1.16-1 stable release.
 
 on:
+  # Auto-build on every push to main so the unstable channel tracks
+  # head without a manual dispatch step.
+  push:
+    branches: [main]
+  # Manual dispatch still available to build from a non-main ref.
   workflow_dispatch:
     inputs:
       ref:
@@ -20,7 +25,9 @@ on:
         default: ""
 
 concurrency:
-  group: prerelease-build
+  # Coalesce on branch+event so successive pushes don't pile up; the
+  # latest push wins.
+  group: prerelease-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
