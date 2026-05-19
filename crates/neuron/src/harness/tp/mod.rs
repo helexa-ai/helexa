@@ -19,6 +19,7 @@
 
 pub mod nccl_state;
 pub mod rpc;
+pub mod sharded_linear;
 pub mod worker;
 
 use anyhow::{Context, Result};
