@@ -31,7 +31,10 @@ BASE="http://${HOST}:${PORT}"
 # beyond gibberish.
 PROBE_PROMPT='What is the capital of France? Respond with the city name only, no punctuation.'
 EXPECT_SUBSTR='Paris'
-MAX_TOKENS=32
+# Qwen3 prepends <think>...</think> reasoning before the answer when the
+# chat template enables thinking mode, which eats most of a small token
+# budget. 256 leaves enough room for thinking + final answer.
+MAX_TOKENS=256
 
 # /models/load is synchronous — neuron blocks the response until the
 # hf-hub download + GGUF parse + tensor materialisation is done. A
@@ -40,7 +43,10 @@ MAX_TOKENS=32
 LOAD_TIMEOUT=600
 INFER_TIMEOUT=120
 
-say() { printf '[%s] %s\n' "${HOST}" "$*"; }
+# Status messages go to stderr so command substitutions like
+# `raw=$(run_probe)` capture only the function's intended return value
+# (an HTTP body), not the progress chatter.
+say() { printf '[%s] %s\n' "${HOST}" "$*" >&2; }
 die() { say "FAIL: $*"; exit 1; }
 
 probe_health() {
@@ -49,7 +55,11 @@ probe_health() {
 }
 
 list_loaded_ids() {
-    curl --silent --fail "${BASE}/models" | yq -r '.[].id'
+    # The manifest is YAML and uses yq; HTTP responses are JSON and use
+    # jq directly. pip-yq parses input as YAML by default, which trips
+    # on JSON content that happens to look like YAML aliases (chatcmpl
+    # ids, escaped quotes inside `<think>...</think>` blocks, etc.).
+    curl --silent --fail "${BASE}/models" | jq -r '.[].id'
 }
 
 is_loaded() {
@@ -88,7 +98,7 @@ EOF
 run_probe() {
     say "POST /v1/chat/completions (probe: ${PROBE_PROMPT})"
     local payload
-    payload=$(yq -n -c \
+    payload=$(jq -n -c \
         --arg model "${MODEL_ID}" \
         --arg content "${PROBE_PROMPT}" \
         --argjson tokens "${MAX_TOKENS}" \
@@ -124,10 +134,15 @@ fi
 
 raw=$(run_probe)
 echo "---"
-echo "${raw}" | yq -r '.'
+# Dump the raw JSON. Don't pipe through `yq -r '.'` — yq's default
+# YAML output mode chokes on JSON strings that contain `<` (and the
+# `<think>` markers Qwen3 emits during reasoning are a perfect
+# example). The targeted `yq -r '.path'` calls below work fine
+# because jq's path filter mode bypasses the YAML re-emit.
+echo "${raw}"
 echo "---"
 
-content=$(echo "${raw}" | yq -r '.choices[0].message.content // empty')
+content=$(echo "${raw}" | jq -r '.choices[0].message.content // empty')
 if [[ -z "${content}" ]]; then
     die "no content in chat completion response"
 fi
