@@ -56,7 +56,7 @@ async fn list_models(State(state): State<Arc<NeuronState>>) -> impl IntoResponse
         Ok(models) => Json(json!(models)).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": format!("{e:#}")})),
         )
             .into_response(),
     }
@@ -71,7 +71,7 @@ async fn load_model(
         Ok(()) => Json(json!({"status": "loaded"})).into_response(),
         Err(e) => (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": e.to_string()})),
+            Json(json!({"error": format!("{e:#}")})),
         )
             .into_response(),
     }
@@ -95,7 +95,11 @@ async fn unload_model(
     let registry = state.registry.read().await;
     match registry.unload_model(&model_id).await {
         Ok(()) => Json(json!({"status": "unloaded"})).into_response(),
-        Err(e) => (StatusCode::NOT_FOUND, Json(json!({"error": e.to_string()}))).into_response(),
+        Err(e) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": format!("{e:#}")})),
+        )
+            .into_response(),
     }
 }
 
@@ -151,7 +155,7 @@ async fn chat_completions(
                 .into_response(),
             Err(InferenceError::Other(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
+                Json(json!({"error": format!("{e:#}")})),
             )
                 .into_response(),
         }
@@ -165,7 +169,7 @@ async fn chat_completions(
                 .into_response(),
             Err(InferenceError::Other(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e.to_string()})),
+                Json(json!({"error": format!("{e:#}")})),
             )
                 .into_response(),
         }

@@ -10,6 +10,12 @@ Restart=on-failure
 RestartSec=5
 User=neuron
 Group=neuron
+# /var/lib/neuron is the neuron user's $HOME — hf-hub writes its
+# default cache there (~/.cache/huggingface/hub). Without this directive
+# systemd doesn't create the directory and hf-hub downloads fail with
+# "fetch GGUF <file>: failed to create cache dir".
+StateDirectory=neuron
+StateDirectoryMode=0755
 # Loading default_models from neuron.toml happens before the HTTP
 # listener binds; large models can take many minutes to download and
 # materialise on first activation. systemd's default TimeoutStartSec
