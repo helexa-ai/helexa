@@ -21,6 +21,7 @@ pub mod all_reduce;
 pub mod nccl_state;
 pub mod rpc;
 pub mod tp_linear;
+pub mod tp_qwen3;
 pub mod worker;
 
 use anyhow::{Context, Result};
