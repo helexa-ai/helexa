@@ -17,9 +17,10 @@
 //! - **7b:** TP-aware Qwen3 inference dispatched through the pool.
 //! - **7c:** crash detection, streaming SSE, graceful unload.
 
+pub mod all_reduce;
 pub mod nccl_state;
 pub mod rpc;
-pub mod sharded_linear;
+pub mod tp_linear;
 pub mod worker;
 
 use anyhow::{Context, Result};
