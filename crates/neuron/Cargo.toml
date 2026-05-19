@@ -14,12 +14,16 @@ path = "src/main.rs"
 
 [features]
 default = []
-# Enables CUDA acceleration in candle. Without this feature, candle
-# compiles for CPU only and Device::new_cuda calls fall back to CPU.
+# Enables CUDA acceleration in candle and the cudarc/nccl bindings the
+# TP worker pool uses. Without this feature, candle compiles for CPU
+# only, Device::new_cuda calls fall back to CPU, and TP Init/sanity
+# requests return Error{kind="cuda_feature_not_enabled"}.
 cuda = [
     "candle-core/cuda",
+    "candle-core/nccl",
     "candle-nn/cuda",
     "candle-transformers/cuda",
+    "dep:cudarc",
 ]
 # Use cuDNN for convolution / attention kernels. Requires CUDA.
 cudnn = [
@@ -60,6 +64,10 @@ toml.workspace = true
 candle-core = "0.10.2"
 candle-nn = "0.10.2"
 candle-transformers = "0.10.2"
+# Direct dep on cudarc (matching candle's transitive version) so the
+# TP worker pool can call cudarc::nccl::{Comm, Id} directly. Gated on
+# the `cuda` feature; same toolchain requirement as candle's CUDA path.
+cudarc = { version = "0.19", optional = true, default-features = false, features = ["nccl", "cuda-version-from-build-system"] }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.4", features = ["tokio"] }
 

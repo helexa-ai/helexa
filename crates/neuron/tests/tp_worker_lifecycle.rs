@@ -69,12 +69,12 @@ async fn test_spawn_three_workers() {
     pool.shutdown().await.expect("clean shutdown");
 }
 
-/// 7a-i's Init/NcclSanityCheck handlers return an error rather than
-/// silently no-op, so the leader can tell the difference between
-/// "haven't implemented yet" and "succeeded vacuously". Confirm the
-/// shape so 7a-ii's replacement is a drop-in (same wire op names).
+/// 7a-ii: without the cuda feature, Init must fail with a clear
+/// `cuda_feature_not_enabled` marker rather than silently succeeding.
+/// This is the local-dev-box test; the real NCCL handshake is exercised
+/// by `tp_worker_lifecycle_cuda.rs` (gated on `cuda-integration`).
 #[tokio::test]
-async fn test_init_returns_not_implemented_in_7a_i() {
+async fn test_init_returns_cuda_feature_not_enabled_without_cuda() {
     use neuron::harness::tp::rpc::WorkerRequest;
     use std::process::Stdio;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -117,9 +117,24 @@ async fn test_init_returns_not_implemented_in_7a_i() {
     let resp: WorkerResponse = serde_json::from_str(&reply).expect("parse reply");
     match resp {
         WorkerResponse::Error { kind, .. } => {
-            assert_eq!(kind, "not_implemented_7a_i");
+            #[cfg(feature = "cuda")]
+            {
+                // With cuda enabled the response depends on whether
+                // CUDA hardware is actually present. Accept either
+                // the success contract or a real NCCL failure.
+                let _ = kind;
+            }
+            #[cfg(not(feature = "cuda"))]
+            assert_eq!(kind, "cuda_feature_not_enabled");
         }
-        other => panic!("expected Error{{kind=not_implemented_7a_i}}, got {other:?}"),
+        WorkerResponse::InitOk => {
+            // Real NCCL succeeded — only possible with cuda feature
+            // AND a working NCCL stack AND another rank actually
+            // joining. Don't fail; just acknowledge.
+            #[cfg(not(feature = "cuda"))]
+            panic!("InitOk without cuda feature is impossible");
+        }
+        other => panic!("expected Error or InitOk, got {other:?}"),
     }
 
     // Clean shutdown.

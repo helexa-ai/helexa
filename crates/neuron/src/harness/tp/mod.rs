@@ -17,6 +17,7 @@
 //! - **7b:** TP-aware Qwen3 inference dispatched through the pool.
 //! - **7c:** crash detection, streaming SSE, graceful unload.
 
+pub mod nccl_state;
 pub mod rpc;
 pub mod worker;
 
@@ -42,7 +43,20 @@ struct Worker {
 }
 
 impl Worker {
+    /// Send a request and wait for the response. Used for sequenced
+    /// ops like `Ping` / `Shutdown` where the caller doesn't need to
+    /// overlap the worker's execution with the leader's.
     async fn request(&mut self, req: &WorkerRequest) -> Result<WorkerResponse> {
+        self.send_only(req).await?;
+        self.recv_only().await
+    }
+
+    /// Write a request without awaiting its response. Pair with
+    /// `recv_only` from the caller when leader and worker need to do
+    /// work concurrently — e.g. during `Init`, where the leader
+    /// itself calls `Comm::from_rank` on rank 0 in parallel with the
+    /// workers, then collects `InitOk` after NCCL completes.
+    async fn send_only(&mut self, req: &WorkerRequest) -> Result<()> {
         let mut line = serde_json::to_string(req).context("serialise WorkerRequest")?;
         line.push('\n');
         self.stdin
@@ -53,7 +67,10 @@ impl Worker {
             .flush()
             .await
             .with_context(|| format!("flush stdin to rank {}", self.rank))?;
+        Ok(())
+    }
 
+    async fn recv_only(&mut self) -> Result<WorkerResponse> {
         let reply = self
             .stdout
             .next_line()
@@ -71,10 +88,13 @@ impl Worker {
 pub struct WorkerPool {
     world_size: u32,
     workers: Vec<Worker>,
-    /// Path to the neuron binary used to launch workers — captured at
-    /// `spawn()` time via `/proc/self/exe` so the workers run the same
-    /// binary the leader is running.
+    /// Path to the neuron binary used to launch workers.
+    #[allow(dead_code)]
     exe: PathBuf,
+    /// Leader's own NCCL rank-0 state. Defaults to empty; populated by
+    /// `init_nccl()`. Held here so the leader can participate in
+    /// collectives (rank 0) without spawning a fourth subprocess.
+    leader_nccl: nccl_state::NcclState,
 }
 
 impl WorkerPool {
@@ -148,7 +168,154 @@ impl WorkerPool {
             world_size,
             workers,
             exe,
+            leader_nccl: nccl_state::NcclState::new(),
         })
+    }
+
+    /// Establish the NCCL communicator across the leader (rank 0) and
+    /// every worker subprocess. Rendezvous is via a freshly-generated
+    /// `Id` broadcast over the RPC stream; the actual handshake blocks
+    /// inside `Comm::from_rank` until all `world_size` ranks check in.
+    ///
+    /// `leader_cuda_device` is the CUDA device the leader binds rank 0
+    /// to — typically the first entry of the `cuda_devices` slice
+    /// originally passed to `spawn()`.
+    ///
+    /// On the non-cuda build this immediately fails because the leader
+    /// can't generate an `Id` without libnccl. The same call works in
+    /// the worker path (returning a no-cuda error response) so the
+    /// failure surface is uniform.
+    pub async fn init_nccl(&mut self, leader_cuda_device: u32) -> Result<()> {
+        let comm_id = nccl_state::generate_comm_id_hex()
+            .map_err(|m| anyhow::anyhow!("generate NCCL id: {m}"))?;
+
+        // 1. Write Init to every worker's stdin without awaiting the
+        //    response. Workers will parse and call Comm::from_rank
+        //    concurrently with the leader below.
+        for w in &mut self.workers {
+            let req = WorkerRequest::Init {
+                comm_id: comm_id.clone(),
+            };
+            w.send_only(&req).await?;
+        }
+
+        // 2. Leader rank 0 calls Comm::from_rank on its own device.
+        //    Runs on spawn_blocking because NCCL's init blocks until
+        //    every rank has called in — that's exactly the workers
+        //    above. The leader's NcclState is moved through the
+        //    blocking task and returned to the pool.
+        let leader_cfg = worker::WorkerConfig {
+            rank: 0,
+            world_size: self.world_size,
+            cuda_device: leader_cuda_device,
+        };
+        let comm_id_for_leader = comm_id.clone();
+        // Swap out the leader's NcclState into a fresh empty one so we
+        // can move it into spawn_blocking; restore after the task
+        // returns. (NcclState isn't Clone — it owns a real NCCL Comm.)
+        let mut leader_state =
+            std::mem::take(&mut self.leader_nccl);
+        let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
+            let resp = leader_state.init(leader_cfg, &comm_id_for_leader);
+            (leader_state, resp)
+        })
+        .await
+        .context("leader NCCL init task panicked")?;
+        self.leader_nccl = returned_state;
+        match leader_resp {
+            rpc::WorkerResponse::InitOk => {}
+            rpc::WorkerResponse::Error { kind, message } => {
+                anyhow::bail!("leader rank 0 init failed [{kind}]: {message}");
+            }
+            other => anyhow::bail!("leader rank 0 init: unexpected {other:?}"),
+        }
+
+        // 3. Read InitOk from each worker. By now every worker has
+        //    completed its Comm::from_rank call (NCCL released them
+        //    when the leader joined the handshake) and is writing its
+        //    response.
+        for w in &mut self.workers {
+            let resp = w.recv_only().await?;
+            match &resp {
+                rpc::WorkerResponse::InitOk => {}
+                rpc::WorkerResponse::Error { kind, message } => {
+                    anyhow::bail!("worker rank {} init failed [{kind}]: {message}", w.rank);
+                }
+                other => anyhow::bail!(
+                    "worker rank {} init: expected InitOk, got {other:?}",
+                    w.rank
+                ),
+            }
+        }
+        tracing::info!(
+            world_size = self.world_size,
+            "NCCL communicator established across all ranks"
+        );
+        Ok(())
+    }
+
+    /// Validate the NCCL communicator: every rank `all_reduce`s a
+    /// sentinel `1u32` with `ReduceOp::Sum`; the expected total is
+    /// `world_size`. Confirms the handshake is live, not just
+    /// configured.
+    ///
+    /// Must be called after `init_nccl()`; before that the leader has
+    /// no Comm and the workers reply with `nccl_not_initialised`.
+    pub async fn nccl_sanity_check(&mut self) -> Result<()> {
+        // 1. Trigger the all_reduce on every worker (write-only).
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::NcclSanityCheck).await?;
+        }
+
+        // 2. Leader's own all_reduce, in spawn_blocking. NCCL operations
+        //    block until every rank participates.
+        let mut leader_state =
+            std::mem::take(&mut self.leader_nccl);
+        let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
+            let resp = leader_state.sanity_check();
+            (leader_state, resp)
+        })
+        .await
+        .context("leader NCCL sanity task panicked")?;
+        self.leader_nccl = returned_state;
+
+        let expected = self.world_size;
+        let leader_sum = match leader_resp {
+            rpc::WorkerResponse::NcclSanityResult { observed_sum } => observed_sum,
+            rpc::WorkerResponse::Error { kind, message } => {
+                anyhow::bail!("leader rank 0 sanity failed [{kind}]: {message}");
+            }
+            other => anyhow::bail!("leader rank 0 sanity: unexpected {other:?}"),
+        };
+        if leader_sum != expected {
+            anyhow::bail!("leader observed_sum={leader_sum}, expected {expected}");
+        }
+
+        // 3. Read sanity result from each worker. All must match
+        //    world_size — anything else means the collective didn't
+        //    complete consistently across ranks.
+        for w in &mut self.workers {
+            let resp = w.recv_only().await?;
+            match resp {
+                rpc::WorkerResponse::NcclSanityResult { observed_sum }
+                    if observed_sum == expected => {}
+                rpc::WorkerResponse::NcclSanityResult { observed_sum } => {
+                    anyhow::bail!(
+                        "worker rank {} observed_sum={observed_sum}, expected {expected}",
+                        w.rank
+                    );
+                }
+                rpc::WorkerResponse::Error { kind, message } => {
+                    anyhow::bail!("worker rank {} sanity failed [{kind}]: {message}", w.rank);
+                }
+                other => anyhow::bail!("worker rank {} sanity: unexpected {other:?}", w.rank),
+            }
+        }
+        tracing::info!(
+            world_size = expected,
+            "NCCL sanity check OK across all ranks"
+        );
+        Ok(())
     }
 
     /// Ping every worker and return their Pong payloads in rank order.

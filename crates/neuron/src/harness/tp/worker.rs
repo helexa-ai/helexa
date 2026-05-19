@@ -1,18 +1,20 @@
 //! Entry point for `neuron --worker`.
 //!
-//! Stage 7a-i: bare RPC loop — `Ping` and `Shutdown` work, `Init` and
-//! `NcclSanityCheck` return `Error{kind = "not_implemented_7a_i"}`.
-//! Stage 7a-ii will replace the latter with real `cudarc::nccl` calls
-//! behind the `cuda` feature.
-//!
 //! The worker reads one newline-delimited JSON `WorkerRequest` from
 //! stdin per loop iteration, dispatches synchronously, and writes
 //! exactly one `WorkerResponse` JSON line to stdout. tracing goes to
 //! stderr so it doesn't collide with the RPC stream.
+//!
+//! NCCL operations (`Init`, `NcclSanityCheck`) are real when built
+//! with the `cuda` feature; without it they reply with
+//! `Error{kind="cuda_feature_not_enabled"}` so the leader can tell
+//! the difference between a misconfigured build and a genuine NCCL
+//! failure.
 
 use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+use super::nccl_state::NcclState;
 use super::rpc::{WorkerRequest, WorkerResponse};
 
 #[derive(Debug, Clone, Copy)]
@@ -72,16 +74,17 @@ async fn write_response(stdout: &mut tokio::io::Stdout, resp: &WorkerResponse) -
     Ok(())
 }
 
-/// Per-worker state. In Stage 7a-i this only carries the static
-/// config; 7a-ii adds an `Option<cudarc::nccl::safe::Comm>` populated
-/// by `Init`.
 struct WorkerState {
     config: WorkerConfig,
+    nccl: NcclState,
 }
 
 impl WorkerState {
     fn new(config: WorkerConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            nccl: NcclState::new(),
+        }
     }
 
     async fn handle(&mut self, req: WorkerRequest) -> WorkerResponse {
@@ -91,14 +94,8 @@ impl WorkerState {
                 world_size: self.config.world_size,
                 cuda_device: self.config.cuda_device,
             },
-            WorkerRequest::Init { comm_id: _ } => WorkerResponse::Error {
-                kind: "not_implemented_7a_i".into(),
-                message: "NCCL init lands in Stage 7a-ii (CUDA-gated)".into(),
-            },
-            WorkerRequest::NcclSanityCheck => WorkerResponse::Error {
-                kind: "not_implemented_7a_i".into(),
-                message: "NCCL sanity check lands in Stage 7a-ii (CUDA-gated)".into(),
-            },
+            WorkerRequest::Init { comm_id } => self.nccl.init(self.config, &comm_id),
+            WorkerRequest::NcclSanityCheck => self.nccl.sanity_check(),
             WorkerRequest::Shutdown => WorkerResponse::Bye,
         }
     }
