@@ -22,7 +22,9 @@ set -euo pipefail
 
 HOST="${1:-beast.hanzalova.internal}"
 MODEL_ID="${2:-unsloth/Qwen3-0.6B-GGUF}"
-QUANT="${3:-Q4_K_M}"
+# `${3-Q4_K_M}` (no colon) only uses the default when the arg is
+# UNSET — passing an explicit empty string drives the dense path.
+QUANT="${3-Q4_K_M}"
 PORT="${NEURON_PORT:-13131}"
 BASE="http://${HOST}:${PORT}"
 

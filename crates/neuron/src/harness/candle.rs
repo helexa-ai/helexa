@@ -714,8 +714,11 @@ fn run_inference(
         ModelArch::Qwen3Dense(model) => {
             model.clear_kv_cache();
             let input = Tensor::new(prompt_tokens, device)?.unsqueeze(0)?;
-            let logits = model.forward(&input, 0)?;
-            let logits = logits.squeeze(0)?;
+            // qwen3::ModelForCausalLM::forward returns [B, 1, V] —
+            // no final squeeze on the dense path, unlike the quantized
+            // variant which returns [B, V]. Strip both batch and seq
+            // dims to get the rank-1 logits LogitsProcessor expects.
+            let logits = model.forward(&input, 0)?.squeeze(0)?.squeeze(0)?;
             sample_with_penalty(&logits, &generated, &mut logits_processor)?
         }
     };
@@ -735,8 +738,11 @@ fn run_inference(
             }
             ModelArch::Qwen3Dense(model) => {
                 let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
-                let logits = model.forward(&input, prompt_tokens.len() + index)?;
-                let logits = logits.squeeze(0)?;
+                // Dense returns [B, 1, V]; strip both leading dims.
+                let logits = model
+                    .forward(&input, prompt_tokens.len() + index)?
+                    .squeeze(0)?
+                    .squeeze(0)?;
                 sample_with_penalty(&logits, &generated, &mut logits_processor)?
             }
         };
@@ -852,8 +858,11 @@ fn run_inference_streaming(
                 }
                 ModelArch::Qwen3Dense(model) => {
                     let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
-                    let logits = model.forward(&input, prompt_tokens.len() + index)?;
-                    let logits = logits.squeeze(0)?;
+                    // Dense returns [B, 1, V]; strip both leading dims.
+                    let logits = model
+                        .forward(&input, prompt_tokens.len() + index)?
+                        .squeeze(0)?
+                        .squeeze(0)?;
                     sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?
                 }
             };
