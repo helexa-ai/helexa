@@ -7,6 +7,16 @@ on:
   pull_request:
     branches: [main]
 
+# Share a concurrency group with build-prerelease.yml so the two
+# workflows don't race on the same `rust` runner workspace (act's
+# /root/.cache/act/<hash>/hostexecutor/ is shared across concurrent
+# jobs and one job's checkout step nukes another's in-flight build
+# files). cancel-in-progress=false → they queue; same-ref pushes
+# coalesce per workflow via cancel-in-progress on each.
+concurrency:
+  group: cortex-runner-pool-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   CARGO_INCREMENTAL: "0"
   RUSTC_WRAPPER: sccache

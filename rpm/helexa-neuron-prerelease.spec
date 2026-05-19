@@ -9,7 +9,11 @@
 #   neuron_version    e.g. "0.1.16"
 #   neuron_flavour    e.g. "ada", "blackwell"  — matches the CI build
 #                     matrix's compute_cap label.
-#   neuron_prerelease e.g. "0.1.20260518gitabcdef0"   (used as Release)
+#   neuron_prerelease e.g. "0.1.20260518140530.gitabcdef0"
+#                            ^^^^^^^^^^^^^^^^^^ ^^^^^^^^
+#                            commit time (sec)  commit sha
+#                           (used as Release; the timestamp prefix
+#                            keeps same-day builds strictly ordered.)
 #
 # One flavour can be installed at a time on a given host; flavour
 # packages Conflict with each other.

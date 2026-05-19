@@ -6,7 +6,11 @@
 #
 # Required defines at rpmbuild time:
 #   cortex_version    e.g. "0.1.16"
-#   cortex_prerelease e.g. "0.1.20260518gitabcdef0"   (used as Release)
+#   cortex_prerelease e.g. "0.1.20260518140530.gitabcdef0"
+#                            ^^^^^^^^^^^^^^^^^^ ^^^^^^^^
+#                            commit time (sec)  commit sha
+#                           (used as Release; the timestamp prefix
+#                            keeps same-day builds strictly ordered.)
 
 %global _build_id_links none
 %global debug_package %{nil}

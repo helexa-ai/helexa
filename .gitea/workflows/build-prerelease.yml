@@ -8,8 +8,13 @@ name: build-prerelease
 # Optionally provide a `ref` to build from a non-default branch.
 #
 # The published packages are versioned as e.g.
-#   helexa-neuron-blackwell-0.1.16-0.1.20260518gitabcdef0.fc43.x86_64
-# so they sort BELOW the eventual 0.1.16-1 stable release.
+#   helexa-neuron-blackwell-0.1.16-0.1.20260518T140530.gitabcdef0.fc43.x86_64
+#                                       ^^^^^^^^^^^^^^^^^^ ^^^^^^^^
+#                                       commit time (s)    commit sha
+# so they sort BELOW the eventual 0.1.16-1 stable release, and so two
+# commits on the same day are still strictly ordered by their commit
+# timestamps (rather than by RPM-vercmp's alpha-vs-digit precedence
+# on the SHA fragment).
 
 on:
   # Auto-build on every push to main so the unstable channel tracks
@@ -25,10 +30,14 @@ on:
         default: ""
 
 concurrency:
-  # Coalesce on branch+event so successive pushes don't pile up; the
-  # latest push wins.
-  group: prerelease-build-${{ github.ref }}
-  cancel-in-progress: true
+  # Share the group with ci.yml so the two workflows can't run
+  # concurrently on the same `rust` runner (act reuses the workspace
+  # cache and races destroy each other's build files mid-compile).
+  # cancel-in-progress=false → workflows queue; if a newer push lands,
+  # the older run is still picked up by ci.yml's own ref-keyed
+  # concurrency (same group, queued).
+  group: cortex-runner-pool-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_INCREMENTAL: "0"
@@ -41,7 +50,7 @@ jobs:
       version: ${{ steps.info.outputs.version }}
       release: ${{ steps.info.outputs.release }}
       short_sha: ${{ steps.info.outputs.short_sha }}
-      commit_date: ${{ steps.info.outputs.commit_date }}
+      commit_timestamp: ${{ steps.info.outputs.commit_timestamp }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,13 +62,20 @@ jobs:
           set -eux
           VERSION=$(awk -F\" '/^version[[:space:]]*=/ { print $2; exit }' Cargo.toml)
           SHORT_SHA=$(git rev-parse --short=7 HEAD)
-          COMMIT_DATE=$(git log -1 --format=%cd --date=format:%Y%m%d HEAD)
-          # Prerelease release stamp sorts before "1" (the stable release).
-          RELEASE="0.1.${COMMIT_DATE}git${SHORT_SHA}"
+          # Second-precise commit timestamp gives the release stamp a
+          # strictly monotonic numeric prefix. The earlier %Y%m%d-only
+          # form let same-day builds be ordered by RPM's rpmvercmp
+          # rules over the SHA, which is non-chronological — e.g.
+          # "git602e8e1" sorts newer than "gitf9f5fa4" purely because
+          # rpmvercmp ranks digit-prefixed segments above alpha ones.
+          # The SHA stays only as a debug identifier; sort order is
+          # decided entirely by the timestamp.
+          COMMIT_TIMESTAMP=$(git log -1 --format=%cd --date=format:%Y%m%d%H%M%S HEAD)
+          RELEASE="0.1.${COMMIT_TIMESTAMP}.git${SHORT_SHA}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release=${RELEASE}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
-          echo "commit_date=${COMMIT_DATE}" >> "$GITHUB_OUTPUT"
+          echo "commit_timestamp=${COMMIT_TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
   build-cortex:
     name: Build cortex binary
