@@ -71,6 +71,34 @@ ensure_lair_repo() {
     fi
 }
 
+# Ensure libcudnn.so.9 is resolvable on the remote host so the
+# neuron binary (built with --features cudnn) doesn't fail at startup
+# with "cannot open shared object file: No such file or directory".
+#
+# Probes ldconfig first — if cuDNN was installed manually (.tar/.run
+# install), it'll be cached by ldconfig and we don't touch it.
+# Otherwise adds NVIDIA's RHEL9 CUDA repo (the Fedora 43 CUDA repo
+# doesn't ship cuDNN packages — only the RHEL9 one does) and installs
+# libcudnn9-cuda-13.
+ensure_cudnn_runtime() {
+    local host="$1"
+    if ssh "${host}" "ldconfig -p | grep -q libcudnn.so.9" 2>/dev/null; then
+        return 0
+    fi
+    echo "[${host}] installing cuDNN runtime"
+    if ! ssh "${host}" "test -f /etc/yum.repos.d/cuda-rhel9-x86_64.repo" 2>/dev/null; then
+        if ! ssh "${host}" sudo dnf config-manager addrepo \
+            --from-repofile=https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo \
+            >/dev/null 2>&1; then
+            echo "[${host}] WARNING: failed to add rhel9 CUDA repo (proceeding anyway)"
+        fi
+    fi
+    if ! ssh "${host}" sudo dnf install -y libcudnn9-cuda-13 >/dev/null 2>&1; then
+        echo "[${host}] WARNING: failed to install libcudnn9-cuda-13"
+        echo "[${host}]   neuron may fail to start; install cuDNN manually if so"
+    fi
+}
+
 # True when the named package needs to be installed or upgraded on the
 # remote host — either it's not present, or a newer version exists in
 # the repo. False only when the installed version is current.
@@ -188,6 +216,7 @@ for entry in "${neuron_entries[@]}"; do
     package="helexa-neuron-${neuron_flavour}"
 
     ensure_lair_repo "${neuron_host}"
+    ensure_cudnn_runtime "${neuron_host}"
     neuron_nvr=$(installed_nvr "${neuron_host}" "${package}")
     if needs_update "${neuron_host}" "${package}"; then
         echo "[${neuron_host}] ${package} update available (current: ${neuron_nvr})"

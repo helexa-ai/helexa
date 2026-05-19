@@ -53,6 +53,34 @@ pub enum ModelArch {
     Qwen3Quantized(QuantizedQwen3Weights),
 }
 
+/// Repetition penalty applied to recently-generated tokens before
+/// sampling. 1.0 disables it; >1.0 makes recently-emitted tokens less
+/// likely. mistral.rs and llama.cpp default to 1.1, which is enough to
+/// stop small quantized models from degenerating into "Wait, no, no..."
+/// loops without distorting normal output.
+const REPEAT_PENALTY: f32 = 1.1;
+
+/// Number of recently-generated tokens to feed into the repetition
+/// penalty. Matches the candle quantized-qwen3 example default.
+const REPEAT_LAST_N: usize = 64;
+
+/// Apply the repetition penalty (if any) to the prediction logits and
+/// then sample. Centralises the prefill / generation-loop call sites
+/// so they share identical sampling behaviour.
+fn sample_with_penalty(
+    logits: &Tensor,
+    history: &[u32],
+    logits_processor: &mut LogitsProcessor,
+) -> Result<u32> {
+    let penalised = if (REPEAT_PENALTY - 1.0).abs() < f32::EPSILON || history.is_empty() {
+        logits.clone()
+    } else {
+        let start = history.len().saturating_sub(REPEAT_LAST_N);
+        candle_transformers::utils::apply_repeat_penalty(logits, REPEAT_PENALTY, &history[start..])?
+    };
+    Ok(logits_processor.sample(&penalised)?)
+}
+
 impl CandleHarness {
     pub fn new(bind_url: String, hf_cache: Option<PathBuf>) -> Self {
         Self {
@@ -521,7 +549,7 @@ fn run_inference(
             let input = Tensor::new(prompt_tokens, device)?.unsqueeze(0)?;
             let logits = model.forward(&input, 0)?;
             let logits = logits.squeeze(0)?;
-            logits_processor.sample(&logits)?
+            sample_with_penalty(&logits, &generated, &mut logits_processor)?
         }
     };
 
@@ -536,7 +564,7 @@ fn run_inference(
                 let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
                 let logits = model.forward(&input, prompt_tokens.len() + index)?;
                 let logits = logits.squeeze(0)?;
-                logits_processor.sample(&logits)?
+                sample_with_penalty(&logits, &generated, &mut logits_processor)?
             }
         };
         if Some(next_token) == eos_id {
@@ -592,7 +620,7 @@ fn run_inference_streaming(
             let input = Tensor::new(prompt_tokens, device)?.unsqueeze(0)?;
             let logits = model.forward(&input, 0)?;
             let logits = logits.squeeze(0)?;
-            logits_processor.sample(&logits)?
+            sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?
         }
     };
 
@@ -640,7 +668,7 @@ fn run_inference_streaming(
                     let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
                     let logits = model.forward(&input, prompt_tokens.len() + index)?;
                     let logits = logits.squeeze(0)?;
-                    logits_processor.sample(&logits)?
+                    sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?
                 }
             };
             if Some(next_token) == eos_id {
