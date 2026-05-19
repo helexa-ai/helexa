@@ -94,6 +94,38 @@ needs_update() {
     fi
 }
 
+# True if the named package is currently installed on the remote host.
+# Used to decide between `dnf install` (fresh) and `dnf upgrade` (stale):
+# dnf5's `install` is a no-op when the package is already present at
+# any version — it does NOT auto-upgrade to the latest available — so
+# the wrong command silently leaves the host on an old build.
+is_installed() {
+    local host="$1" pkg="$2"
+    ssh "${host}" "rpm -q ${pkg}" >/dev/null 2>&1
+}
+
+# Install or upgrade the named package on the remote, picking the
+# right dnf verb based on the installed-or-not state. Returns 0 with
+# dnf's combined stdout/stderr captured in __DNF_OUTPUT__ on success,
+# and 1 with the same captured output on failure.
+__DNF_OUTPUT__=""
+install_or_upgrade() {
+    local host="$1" pkg="$2"
+    local cmd
+    if is_installed "${host}" "${pkg}"; then
+        cmd="upgrade"
+    else
+        cmd="install"
+    fi
+    if __DNF_OUTPUT__=$(
+        ssh "${host}" sudo dnf "${cmd}" --refresh --allowerasing -y "${pkg}" 2>&1
+    ); then
+        return 0
+    else
+        return 1
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # cortex (gateway)
 # ---------------------------------------------------------------------------
@@ -108,12 +140,12 @@ if needs_update "${cortex_host}" cortex; then
     # under set -e.
     if ssh "${cortex_host}" "[ ! -f /usr/lib/systemd/system/cortex.service ] || sudo systemctl stop cortex.service"; then
         echo "[${cortex_host}] stopped cortex service"
-        if dnf_output=$(ssh "${cortex_host}" sudo dnf install --refresh --allowerasing -y cortex 2>&1); then
+        if install_or_upgrade "${cortex_host}" cortex; then
             cortex_nvr=$(installed_nvr "${cortex_host}" cortex)
             echo "[${cortex_host}] installed/upgraded cortex to ${cortex_nvr}"
         else
             echo "[${cortex_host}] failed to install/upgrade cortex:"
-            echo "${dnf_output}" | sed "s/^/[${cortex_host}]   /"
+            echo "${__DNF_OUTPUT__}" | sed "s/^/[${cortex_host}]   /"
         fi
     else
         echo "[${cortex_host}] failed to stop cortex service"
@@ -165,7 +197,7 @@ for entry in "${neuron_entries[@]}"; do
             # bare helexa-neuron or a different flavour without manual
             # intervention. The Conflicts: clauses in the spec ensure
             # only one flavour is ever resident.
-            if dnf_output=$(ssh "${neuron_host}" sudo dnf install --refresh --allowerasing -y "${package}" 2>&1); then
+            if install_or_upgrade "${neuron_host}" "${package}"; then
                 neuron_nvr=$(installed_nvr "${neuron_host}" "${package}")
                 echo "[${neuron_host}] installed/upgraded ${package} to ${neuron_nvr}"
                 # Ensure firewalld allows neuron port
@@ -177,7 +209,7 @@ for entry in "${neuron_entries[@]}"; do
                 fi
             else
                 echo "[${neuron_host}] failed to install ${package}:"
-                echo "${dnf_output}" | sed "s/^/[${neuron_host}]   /"
+                echo "${__DNF_OUTPUT__}" | sed "s/^/[${neuron_host}]   /"
             fi
         else
             echo "[${neuron_host}] failed to stop neuron service"
