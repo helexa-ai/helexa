@@ -108,13 +108,24 @@ jobs:
             build_jobs: 8
             nvcc_threads: 4
             cargo_features: "cuda cudnn flash-attn"
-    # runner-cuda-13.0 extends runner-rust, so rust/cargo are already
-    # present via dnf — no rustup install step needed.
+    # runner-cuda-13.0 inherits from runner-rust in gongfoo, so rust
+    # *should* be available via dnf. The currently-published image is
+    # missing it though (likely a stale build), so we run a defensive
+    # `dnf install` at the top of the step. When the runner image is
+    # rebuilt with the proper layers this becomes a fast no-op.
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+
+      - name: Ensure rust toolchain present
+        run: |
+          set -eux
+          if ! command -v cargo >/dev/null 2>&1; then
+            sudo dnf install -y --setopt=install_weak_deps=False rust cargo clippy
+          fi
+          cargo --version
 
       - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
