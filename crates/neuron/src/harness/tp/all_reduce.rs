@@ -20,6 +20,7 @@
 
 #![cfg(feature = "cuda")]
 
+use candle_core::backend::BackendStorage;
 use candle_core::cuda_backend::WrapErr;
 use candle_core::{CpuStorage, CudaStorage, CustomOp1, DType, Layout, Result, Shape};
 use cudarc::nccl::{Comm, ReduceOp};
@@ -61,8 +62,6 @@ impl CustomOp1 for AllReduce {
     }
 
     fn cuda_fwd(&self, s: &CudaStorage, l: &Layout) -> Result<(CudaStorage, Shape)> {
-        use cudarc::driver::DeviceSlice;
-
         // Reject non-contiguous inputs explicitly — copying them
         // server-side would mask shape bugs (a TP layer feeding a
         // strided activation into all_reduce is almost certainly a
