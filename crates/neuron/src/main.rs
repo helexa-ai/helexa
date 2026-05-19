@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use neuron::{
     api,
@@ -13,8 +13,9 @@ use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 /// Top-level CLI. The same binary runs as either the public neuron
-/// daemon (default) or a tensor-parallel worker subprocess (when
-/// `--worker` is set) spawned by the leader on the same host.
+/// daemon (default), a tensor-parallel worker subprocess (when
+/// `--worker` is set, spawned by the leader on the same host), or a
+/// one-shot TP NCCL handshake check (when `--tp-smoke` is set).
 #[derive(Parser)]
 #[command(name = "neuron")]
 #[command(about = "Per-node daemon for cortex inference clusters")]
@@ -28,12 +29,20 @@ struct Args {
     #[arg(long, default_value_t = false)]
     worker: bool,
 
+    /// Run a one-shot TP smoke test: spawn `--tp-size - 1` worker
+    /// subprocesses on `--cuda-devices`, build the NCCL communicator,
+    /// run an `AllReduce` sanity check across every rank, and exit.
+    /// Used to validate the TP plumbing in isolation from model load
+    /// and inference. Diagnostic-only — not exposed through the daemon
+    /// HTTP API.
+    #[arg(long, default_value_t = false)]
+    tp_smoke: bool,
+
     /// NCCL rank for worker mode. Ignored when `--worker` is not set.
     #[arg(long, default_value_t = 0)]
     rank: u32,
 
-    /// Total NCCL world size for worker mode. Ignored when `--worker`
-    /// is not set.
+    /// Total NCCL world size for worker mode or TP smoke mode.
     #[arg(long, default_value_t = 1)]
     tp_size: u32,
 
@@ -41,6 +50,11 @@ struct Args {
     /// not set.
     #[arg(long, default_value_t = 0)]
     cuda_device: u32,
+
+    /// Comma-separated CUDA device indices for TP smoke mode (one per
+    /// rank, starting with rank 0). Must have `tp_size` entries.
+    #[arg(long, value_delimiter = ',')]
+    cuda_devices: Vec<u32>,
 
     /// Port to listen on (overrides config file). Daemon mode only.
     #[arg(short, long)]
@@ -72,7 +86,66 @@ async fn main() -> Result<()> {
         .await;
     }
 
+    if args.tp_smoke {
+        return tp_smoke(args.tp_size, args.cuda_devices).await;
+    }
+
     daemon(args).await
+}
+
+/// One-shot tensor-parallel handshake. Spawns N-1 worker subprocesses
+/// (rank 0 stays in this process), builds the NCCL communicator across
+/// the full world, runs an AllReduce sanity check, and shuts everyone
+/// down. Output is plain log lines on stderr + a final summary on
+/// stdout in `key=value` form so an outer script can parse it.
+async fn tp_smoke(tp_size: u32, cuda_devices: Vec<u32>) -> Result<()> {
+    if tp_size < 2 {
+        anyhow::bail!("--tp-size must be at least 2 (got {tp_size})");
+    }
+    if cuda_devices.len() as u32 != tp_size {
+        anyhow::bail!(
+            "--cuda-devices must list exactly {tp_size} entries (got {})",
+            cuda_devices.len()
+        );
+    }
+
+    let exe = std::env::current_exe().context("resolve current_exe for worker spawn")?;
+    let leader_device = cuda_devices[0];
+
+    tracing::info!(
+        tp_size,
+        ?cuda_devices,
+        binary = %exe.display(),
+        "tp-smoke: spawning worker pool"
+    );
+    let mut pool = tp::WorkerPool::spawn(&exe, tp_size, &cuda_devices).await?;
+
+    tracing::info!("tp-smoke: pinging every worker");
+    let pongs = pool.ping_all().await?;
+    for p in &pongs {
+        tracing::info!(?p, "tp-smoke: pong");
+    }
+
+    tracing::info!(leader_device, "tp-smoke: initialising NCCL");
+    pool.init_nccl(leader_device).await?;
+
+    tracing::info!("tp-smoke: running AllReduce sanity check");
+    pool.nccl_sanity_check().await?;
+
+    tracing::info!("tp-smoke: shutting down pool");
+    pool.shutdown().await?;
+
+    println!("status=ok");
+    println!("tp_size={tp_size}");
+    println!(
+        "cuda_devices={}",
+        cuda_devices
+            .iter()
+            .map(|d| d.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+    Ok(())
 }
 
 async fn daemon(args: Args) -> Result<()> {
