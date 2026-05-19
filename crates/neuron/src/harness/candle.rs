@@ -121,10 +121,33 @@ impl CandleHarness {
             .get(&gguf_filename)
             .await
             .with_context(|| format!("fetch GGUF {gguf_filename}"))?;
-        let tokenizer_path = repo
+
+        // GGUF-only HF repos (unsloth/Qwen3-*-GGUF, Qwen/Qwen3-*-GGUF,
+        // etc.) ship the .gguf file but not tokenizer.json — the
+        // tokenizer.json lives in the base non-GGUF repo. Derive the
+        // base repo id by stripping a `-GGUF` / `-gguf` suffix; if
+        // there's no such suffix the same repo is used (works for
+        // non-GGUF model_ids).
+        let tokenizer_repo_id = spec
+            .model_id
+            .strip_suffix("-GGUF")
+            .or_else(|| spec.model_id.strip_suffix("-gguf"))
+            .unwrap_or(spec.model_id.as_str())
+            .to_string();
+        let tokenizer_repo = if tokenizer_repo_id == spec.model_id {
+            repo
+        } else {
+            tracing::debug!(
+                from = %spec.model_id,
+                to = %tokenizer_repo_id,
+                "tokenizer.json sourced from base repo (GGUF suffix stripped)"
+            );
+            api.model(tokenizer_repo_id.clone())
+        };
+        let tokenizer_path = tokenizer_repo
             .get("tokenizer.json")
             .await
-            .context("fetch tokenizer.json")?;
+            .with_context(|| format!("fetch tokenizer.json from {tokenizer_repo_id}"))?;
         Ok((gguf_path, tokenizer_path))
     }
 
