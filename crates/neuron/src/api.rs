@@ -69,11 +69,22 @@ async fn load_model(
     let registry = state.registry.read().await;
     match registry.load_model(&spec).await {
         Ok(()) => Json(json!({"status": "loaded"})).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("{e:#}")})),
-        )
-            .into_response(),
+        Err(e) => {
+            // Log the full anyhow chain server-side so journalctl shows
+            // the underlying failure (hf-hub timeout, permission denied,
+            // disk full, etc.) without needing to inspect the HTTP
+            // response body separately.
+            tracing::warn!(
+                model = %spec.model_id,
+                error = %format!("{e:#}"),
+                "load_model failed"
+            );
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("{e:#}")})),
+            )
+                .into_response()
+        }
     }
 }
 
