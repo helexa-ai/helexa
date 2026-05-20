@@ -20,20 +20,19 @@
 #   pinned_on          - optional whitelist of neuron names. Non-empty
 #                        narrows feasibility to just those neurons and
 #                        protects the model from LRU eviction there.
-#
-# The examples below match the canonical helexa fleet
-# (beast = 2x RTX 5090, benjy = RTX 4090, quadbrat = RTX 3060).
 
-# Tensor-parallel target — only beast has two big GPUs.
+# Tensor-parallel target — needs a neuron with at least 2 large GPUs.
+# The example pins to a specific neuron name; adjust or remove the
+# pinned_on entry for your own fleet.
 [[models]]
 id = "Qwen/Qwen3.6-27B"
 harness = "candle"
 vram_mb = 54000
 min_devices = 2
 min_device_vram_mb = 24000
-pinned_on = ["beast"]
+pinned_on = ["your-multi-gpu-neuron"]
 
-# Mid-size dense model — fits on benjy or beast.
+# Mid-size dense model — fits on any single GPU with ≥16 GB VRAM.
 [[models]]
 id = "Qwen/Qwen3-8B"
 harness = "candle"
@@ -41,7 +40,7 @@ vram_mb = 18000
 min_devices = 1
 min_device_vram_mb = 16000
 
-# Small GGUF quantised — runs on the smallest neuron (quadbrat).
+# Small GGUF quantised — runs on any small GPU.
 [[models]]
 id = "unsloth/Qwen3-0.6B-GGUF"
 harness = "candle"

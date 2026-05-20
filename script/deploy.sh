@@ -198,6 +198,25 @@ else
     echo "[${cortex_host}] failed to sync cortex.toml"
 fi
 
+# Sync models.toml on the same lifecycle as cortex.toml — operator-owned,
+# gitignored, drives /v1/models catalogue × topology resolution.
+if [[ -f "${REPO_DIR}/models.toml" ]]; then
+    if rsync \
+        --archive \
+        --compress \
+        --rsync-path 'sudo rsync' \
+        --chown root:root \
+        --chmod 644 \
+        "${REPO_DIR}/models.toml" \
+        "${cortex_host}:/etc/cortex/models.toml"; then
+        echo "[${cortex_host}] sync'd models.toml"
+    else
+        echo "[${cortex_host}] failed to sync models.toml"
+    fi
+else
+    echo "[${cortex_host}] no local models.toml — leaving /etc/cortex/models.toml untouched"
+fi
+
 ssh "${cortex_host}" sudo systemctl daemon-reload
 if ssh "${cortex_host}" systemctl is-active --quiet cortex.service; then
     echo "[${cortex_host}] cortex service is active"
