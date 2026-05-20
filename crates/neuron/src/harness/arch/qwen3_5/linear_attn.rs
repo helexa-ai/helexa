@@ -307,6 +307,12 @@ impl GatedDeltaNet {
         let q = (q.to_dtype(candle_core::DType::F32)? * scale)?;
         let k = k.to_dtype(candle_core::DType::F32)?;
         let v = v.to_dtype(candle_core::DType::F32)?;
+        // `g` is already F32 (constructed from A_log/dt_bias in f32 above);
+        // `beta` came from sigmoid(b) which kept the model dtype, so we
+        // need to promote it here too — otherwise the per-token
+        // `(v_t - kv_mem).broadcast_mul(&beta_col)` mixes F32 LHS with
+        // BF16 RHS and trips candle's dtype-mismatch check.
+        let beta = beta.to_dtype(candle_core::DType::F32)?;
 
         // Initialise the recurrent state from cache or zeros.
         let mut state = match self.state.recurrent_state.take() {
