@@ -223,7 +223,15 @@ impl Qwen3_5Model {
         let dtype = vb.dtype();
         let device = vb.device().clone();
 
-        let embed_vb = vb.pp("model.embed_tokens");
+        // Qwen3-Next is a multimodal architecture whose text core lives
+        // under `model.language_model.*` — sibling to `model.visual.*`
+        // (the vision tower) and to top-level `lm_head` / `mtp.*`.
+        // Every text-side tensor in the safetensors files is under
+        // this prefix; we ignore the vision and MTP weights for
+        // language-model inference.
+        let text_vb = vb.pp("model.language_model");
+
+        let embed_vb = text_vb.pp("embed_tokens");
         let embed_weight = embed_vb
             .get((cfg.vocab_size, cfg.hidden_size), "weight")
             .with_context(|| format!("load '{}/weight'", embed_vb.prefix()))?;
@@ -240,7 +248,7 @@ impl Qwen3_5Model {
             );
         }
 
-        let vb_l = vb.pp("model.layers");
+        let vb_l = text_vb.pp("layers");
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         for i in 0..cfg.num_hidden_layers {
             layers.push(Qwen3_5DecoderLayer::load(
@@ -251,7 +259,7 @@ impl Qwen3_5Model {
             )?);
         }
 
-        let norm = Qwen3_5RmsNorm::load(&vb.pp("model.norm"), cfg.hidden_size, cfg.rms_norm_eps)?;
+        let norm = Qwen3_5RmsNorm::load(&text_vb.pp("norm"), cfg.hidden_size, cfg.rms_norm_eps)?;
 
         Ok(Self {
             embed_tokens,
