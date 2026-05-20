@@ -60,6 +60,8 @@ use candle_core::{IndexOp, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
+#[cfg(test)]
+use super::RopeParameters;
 use super::TextConfig;
 use super::rmsnorm::{Qwen3_5RmsNormGated, l2norm};
 
@@ -475,7 +477,11 @@ mod tests {
             num_key_value_heads: 1,
             head_dim: 4,
             max_position_embeddings: 32,
-            rope_theta: 10000.0,
+            rope_parameters: RopeParameters {
+                rope_theta: 10000.0,
+                partial_rotary_factor: 1.0,
+                rope_type: None,
+            },
             rms_norm_eps: 1e-6,
             tie_word_embeddings: false,
             attn_output_gate: true,

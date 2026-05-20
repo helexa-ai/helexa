@@ -114,7 +114,12 @@ pub struct TextConfig {
     pub num_key_value_heads: usize,
     pub head_dim: usize,
     pub max_position_embeddings: usize,
-    pub rope_theta: f64,
+    /// Nested RoPE settings. Qwen3-Next puts `rope_theta` and
+    /// `partial_rotary_factor` inside this block rather than at the
+    /// top level — important because the partial rotary means only
+    /// `head_dim * partial_rotary_factor` dims get RoPE applied (the
+    /// rest pass through unchanged).
+    pub rope_parameters: RopeParameters,
     pub rms_norm_eps: f64,
     #[serde(default)]
     pub tie_word_embeddings: bool,
@@ -168,6 +173,37 @@ pub struct TextConfig {
 
 fn default_hidden_act() -> String {
     "silu".into()
+}
+
+/// Nested `rope_parameters` block from a Qwen3-Next `config.json`.
+/// `mrope_section` and `mrope_interleaved` are accepted via the
+/// `#[serde(default)]` flatten-tolerance below but ignored — we treat
+/// MRoPE as plain RoPE for text-only inference (the three position
+/// grids carry identical ids when there's no vision input, so the
+/// interleaving is a no-op).
+#[derive(Debug, Clone, Deserialize)]
+pub struct RopeParameters {
+    /// Base for the inverse-frequency computation. Qwen3.6: 10_000_000.
+    #[serde(default = "default_rope_theta")]
+    pub rope_theta: f64,
+    /// Fraction of `head_dim` that gets the rotation applied. The
+    /// remaining `head_dim * (1 - partial_rotary_factor)` dims pass
+    /// through unchanged. Qwen3.6 / Qwen3.5: 0.25.
+    #[serde(default = "default_partial_rotary_factor")]
+    pub partial_rotary_factor: f32,
+    /// `"default"` for the standard inv_freq RoPE; other values (e.g.
+    /// `"linear"`, `"dynamic"`) are upstream-supported but not yet
+    /// implemented here.
+    #[serde(default)]
+    pub rope_type: Option<String>,
+}
+
+fn default_rope_theta() -> f64 {
+    10_000.0
+}
+
+fn default_partial_rotary_factor() -> f32 {
+    1.0
 }
 
 /// Qwen3-Next base transformer (embedding + decoder stack + final
@@ -304,7 +340,9 @@ mod tests {
 
     /// Confirms we can deserialise the real upstream config shape.
     /// Sample taken from `Qwen/Qwen3.6-27B/config.json`, trimmed to
-    /// the fields the architecture cares about.
+    /// the fields the architecture cares about. Note `rope_theta` and
+    /// `partial_rotary_factor` are nested under `rope_parameters` —
+    /// Qwen3-Next does NOT have a top-level `rope_theta`.
     #[test]
     fn config_deserialises_the_real_qwen3_6_shape() {
         let raw = r#"{
@@ -321,7 +359,13 @@ mod tests {
                 "num_key_value_heads": 8,
                 "head_dim": 256,
                 "max_position_embeddings": 32768,
-                "rope_theta": 5000000.0,
+                "rope_parameters": {
+                    "mrope_interleaved": true,
+                    "mrope_section": [11, 11, 10],
+                    "partial_rotary_factor": 0.25,
+                    "rope_theta": 10000000,
+                    "rope_type": "default"
+                },
                 "rms_norm_eps": 1e-6,
                 "tie_word_embeddings": false,
                 "attn_output_gate": true,
@@ -339,5 +383,7 @@ mod tests {
         assert!(cfg.text_config.attn_output_gate);
         assert_eq!(cfg.text_config.full_attention_interval, Some(4));
         assert_eq!(cfg.text_config.layer_types.len(), 4);
+        assert_eq!(cfg.text_config.rope_parameters.rope_theta, 10_000_000.0);
+        assert!((cfg.text_config.rope_parameters.partial_rotary_factor - 0.25).abs() < 1e-6);
     }
 }
