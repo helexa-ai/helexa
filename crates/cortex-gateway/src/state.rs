@@ -26,6 +26,7 @@ impl CortexState {
                     models: HashMap::new(),
                     lifecycle_cycles: 0,
                     last_poll: None,
+                    discovery: None,
                 },
             );
         }

@@ -185,12 +185,62 @@ async fn anthropic_messages(
     }
 }
 
-/// `GET /v1/models` — aggregate models from all nodes.
+/// `GET /v1/models` — union of (catalogue × topology feasibility) and
+/// (currently loaded somewhere). The result is what the fleet *could*
+/// serve, not just what's already loaded — so OpenAI-compatible tools
+/// see every model the operator has provisioned, and cortex
+/// transparently cold-loads the first time one is requested.
 async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
+    use std::collections::HashMap;
+    let now = Utc::now().timestamp() as u64;
     let nodes = fleet.nodes.read().await;
-    let mut model_map: std::collections::HashMap<String, CortexModelEntry> =
-        std::collections::HashMap::new();
+    let catalogue = &fleet.catalogue;
 
+    let mut entries: HashMap<String, CortexModelEntry> = HashMap::new();
+
+    // Pass 1: catalogue × topology. For every catalogue profile, find
+    // healthy neurons whose discovered devices satisfy the profile.
+    // Catalogue-defined models surface here even if nothing has loaded
+    // them yet — that's the point of the unified endpoint.
+    for profile in &catalogue.models {
+        let mut feasible_on = Vec::new();
+        for node in nodes.values() {
+            if !node.healthy {
+                continue;
+            }
+            let Some(disc) = node.discovery.as_ref() else {
+                continue;
+            };
+            if profile.is_feasible_on(&node.name, &disc.devices) {
+                feasible_on.push(node.name.clone());
+            }
+        }
+        if feasible_on.is_empty() {
+            // The catalogue lists this model but no neuron's topology
+            // matches — surface it as not-loaded with no feasible
+            // location. Hides nothing; lets operators see why a
+            // configured model isn't reachable.
+            feasible_on.clear();
+        }
+        entries.insert(
+            profile.id.clone(),
+            CortexModelEntry {
+                id: profile.id.clone(),
+                object: "model".into(),
+                created: now,
+                owned_by: "helexa".into(),
+                loaded: false,
+                feasible_on,
+                locations: Vec::new(),
+            },
+        );
+    }
+
+    // Pass 2: layer the actually-loaded state on top. For each
+    // (node, model) entry, attach a ModelLocation. If the model isn't
+    // in the catalogue, create a new CortexModelEntry from scratch —
+    // cortex doesn't refuse to surface a manually-loaded model just
+    // because the operator didn't enumerate it in models.toml.
     for node in nodes.values() {
         for (model_id, entry) in &node.models {
             let location = ModelLocation {
@@ -198,19 +248,30 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 status: entry.status,
                 vram_estimate_mb: entry.vram_estimate_mb,
             };
-            model_map
+            let was_loaded = matches!(entry.status, cortex_core::node::ModelStatus::Loaded);
+            entries
                 .entry(model_id.clone())
-                .and_modify(|e| e.locations.push(location.clone()))
+                .and_modify(|e| {
+                    e.locations.push(location.clone());
+                    if was_loaded {
+                        e.loaded = true;
+                    }
+                })
                 .or_insert_with(|| CortexModelEntry {
                     id: model_id.clone(),
                     object: "model".into(),
+                    created: now,
+                    owned_by: "helexa".into(),
+                    loaded: was_loaded,
+                    // Not in catalogue — cortex has no opinion on
+                    // feasibility; leave empty.
+                    feasible_on: Vec::new(),
                     locations: vec![location],
                 });
         }
     }
 
-    let data: Vec<Value> = model_map.values().map(|e| json!(e)).collect();
-
+    let data: Vec<Value> = entries.values().map(|e| json!(e)).collect();
     Json(json!({
         "object": "list",
         "data": data,

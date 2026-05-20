@@ -3,6 +3,7 @@
 
 use crate::state::CortexState;
 use chrono::Utc;
+use cortex_core::discovery::DiscoveryResponse;
 use cortex_core::harness::ModelInfo;
 use cortex_core::node::{ModelEntry, ModelStatus};
 use std::sync::Arc;
@@ -25,7 +26,59 @@ pub async fn poll_once(fleet: &CortexState) {
     }
 }
 
+/// One-shot fetch of `GET /discovery`. Cached on the NodeState forever
+/// after the first success — topology is invariant for a given neuron
+/// process. Skipped when the cache is already populated.
+async fn maybe_poll_discovery(fleet: &CortexState, name: &str, endpoint: &str) {
+    {
+        let nodes = fleet.nodes.read().await;
+        match nodes.get(name) {
+            Some(n) if n.discovery.is_some() => return,
+            _ => {}
+        }
+    }
+    let url = format!("{endpoint}/discovery");
+    let resp = match fleet
+        .http_client
+        .get(&url)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::debug!(node = name, status = %r.status(), "discovery probe non-success");
+            return;
+        }
+        Err(e) => {
+            tracing::debug!(node = name, error = %e, "discovery probe unreachable");
+            return;
+        }
+    };
+    match resp.json::<DiscoveryResponse>().await {
+        Ok(d) => {
+            let mut nodes = fleet.nodes.write().await;
+            if let Some(node) = nodes.get_mut(name) {
+                tracing::info!(
+                    node = name,
+                    hostname = %d.hostname,
+                    devices = d.devices.len(),
+                    "discovery cached"
+                );
+                node.discovery = Some(d);
+            }
+        }
+        Err(e) => {
+            tracing::warn!(node = name, error = %e, "failed to parse /discovery response");
+        }
+    }
+}
+
 async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
+    // Topology first — cheap once cached, and the router needs it to
+    // route requests against catalogue entries that aren't loaded yet.
+    maybe_poll_discovery(fleet, name, endpoint).await;
+
     let url = format!("{endpoint}/models");
 
     let result = fleet

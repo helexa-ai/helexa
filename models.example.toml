@@ -2,28 +2,50 @@
 #
 # Copy to /etc/cortex/models.toml and adjust for your environment.
 # Describes how to serve each model. Cortex matches these profiles
-# against discovered neuron topologies for placement decisions.
+# against discovered neuron topologies for placement decisions; the
+# resulting `(catalogue × topology)` set is what `GET /v1/models`
+# returns and what the router can cold-load on demand.
+#
+# Field reference:
+#   id                 - HuggingFace model id, exact match.
+#   harness            - which engine handles inference (currently "candle").
+#   quant              - GGUF quantisation tag for the file in the HF repo
+#                        (e.g. "Q4_K_M"). Omit/empty for the dense
+#                        safetensors path. TP requires dense.
+#   vram_mb            - rough estimate; advisory only, not enforced.
+#   min_devices        - GPU count this profile needs. TP profiles use
+#                        the same value as the tensor-parallel size.
+#   min_device_vram_mb - each device must meet this VRAM floor for the
+#                        neuron to be considered "feasible".
+#   pinned_on          - optional whitelist of neuron names. Non-empty
+#                        narrows feasibility to just those neurons and
+#                        protects the model from LRU eviction there.
+#
+# The examples below match the canonical helexa fleet
+# (beast = 2x RTX 5090, benjy = RTX 4090, quadbrat = RTX 3060).
 
+# Tensor-parallel target — only beast has two big GPUs.
 [[models]]
-id = "your-org/large-model"
+id = "Qwen/Qwen3.6-27B"
+harness = "candle"
+vram_mb = 54000
+min_devices = 2
+min_device_vram_mb = 24000
+pinned_on = ["beast"]
+
+# Mid-size dense model — fits on benjy or beast.
+[[models]]
+id = "Qwen/Qwen3-8B"
+harness = "candle"
+vram_mb = 18000
+min_devices = 1
+min_device_vram_mb = 16000
+
+# Small GGUF quantised — runs on the smallest neuron (quadbrat).
+[[models]]
+id = "unsloth/Qwen3-0.6B-GGUF"
 harness = "candle"
 quant = "Q4_K_M"
-vram_mb = 19000
-min_devices = 2
-min_device_vram_mb = 10000
-pinned_on = ["gpu-large"]
-
-[[models]]
-id = "your-org/medium-model"
-harness = "candle"
-quant = "Q6_K"
-vram_mb = 12000
+vram_mb = 500
 min_devices = 1
-pinned_on = ["gpu-medium"]
-
-[[models]]
-id = "your-org/embedding-model"
-harness = "candle"
-quant = "Q8_0"
-vram_mb = 8000
-min_devices = 1
+min_device_vram_mb = 4000
