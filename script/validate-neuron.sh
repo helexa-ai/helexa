@@ -45,11 +45,15 @@ EXPECT_SUBSTR='Tbilisi'
 MAX_TOKENS=256
 
 # /models/load is synchronous — neuron blocks the response until the
-# hf-hub download + GGUF parse + tensor materialisation is done. A
-# fresh 0.6B-Q4_K_M is ~400 MB; on a slow link or cold cache that's
-# easily a minute. Pick a generous ceiling.
-LOAD_TIMEOUT=600
-INFER_TIMEOUT=120
+# hf-hub download + (GGUF parse or safetensors mmap) + tensor
+# materialisation is done. Small GGUF (0.6B-Q4_K_M, ~400 MB) is
+# typically a minute on a warm cache, several on a cold one. A
+# Qwen3.6-class dense model is ~54 GB and can easily take an hour to
+# download cold over a residential link, so default high. Override
+# with NEURON_LOAD_TIMEOUT=N (seconds) for smaller targets if you'd
+# rather fail fast.
+LOAD_TIMEOUT="${NEURON_LOAD_TIMEOUT:-3600}"
+INFER_TIMEOUT="${NEURON_INFER_TIMEOUT:-120}"
 
 # Status messages go to stderr so command substitutions like
 # `raw=$(run_probe)` capture only the function's intended return value

@@ -19,8 +19,21 @@ name = "candle"
 # Optional tuning for the candle harness.
 
 [harness.candle]
-# HuggingFace cache directory for model weights. When unset, hf-hub's
-# default (~/.cache/huggingface) is used.
+# HuggingFace cache directory for model weights.
+#
+# Resolution order (first hit wins):
+#   1. `hf_cache` here in this file.
+#   2. `HF_HUB_CACHE` env var — same convention as the Python
+#      `huggingface_hub` library, so an existing cache directory shared
+#      with other tooling can be reused without per-tool config.
+#   3. `HF_HOME` env var (cache appended as `$HF_HOME/hub`).
+#   4. hf-hub's default (`~/.cache/huggingface/hub`).
+#
+# For per-host overrides (e.g. one neuron has an SSD with prefetched
+# weights), prefer a systemd drop-in over editing this file:
+#   /etc/systemd/system/neuron.service.d/local.conf:
+#     [Service]
+#     Environment=HF_HUB_CACHE=/archive/hf-cache
 # hf_cache = "/var/lib/neuron/hf-cache"
 
 # -- Default models ----------------------------------------------------------

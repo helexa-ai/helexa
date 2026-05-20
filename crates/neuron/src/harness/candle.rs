@@ -128,6 +128,39 @@ const REPEAT_PENALTY: f32 = 1.1;
 /// penalty. Matches the candle quantized-qwen3 example default.
 const REPEAT_LAST_N: usize = 64;
 
+/// Resolve the effective HuggingFace cache directory for the candle
+/// harness. Precedence (first hit wins):
+///
+/// 1. Explicit `hf_cache` from `[harness.candle]` in `neuron.toml`.
+///    Operator's wishes always win.
+/// 2. `HF_HUB_CACHE` env var. The Python `huggingface_hub` library
+///    points at the cache root directly with this var; the Rust
+///    `hf-hub` crate doesn't read it natively, so we bridge here.
+///    Honouring it lets a neuron host share a cache directory with
+///    Python tooling and other harnesses without per-tool config.
+/// 3. `HF_HOME` env var. Canonical HuggingFace base directory; the
+///    cache lives at `$HF_HOME/hub`. Hf-hub respects this on its own,
+///    but we resolve it here too so the resulting path shows up in
+///    logs alongside the explicit/HF_HUB_CACHE cases.
+/// 4. `None`. Falls through to `hf-hub`'s default
+///    (`~/.cache/huggingface/hub`).
+fn resolve_hf_cache(explicit: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(p) = explicit {
+        return Some(p);
+    }
+    if let Ok(v) = std::env::var("HF_HUB_CACHE")
+        && !v.is_empty()
+    {
+        return Some(PathBuf::from(v));
+    }
+    if let Ok(v) = std::env::var("HF_HOME")
+        && !v.is_empty()
+    {
+        return Some(PathBuf::from(v).join("hub"));
+    }
+    None
+}
+
 /// Apply the repetition penalty (if any) to the prediction logits and
 /// then sample. Centralises the prefill / generation-loop call sites
 /// so they share identical sampling behaviour.
@@ -147,6 +180,10 @@ fn sample_with_penalty(
 
 impl CandleHarness {
     pub fn new(bind_url: String, hf_cache: Option<PathBuf>) -> Self {
+        let hf_cache = resolve_hf_cache(hf_cache);
+        if let Some(p) = &hf_cache {
+            tracing::info!(path = %p.display(), "candle harness using HuggingFace cache");
+        }
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
             hf_cache,
