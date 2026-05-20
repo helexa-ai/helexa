@@ -5,17 +5,22 @@
 //! exactly one `WorkerResponse` JSON line to stdout. tracing goes to
 //! stderr so it doesn't collide with the RPC stream.
 //!
-//! NCCL operations (`Init`, `NcclSanityCheck`) are real when built
-//! with the `cuda` feature; without it they reply with
-//! `Error{kind="cuda_feature_not_enabled"}` so the leader can tell
-//! the difference between a misconfigured build and a genuine NCCL
-//! failure.
+//! NCCL operations (`Init`, `NcclSanityCheck`) and model lifecycle ops
+//! (`LoadDenseShard`, `GenerateStep`, `ClearKvCache`, `UnloadModel`)
+//! are real when built with the `cuda` feature; without it they reply
+//! with `Error{kind="cuda_feature_not_enabled"}` so the leader can tell
+//! the difference between a misconfigured build and a genuine NCCL or
+//! model failure.
 
 use anyhow::Result;
+use std::collections::HashMap;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 use super::nccl_state::NcclState;
 use super::rpc::{WorkerRequest, WorkerResponse};
+
+#[cfg(feature = "cuda")]
+use super::tp_qwen3::TpQwen3ForCausalLM;
 
 #[derive(Debug, Clone, Copy)]
 pub struct WorkerConfig {
@@ -74,9 +79,22 @@ async fn write_response(stdout: &mut tokio::io::Stdout, resp: &WorkerResponse) -
     Ok(())
 }
 
+/// One rank's local state. Owns the rank's NCCL communicator (via
+/// `NcclState`) and the rank's shard of every loaded model.
 struct WorkerState {
     config: WorkerConfig,
     nccl: NcclState,
+    /// Loaded model shards keyed by `model_id`. Each entry holds this
+    /// rank's `TpQwen3ForCausalLM` — the column/row-parallel layers
+    /// hold an `Arc<Comm>` cloned from `nccl`. Cuda-only: there is no
+    /// TpQwen3ForCausalLM type without the cuda feature in scope.
+    #[cfg(feature = "cuda")]
+    models: HashMap<String, TpQwen3ForCausalLM>,
+    /// Placeholder so the non-cuda build keeps the same field name set
+    /// and `WorkerState::new` reads the same on both.
+    #[cfg(not(feature = "cuda"))]
+    #[allow(dead_code)]
+    models: HashMap<String, ()>,
 }
 
 impl WorkerState {
@@ -84,6 +102,7 @@ impl WorkerState {
         Self {
             config,
             nccl: NcclState::new(),
+            models: HashMap::new(),
         }
     }
 
@@ -96,7 +115,203 @@ impl WorkerState {
             },
             WorkerRequest::Init { comm_id } => self.nccl.init(self.config, &comm_id),
             WorkerRequest::NcclSanityCheck => self.nccl.sanity_check(),
+            WorkerRequest::LoadDenseShard {
+                model_id,
+                config_json,
+                safetensors_paths,
+            } => self.handle_load_dense_shard(model_id, config_json, safetensors_paths),
+            WorkerRequest::GenerateStep {
+                model_id,
+                tokens,
+                offset,
+            } => self.handle_generate_step(&model_id, tokens, offset),
+            WorkerRequest::ClearKvCache { model_id } => self.handle_clear_kv_cache(&model_id),
+            WorkerRequest::UnloadModel { model_id } => self.handle_unload_model(&model_id),
             WorkerRequest::Shutdown => WorkerResponse::Bye,
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_load_dense_shard(
+        &mut self,
+        model_id: String,
+        config_json: String,
+        safetensors_paths: Vec<String>,
+    ) -> WorkerResponse {
+        use candle_core::{DType, Device};
+        use candle_nn::var_builder::ShardedSafeTensors;
+        use candle_transformers::models::qwen3 as qwen3_dense;
+        use std::path::PathBuf;
+
+        if self.models.contains_key(&model_id) {
+            return WorkerResponse::Error {
+                kind: "already_loaded".into(),
+                message: format!("model '{model_id}' already loaded on this rank"),
+            };
+        }
+        let comm = match self.nccl.comm() {
+            Some(c) => c,
+            None => {
+                return WorkerResponse::Error {
+                    kind: "nccl_not_initialised".into(),
+                    message: "LoadDenseShard requires Init to have completed first".into(),
+                };
+            }
+        };
+
+        let cfg: qwen3_dense::Config = match serde_json::from_str(&config_json) {
+            Ok(c) => c,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "bad_request".into(),
+                    message: format!("parse Qwen3 Config JSON: {e}"),
+                };
+            }
+        };
+
+        let device = match Device::new_cuda(self.config.cuda_device as usize) {
+            Ok(d) => d,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "cuda_unavailable".into(),
+                    message: format!("Device::new_cuda({}) failed: {e}", self.config.cuda_device),
+                };
+            }
+        };
+
+        let paths: Vec<PathBuf> = safetensors_paths.into_iter().map(PathBuf::from).collect();
+        // SAFETY: same invariant as the single-GPU dense path — the HF
+        // cache files are treated as immutable while the mmap is held.
+        let vb = match unsafe { ShardedSafeTensors::var_builder(&paths, DType::BF16, &device) } {
+            Ok(v) => v,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "load_failed".into(),
+                    message: format!("ShardedSafeTensors::var_builder: {e}"),
+                };
+            }
+        };
+        let model = match TpQwen3ForCausalLM::load(
+            &cfg,
+            &vb,
+            self.config.rank,
+            self.config.world_size,
+            comm,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "load_failed".into(),
+                    message: format!("TpQwen3ForCausalLM::load: {e:#}"),
+                };
+            }
+        };
+
+        self.models.insert(model_id.clone(), model);
+        tracing::info!(rank = self.config.rank, model = %model_id, "loaded TP shard");
+        WorkerResponse::LoadDenseShardOk
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_load_dense_shard(
+        &mut self,
+        _model_id: String,
+        _config_json: String,
+        _safetensors_paths: Vec<String>,
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "LoadDenseShard requires --features cuda".into(),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_generate_step(
+        &mut self,
+        model_id: &str,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> WorkerResponse {
+        use candle_core::Tensor;
+
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let device = model.device().clone();
+        let input = match Tensor::new(tokens.as_slice(), &device).and_then(|t| t.unsqueeze(0)) {
+            Ok(t) => t,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "forward_failed".into(),
+                    message: format!("build input tensor: {e}"),
+                };
+            }
+        };
+        // Drop the resulting logits — the leader uses its own copy from
+        // rank 0. The forward's value here is the NCCL collectives it
+        // issues, which let the leader's rank-0 forward make progress.
+        if let Err(e) = model.forward(&input, offset) {
+            return WorkerResponse::Error {
+                kind: "forward_failed".into(),
+                message: format!("TpQwen3ForCausalLM::forward: {e}"),
+            };
+        }
+        WorkerResponse::GenerateStepOk
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_generate_step(
+        &mut self,
+        _model_id: &str,
+        _tokens: Vec<u32>,
+        _offset: usize,
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "GenerateStep requires --features cuda".into(),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_clear_kv_cache(&mut self, model_id: &str) -> WorkerResponse {
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        model.clear_kv_cache();
+        WorkerResponse::KvCacheCleared
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_clear_kv_cache(&mut self, _model_id: &str) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "ClearKvCache requires --features cuda".into(),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_unload_model(&mut self, model_id: &str) -> WorkerResponse {
+        if self.models.remove(model_id).is_none() {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        }
+        tracing::info!(rank = self.config.rank, model = %model_id, "unloaded TP shard");
+        WorkerResponse::Unloaded
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_unload_model(&mut self, _model_id: &str) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "UnloadModel requires --features cuda".into(),
         }
     }
 }

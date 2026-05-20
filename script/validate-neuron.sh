@@ -9,14 +9,15 @@
 # after pushing new neuron builds.
 #
 # Usage:
-#   script/validate-neuron.sh [host] [model_id] [quant]
+#   script/validate-neuron.sh [host] [model_id] [quant] [tp_size]
 #
 # Defaults:
 #   host     = beast.hanzalova.internal
 #   model_id = unsloth/Qwen3-0.6B-GGUF  (official Qwen3-*-GGUF repos
 #              ship Q8_0 only; unsloth's mirror ships the full Q-spectrum
 #              including Q4_K_M)
-#   quant    = Q4_K_M
+#   quant    = Q4_K_M  (empty = dense safetensors path)
+#   tp_size  = unset   (= 1 = single-GPU; pass 2 to drive the TP path)
 
 set -euo pipefail
 
@@ -25,6 +26,11 @@ MODEL_ID="${2:-unsloth/Qwen3-0.6B-GGUF}"
 # `${3-Q4_K_M}` (no colon) only uses the default when the arg is
 # UNSET — passing an explicit empty string drives the dense path.
 QUANT="${3-Q4_K_M}"
+# tp_size > 1 forces the dense path (TP requires safetensors) and adds
+# `tensor_parallel: N` to the load payload. The harness picks device
+# indices 0..N-1 by default; override by passing NEURON_DEVICES="0,1,..."
+# in the environment.
+TP_SIZE="${4-1}"
 PORT="${NEURON_PORT:-13131}"
 BASE="http://${HOST}:${PORT}"
 
@@ -69,21 +75,43 @@ is_loaded() {
 }
 
 trigger_load() {
-    say "POST /models/load ${MODEL_ID} (quant=${QUANT:-<dense>}, device=[0])"
+    # Build the per-rank CUDA device list as a JSON array. Either
+    # honour NEURON_DEVICES (`0,1,2`) verbatim or default to
+    # `[0, 1, ..., tp_size - 1]`.
+    local devices_json
+    if [[ -n "${NEURON_DEVICES:-}" ]]; then
+        devices_json=$(jq -n -c --arg s "${NEURON_DEVICES}" \
+            '$s | split(",") | map(tonumber)')
+    else
+        devices_json=$(jq -n -c --argjson n "${TP_SIZE}" '[range(0; $n)]')
+    fi
+    say "POST /models/load ${MODEL_ID} (quant=${QUANT:-<dense>}, tp=${TP_SIZE}, devices=${devices_json})"
     say "  (synchronous; may take a minute on first run while HF downloads)"
-    # Build the payload via jq so the optional `quant` field is
-    # omitted entirely when empty — that's the signal to the harness
-    # to take the dense safetensors load path rather than GGUF.
+    if (( TP_SIZE > 1 )) && [[ -n "${QUANT}" ]]; then
+        die "tp_size>1 requires dense safetensors — pass quant='' as the 3rd argument"
+    fi
+    # Build the payload via jq so the optional `quant` and
+    # `tensor_parallel` fields are omitted entirely when not in use —
+    # that's how the harness tells dense from quantized and single-GPU
+    # from TP.
     local payload
-    if [[ -z "${QUANT}" ]]; then
+    if [[ -z "${QUANT}" ]] && (( TP_SIZE > 1 )); then
         payload=$(jq -n -c \
             --arg id "${MODEL_ID}" \
-            '{model_id: $id, harness: "candle", devices: [0]}')
+            --argjson tp "${TP_SIZE}" \
+            --argjson devices "${devices_json}" \
+            '{model_id: $id, harness: "candle", tensor_parallel: $tp, devices: $devices}')
+    elif [[ -z "${QUANT}" ]]; then
+        payload=$(jq -n -c \
+            --arg id "${MODEL_ID}" \
+            --argjson devices "${devices_json}" \
+            '{model_id: $id, harness: "candle", devices: $devices}')
     else
         payload=$(jq -n -c \
             --arg id "${MODEL_ID}" \
             --arg q "${QUANT}" \
-            '{model_id: $id, harness: "candle", quant: $q, devices: [0]}')
+            --argjson devices "${devices_json}" \
+            '{model_id: $id, harness: "candle", quant: $q, devices: $devices}')
     fi
     # --write-out captures the response code on a separate line so we
     # can surface a real diagnostic instead of relying on --fail.

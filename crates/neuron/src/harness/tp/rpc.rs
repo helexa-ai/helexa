@@ -45,6 +45,52 @@ pub enum WorkerRequest {
     /// the NCCL handshake is genuinely live, not just configured.
     NcclSanityCheck,
 
+    /// Load this rank's shard of a dense Qwen3 model from mmaped
+    /// safetensors. The same `safetensors_paths` list is sent to every
+    /// rank — the ShardedVarBuilder reads only the rank-local slice of
+    /// each tensor at materialisation time, so the worker's VRAM
+    /// footprint is `1 / world_size` of the full model (plus replicated
+    /// embedding/norm/lm_head).
+    LoadDenseShard {
+        /// Caller-supplied id for later `GenerateStep` / `UnloadModel`
+        /// lookups. Typically the HF model id verbatim.
+        model_id: String,
+        /// JSON-serialised `candle_transformers::models::qwen3::Config`
+        /// — the same blob the leader parsed from the HF cache's
+        /// `config.json`. Threaded through verbatim so the worker uses
+        /// identical hyperparameters.
+        config_json: String,
+        /// Absolute paths the worker should mmap. The same set on every
+        /// rank; ShardedVarBuilder slices into them per rank.
+        safetensors_paths: Vec<String>,
+    },
+
+    /// Run one forward step on this rank's loaded model. The worker
+    /// reaches into its NCCL Comm for the row-parallel `AllReduce`s
+    /// inside the model — and so blocks on every other rank issuing the
+    /// same op. The leader does *not* receive logits back over RPC; it
+    /// runs its own rank-0 forward in parallel and uses its own logits
+    /// for sampling.
+    GenerateStep {
+        model_id: String,
+        /// Input token ids for this step. For prefill, the whole prompt;
+        /// for decode, a single token. Identical on every rank.
+        tokens: Vec<u32>,
+        /// KV cache offset (count of tokens already in the cache before
+        /// this step).
+        offset: usize,
+    },
+
+    /// Reset the KV cache for this model on this rank. Sent at the
+    /// start of every inference so a fresh request doesn't accidentally
+    /// attend over the previous one's tokens.
+    ClearKvCache { model_id: String },
+
+    /// Drop this rank's shard for the given model. Releases the VRAM
+    /// the shard's weights occupied; subsequent `GenerateStep` calls
+    /// against the same `model_id` return an `Error`.
+    UnloadModel { model_id: String },
+
     /// Worker should release resources and exit. Worker replies `Bye`
     /// and then closes stdout / exits zero. The leader reaps the
     /// child via the `tokio::process::Child` it kept.
@@ -73,6 +119,24 @@ pub enum WorkerResponse {
     /// `all_reduce(SUM, 1u32)` across all ranks. The leader checks
     /// this matches `world_size`.
     NcclSanityResult { observed_sum: u32 },
+
+    /// Reply to `LoadDenseShard`. Empty payload — success is the
+    /// absence of `Error`. By the time this comes back, the rank's
+    /// `TpQwen3ForCausalLM` is constructed in memory and ready for
+    /// `GenerateStep`.
+    LoadDenseShardOk,
+
+    /// Reply to `GenerateStep`. Empty payload — workers don't ship
+    /// logits over the wire. The leader uses its own rank-0 logits;
+    /// workers only need to confirm the collective completed.
+    GenerateStepOk,
+
+    /// Reply to `ClearKvCache`. Empty payload.
+    KvCacheCleared,
+
+    /// Reply to `UnloadModel`. Empty payload. The named model is no
+    /// longer present on this rank.
+    Unloaded,
 
     /// Reply to `Shutdown`. Worker exits immediately after writing this.
     Bye,

@@ -83,7 +83,13 @@ mod cuda_impl {
     const NCCL_ID_BYTES: usize = 128;
 
     pub struct NcclState {
-        comm: Option<Comm>,
+        /// Wrapped in `Arc` so we can hand a clone to `TpQwen3ForCausalLM`
+        /// at load time (every row-parallel layer needs a reference to
+        /// run its trailing `AllReduce`). The `Arc` is the single source
+        /// of truth for the comm's lifetime — when the pool drops and
+        /// every layer that captured a clone drops, NCCL releases the
+        /// underlying `ncclComm_t`.
+        comm: Option<Arc<Comm>>,
         /// Held alongside the Comm so the device isn't dropped
         /// underneath the NCCL handle.
         #[allow(dead_code)]
@@ -102,6 +108,40 @@ mod cuda_impl {
                 comm: None,
                 ctx: None,
             }
+        }
+
+        /// Clone the comm out as an `Arc` so callers (the leader-side
+        /// `TpQwen3ForCausalLM::load`, or the worker's own model load)
+        /// can hold a reference for the lifetime of the model. Returns
+        /// `None` before `init` has run.
+        pub fn comm(&self) -> Option<Arc<Comm>> {
+            self.comm.clone()
+        }
+    }
+
+    /// `Arc<Comm>` doesn't impl `Send` because `Comm` wraps a raw
+    /// `ncclComm_t` pointer. The NCCL contract is "operations against a
+    /// given comm must be serialised", not "the handle must stay on the
+    /// thread that created it" — so it's safe to move an `Arc<Comm>`
+    /// across threads as long as no concurrent ops are issued. The
+    /// pool's outer Mutex serialises us into `spawn_blocking`, so this
+    /// wrapper at the move boundary is the only thing missing.
+    ///
+    /// `Sync` is also marked safe because the `Arc<Comm>` clones held
+    /// by the row-parallel layers are only used from the
+    /// `spawn_blocking` thread driving the forward pass; concurrent
+    /// access from another thread would still be a bug.
+    pub struct SendComm(pub Arc<Comm>);
+
+    // SAFETY: see the doc-comment above; the invariant is enforced at
+    // the call site (pool Mutex + single spawn_blocking thread), not at
+    // the type level.
+    unsafe impl Send for SendComm {}
+    unsafe impl Sync for SendComm {}
+
+    impl SendComm {
+        pub fn into_inner(self) -> Arc<Comm> {
+            self.0
         }
     }
 
@@ -143,7 +183,7 @@ mod cuda_impl {
                     message: "sanity_check requires Init to have completed first".into(),
                 };
             };
-            match try_sanity_check(comm) {
+            match try_sanity_check(comm.as_ref()) {
                 Ok(sum) => WorkerResponse::NcclSanityResult { observed_sum: sum },
                 Err(msg) => WorkerResponse::Error {
                     kind: "nccl_sanity_failed".into(),
@@ -177,7 +217,17 @@ mod cuda_impl {
             })?;
 
         state.ctx = Some(ctx);
-        state.comm = Some(comm);
+        // `Comm` is !Send + !Sync at the type level because it wraps a
+        // raw `ncclComm_t`. The `Arc` is fine in practice — we
+        // serialise operations through the pool's outer Mutex and the
+        // SendComm wrapper at thread-crossing boundaries enforces this
+        // at every move site. clippy's `arc_with_non_send_sync` lint
+        // can't see that invariant; allow once at the canonical
+        // construction site.
+        #[allow(clippy::arc_with_non_send_sync)]
+        {
+            state.comm = Some(Arc::new(comm));
+        }
         Ok(())
     }
 
@@ -202,7 +252,7 @@ mod cuda_impl {
 }
 
 #[cfg(feature = "cuda")]
-pub use cuda_impl::{NcclState, generate_comm_id_hex};
+pub use cuda_impl::{NcclState, SendComm, generate_comm_id_hex};
 
 /// Non-cuda stub for the leader: returns a clear marker error rather
 /// than letting `init_nccl` succeed vacuously.
