@@ -11,66 +11,77 @@
 //!
 //! ## Status
 //!
-//! **Scaffold only.** `Config` deserialisation is real (so the dispatch
-//! in `candle.rs::load_arch_dense` can route based on `model_type`
-//! and the operator's diagnostic surfaces "qwen3_5" in the supported
-//! set); the actual forward pass is `unimplemented!()`. Filling this
-//! in is the substantive Stage 8c work.
+//! **Single-GPU dense path is real**. Both attention flavours
+//! (`full_attention` with the output-gated GQA causal attention and
+//! `linear_attention` with the Gated DeltaNet recurrent block) are
+//! implemented. The model loads from upstream safetensors via the
+//! existing `load_arch_dense` dispatch and runs forward end to end.
 //!
-//! ## What the architecture needs (open work)
+//! Numerical correctness vs the reference Python is **not yet
+//! validated** — the structural code path is right, weight tensor
+//! names match the upstream layout, shapes flow through cleanly, but
+//! the Tbilisi probe (and any other downstream test) is the next
+//! step. Likely places a bug would surface:
+//! - Per-rank vs per-token-position offsets in the recurrent delta
+//!   rule (`linear_attn.rs`).
+//! - Off-by-one in the conv state continuation across decode steps.
+//! - RoPE phase mismatch from MRoPE simplification (we treat the
+//!   three position grids as collapsed, which is correct only for
+//!   text-only inference).
 //!
-//! Confirmed from `Qwen/Qwen3.6-27B/config.json`:
-//! - Real hyperparams nested under `text_config: {...}`. The
-//!   architecture is text-side; the multimodal vision tower is
-//!   separate (`image_token_id`, `language_model_only=false`).
-//! - `hidden_size: 5120`, `head_dim: 256`, `intermediate_size: 17408`,
-//!   `num_attention_heads`, `num_key_value_heads`, etc. — bigger
-//!   head_dim than plain Qwen3.
-//! - `attn_output_gate: true` — a sigmoid gate multiplied into the
-//!   attention output before the projection. ~10 LoC addition vs the
-//!   plain Qwen3 attention.
-//! - `layer_types: ["linear_attention", "linear_attention",
-//!   "linear_attention", "full_attention", ...]` with
-//!   `full_attention_interval: 4` — every 4th layer is full
-//!   attention, the rest are linear-attention. The full-attention
-//!   layers shape like a Qwen3 attention; the linear-attention
-//!   layers are the hard part.
+//! ## Submodules
 //!
-//! ## Linear-attention layer
+//! - [`rmsnorm`] — `Qwen3_5RmsNorm` (`(1+w)*x` variant), the
+//!   `Qwen3_5RmsNormGated` used after the delta rule, and the
+//!   `l2norm` helper.
+//! - [`rope`] — text-side rotary embedding (mrope simplified, GLM
+//!   rotate-half).
+//! - [`mlp`] — SwiGLU MLP (gate/up/down, no bias).
+//! - [`full_attn`] — `Qwen3_5Attention` with the output-gate
+//!   widening on `q_proj`.
+//! - [`linear_attn`] — `GatedDeltaNet` recurrent delta-rule block
+//!   (causal depthwise Conv1d → silu → split → L2norm → per-token
+//!   delta rule → RMSNormGated → out_proj).
+//! - [`decoder`] — `Qwen3_5DecoderLayer` dispatching to one of the
+//!   two attention flavours per layer index.
 //!
-//! Candle has nothing we can reuse — has to be written against the
-//! reference Python in the Qwen3-Next HF repo. Likely Lightning
-//! Attention-2 (state-space-ish recurrence) given the
-//! `linear_attention` tag and Qwen3's prior `qwen3-omni` work. Needs:
-//! - A persistent recurrent state per layer (replaces the explicit
-//!   KV cache for full attention).
-//! - Per-token update + readout primitives, fused if possible.
-//! - Numerical-correctness validation against the Python reference
-//!   on a fixed prompt before trusting any output downstream.
+//! ## Open work
 //!
-//! ## TP-2 (the immediate motivator)
+//! - **TP variant.** `harness/tp/tp_qwen3_5.rs` is the next step.
+//!   Sharding strategy diverges by layer type:
+//!   - Full-attention layers: column-parallel q/k/v (including the
+//!     gate half of `q_proj`) + row-parallel `o_proj`, mirroring
+//!     `tp_qwen3.rs`.
+//!   - Linear-attention layers: the recurrent state is per-V-head, so
+//!     V-head-dimension sharding works cleanly — split `num_v_heads`
+//!     across ranks (`num_v_heads / world_size` per rank), shard
+//!     `in_proj_qkv` / `in_proj_z` / `in_proj_b` / `in_proj_a` along
+//!     the V-head dim, and row-parallel `out_proj`. The `A_log` /
+//!     `dt_bias` per-head params shard with the heads.
 //!
-//! Beast's 2x RTX 5090 needs tensor-parallel to fit Qwen3.6-27B.
-//! TP-aware analogue lives at `harness/tp/tp_qwen3_5.rs` (not yet
-//! created — added alongside the dense impl). Sharding strategy
-//! diverges by layer type:
-//! - Full-attention layers: column-parallel q/k/v + row-parallel o,
-//!   same as `tp_qwen3.rs`. With `attn_output_gate`, the gate weight
-//!   is also column-parallel (one gate scalar per head).
-//! - Linear-attention layers: the recurrent state is per-token, not
-//!   per-head, so head-dim sharding doesn't apply. Options are
-//!   (a) replicate the linear-attention layers across ranks (cheap
-//!   but wastes ~half the per-rank VRAM since 3 of every 4 layers
-//!   replicate), or (b) shard along the recurrent-state dimension
-//!   if the formulation allows. Decision deferred until the linear
-//!   attention is actually implemented and profiled.
+//! - **Chunked delta-rule prefill.** `linear_attn.rs` runs the
+//!   per-token recurrent path for prefill too — correct but O(L).
+//!   Porting `torch_chunk_gated_delta_rule` (chunk_size=64) speeds
+//!   prefill substantially with no surface change.
 
-use anyhow::Result;
-use candle_core::Tensor;
+use anyhow::{Context, Result};
+use candle_core::{DType, Device, IndexOp, Module, Tensor};
+use candle_nn::Embedding;
+use candle_nn::Linear;
+use candle_nn::var_builder::ShardedVarBuilder;
 use serde::Deserialize;
+use std::sync::Arc;
 
+pub mod decoder;
+pub mod full_attn;
 pub mod linear_attn;
+pub mod mlp;
 pub mod rmsnorm;
+pub mod rope;
+
+use decoder::Qwen3_5DecoderLayer;
+use rmsnorm::Qwen3_5RmsNorm;
+use rope::RotaryEmbedding;
 
 /// `model_type` we deserialise from `config.json`. Const so the
 /// dispatch in `candle.rs::load_arch_dense` can pattern-match without
@@ -159,41 +170,131 @@ fn default_hidden_act() -> String {
     "silu".into()
 }
 
-/// Stub model. Fields are intentionally empty — filling in the
-/// concrete architecture is the substantive Stage 8c work. The struct
-/// exists so the `ModelArch::Qwen3_5Dense(_)` variant has a payload
-/// and dispatch wiring compiles end-to-end.
-///
-/// To extend: add embed_tokens, decoder layers, final norm, and
-/// lm_head fields here; implement `new`, `forward`, `clear_kv_cache`
-/// in terms of them. Mirror the layout of `qwen3_dense::ModelForCausalLM`
-/// (in candle-transformers) as a starting point.
-pub struct Qwen3_5ForCausalLM {
-    #[allow(dead_code)]
-    config: Config,
+/// Qwen3-Next base transformer (embedding + decoder stack + final
+/// norm). Public so a TP variant in `harness/tp/tp_qwen3_5.rs` can
+/// also build on it later — for now only `Qwen3_5ForCausalLM` is the
+/// loaded handle.
+pub struct Qwen3_5Model {
+    embed_tokens: Embedding,
+    layers: Vec<Qwen3_5DecoderLayer>,
+    norm: Qwen3_5RmsNorm,
+    device: Device,
+    dtype: DType,
 }
 
-impl Qwen3_5ForCausalLM {
-    pub fn new(config: Config, _vb: candle_nn::VarBuilder) -> Result<Self> {
-        // TODO(stage-8c): build embed_tokens, decoder layers (dispatching
-        // on layer_types), final RmsNorm, lm_head from the VarBuilder.
-        // For now we accept the construction so the load path can be
-        // exercised end-to-end (config parse + safetensors mmap), and
-        // bail at forward time with a clear marker.
-        Ok(Self { config })
+impl Qwen3_5Model {
+    pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
+        let dtype = vb.dtype();
+        let device = vb.device().clone();
+
+        let embed_vb = vb.pp("model.embed_tokens");
+        let embed_weight = embed_vb
+            .get((cfg.vocab_size, cfg.hidden_size), "weight")
+            .with_context(|| format!("load '{}/weight'", embed_vb.prefix()))?;
+        let embed_tokens = Embedding::new(embed_weight, cfg.hidden_size);
+
+        let rotary = Arc::new(RotaryEmbedding::new(dtype, cfg, &device)?);
+
+        if cfg.layer_types.len() != cfg.num_hidden_layers {
+            anyhow::bail!(
+                "config.text_config.layer_types must have num_hidden_layers ({}) entries; \
+                 got {}",
+                cfg.num_hidden_layers,
+                cfg.layer_types.len()
+            );
+        }
+
+        let vb_l = vb.pp("model.layers");
+        let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
+        for i in 0..cfg.num_hidden_layers {
+            layers.push(Qwen3_5DecoderLayer::load(
+                cfg,
+                rotary.clone(),
+                i,
+                &vb_l.pp(i),
+            )?);
+        }
+
+        let norm = Qwen3_5RmsNorm::load(&vb.pp("model.norm"), cfg.hidden_size, cfg.rms_norm_eps)?;
+
+        Ok(Self {
+            embed_tokens,
+            layers,
+            norm,
+            device,
+            dtype,
+        })
     }
 
-    pub fn forward(&mut self, _input: &Tensor, _offset: usize) -> Result<Tensor> {
-        anyhow::bail!(
-            "Qwen3-Next ({}) forward not implemented yet (Stage 8c, TP-2 motivator)",
-            self.config.model_type
-        )
+    pub fn embed_weight(&self) -> &Tensor {
+        self.embed_tokens.embeddings()
     }
 
     pub fn clear_kv_cache(&mut self) {
-        // No-op for the stub. The real impl needs a `clear_kv_cache`
-        // that resets the per-layer KV cache (full-attention layers)
-        // and the per-layer recurrent state (linear-attention layers).
+        for l in &mut self.layers {
+            l.clear_kv_cache();
+        }
+    }
+
+    fn causal_mask(&self, b: usize, tgt: usize, offset: usize) -> candle_core::Result<Tensor> {
+        let minf = f32::NEG_INFINITY;
+        let mask: Vec<_> = (0..tgt)
+            .flat_map(|i| (0..(tgt + offset)).map(move |j| if j <= i + offset { 0. } else { minf }))
+            .collect();
+        Tensor::from_slice(&mask, (b, 1, tgt, tgt + offset), &self.device)?.to_dtype(self.dtype)
+    }
+
+    pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        let (b, l) = input.dims2()?;
+        let mut h = self.embed_tokens.forward(input)?;
+        // Causal mask only needed for L > 1 prefill; full-attention
+        // layers consume it via broadcast_add. Linear-attention layers
+        // ignore the mask.
+        let causal = if l == 1 {
+            None
+        } else {
+            Some(self.causal_mask(b, l, offset)?)
+        };
+        for layer in &mut self.layers {
+            h = layer.forward(&h, causal.as_ref(), offset)?;
+        }
+        self.norm.forward(&h)
+    }
+}
+
+pub struct Qwen3_5ForCausalLM {
+    base: Qwen3_5Model,
+    lm_head: Linear,
+}
+
+impl Qwen3_5ForCausalLM {
+    pub fn new(config: Config, vb: ShardedVarBuilder) -> Result<Self> {
+        let cfg = &config.text_config;
+        let base = Qwen3_5Model::load(cfg, &vb)?;
+        let lm_head = if cfg.tie_word_embeddings {
+            Linear::new(base.embed_weight().clone(), None)
+        } else {
+            let weight = vb
+                .pp("lm_head")
+                .get((cfg.vocab_size, cfg.hidden_size), "weight")
+                .with_context(|| format!("load '{}/lm_head/weight'", vb.prefix()))?;
+            Linear::new(weight, None)
+        };
+        Ok(Self { base, lm_head })
+    }
+
+    /// `input`: token-id tensor of shape `(B, L)`. Returns logits at
+    /// the last position, shape `(B, 1, vocab_size)` — same contract
+    /// as `qwen3::ModelForCausalLM::forward` so the harness's
+    /// `squeeze_to_vocab` helper handles both uniformly.
+    pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        let (_, l) = input.dims2()?;
+        let hidden = self.base.forward(input, offset)?;
+        hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
+    pub fn clear_kv_cache(&mut self) {
+        self.base.clear_kv_cache();
     }
 }
 

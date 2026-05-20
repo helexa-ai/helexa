@@ -617,12 +617,22 @@ impl CandleHarness {
                     })))
                 }
                 "qwen3_5" => {
-                    // Stage 8c scaffold: config parses, model
-                    // constructs, but forward bails. See
-                    // `arch/qwen3_5.rs` for the open architecture work.
+                    // Qwen3-Next needs a ShardedVarBuilder because its
+                    // load functions use the sharded backend (so they
+                    // can be reused unchanged by the future TP variant).
+                    // With world_size=1 the backend falls through to
+                    // the unsharded path, so there is no per-load cost.
                     let cfg: super::arch::qwen3_5::Config = serde_json::from_str(&cfg_text)
                         .context("parse Qwen3-Next (qwen3_5) config.json")?;
-                    let model = super::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, vb)
+                    let sharded_vb = unsafe {
+                        candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                            &safetensors_paths,
+                            dtype,
+                            &device_for_load,
+                        )
+                        .context("build ShardedVarBuilder for Qwen3-Next")?
+                    };
+                    let model = super::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, sharded_vb)
                         .context("build Qwen3-Next dense model")?;
                     Ok(ModelArch::Qwen3_5Dense(model))
                 }
