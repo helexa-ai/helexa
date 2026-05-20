@@ -126,6 +126,12 @@ pub enum ModelArch {
     // than the others (clippy::large_enum_variant).
     LlamaQuantized(QuantizedLlamaWeights),
     LlamaDense(Box<LlamaDense>),
+
+    // Qwen3-Next family (model_type "qwen3_5") — Qwen3.6's
+    // architecture. Stage 8c scaffolding only: dispatch + config parse
+    // are real; forward bails "not implemented yet". See
+    // `arch/qwen3_5.rs` for the open architecture work.
+    Qwen3_5Dense(super::arch::qwen3_5::Qwen3_5ForCausalLM),
 }
 
 impl ModelArch {
@@ -141,6 +147,7 @@ impl ModelArch {
             ModelArch::Qwen3MoeDense(m) => m.forward(input, offset)?,
             ModelArch::LlamaQuantized(m) => m.forward(input, offset)?,
             ModelArch::LlamaDense(m) => m.forward(input, offset)?,
+            ModelArch::Qwen3_5Dense(m) => m.forward(input, offset)?,
         };
         squeeze_to_vocab(&raw)
     }
@@ -164,6 +171,10 @@ impl ModelArch {
             }
             ModelArch::LlamaQuantized(_) => Ok(()),
             ModelArch::LlamaDense(m) => m.clear_kv_cache(),
+            ModelArch::Qwen3_5Dense(m) => {
+                m.clear_kv_cache();
+                Ok(())
+            }
         }
     }
 }
@@ -225,7 +236,7 @@ const REPEAT_LAST_N: usize = 64;
 /// value. New entries land alongside a new `ModelArch` variant + a
 /// dispatch branch in `load_arch_dense` (plus, for TP, a parallel
 /// pattern in `tp_qwen3.rs`).
-const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &["llama", "qwen3", "qwen3_moe"];
+const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &["llama", "qwen3", "qwen3_5", "qwen3_moe"];
 
 /// Pre-flight check the operator's `config.json` against the set of
 /// architectures the dense path actually knows how to build. Surfaces
@@ -273,6 +284,38 @@ fn check_dense_config_supported(config_json: &str, model_id: &str) -> Result<()>
          tp_qwen3.rs) to extend coverage.",
         DENSE_SUPPORTED_MODEL_TYPES
     );
+}
+
+/// Architectures the TP path can actually load and run. A subset of
+/// `DENSE_SUPPORTED_MODEL_TYPES` — the single-GPU path supports more
+/// families than the TP path because each TP-aware module is a real
+/// chunk of work (`tp_qwen3.rs` is the only one shipped today).
+#[cfg(feature = "cuda")]
+const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3"];
+
+/// TP-side counterpart to `check_dense_config_supported`. Gates the
+/// `load_tp` path on a narrower architecture set: even though the
+/// single-GPU dense path knows how to build a Llama model, the worker
+/// pool's `load_dense_shard` reconstructs the config as Qwen3 — there
+/// is no `tp_llama.rs` yet. Surfacing this as a config-time error
+/// (before we spawn workers and burn NCCL handshake cost) is much
+/// kinder than the inevitable per-rank deserialise failure.
+#[cfg(feature = "cuda")]
+fn check_tp_arch_supported(config_json: &str, model_id: &str) -> Result<()> {
+    let v: serde_json::Value = serde_json::from_str(config_json)
+        .with_context(|| format!("parse config.json for '{model_id}' as JSON"))?;
+    let model_type = v.get("model_type").and_then(|x| x.as_str()).unwrap_or("");
+    if TP_SUPPORTED_MODEL_TYPES.contains(&model_type) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "tensor_parallel requested for '{model_id}' (model_type='{model_type}') but \
+         the TP path supports only {TP_SUPPORTED_MODEL_TYPES:?}. Adding a new \
+         TP-aware architecture needs a `harness/tp/tp_<family>.rs` module mirroring \
+         `tp_qwen3.rs` (sharded linears, AllReduce, per-rank head counts) and a \
+         dispatch in `WorkerPool::load_dense_shard`. For models that fit on one \
+         GPU, drop `tensor_parallel` to use the single-GPU dense path."
+    )
 }
 
 /// Resolve the effective HuggingFace cache directory for the candle
@@ -572,6 +615,16 @@ impl CandleHarness {
                         dtype,
                         device: device_for_load,
                     })))
+                }
+                "qwen3_5" => {
+                    // Stage 8c scaffold: config parses, model
+                    // constructs, but forward bails. See
+                    // `arch/qwen3_5.rs` for the open architecture work.
+                    let cfg: super::arch::qwen3_5::Config = serde_json::from_str(&cfg_text)
+                        .context("parse Qwen3-Next (qwen3_5) config.json")?;
+                    let model = super::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, vb)
+                        .context("build Qwen3-Next dense model")?;
+                    Ok(ModelArch::Qwen3_5Dense(model))
                 }
                 other => {
                     // Defensive: `check_dense_config_supported` already
@@ -1045,6 +1098,16 @@ impl CandleHarness {
         // lifecycle on a load that's guaranteed to fail at deserialise
         // time inside every rank.
         check_dense_config_supported(&config_json, &spec.model_id)?;
+        // The TP path knows how to ship and reconstruct a Qwen3 dense
+        // shard (`tp_qwen3.rs`). Other architectures may pass the
+        // single-GPU `check_dense_config_supported` check above but
+        // have no TP-aware module — bail with a clear marker pointing
+        // at the file the implementer needs to add. This keeps an
+        // operator who sets `tensor_parallel=2` on a Llama model from
+        // silently routing through `pool.load_dense_shard` (which
+        // assumes Qwen3 config shape on the worker side) and producing
+        // a confusing config-parse failure inside every rank.
+        check_tp_arch_supported(&config_json, &spec.model_id)?;
 
         // 2. Spawn the worker pool. Rank 0 stays in-process; ranks
         //    1..tp_size are subprocesses, one per device after the
@@ -1704,28 +1767,45 @@ mod tests {
     }
 
     #[test]
-    fn check_dense_config_rejects_qwen3_5_with_clear_message() {
+    fn check_dense_config_rejects_unsupported_arch_with_clear_message() {
+        // Use a deliberately-fake model_type so this test stays
+        // meaningful as the supported set grows. (qwen3_5 was the
+        // motivating real example but now lives in the supported set
+        // as a Stage 8c scaffold.)
         let cfg = r#"{
-            "model_type": "qwen3_5",
-            "architectures": ["Qwen3_5ForConditionalGeneration"],
-            "image_token_id": 248056,
-            "text_config": {"hidden_size": 5120}
+            "model_type": "fictional_arch_99",
+            "architectures": ["FictionalArch99ForCausalLM"]
         }"#;
-        let err = check_dense_config_supported(cfg, "Qwen/Qwen3.6-27B")
-            .expect_err("qwen3_5 should be rejected");
+        let err = check_dense_config_supported(cfg, "Fake/Model-99")
+            .expect_err("fictional_arch_99 should be rejected");
         let msg = format!("{err}");
         assert!(
-            msg.contains("unsupported model_type 'qwen3_5'"),
+            msg.contains("unsupported model_type 'fictional_arch_99'"),
             "message should name the rejected type: {msg}"
         );
         assert!(
-            msg.contains("Qwen/Qwen3.6-27B"),
+            msg.contains("Fake/Model-99"),
             "message should echo the model id: {msg}"
         );
         assert!(
             msg.contains("qwen3"),
             "message should list the supported set: {msg}"
         );
+    }
+
+    #[test]
+    fn check_dense_config_accepts_qwen3_5() {
+        // Sanity: Stage 8c scaffold means qwen3_5 deserialises into the
+        // supported set. Forward still bails (covered by tests on the
+        // architecture module itself), but the dispatch gate must let
+        // it through.
+        let cfg = r#"{
+            "model_type": "qwen3_5",
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "text_config": {"hidden_size": 5120}
+        }"#;
+        check_dense_config_supported(cfg, "Qwen/Qwen3.6-27B")
+            .expect("qwen3_5 should be in the supported set as of Stage 8c scaffold");
     }
 
     #[test]
