@@ -69,6 +69,9 @@ use anyhow::Result;
 use candle_core::Tensor;
 use serde::Deserialize;
 
+pub mod linear_attn;
+pub mod rmsnorm;
+
 /// `model_type` we deserialise from `config.json`. Const so the
 /// dispatch in `candle.rs::load_arch_dense` can pattern-match without
 /// magic strings.
@@ -122,6 +125,38 @@ pub struct TextConfig {
     /// logging / validation; the forward dispatches on `layer_types`.
     #[serde(default)]
     pub full_attention_interval: Option<usize>,
+
+    /// Hidden activation (`"silu"` for Qwen3-Next). Used by the MLP
+    /// and the linear-attention conv1d.
+    #[serde(default = "default_hidden_act")]
+    pub hidden_act: String,
+
+    // --- Gated DeltaNet (linear-attention) hyperparams -----------------
+    /// Per-layer linear-attention V-head count (Qwen3.6-27B: 48).
+    /// More V-heads than K-heads is fine — query/key get
+    /// `repeat_interleave`'d to match before the delta rule.
+    #[serde(default)]
+    pub linear_num_value_heads: usize,
+    /// Per-layer linear-attention K-head count (Qwen3.6-27B: 16).
+    #[serde(default)]
+    pub linear_num_key_heads: usize,
+    /// Per-head key dimension for the linear-attention path
+    /// (Qwen3.6-27B: 128). Separate from `head_dim` which the
+    /// full-attention layers use.
+    #[serde(default)]
+    pub linear_key_head_dim: usize,
+    /// Per-head value dimension for the linear-attention path
+    /// (Qwen3.6-27B: 128).
+    #[serde(default)]
+    pub linear_value_head_dim: usize,
+    /// Causal Conv1d kernel size used before the delta rule
+    /// (Qwen3.6-27B: 4).
+    #[serde(default)]
+    pub linear_conv_kernel_dim: usize,
+}
+
+fn default_hidden_act() -> String {
+    "silu".into()
 }
 
 /// Stub model. Fields are intentionally empty — filling in the
