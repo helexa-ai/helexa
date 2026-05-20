@@ -101,7 +101,7 @@ pub struct TpLoadedModel {
     /// step. The same Mutex covers both for the simplest correctness
     /// story.
     pub pool: tokio::sync::Mutex<super::tp::WorkerPool>,
-    pub leader_model: Arc<tokio::sync::Mutex<super::tp::tp_qwen3::TpQwen3ForCausalLM>>,
+    pub leader_model: Arc<tokio::sync::Mutex<super::tp::TpLeaderModel>>,
 }
 
 /// Architecture-specific weights. Each variant covers one (family,
@@ -291,7 +291,7 @@ fn check_dense_config_supported(config_json: &str, model_id: &str) -> Result<()>
 /// families than the TP path because each TP-aware module is a real
 /// chunk of work (`tp_qwen3.rs` is the only one shipped today).
 #[cfg(feature = "cuda")]
-const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3"];
+const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3", "qwen3_5"];
 
 /// TP-side counterpart to `check_dense_config_supported`. Gates the
 /// `load_tp` path on a narrower architecture set: even though the

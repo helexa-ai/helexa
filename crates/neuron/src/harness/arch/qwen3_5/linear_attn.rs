@@ -404,7 +404,7 @@ fn load_linear_no_bias(
 /// Numerically-stable `softplus(x) = ln(1 + exp(x))`. Matches PyTorch's
 /// `F.softplus` default (beta=1, threshold=20: for large positive x,
 /// returns x as-is to avoid overflow in the exp).
-fn softplus(x: &Tensor) -> candle_core::Result<Tensor> {
+pub(crate) fn softplus(x: &Tensor) -> candle_core::Result<Tensor> {
     let threshold = 20.0_f64;
     let big = x.ge(threshold)?; // Tensor<u8> mask
     let safe = x.minimum(&x.affine(0.0, 0.0)?.affine(0.0, threshold)?)?; // min(x, threshold)
@@ -415,7 +415,11 @@ fn softplus(x: &Tensor) -> candle_core::Result<Tensor> {
 
 /// `repeat_interleave` along a single dim. Candle has no built-in for
 /// this; emulate with unsqueeze + expand + reshape.
-fn repeat_interleave(x: &Tensor, repeats: usize, dim: usize) -> candle_core::Result<Tensor> {
+pub(crate) fn repeat_interleave(
+    x: &Tensor,
+    repeats: usize,
+    dim: usize,
+) -> candle_core::Result<Tensor> {
     if repeats == 1 {
         return Ok(x.clone());
     }

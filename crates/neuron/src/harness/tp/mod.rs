@@ -22,6 +22,7 @@ pub mod nccl_state;
 pub mod rpc;
 pub mod tp_linear;
 pub mod tp_qwen3;
+pub mod tp_qwen3_5;
 pub mod worker;
 
 use anyhow::{Context, Result};
@@ -31,6 +32,49 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use rpc::{WorkerRequest, WorkerResponse};
+
+/// Leader-side handle for any TP-loaded model. The pool's
+/// `load_dense_shard` dispatches on `config.json#/model_type` to build
+/// the right variant; downstream callers (the harness's
+/// `chat_completion_tp` path, `generate_step`, `clear_kv_cache`,
+/// `unload_model`) all hold this enum and let the variant dispatch
+/// determine the concrete forward.
+///
+/// Variants gated on `cuda` because the underlying TP models hold
+/// `Arc<cudarc::nccl::Comm>` references — irrelevant on CPU builds.
+#[cfg(feature = "cuda")]
+pub enum TpLeaderModel {
+    Qwen3(tp_qwen3::TpQwen3ForCausalLM),
+    Qwen3_5(tp_qwen3_5::TpQwen3_5ForCausalLM),
+}
+
+#[cfg(feature = "cuda")]
+impl TpLeaderModel {
+    pub fn forward(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            TpLeaderModel::Qwen3(m) => m.forward(input, offset),
+            TpLeaderModel::Qwen3_5(m) => m.forward(input, offset),
+        }
+    }
+
+    pub fn clear_kv_cache(&mut self) {
+        match self {
+            TpLeaderModel::Qwen3(m) => m.clear_kv_cache(),
+            TpLeaderModel::Qwen3_5(m) => m.clear_kv_cache(),
+        }
+    }
+
+    pub fn device(&self) -> &candle_core::Device {
+        match self {
+            TpLeaderModel::Qwen3(m) => m.device(),
+            TpLeaderModel::Qwen3_5(m) => m.device(),
+        }
+    }
+}
 
 /// One worker subprocess plus its bidirectional stdio handles.
 struct Worker {
@@ -363,7 +407,7 @@ impl WorkerPool {
         safetensors_paths: &[std::path::PathBuf],
         leader_device: &candle_core::Device,
         dtype: candle_core::DType,
-    ) -> Result<std::sync::Arc<tokio::sync::Mutex<super::tp::tp_qwen3::TpQwen3ForCausalLM>>> {
+    ) -> Result<std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>> {
         use candle_nn::var_builder::ShardedSafeTensors;
         use std::sync::Arc;
         use tokio::sync::Mutex;
@@ -396,36 +440,56 @@ impl WorkerPool {
             .await?;
         }
 
-        // 2. Build rank 0's shard on the leader. ShardedVarBuilder reads
-        //    only the rank's slice from safetensors — no full-tensor
-        //    materialisation. Runs in spawn_blocking because the
-        //    file-mmap + slice + copy-to-device work is synchronous.
-        let cfg: super::tp::tp_qwen3::Config =
-            serde_json::from_str(config_json).context("parse Qwen3 Config JSON for leader load")?;
+        // 2. Build rank 0's shard on the leader. Dispatch on model_type
+        //    — for `qwen3` we build a `TpQwen3ForCausalLM`, for
+        //    `qwen3_5` (Qwen3-Next, Qwen3.6's architecture) we build
+        //    `TpQwen3_5ForCausalLM`. Both end up wrapped in the
+        //    `TpLeaderModel` enum so downstream callers don't care.
+        let model_type = serde_json::from_str::<serde_json::Value>(config_json)
+            .ok()
+            .as_ref()
+            .and_then(|v| v.get("model_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         let paths_for_leader: Vec<std::path::PathBuf> = safetensors_paths.to_vec();
         let device_for_leader = leader_device.clone();
         let comm_for_leader = leader_comm;
         let model_id_for_log = model_id.to_string();
-        let leader_model = tokio::task::spawn_blocking(
-            move || -> Result<super::tp::tp_qwen3::TpQwen3ForCausalLM> {
-                // SAFETY: same invariant as the single-GPU dense path —
-                // the HF cache files are treated as immutable while the
-                // mmap is held.
-                let vb = unsafe {
-                    ShardedSafeTensors::var_builder(&paths_for_leader, dtype, &device_for_leader)
-                        .context("build ShardedVarBuilder over safetensors")?
-                };
-                let model = super::tp::tp_qwen3::TpQwen3ForCausalLM::load(
-                    &cfg,
-                    &vb,
-                    0,
-                    world_size,
-                    comm_for_leader.into_inner(),
-                )?;
-                tracing::info!(rank = 0, model = %model_id_for_log, "loaded TP shard (leader)");
-                Ok(model)
-            },
-        )
+        let config_json_for_leader = config_json.to_string();
+
+        let leader_model = tokio::task::spawn_blocking(move || -> Result<TpLeaderModel> {
+            // SAFETY: same invariant as the single-GPU dense path —
+            // the HF cache files are treated as immutable while the
+            // mmap is held.
+            let vb = unsafe {
+                ShardedSafeTensors::var_builder(&paths_for_leader, dtype, &device_for_leader)
+                    .context("build ShardedVarBuilder over safetensors")?
+            };
+            let comm = comm_for_leader.into_inner();
+            let loaded = match model_type.as_str() {
+                "qwen3" => {
+                    let cfg: super::tp::tp_qwen3::Config = serde_json::from_str(&config_json_for_leader)
+                        .context("parse Qwen3 Config JSON for leader load")?;
+                    TpLeaderModel::Qwen3(super::tp::tp_qwen3::TpQwen3ForCausalLM::load(
+                        &cfg, &vb, 0, world_size, comm,
+                    )?)
+                }
+                "qwen3_5" => {
+                    let cfg: super::tp::tp_qwen3_5::Config =
+                        serde_json::from_str(&config_json_for_leader)
+                            .context("parse Qwen3-Next Config JSON for leader load")?;
+                    TpLeaderModel::Qwen3_5(super::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
+                        cfg, &vb, 0, world_size, comm,
+                    )?)
+                }
+                other => anyhow::bail!(
+                    "TP dispatch: unsupported model_type '{other}' on leader (supported: qwen3, qwen3_5)"
+                ),
+            };
+            tracing::info!(rank = 0, model = %model_id_for_log, model_type = %model_type, "loaded TP shard (leader)");
+            Ok(loaded)
+        })
         .await
         .context("leader load task panicked")??;
 
@@ -463,7 +527,7 @@ impl WorkerPool {
     pub async fn generate_step(
         &mut self,
         model_id: &str,
-        leader_model: std::sync::Arc<tokio::sync::Mutex<super::tp::tp_qwen3::TpQwen3ForCausalLM>>,
+        leader_model: std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>,
         tokens: Vec<u32>,
         offset: usize,
     ) -> Result<candle_core::Tensor> {
@@ -516,9 +580,7 @@ impl WorkerPool {
     pub async fn clear_kv_cache(
         &mut self,
         model_id: &str,
-        #[cfg(feature = "cuda")] leader_model: std::sync::Arc<
-            tokio::sync::Mutex<super::tp::tp_qwen3::TpQwen3ForCausalLM>,
-        >,
+        #[cfg(feature = "cuda")] leader_model: std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>,
     ) -> Result<()> {
         for w in &mut self.workers {
             w.send_only(&WorkerRequest::ClearKvCache {

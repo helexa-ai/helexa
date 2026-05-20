@@ -21,6 +21,46 @@ use super::rpc::{WorkerRequest, WorkerResponse};
 
 #[cfg(feature = "cuda")]
 use super::tp_qwen3::TpQwen3ForCausalLM;
+#[cfg(feature = "cuda")]
+use super::tp_qwen3_5::TpQwen3_5ForCausalLM;
+
+/// Worker-side discriminator over the architectures we can load via
+/// `LoadDenseShard`. Mirrors `super::TpLeaderModel` on the leader
+/// side — the dispatch happens on the `model_type` extracted from the
+/// config JSON.
+#[cfg(feature = "cuda")]
+enum WorkerModel {
+    Qwen3(TpQwen3ForCausalLM),
+    Qwen3_5(TpQwen3_5ForCausalLM),
+}
+
+#[cfg(feature = "cuda")]
+impl WorkerModel {
+    fn forward(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            WorkerModel::Qwen3(m) => m.forward(input, offset),
+            WorkerModel::Qwen3_5(m) => m.forward(input, offset),
+        }
+    }
+
+    fn clear_kv_cache(&mut self) {
+        match self {
+            WorkerModel::Qwen3(m) => m.clear_kv_cache(),
+            WorkerModel::Qwen3_5(m) => m.clear_kv_cache(),
+        }
+    }
+
+    fn device(&self) -> &candle_core::Device {
+        match self {
+            WorkerModel::Qwen3(m) => m.device(),
+            WorkerModel::Qwen3_5(m) => m.device(),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct WorkerConfig {
@@ -84,12 +124,13 @@ async fn write_response(stdout: &mut tokio::io::Stdout, resp: &WorkerResponse) -
 struct WorkerState {
     config: WorkerConfig,
     nccl: NcclState,
-    /// Loaded model shards keyed by `model_id`. Each entry holds this
-    /// rank's `TpQwen3ForCausalLM` — the column/row-parallel layers
-    /// hold an `Arc<Comm>` cloned from `nccl`. Cuda-only: there is no
-    /// TpQwen3ForCausalLM type without the cuda feature in scope.
+    /// Loaded model shards keyed by `model_id`. Each entry wraps the
+    /// rank's TP architecture handle (Qwen3 or Qwen3-Next) — the
+    /// column/row-parallel layers hold an `Arc<Comm>` cloned from
+    /// `nccl`. Cuda-only: the underlying types reference cudarc types
+    /// that don't exist without the cuda feature.
     #[cfg(feature = "cuda")]
-    models: HashMap<String, TpQwen3ForCausalLM>,
+    models: HashMap<String, WorkerModel>,
     /// Placeholder so the non-cuda build keeps the same field name set
     /// and `WorkerState::new` reads the same on both.
     #[cfg(not(feature = "cuda"))]
@@ -138,6 +179,7 @@ impl WorkerState {
         config_json: String,
         safetensors_paths: Vec<String>,
     ) -> WorkerResponse {
+        use crate::harness::arch::qwen3_5 as qwen3_5_arch;
         use candle_core::{DType, Device};
         use candle_nn::var_builder::ShardedSafeTensors;
         use candle_transformers::models::qwen3 as qwen3_dense;
@@ -159,15 +201,14 @@ impl WorkerState {
             }
         };
 
-        let cfg: qwen3_dense::Config = match serde_json::from_str(&config_json) {
-            Ok(c) => c,
-            Err(e) => {
-                return WorkerResponse::Error {
-                    kind: "bad_request".into(),
-                    message: format!("parse Qwen3 Config JSON: {e}"),
-                };
-            }
-        };
+        // Peek at model_type so we know which architecture to build.
+        let model_type = serde_json::from_str::<serde_json::Value>(&config_json)
+            .ok()
+            .as_ref()
+            .and_then(|v| v.get("model_type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         let device = match Device::new_cuda(self.config.cuda_device as usize) {
             Ok(d) => d,
@@ -191,24 +232,77 @@ impl WorkerState {
                 };
             }
         };
-        let model = match TpQwen3ForCausalLM::load(
-            &cfg,
-            &vb,
-            self.config.rank,
-            self.config.world_size,
-            comm,
-        ) {
-            Ok(m) => m,
-            Err(e) => {
+
+        let loaded = match model_type.as_str() {
+            "qwen3" => {
+                let cfg: qwen3_dense::Config = match serde_json::from_str(&config_json) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return WorkerResponse::Error {
+                            kind: "bad_request".into(),
+                            message: format!("parse Qwen3 Config JSON: {e}"),
+                        };
+                    }
+                };
+                match TpQwen3ForCausalLM::load(
+                    &cfg,
+                    &vb,
+                    self.config.rank,
+                    self.config.world_size,
+                    comm,
+                ) {
+                    Ok(m) => WorkerModel::Qwen3(m),
+                    Err(e) => {
+                        return WorkerResponse::Error {
+                            kind: "load_failed".into(),
+                            message: format!("TpQwen3ForCausalLM::load: {e:#}"),
+                        };
+                    }
+                }
+            }
+            "qwen3_5" => {
+                let cfg: qwen3_5_arch::Config = match serde_json::from_str(&config_json) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        return WorkerResponse::Error {
+                            kind: "bad_request".into(),
+                            message: format!("parse Qwen3-Next Config JSON: {e}"),
+                        };
+                    }
+                };
+                match TpQwen3_5ForCausalLM::load(
+                    cfg,
+                    &vb,
+                    self.config.rank,
+                    self.config.world_size,
+                    comm,
+                ) {
+                    Ok(m) => WorkerModel::Qwen3_5(m),
+                    Err(e) => {
+                        return WorkerResponse::Error {
+                            kind: "load_failed".into(),
+                            message: format!("TpQwen3_5ForCausalLM::load: {e:#}"),
+                        };
+                    }
+                }
+            }
+            other => {
                 return WorkerResponse::Error {
-                    kind: "load_failed".into(),
-                    message: format!("TpQwen3ForCausalLM::load: {e:#}"),
+                    kind: "unsupported_arch".into(),
+                    message: format!(
+                        "worker: unsupported model_type '{other}' (supported: qwen3, qwen3_5)"
+                    ),
                 };
             }
         };
 
-        self.models.insert(model_id.clone(), model);
-        tracing::info!(rank = self.config.rank, model = %model_id, "loaded TP shard");
+        self.models.insert(model_id.clone(), loaded);
+        tracing::info!(
+            rank = self.config.rank,
+            model = %model_id,
+            model_type = %model_type,
+            "loaded TP shard"
+        );
         WorkerResponse::LoadDenseShardOk
     }
 
@@ -256,7 +350,7 @@ impl WorkerState {
         if let Err(e) = model.forward(&input, offset) {
             return WorkerResponse::Error {
                 kind: "forward_failed".into(),
-                message: format!("TpQwen3ForCausalLM::forward: {e}"),
+                message: format!("TP forward: {e}"),
             };
         }
         WorkerResponse::GenerateStepOk
