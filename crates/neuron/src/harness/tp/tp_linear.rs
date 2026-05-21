@@ -78,10 +78,20 @@ impl MaybeQuantLinear {
 /// `QMatMul::forward` wins (it operates on quantized blocks directly
 /// and accumulates in registers).
 ///
-/// 8 is conservative: candle's f16 GEMM beats the GGUF GEMV anywhere
-/// the M dim gets non-trivial (>=4 typically), but the dequantize
-/// cost is fixed per call so the crossover is a small constant.
-const QUANT_PREFILL_M_THRESHOLD: usize = 8;
+/// Empirical: at M=30 on Qwen3.6-27B / RTX 5090, forward_via_f16 was
+/// slightly *slower* than the GGUF GEMV kernel — the per-call dequant
+/// cost (~30 MB f16 written to global memory per linear × ~480 calls
+/// per prefill) eats the cuBLAS GEMM speedup at small M. The
+/// crossover where the GEMM scaling actually beats the fixed dequant
+/// tax sits well above M=8.
+///
+/// 64 is a conservative crossover that keeps short-prompt prefills
+/// on the GGUF kernel (where the per-call cost is comparable to the
+/// f16 path but the dequant tax is zero) and only activates the
+/// dequant-then-GEMM path for long prefills where the GEMM size
+/// makes amortising worth it. A proper fix is either a dequant
+/// cache or a fused dequant+gemm cuda kernel — both larger projects.
+const QUANT_PREFILL_M_THRESHOLD: usize = 64;
 
 impl Module for MaybeQuantLinear {
     fn forward(&self, x: &Tensor) -> candle_core::Result<Tensor> {
