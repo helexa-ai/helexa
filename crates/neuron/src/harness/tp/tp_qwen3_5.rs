@@ -247,37 +247,17 @@ impl TpQwen3_5GatedDeltaNet {
         let a = self.in_proj_a.forward(x)?;
 
         // ----- State-aware causal Conv1d + SiLU. -----
-        let prepended = match &self.state.conv_state {
-            Some(prev) => Tensor::cat(&[prev, &mixed_qkv_chw], 2)?,
-            None => mixed_qkv_chw.clone(),
-        };
-        let prep_len = prepended.dims()[2];
-        let new_state = if prep_len >= self.conv_kernel_size {
-            prepended.narrow(2, prep_len - self.conv_kernel_size, self.conv_kernel_size)?
-        } else {
-            let pad = Tensor::zeros(
-                (
-                    batch_size,
-                    self.per_rank_conv_dim,
-                    self.conv_kernel_size - prep_len,
-                ),
-                dtype,
-                &device,
-            )?;
-            Tensor::cat(&[&pad, &prepended], 2)?
-        };
-        self.state.conv_state = Some(new_state);
-
-        let conv_out = prepended.conv1d(
+        // Same shared helper as single-GPU — cuda kernel when available.
+        let (conv_out, new_state) = crate::harness::arch::qwen3_5::linear_attn::run_causal_conv1d(
+            &mixed_qkv_chw,
             &self.conv1d_weight,
-            self.conv_kernel_size - 1,
-            1,
-            1,
+            self.state.conv_state.take(),
+            batch_size,
             self.per_rank_conv_dim,
+            seq_len,
+            self.conv_kernel_size,
         )?;
-        let conv_out = conv_out.narrow(2, 0, prep_len)?;
-        let conv_out = candle_nn::ops::silu(&conv_out)?;
-        let conv_out = conv_out.narrow(2, prep_len - seq_len, seq_len)?;
+        self.state.conv_state = Some(new_state);
         let mixed_qkv = conv_out.transpose(1, 2)?.contiguous()?;
 
         // ----- Split into q, k, v (per-rank head counts). -----
