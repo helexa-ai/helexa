@@ -344,15 +344,36 @@ impl WorkerState {
                 };
             }
         };
+        let start = std::time::Instant::now();
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            tokens = tokens.len(),
+            offset,
+            "worker GenerateStep: forward starting"
+        );
         // Drop the resulting logits — the leader uses its own copy from
         // rank 0. The forward's value here is the NCCL collectives it
         // issues, which let the leader's rank-0 forward make progress.
         if let Err(e) = model.forward(&input, offset) {
+            tracing::warn!(
+                rank = self.config.rank,
+                model = %model_id,
+                elapsed_ms = start.elapsed().as_millis(),
+                error = %e,
+                "worker GenerateStep: forward failed"
+            );
             return WorkerResponse::Error {
                 kind: "forward_failed".into(),
                 message: format!("TP forward: {e}"),
             };
         }
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            elapsed_ms = start.elapsed().as_millis(),
+            "worker GenerateStep: forward done"
+        );
         WorkerResponse::GenerateStepOk
     }
 

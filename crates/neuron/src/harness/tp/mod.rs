@@ -604,6 +604,14 @@ impl WorkerPool {
         tokens: Vec<u32>,
         offset: usize,
     ) -> Result<candle_core::Tensor> {
+        let step_start = std::time::Instant::now();
+        let tokens_len = tokens.len();
+        tracing::debug!(
+            model = %model_id,
+            tokens = tokens_len,
+            offset,
+            "WorkerPool::generate_step: fan-out"
+        );
         // 1. Fan-out to workers.
         for w in &mut self.workers {
             w.send_only(&WorkerRequest::GenerateStep {
@@ -617,6 +625,7 @@ impl WorkerPool {
         // 2. Leader's forward in spawn_blocking. The AllReduce CustomOps
         //    inside the row-parallel layers block until every worker's
         //    forward issues the matching collective.
+        let leader_start = std::time::Instant::now();
         let leader_result = tokio::task::spawn_blocking(move || -> Result<candle_core::Tensor> {
             let mut model = leader_model.blocking_lock();
             let device = model.device().clone();
@@ -628,6 +637,14 @@ impl WorkerPool {
         })
         .await
         .context("leader forward task panicked");
+        let leader_ok = matches!(leader_result, Ok(Ok(_)));
+        tracing::debug!(
+            model = %model_id,
+            tokens = tokens_len,
+            leader_ms = leader_start.elapsed().as_millis(),
+            leader_ok,
+            "WorkerPool::generate_step: leader forward returned"
+        );
 
         // 3. ALWAYS drain worker responses, regardless of whether the
         //    leader succeeded. Skipping this on the leader's error
@@ -635,12 +652,20 @@ impl WorkerPool {
         //    pipes that poison the NEXT request's recv (was seeing
         //    "ClearKvCache: expected KvCacheCleared, got
         //    GenerateStepOk" the call after any forward-time failure).
+        let drain_start = std::time::Instant::now();
         let worker_errors = drain_workers(&mut self.workers, |r| match r {
             WorkerResponse::GenerateStepOk => Ok(()),
             WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
             other => Err(format!("expected GenerateStepOk, got {other:?}")),
         })
         .await;
+        tracing::debug!(
+            model = %model_id,
+            drain_ms = drain_start.elapsed().as_millis(),
+            errors = worker_errors.len(),
+            total_ms = step_start.elapsed().as_millis(),
+            "WorkerPool::generate_step: workers drained"
+        );
 
         combine_leader_workers(leader_result, worker_errors, "GenerateStep")
     }
@@ -653,6 +678,8 @@ impl WorkerPool {
         model_id: &str,
         #[cfg(feature = "cuda")] leader_model: std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>,
     ) -> Result<()> {
+        let start = std::time::Instant::now();
+        tracing::debug!(model = %model_id, "WorkerPool::clear_kv_cache: fan-out");
         for w in &mut self.workers {
             w.send_only(&WorkerRequest::ClearKvCache {
                 model_id: model_id.to_string(),
@@ -674,6 +701,12 @@ impl WorkerPool {
             other => Err(format!("expected KvCacheCleared, got {other:?}")),
         })
         .await;
+        tracing::debug!(
+            model = %model_id,
+            elapsed_ms = start.elapsed().as_millis(),
+            errors = worker_errors.len(),
+            "WorkerPool::clear_kv_cache: workers drained"
+        );
         if !worker_errors.is_empty() {
             anyhow::bail!("ClearKvCache: {}", worker_errors.join("; "));
         }
