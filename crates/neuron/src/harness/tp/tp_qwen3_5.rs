@@ -31,6 +31,7 @@
 //! linear-attention block, lm_head, the rotary table.
 
 use anyhow::{Context, Result, bail};
+use candle_core::quantized::GgmlDType;
 use candle_core::safetensors::MmapedSafetensors;
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
@@ -59,7 +60,7 @@ pub struct TpGatedDeltaNetState {
 }
 
 pub(crate) struct TpQwen3_5GatedDeltaNet {
-    in_proj_qkv: Linear,
+    in_proj_qkv: super::tp_linear::MaybeQuantLinear,
     in_proj_z: ColumnParallelLinear,
     in_proj_b: ColumnParallelLinear,
     in_proj_a: ColumnParallelLinear,
@@ -92,6 +93,7 @@ pub(crate) struct TpQwen3_5GatedDeltaNet {
 
 impl TpQwen3_5GatedDeltaNet {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
@@ -99,8 +101,9 @@ impl TpQwen3_5GatedDeltaNet {
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
-        Self::load_inner(cfg, vb, mmap, rank, world_size, comm)
+        Self::load_inner(cfg, vb, mmap, rank, world_size, comm, quant)
     }
 
     #[cfg(not(feature = "cuda"))]
@@ -110,10 +113,12 @@ impl TpQwen3_5GatedDeltaNet {
         mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
-        Self::load_inner(cfg, vb, mmap, rank, world_size)
+        Self::load_inner(cfg, vb, mmap, rank, world_size, quant)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn load_inner(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
@@ -121,6 +126,7 @@ impl TpQwen3_5GatedDeltaNet {
         rank: u32,
         world_size: u32,
         #[cfg(feature = "cuda")] comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let ws = world_size as usize;
         let num_v_heads = cfg.linear_num_value_heads;
@@ -177,7 +183,9 @@ impl TpQwen3_5GatedDeltaNet {
             dtype,
             &device,
         )?;
-        let in_proj_qkv = Linear::new(in_proj_qkv_weight, None);
+        let in_proj_qkv =
+            super::tp_linear::MaybeQuantLinear::from_weight(in_proj_qkv_weight, quant)
+                .with_context(|| format!("wrap fused in_proj_qkv for '{}'", vb.prefix()))?;
 
         let conv1d_name = format!("{}.conv1d.weight", vb.prefix());
         let conv1d_weight = super::fused_load::load_fused_qkv_3d(
@@ -195,10 +203,13 @@ impl TpQwen3_5GatedDeltaNet {
 
         // ----- Uniformly-sharded projections (along output dim 0). -----
         // in_proj_z: hidden → value_dim, sharded along value_dim (V-head).
-        let in_proj_z = ColumnParallelLinear::load(&vb.pp("in_proj_z"), rank, world_size)?;
+        let in_proj_z =
+            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_z"), rank, world_size, quant)?;
         // in_proj_b, in_proj_a: hidden → num_v_heads, sharded along output.
-        let in_proj_b = ColumnParallelLinear::load(&vb.pp("in_proj_b"), rank, world_size)?;
-        let in_proj_a = ColumnParallelLinear::load(&vb.pp("in_proj_a"), rank, world_size)?;
+        let in_proj_b =
+            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_b"), rank, world_size, quant)?;
+        let in_proj_a =
+            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_a"), rank, world_size, quant)?;
 
         // ----- Per-V-head 1D params (sharded uniformly). -----
         let a_log = vb
@@ -213,9 +224,11 @@ impl TpQwen3_5GatedDeltaNet {
 
         // ----- Output projection: row-parallel + AllReduce. -----
         #[cfg(feature = "cuda")]
-        let out_proj = RowParallelLinear::load(&vb.pp("out_proj"), rank, world_size, comm)?;
+        let out_proj =
+            RowParallelLinear::load_with_quant(&vb.pp("out_proj"), rank, world_size, comm, quant)?;
         #[cfg(not(feature = "cuda"))]
-        let out_proj = RowParallelLinear::load(&vb.pp("out_proj"), rank, world_size)?;
+        let out_proj =
+            RowParallelLinear::load_with_quant(&vb.pp("out_proj"), rank, world_size, quant)?;
 
         Ok(Self {
             in_proj_qkv,
@@ -418,6 +431,7 @@ pub(crate) struct TpQwen3_5Attention {
 
 impl TpQwen3_5Attention {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
@@ -425,8 +439,9 @@ impl TpQwen3_5Attention {
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
-        Self::load_inner(cfg, rotary, vb, rank, world_size, comm)
+        Self::load_inner(cfg, rotary, vb, rank, world_size, comm, quant)
     }
 
     #[cfg(not(feature = "cuda"))]
@@ -436,10 +451,12 @@ impl TpQwen3_5Attention {
         vb: &ShardedVarBuilder,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
-        Self::load_inner(cfg, rotary, vb, rank, world_size)
+        Self::load_inner(cfg, rotary, vb, rank, world_size, quant)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn load_inner(
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
@@ -447,6 +464,7 @@ impl TpQwen3_5Attention {
         rank: u32,
         world_size: u32,
         #[cfg(feature = "cuda")] comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let ws = world_size as usize;
         let num_heads = cfg.num_attention_heads;
@@ -468,13 +486,17 @@ impl TpQwen3_5Attention {
         // consistently — rank R holds heads `[R*per_rank, (R+1)*per_rank)`
         // for both query AND gate, so the post-attention `gate.sigmoid()`
         // multiply against the per-rank attention output matches up.
-        let q_proj = ColumnParallelLinear::load(&vb.pp("q_proj"), rank, world_size)?;
-        let k_proj = ColumnParallelLinear::load(&vb.pp("k_proj"), rank, world_size)?;
-        let v_proj = ColumnParallelLinear::load(&vb.pp("v_proj"), rank, world_size)?;
+        let q_proj =
+            ColumnParallelLinear::load_with_quant(&vb.pp("q_proj"), rank, world_size, quant)?;
+        let k_proj =
+            ColumnParallelLinear::load_with_quant(&vb.pp("k_proj"), rank, world_size, quant)?;
+        let v_proj =
+            ColumnParallelLinear::load_with_quant(&vb.pp("v_proj"), rank, world_size, quant)?;
         #[cfg(feature = "cuda")]
-        let o_proj = RowParallelLinear::load(&vb.pp("o_proj"), rank, world_size, comm)?;
+        let o_proj =
+            RowParallelLinear::load_with_quant(&vb.pp("o_proj"), rank, world_size, comm, quant)?;
         #[cfg(not(feature = "cuda"))]
-        let o_proj = RowParallelLinear::load(&vb.pp("o_proj"), rank, world_size)?;
+        let o_proj = RowParallelLinear::load_with_quant(&vb.pp("o_proj"), rank, world_size, quant)?;
 
         let q_norm = Qwen3_5RmsNorm::load(&vb.pp("q_norm"), head_dim, cfg.rms_norm_eps)?;
         let k_norm = Qwen3_5RmsNorm::load(&vb.pp("k_norm"), head_dim, cfg.rms_norm_eps)?;
@@ -572,12 +594,14 @@ pub(crate) struct TpQwen3_5MLP {
 
 impl TpQwen3_5MLP {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         if !cfg.intermediate_size.is_multiple_of(world_size as usize) {
             bail!(
@@ -587,9 +611,25 @@ impl TpQwen3_5MLP {
             );
         }
         Ok(Self {
-            gate_proj: ColumnParallelLinear::load(&vb.pp("gate_proj"), rank, world_size)?,
-            up_proj: ColumnParallelLinear::load(&vb.pp("up_proj"), rank, world_size)?,
-            down_proj: RowParallelLinear::load(&vb.pp("down_proj"), rank, world_size, comm)?,
+            gate_proj: ColumnParallelLinear::load_with_quant(
+                &vb.pp("gate_proj"),
+                rank,
+                world_size,
+                quant,
+            )?,
+            up_proj: ColumnParallelLinear::load_with_quant(
+                &vb.pp("up_proj"),
+                rank,
+                world_size,
+                quant,
+            )?,
+            down_proj: RowParallelLinear::load_with_quant(
+                &vb.pp("down_proj"),
+                rank,
+                world_size,
+                comm,
+                quant,
+            )?,
         })
     }
 
@@ -599,6 +639,7 @@ impl TpQwen3_5MLP {
         vb: &ShardedVarBuilder,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         if !cfg.intermediate_size.is_multiple_of(world_size as usize) {
             bail!(
@@ -608,9 +649,24 @@ impl TpQwen3_5MLP {
             );
         }
         Ok(Self {
-            gate_proj: ColumnParallelLinear::load(&vb.pp("gate_proj"), rank, world_size)?,
-            up_proj: ColumnParallelLinear::load(&vb.pp("up_proj"), rank, world_size)?,
-            down_proj: RowParallelLinear::load(&vb.pp("down_proj"), rank, world_size)?,
+            gate_proj: ColumnParallelLinear::load_with_quant(
+                &vb.pp("gate_proj"),
+                rank,
+                world_size,
+                quant,
+            )?,
+            up_proj: ColumnParallelLinear::load_with_quant(
+                &vb.pp("up_proj"),
+                rank,
+                world_size,
+                quant,
+            )?,
+            down_proj: RowParallelLinear::load_with_quant(
+                &vb.pp("down_proj"),
+                rank,
+                world_size,
+                quant,
+            )?,
         })
     }
 }
@@ -649,6 +705,7 @@ impl TpQwen3_5DecoderLayer {
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let layer_type = cfg
             .layer_types
@@ -663,6 +720,7 @@ impl TpQwen3_5DecoderLayer {
                 rank,
                 world_size,
                 comm.clone(),
+                quant,
             )?),
             "linear_attention" => TpAttentionKind::Linear(TpQwen3_5GatedDeltaNet::load(
                 cfg,
@@ -671,10 +729,11 @@ impl TpQwen3_5DecoderLayer {
                 rank,
                 world_size,
                 comm.clone(),
+                quant,
             )?),
             other => bail!("unknown layer_type '{other}' for layer {layer_idx}"),
         };
-        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size, comm)?;
+        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size, comm, quant)?;
         let input_layernorm =
             Qwen3_5RmsNorm::load(&vb.pp("input_layernorm"), cfg.hidden_size, cfg.rms_norm_eps)?;
         let post_attention_layernorm = Qwen3_5RmsNorm::load(
@@ -691,6 +750,7 @@ impl TpQwen3_5DecoderLayer {
     }
 
     #[cfg(not(feature = "cuda"))]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
@@ -699,6 +759,7 @@ impl TpQwen3_5DecoderLayer {
         mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let layer_type = cfg
             .layer_types
@@ -712,6 +773,7 @@ impl TpQwen3_5DecoderLayer {
                 &vb.pp("self_attn"),
                 rank,
                 world_size,
+                quant,
             )?),
             "linear_attention" => TpAttentionKind::Linear(TpQwen3_5GatedDeltaNet::load(
                 cfg,
@@ -719,10 +781,11 @@ impl TpQwen3_5DecoderLayer {
                 mmap,
                 rank,
                 world_size,
+                quant,
             )?),
             other => bail!("unknown layer_type '{other}' for layer {layer_idx}"),
         };
-        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size)?;
+        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size, quant)?;
         let input_layernorm =
             Qwen3_5RmsNorm::load(&vb.pp("input_layernorm"), cfg.hidden_size, cfg.rms_norm_eps)?;
         let post_attention_layernorm = Qwen3_5RmsNorm::load(
@@ -775,6 +838,7 @@ pub struct TpQwen3_5Model {
 
 impl TpQwen3_5Model {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
@@ -782,6 +846,7 @@ impl TpQwen3_5Model {
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let dtype = vb.dtype();
         let device = vb.device().clone();
@@ -817,6 +882,7 @@ impl TpQwen3_5Model {
                 rank,
                 world_size,
                 comm.clone(),
+                quant,
             )
             .with_context(|| {
                 let (free_mb, total_mb) = cuda_mem_mb(&device);
@@ -844,6 +910,7 @@ impl TpQwen3_5Model {
         mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let dtype = vb.dtype();
         let device = vb.device().clone();
@@ -877,6 +944,7 @@ impl TpQwen3_5Model {
                 mmap,
                 rank,
                 world_size,
+                quant,
             )?);
         }
 
@@ -931,6 +999,7 @@ pub struct TpQwen3_5ForCausalLM {
 
 impl TpQwen3_5ForCausalLM {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         config: Config,
         vb: &ShardedVarBuilder,
@@ -938,9 +1007,10 @@ impl TpQwen3_5ForCausalLM {
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm)?;
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm, quant)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
         Ok(Self { base, lm_head })
     }
@@ -952,9 +1022,10 @@ impl TpQwen3_5ForCausalLM {
         mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size)?;
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, quant)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
         Ok(Self { base, lm_head })
     }

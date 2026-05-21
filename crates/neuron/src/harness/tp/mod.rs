@@ -474,6 +474,7 @@ impl WorkerPool {
     /// `init_nccl` must have completed first. Bails if the leader's
     /// NCCL comm isn't set up yet.
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub async fn load_dense_shard(
         &mut self,
         model_id: &str,
@@ -481,6 +482,7 @@ impl WorkerPool {
         safetensors_paths: &[std::path::PathBuf],
         leader_device: &candle_core::Device,
         dtype: candle_core::DType,
+        quant: Option<String>,
     ) -> Result<std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>> {
         use candle_nn::var_builder::ShardedSafeTensors;
         use std::sync::Arc;
@@ -510,6 +512,7 @@ impl WorkerPool {
                 model_id: model_id.to_string(),
                 config_json: config_json.to_string(),
                 safetensors_paths: safetensors_str.clone(),
+                quant: quant.clone(),
             })
             .await?;
         }
@@ -531,6 +534,7 @@ impl WorkerPool {
         let comm_for_leader = leader_comm;
         let model_id_for_log = model_id.to_string();
         let config_json_for_leader = config_json.to_string();
+        let quant_for_leader = quant.clone();
 
         let leader_model = tokio::task::spawn_blocking(move || -> Result<TpLeaderModel> {
             // SAFETY: same invariant as the single-GPU dense path —
@@ -558,8 +562,16 @@ impl WorkerPool {
                     let cfg: super::tp::tp_qwen3_5::Config =
                         serde_json::from_str(&config_json_for_leader)
                             .context("parse Qwen3-Next Config JSON for leader load")?;
+                    let quant_dtype =
+                        super::tp::worker::parse_quant_string(quant_for_leader.as_deref())?;
                     TpLeaderModel::Qwen3_5(super::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
-                        cfg, &vb, &mmap, 0, world_size, comm,
+                        cfg,
+                        &vb,
+                        &mmap,
+                        0,
+                        world_size,
+                        comm,
+                        quant_dtype,
                     )?)
                 }
                 other => anyhow::bail!(

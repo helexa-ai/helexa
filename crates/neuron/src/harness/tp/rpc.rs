@@ -63,6 +63,13 @@ pub enum WorkerRequest {
         /// Absolute paths the worker should mmap. The same set on every
         /// rank; ShardedVarBuilder slices into them per rank.
         safetensors_paths: Vec<String>,
+        /// Optional in-situ quantization dtype (e.g. "q5k", "q8_0",
+        /// "q6k"). When set, each linear-layer weight is quantized
+        /// at load time to the named ggml format — saves ~3-5x vs
+        /// bf16/f16 at the cost of some accuracy. `None` keeps the
+        /// weights in the on-disk dtype (typically bf16).
+        #[serde(default)]
+        quant: Option<String>,
     },
 
     /// Run one forward step on this rank's loaded model. The worker

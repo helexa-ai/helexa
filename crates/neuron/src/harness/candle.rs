@@ -1141,6 +1141,7 @@ impl CandleHarness {
                 &safetensors_paths,
                 &leader_device,
                 candle_core::DType::BF16,
+                spec.quant.clone(),
             )
             .await?;
 
