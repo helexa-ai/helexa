@@ -1,5 +1,6 @@
 pub mod api;
 pub mod config;
+pub mod cuda;
 pub mod discovery;
 pub mod harness;
 pub mod health;

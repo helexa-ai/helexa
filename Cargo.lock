@@ -2113,6 +2113,7 @@ dependencies = [
  "candle-transformers",
  "clap",
  "cortex-core",
+ "cudaforge",
  "cudarc 0.19.7",
  "figment",
  "futures",
