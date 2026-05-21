@@ -41,7 +41,7 @@ use std::sync::Arc;
 use cudarc::nccl::Comm;
 
 use super::tp_linear::{ColumnParallelLinear, RowParallelLinear};
-use crate::harness::arch::qwen3_5::linear_attn::{repeat_interleave, softplus};
+use crate::harness::arch::qwen3_5::linear_attn::repeat_interleave;
 use crate::harness::arch::qwen3_5::rmsnorm::{Qwen3_5RmsNorm, Qwen3_5RmsNormGated, l2norm};
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
 pub use crate::harness::arch::qwen3_5::{Config, TextConfig};
@@ -285,15 +285,14 @@ impl TpQwen3_5GatedDeltaNet {
         ))?;
 
         // ----- beta + g (per-V-head, per-token). -----
-        let beta = candle_nn::ops::sigmoid(&b)?;
-        let a_log_f32 = self.a_log.to_dtype(DType::F32)?;
-        let neg_a_exp = a_log_f32.exp()?.neg()?; // (per_rank_num_v_heads,)
-        let dt_b_f32 = self.dt_bias.to_dtype(DType::F32)?;
-        let a_f32 = a.to_dtype(DType::F32)?;
-        let a_plus_dt = a_f32.broadcast_add(&dt_b_f32)?;
-        let softplus_a = softplus(&a_plus_dt)?;
-        let neg_a_exp_b = neg_a_exp.unsqueeze(0)?.unsqueeze(0)?;
-        let g = neg_a_exp_b.broadcast_mul(&softplus_a)?; // F32
+        // Same fused gating helper as single-GPU — cuda kernel when
+        // available, per-op Rust fallback otherwise.
+        let (beta, g) = crate::harness::arch::qwen3_5::linear_attn::run_fused_gating(
+            &b,
+            &a,
+            &self.a_log,
+            &self.dt_bias,
+        )?;
 
         // ----- GQA expansion if per-rank ratio > 1. -----
         let (q, k) = if self.per_rank_num_v_heads > self.per_rank_num_k_heads {
@@ -321,6 +320,7 @@ impl TpQwen3_5GatedDeltaNet {
         let q = (q.to_dtype(DType::F32)? * scale)?;
         let k = k.to_dtype(DType::F32)?;
         let v = v.to_dtype(DType::F32)?;
+        let g = g.to_dtype(DType::F32)?;
         let beta = beta.to_dtype(DType::F32)?;
 
         let state_init = match self.state.recurrent_state.take() {
