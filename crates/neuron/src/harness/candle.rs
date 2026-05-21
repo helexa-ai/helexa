@@ -1091,13 +1091,13 @@ impl CandleHarness {
                 devices.len()
             );
         }
-        if spec.quant.is_some() {
-            anyhow::bail!(
-                "tensor_parallel={tp_size} with quant={:?}: GGUF quantized models \
-                 are not supported in the TP path; use a dense safetensors source",
-                spec.quant
-            );
-        }
+        // `quant` on the TP path now means in-situ quantization (ISQ):
+        // load safetensors, quantize the per-rank shard to the named
+        // GgmlDType at load time. The worker's parse_quant_string
+        // accepts the same names (q5k, q8_0, etc.) as the single-GPU
+        // path. GGUF-source-file models still aren't TP-loadable, but
+        // resolve_dense_files only looks for safetensors so that path
+        // errors out cleanly later if no safetensors are present.
 
         // 1. Resolve config + tokenizer + safetensors via hf-hub.
         let (config_path, tokenizer_path, safetensors_paths) =

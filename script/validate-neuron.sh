@@ -91,32 +91,26 @@ trigger_load() {
     fi
     say "POST /models/load ${MODEL_ID} (quant=${QUANT:-<dense>}, tp=${TP_SIZE}, devices=${devices_json})"
     say "  (synchronous; may take a minute on first run while HF downloads)"
-    if (( TP_SIZE > 1 )) && [[ -n "${QUANT}" ]]; then
-        die "tp_size>1 requires dense safetensors — pass quant='' as the 3rd argument"
-    fi
-    # Build the payload via jq so the optional `quant` and
-    # `tensor_parallel` fields are omitted entirely when not in use —
-    # that's how the harness tells dense from quantized and single-GPU
-    # from TP.
+    # Build the payload via jq so optional fields are omitted entirely
+    # when not in use. `tensor_parallel` is dropped when tp_size == 1;
+    # `quant` is dropped when empty. Both can coexist: tp_size > 1 +
+    # ISQ quant (q5k/q8_0/etc.) loads safetensors and quantizes the
+    # per-rank shard at load time. GGUF quants (Q4_K_M) are incompatible
+    # with TP — but the harness rejects that combination at load time
+    # rather than here.
     local payload
-    if [[ -z "${QUANT}" ]] && (( TP_SIZE > 1 )); then
-        payload=$(jq -n -c \
-            --arg id "${MODEL_ID}" \
-            --argjson tp "${TP_SIZE}" \
-            --argjson devices "${devices_json}" \
-            '{model_id: $id, harness: "candle", tensor_parallel: $tp, devices: $devices}')
-    elif [[ -z "${QUANT}" ]]; then
-        payload=$(jq -n -c \
-            --arg id "${MODEL_ID}" \
-            --argjson devices "${devices_json}" \
-            '{model_id: $id, harness: "candle", devices: $devices}')
-    else
-        payload=$(jq -n -c \
-            --arg id "${MODEL_ID}" \
-            --arg q "${QUANT}" \
-            --argjson devices "${devices_json}" \
-            '{model_id: $id, harness: "candle", quant: $q, devices: $devices}')
+    local base
+    base=$(jq -n -c \
+        --arg id "${MODEL_ID}" \
+        --argjson devices "${devices_json}" \
+        '{model_id: $id, harness: "candle", devices: $devices}')
+    if [[ -n "${QUANT}" ]]; then
+        base=$(echo "${base}" | jq -c --arg q "${QUANT}" '. + {quant: $q}')
     fi
+    if (( TP_SIZE > 1 )); then
+        base=$(echo "${base}" | jq -c --argjson tp "${TP_SIZE}" '. + {tensor_parallel: $tp}')
+    fi
+    payload="${base}"
     # --write-out captures the response code on a separate line so we
     # can surface a real diagnostic instead of relying on --fail.
     local resp http_code body
