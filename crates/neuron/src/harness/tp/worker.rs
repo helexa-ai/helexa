@@ -232,6 +232,19 @@ impl WorkerState {
                 };
             }
         };
+        // Separate mmap of the same paths for the direct fused-region
+        // loader in `fused_load`. Linux's page cache shares the
+        // underlying pages between the two mmaps; the cost is one
+        // extra set of safetensors-header parses.
+        let mmap = match unsafe { candle_core::safetensors::MmapedSafetensors::multi(&paths) } {
+            Ok(m) => m,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "load_failed".into(),
+                    message: format!("MmapedSafetensors::multi: {e}"),
+                };
+            }
+        };
 
         let loaded = match model_type.as_str() {
             "qwen3" => {
@@ -273,6 +286,7 @@ impl WorkerState {
                 match TpQwen3_5ForCausalLM::load(
                     cfg,
                     &vb,
+                    &mmap,
                     self.config.rank,
                     self.config.world_size,
                     comm,

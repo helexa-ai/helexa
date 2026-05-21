@@ -18,6 +18,7 @@
 //! - **7c:** crash detection, streaming SSE, graceful unload.
 
 pub mod all_reduce;
+pub mod fused_load;
 pub mod nccl_state;
 pub mod rpc;
 pub mod tp_linear;
@@ -539,6 +540,11 @@ impl WorkerPool {
                 ShardedSafeTensors::var_builder(&paths_for_leader, dtype, &device_for_leader)
                     .context("build ShardedVarBuilder over safetensors")?
             };
+            // SAFETY: as above — the HF cache files are immutable.
+            let mmap = unsafe {
+                candle_core::safetensors::MmapedSafetensors::multi(&paths_for_leader)
+                    .context("build MmapedSafetensors for leader load")?
+            };
             let comm = comm_for_leader.into_inner();
             let loaded = match model_type.as_str() {
                 "qwen3" => {
@@ -553,7 +559,7 @@ impl WorkerPool {
                         serde_json::from_str(&config_json_for_leader)
                             .context("parse Qwen3-Next Config JSON for leader load")?;
                     TpLeaderModel::Qwen3_5(super::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
-                        cfg, &vb, 0, world_size, comm,
+                        cfg, &vb, &mmap, 0, world_size, comm,
                     )?)
                 }
                 other => anyhow::bail!(

@@ -76,6 +76,11 @@ cudarc = { version = "0.19", optional = true, default-features = false, features
 half = { version = "2.5", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.4", features = ["tokio"] }
+# Direct dep on `safetensors` (re-exported by candle but its `TensorView`
+# / `slice::IndexOp` types are public-but-not-re-exported). Used by the
+# tp `fused_load` module to read per-rank slices of fused QKV tensors
+# without materialising the full tensor on device.
+safetensors = "0.7"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

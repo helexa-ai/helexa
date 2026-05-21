@@ -31,6 +31,7 @@
 //! linear-attention block, lm_head, the rotary table.
 
 use anyhow::{Context, Result, bail};
+use candle_core::safetensors::MmapedSafetensors;
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
 use candle_nn::{Embedding, Linear, kv_cache::ConcatKvCache};
@@ -94,26 +95,29 @@ impl TpQwen3_5GatedDeltaNet {
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
     ) -> Result<Self> {
-        Self::load_inner(cfg, vb, rank, world_size, comm)
+        Self::load_inner(cfg, vb, mmap, rank, world_size, comm)
     }
 
     #[cfg(not(feature = "cuda"))]
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
     ) -> Result<Self> {
-        Self::load_inner(cfg, vb, rank, world_size)
+        Self::load_inner(cfg, vb, mmap, rank, world_size)
     }
 
     fn load_inner(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
         #[cfg(feature = "cuda")] comm: Arc<Comm>,
@@ -150,29 +154,43 @@ impl TpQwen3_5GatedDeltaNet {
 
         let key_dim = head_k_dim * num_k_heads;
         let value_dim = head_v_dim * num_v_heads;
-        let conv_dim = key_dim * 2 + value_dim;
+        let _conv_dim = key_dim * 2 + value_dim;
         let hidden_size = cfg.hidden_size;
 
-        // ----- Fused `in_proj_qkv` and `conv1d` (per-region slicing). -----
-        let in_proj_qkv_weight = load_fused_qkv_slice_2d(
-            vb,
-            "in_proj_qkv",
-            conv_dim,
+        // ----- Fused `in_proj_qkv` and `conv1d` (direct safetensors slicing).
+        // Reads only this rank's per-region byte slices from the mmap
+        // and uploads as one device allocation per fused tensor — no
+        // full-fused-tensor device materialisation, which on the prior
+        // narrow+cat approach was the main allocator-fragmentation
+        // source on consumer GPUs near their VRAM ceiling.
+        let dtype = vb.dtype();
+        let device = vb.device().clone();
+        let in_proj_qkv_name = format!("{}.in_proj_qkv.weight", vb.prefix());
+        let in_proj_qkv_weight = super::fused_load::load_fused_qkv_2d(
+            mmap,
+            &in_proj_qkv_name,
             hidden_size,
             key_dim,
             value_dim,
             rank,
             world_size,
+            dtype,
+            &device,
         )?;
         let in_proj_qkv = Linear::new(in_proj_qkv_weight, None);
 
-        let conv1d_weight = load_fused_qkv_slice_3d(
-            &vb.pp("conv1d"),
-            (conv_dim, 1, conv_kernel_size),
+        let conv1d_name = format!("{}.conv1d.weight", vb.prefix());
+        let conv1d_weight = super::fused_load::load_fused_qkv_3d(
+            mmap,
+            &conv1d_name,
+            1,
+            conv_kernel_size,
             key_dim,
             value_dim,
             rank,
             world_size,
+            dtype,
+            &device,
         )?;
 
         // ----- Uniformly-sharded projections (along output dim 0). -----
@@ -621,11 +639,13 @@ pub struct TpQwen3_5DecoderLayer {
 
 impl TpQwen3_5DecoderLayer {
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub fn load(
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
         layer_idx: usize,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
@@ -647,6 +667,7 @@ impl TpQwen3_5DecoderLayer {
             "linear_attention" => TpAttentionKind::Linear(TpQwen3_5GatedDeltaNet::load(
                 cfg,
                 &vb.pp("linear_attn"),
+                mmap,
                 rank,
                 world_size,
                 comm.clone(),
@@ -675,6 +696,7 @@ impl TpQwen3_5DecoderLayer {
         rotary: Arc<RotaryEmbedding>,
         layer_idx: usize,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
     ) -> Result<Self> {
@@ -694,6 +716,7 @@ impl TpQwen3_5DecoderLayer {
             "linear_attention" => TpAttentionKind::Linear(TpQwen3_5GatedDeltaNet::load(
                 cfg,
                 &vb.pp("linear_attn"),
+                mmap,
                 rank,
                 world_size,
             )?),
@@ -755,6 +778,7 @@ impl TpQwen3_5Model {
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
@@ -789,6 +813,7 @@ impl TpQwen3_5Model {
                 rotary.clone(),
                 i,
                 &vb_l.pp(i),
+                mmap,
                 rank,
                 world_size,
                 comm.clone(),
@@ -816,6 +841,7 @@ impl TpQwen3_5Model {
     pub fn load(
         cfg: &TextConfig,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
     ) -> Result<Self> {
@@ -848,6 +874,7 @@ impl TpQwen3_5Model {
                 rotary.clone(),
                 i,
                 &vb_l.pp(i),
+                mmap,
                 rank,
                 world_size,
             )?);
@@ -907,12 +934,13 @@ impl TpQwen3_5ForCausalLM {
     pub fn load(
         config: Config,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
         comm: Arc<Comm>,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, rank, world_size, comm)?;
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
         Ok(Self { base, lm_head })
     }
@@ -921,11 +949,12 @@ impl TpQwen3_5ForCausalLM {
     pub fn load(
         config: Config,
         vb: &ShardedVarBuilder,
+        mmap: &MmapedSafetensors,
         rank: u32,
         world_size: u32,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, rank, world_size)?;
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
         Ok(Self { base, lm_head })
     }
@@ -976,89 +1005,6 @@ fn load_replicated<S: Into<candle_core::Shape>>(
 ) -> Result<Tensor> {
     vb.get(shape, name)
         .with_context(|| format!("load replicated '{}/{name}'", vb.prefix()))
-}
-
-/// Load a fused QKV-style 2D weight tensor that stores three regions
-/// sequentially along dim 0: `[first key_dim, second key_dim, value_dim]`.
-/// Returns the per-rank slice formed by extracting the rank's share
-/// from each region and concatenating along dim 0.
-///
-/// The full tensor materialises briefly on the device before the
-/// slices are extracted (`narrow` views + `contiguous` copy). Memory
-/// peak is one full-tensor load per layer during construction; only
-/// the per-rank concatenation stays after `full` drops.
-#[allow(clippy::too_many_arguments)]
-fn load_fused_qkv_slice_2d(
-    vb: &ShardedVarBuilder,
-    name: &str,
-    conv_dim: usize,
-    hidden_size: usize,
-    key_dim: usize,
-    value_dim: usize,
-    rank: u32,
-    world_size: u32,
-) -> Result<Tensor> {
-    let ws = world_size as usize;
-    let r = rank as usize;
-    if !key_dim.is_multiple_of(ws) || !value_dim.is_multiple_of(ws) {
-        bail!(
-            "fused qkv shard: key_dim ({key_dim}) and value_dim ({value_dim}) \
-             must each be divisible by world_size ({ws})"
-        );
-    }
-    let per_rank_key = key_dim / ws;
-    let per_rank_value = value_dim / ws;
-
-    // Force full-tensor load via `vb.get`, which defaults to
-    // `Shard { world_size: 1 }` and falls through to SimpleBackend.
-    let full = vb
-        .pp(name)
-        .get((conv_dim, hidden_size), "weight")
-        .with_context(|| format!("load fused qkv '{}/{}/weight'", vb.prefix(), name))?;
-
-    let q = full.narrow(0, r * per_rank_key, per_rank_key)?;
-    let k = full.narrow(0, key_dim + r * per_rank_key, per_rank_key)?;
-    let v = full.narrow(0, 2 * key_dim + r * per_rank_value, per_rank_value)?;
-
-    Tensor::cat(&[&q, &k, &v], 0)?
-        .contiguous()
-        .with_context(|| format!("materialise fused qkv slice for rank {r}"))
-}
-
-/// Same per-region slicing pattern for a 3D fused tensor (the depthwise
-/// `conv1d.weight` of the linear-attention block: shape
-/// `(conv_dim, 1, kernel_size)`).
-fn load_fused_qkv_slice_3d(
-    vb: &ShardedVarBuilder,
-    shape: (usize, usize, usize),
-    key_dim: usize,
-    value_dim: usize,
-    rank: u32,
-    world_size: u32,
-) -> Result<Tensor> {
-    let (conv_dim, mid, kernel_size) = shape;
-    let ws = world_size as usize;
-    let r = rank as usize;
-    if !key_dim.is_multiple_of(ws) || !value_dim.is_multiple_of(ws) {
-        bail!(
-            "fused conv shard: key_dim ({key_dim}) and value_dim ({value_dim}) \
-             must each be divisible by world_size ({ws})"
-        );
-    }
-    let per_rank_key = key_dim / ws;
-    let per_rank_value = value_dim / ws;
-
-    let full = vb
-        .get((conv_dim, mid, kernel_size), "weight")
-        .with_context(|| format!("load fused conv '{}/weight'", vb.prefix()))?;
-
-    let q = full.narrow(0, r * per_rank_key, per_rank_key)?;
-    let k = full.narrow(0, key_dim + r * per_rank_key, per_rank_key)?;
-    let v = full.narrow(0, 2 * key_dim + r * per_rank_value, per_rank_value)?;
-
-    Tensor::cat(&[&q, &k, &v], 0)?
-        .contiguous()
-        .with_context(|| format!("materialise fused conv slice for rank {r}"))
 }
 
 /// Query the cuda driver for free/total VRAM on the current device.
