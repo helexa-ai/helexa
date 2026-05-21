@@ -382,7 +382,7 @@ impl GatedDeltaNet {
 ///
 /// CPU path: pure-Rust per-token loop. Correct, slow.
 #[allow(clippy::too_many_arguments)]
-fn run_delta_rule(
+pub(crate) fn run_delta_rule(
     q: &Tensor,
     k: &Tensor,
     v: &Tensor,
