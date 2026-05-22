@@ -74,6 +74,32 @@ install -Dm644 models.example.toml %{buildroot}%{_sysconfdir}/cortex/models.toml
 %postun
 %systemd_postun_with_restart cortex.service
 
+%posttrans
+# Migration: older cortex packages shipped the firewalld service as
+# `helexa-cortex` and (in some build streams) with wrong port numbers
+# (9301/9302/9304). Operators who enabled that legacy service in their
+# zone end up with the wrong-port override taking precedence over the
+# vendor `cortex.xml` now in /usr/lib/firewalld/services/. Clean up the
+# stale /etc/ override here and migrate any zone bindings to the new
+# service name.
+if [ -f /etc/firewalld/services/helexa-cortex.xml ]; then
+    rm -f /etc/firewalld/services/helexa-cortex.xml
+fi
+if [ -x /usr/bin/firewall-cmd ] && /usr/bin/firewall-cmd --state >/dev/null 2>&1; then
+    # Drop the legacy service name from every zone where it was enabled
+    # and add the new `cortex` service in its place. Operators who never
+    # ran firewall-cmd against either name see no zone change.
+    for zone in $(/usr/bin/firewall-cmd --get-active-zones 2>/dev/null \
+        | awk '!/^[[:space:]]/ {print $1}'); do
+        if /usr/bin/firewall-cmd --permanent --zone="$zone" --query-service=helexa-cortex >/dev/null 2>&1; then
+            /usr/bin/firewall-cmd --permanent --zone="$zone" --remove-service=helexa-cortex >/dev/null 2>&1 || :
+            /usr/bin/firewall-cmd --permanent --zone="$zone" --add-service=cortex >/dev/null 2>&1 || :
+        fi
+    done
+    /usr/bin/firewall-cmd --reload >/dev/null 2>&1 || :
+fi
+:
+
 %files
 %license LICENSE
 %doc README.md
