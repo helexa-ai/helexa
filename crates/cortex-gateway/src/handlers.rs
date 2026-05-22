@@ -34,12 +34,30 @@ async fn chat_completions(
 ) -> Response {
     let model_id = match extract_model(&body) {
         Some(m) => m,
-        None => return error_response(400, "missing 'model' field in request body"),
+        None => {
+            tracing::warn!(
+                handler = "chat_completions",
+                "rejected: missing 'model' field in request body"
+            );
+            return error_response(400, "missing 'model' field in request body");
+        }
     };
 
     let route = match router::resolve(&fleet, &model_id).await {
         Ok(r) => r,
-        Err(e) => return error_response(404, &e.to_string()),
+        Err(e) => {
+            tracing::warn!(
+                handler = "chat_completions",
+                model = %model_id,
+                error = %e,
+                "route resolve failed"
+            );
+            // RouteError's Display strings are short and informative
+            // ("model 'X' not found...", "no healthy nodes available")
+            // — fine to surface to the caller. The warn above carries
+            // any extra context for operators.
+            return error_response(404, &e.to_string());
+        }
     };
 
     touch_model(&fleet, &route.node_name, &model_id).await;
@@ -63,12 +81,30 @@ async fn completions(
 ) -> Response {
     let model_id = match extract_model(&body) {
         Some(m) => m,
-        None => return error_response(400, "missing 'model' field in request body"),
+        None => {
+            tracing::warn!(
+                handler = "completions",
+                "rejected: missing 'model' field in request body"
+            );
+            return error_response(400, "missing 'model' field in request body");
+        }
     };
 
     let route = match router::resolve(&fleet, &model_id).await {
         Ok(r) => r,
-        Err(e) => return error_response(404, &e.to_string()),
+        Err(e) => {
+            tracing::warn!(
+                handler = "completions",
+                model = %model_id,
+                error = %e,
+                "route resolve failed"
+            );
+            // RouteError's Display strings are short and informative
+            // ("model 'X' not found...", "no healthy nodes available")
+            // — fine to surface to the caller. The warn above carries
+            // any extra context for operators.
+            return error_response(404, &e.to_string());
+        }
     };
 
     touch_model(&fleet, &route.node_name, &model_id).await;
@@ -85,7 +121,14 @@ async fn anthropic_messages(
     // Parse as Anthropic request.
     let anth_req: cortex_core::anthropic::MessagesRequest = match serde_json::from_slice(&body) {
         Ok(r) => r,
-        Err(e) => return error_response(400, &format!("invalid Anthropic request: {e}")),
+        Err(e) => {
+            tracing::warn!(
+                handler = "anthropic_messages",
+                error = %e,
+                "rejected: invalid Anthropic request body"
+            );
+            return error_response(400, "invalid Anthropic request body");
+        }
     };
 
     let model_id = anth_req.model.clone();
@@ -95,12 +138,32 @@ async fn anthropic_messages(
     let openai_req = cortex_core::translate::anthropic_to_openai(anth_req);
     let openai_body = match serde_json::to_vec(&openai_req) {
         Ok(b) => Bytes::from(b),
-        Err(e) => return error_response(500, &format!("translation error: {e}")),
+        Err(e) => {
+            tracing::error!(
+                handler = "anthropic_messages",
+                model = %model_id,
+                error = %e,
+                "internal: failed to serialise translated OpenAI request"
+            );
+            return error_response(500, "internal translation error");
+        }
     };
 
     let route = match router::resolve(&fleet, &model_id).await {
         Ok(r) => r,
-        Err(e) => return error_response(404, &e.to_string()),
+        Err(e) => {
+            tracing::warn!(
+                handler = "anthropic_messages",
+                model = %model_id,
+                error = %e,
+                "route resolve failed"
+            );
+            // RouteError's Display strings are short and informative
+            // ("model 'X' not found...", "no healthy nodes available")
+            // — fine to surface to the caller. The warn above carries
+            // any extra context for operators.
+            return error_response(404, &e.to_string());
+        }
     };
 
     touch_model(&fleet, &route.node_name, &model_id).await;
@@ -133,12 +196,22 @@ async fn anthropic_messages(
             Ok(resp) => resp,
             Err(e) => {
                 metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+                // forward_request already warn'd with the wire-level
+                // detail; no need to log again here.
                 e.into_response()
             }
         }
     } else {
         // Non-streaming: proxy, buffer full response, translate back to Anthropic.
         let target_url = format!("{}/v1/chat/completions", route.endpoint);
+        tracing::info!(
+            handler = "anthropic_messages",
+            model = %model_id,
+            node = %route.node_name,
+            url = %target_url,
+            cold_start = route.cold_start,
+            "proxying request"
+        );
         let upstream_resp = fleet
             .http_client
             .post(&target_url)
@@ -152,28 +225,31 @@ async fn anthropic_messages(
             Err(e) => {
                 metrics::counter!("cortex_request_errors_total", &labels).increment(1);
                 tracing::warn!(
+                    handler = "anthropic_messages",
                     model = %model_id,
                     node = %route.node_name,
-                    target = %target_url,
+                    url = %target_url,
                     error = %e,
-                    "anthropic proxy: upstream request failed (network)"
+                    "upstream request failed (network)"
                 );
                 return error_response(502, "upstream request failed");
             }
         };
 
-        if !upstream_resp.status().is_success() {
+        let upstream_status = upstream_resp.status();
+        if !upstream_status.is_success() {
             metrics::counter!("cortex_request_errors_total", &labels).increment(1);
-            let status = upstream_resp.status().as_u16();
+            let status = upstream_status.as_u16();
             let body = upstream_resp.text().await.unwrap_or_default();
             let body_snippet = body.chars().take(512).collect::<String>();
             tracing::warn!(
+                handler = "anthropic_messages",
                 model = %model_id,
                 node = %route.node_name,
-                target = %target_url,
+                url = %target_url,
                 status,
                 body = %body_snippet,
-                "anthropic proxy: upstream returned non-2xx"
+                "upstream returned non-2xx"
             );
             return error_response(status, &format!("upstream returned {status}"));
         }
@@ -182,7 +258,15 @@ async fn anthropic_messages(
             Ok(b) => b,
             Err(e) => {
                 metrics::counter!("cortex_request_errors_total", &labels).increment(1);
-                return error_response(502, &format!("failed to read upstream response: {e}"));
+                tracing::warn!(
+                    handler = "anthropic_messages",
+                    model = %model_id,
+                    node = %route.node_name,
+                    url = %target_url,
+                    error = %e,
+                    "failed to read upstream response body"
+                );
+                return error_response(502, "failed to read upstream response");
             }
         };
 
@@ -191,7 +275,20 @@ async fn anthropic_messages(
                 Ok(r) => r,
                 Err(e) => {
                     metrics::counter!("cortex_request_errors_total", &labels).increment(1);
-                    return error_response(502, &format!("failed to parse upstream response: {e}"));
+                    let body_snippet = String::from_utf8_lossy(&body_bytes)
+                        .chars()
+                        .take(512)
+                        .collect::<String>();
+                    tracing::warn!(
+                        handler = "anthropic_messages",
+                        model = %model_id,
+                        node = %route.node_name,
+                        url = %target_url,
+                        error = %e,
+                        body = %body_snippet,
+                        "failed to parse upstream response as OpenAI ChatCompletionResponse"
+                    );
+                    return error_response(502, "malformed upstream response");
                 }
             };
 
@@ -343,6 +440,9 @@ async fn proxy_with_metrics(
         }
         Err(e) => {
             metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            // proxy::forward_request already warn'd with wire-level
+            // detail (target URL, error, status). ProxyError::into_response
+            // now returns a generic message — no body leak.
             e.into_response()
         }
     }
