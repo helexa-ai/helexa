@@ -138,9 +138,10 @@ async fn anthropic_messages(
         }
     } else {
         // Non-streaming: proxy, buffer full response, translate back to Anthropic.
+        let target_url = format!("{}/v1/chat/completions", route.endpoint);
         let upstream_resp = fleet
             .http_client
-            .post(format!("{}/v1/chat/completions", route.endpoint))
+            .post(&target_url)
             .body(openai_body)
             .header("content-type", "application/json")
             .send()
@@ -150,7 +151,14 @@ async fn anthropic_messages(
             Ok(r) => r,
             Err(e) => {
                 metrics::counter!("cortex_request_errors_total", &labels).increment(1);
-                return error_response(502, &format!("upstream request failed: {e}"));
+                tracing::warn!(
+                    model = %model_id,
+                    node = %route.node_name,
+                    target = %target_url,
+                    error = %e,
+                    "anthropic proxy: upstream request failed (network)"
+                );
+                return error_response(502, "upstream request failed");
             }
         };
 
@@ -158,7 +166,16 @@ async fn anthropic_messages(
             metrics::counter!("cortex_request_errors_total", &labels).increment(1);
             let status = upstream_resp.status().as_u16();
             let body = upstream_resp.text().await.unwrap_or_default();
-            return error_response(status, &format!("upstream error: {body}"));
+            let body_snippet = body.chars().take(512).collect::<String>();
+            tracing::warn!(
+                model = %model_id,
+                node = %route.node_name,
+                target = %target_url,
+                status,
+                body = %body_snippet,
+                "anthropic proxy: upstream returned non-2xx"
+            );
+            return error_response(status, &format!("upstream returned {status}"));
         }
 
         let body_bytes = match upstream_resp.bytes().await {

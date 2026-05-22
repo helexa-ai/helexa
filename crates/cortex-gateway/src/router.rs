@@ -335,7 +335,13 @@ fn rewrite_loopback_host(inference_url: &str, neuron_endpoint: &str) -> Option<S
     let new_host = neuron.host_str()?;
     let mut out = inf.clone();
     out.set_host(Some(new_host)).ok()?;
-    Some(out.to_string())
+    // url::Url::to_string normalises an empty path to "/", which then
+    // breaks downstream callers that do format!("{endpoint}/v1/...")
+    // and produce a double slash. The proxy URL is treated as a base
+    // string that the caller appends paths to, so strip the trailing
+    // slash here.
+    let s = out.to_string();
+    Some(s.trim_end_matches('/').to_string())
 }
 
 #[cfg(test)]
@@ -350,14 +356,14 @@ mod tests {
         );
         assert_eq!(
             out.as_deref(),
-            Some("http://beast.hanzalova.internal:13131/")
+            Some("http://beast.hanzalova.internal:13131")
         );
     }
 
     #[test]
     fn rewrites_loopback_with_distinct_inference_port() {
         let out = rewrite_loopback_host("http://127.0.0.1:8080", "http://beast.lan:13131");
-        assert_eq!(out.as_deref(), Some("http://beast.lan:8080/"));
+        assert_eq!(out.as_deref(), Some("http://beast.lan:8080"));
     }
 
     #[test]
