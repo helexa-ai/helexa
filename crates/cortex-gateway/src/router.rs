@@ -299,13 +299,76 @@ async fn finish(
         _ => None,
     };
 
-    let endpoint = inference_endpoint.ok_or_else(|| {
+    let raw = inference_endpoint.ok_or_else(|| {
         RouteError::EndpointResolveFailed(model_id.to_string(), node_name.to_string())
     })?;
+
+    // Rewrite loopback inference URLs to use the configured neuron host.
+    // Neuron's default bind_url is `http://localhost:13131` (it can't
+    // reliably know its own externally-resolvable name). Cortex sees a
+    // URL that's only meaningful from the neuron host's own perspective;
+    // proxying directly to localhost from a different cortex host would
+    // hit nothing. Keep neuron's port and path (a future harness could
+    // serve inference on a different port than the management API), but
+    // swap the host for the one in cortex.toml.
+    let endpoint = rewrite_loopback_host(&raw, neuron_endpoint).unwrap_or(raw);
 
     Ok(RouteDecision {
         node_name: node_name.to_string(),
         endpoint,
         cold_start,
     })
+}
+
+/// If `inference_url`'s host is a loopback name (localhost / 127.0.0.1 /
+/// 0.0.0.0 / ::1), return a copy with the host replaced by
+/// `neuron_endpoint`'s host. Otherwise return None and the caller falls
+/// back to the inference URL as-is.
+fn rewrite_loopback_host(inference_url: &str, neuron_endpoint: &str) -> Option<String> {
+    let inf = url::Url::parse(inference_url).ok()?;
+    let inf_host = inf.host_str()?;
+    let is_loopback = matches!(inf_host, "localhost" | "127.0.0.1" | "0.0.0.0" | "::1");
+    if !is_loopback {
+        return None;
+    }
+    let neuron = url::Url::parse(neuron_endpoint).ok()?;
+    let new_host = neuron.host_str()?;
+    let mut out = inf.clone();
+    out.set_host(Some(new_host)).ok()?;
+    Some(out.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rewrite_loopback_host;
+
+    #[test]
+    fn rewrites_localhost_keeps_port_and_path() {
+        let out = rewrite_loopback_host(
+            "http://localhost:13131",
+            "http://beast.hanzalova.internal:13131",
+        );
+        assert_eq!(
+            out.as_deref(),
+            Some("http://beast.hanzalova.internal:13131/")
+        );
+    }
+
+    #[test]
+    fn rewrites_loopback_with_distinct_inference_port() {
+        let out = rewrite_loopback_host("http://127.0.0.1:8080", "http://beast.lan:13131");
+        assert_eq!(out.as_deref(), Some("http://beast.lan:8080/"));
+    }
+
+    #[test]
+    fn leaves_non_loopback_alone() {
+        let out = rewrite_loopback_host("http://other.host:1234", "http://beast.lan:13131");
+        assert_eq!(out, None);
+    }
+
+    #[test]
+    fn malformed_inference_url_returns_none() {
+        let out = rewrite_loopback_host("not a url", "http://beast.lan:13131");
+        assert_eq!(out, None);
+    }
 }
