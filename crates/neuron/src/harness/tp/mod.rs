@@ -656,10 +656,32 @@ impl WorkerPool {
         .await
         .context("leader forward task panicked");
         let leader_ok = matches!(leader_result, Ok(Ok(_)));
+        let leader_ms = leader_start.elapsed().as_millis();
+        // Surface the leader's own error at WARN. Previously this was
+        // silently coerced to `leader_ok=false` while only worker
+        // ranks' errors got logged — when both the leader and a worker
+        // fail together (the typical "CUDA context is now poisoned"
+        // pattern after an OOM), the operator could see only the
+        // worker side and had to guess what hit rank 0.
+        if !leader_ok {
+            let detail = match &leader_result {
+                Ok(Err(e)) => format!("{e:#}"),
+                Err(e) => format!("task: {e:#}"),
+                Ok(Ok(_)) => unreachable!("leader_ok=false implies an error path"),
+            };
+            tracing::warn!(
+                model = %model_id,
+                tokens = tokens_len,
+                offset,
+                leader_ms,
+                error = %detail,
+                "WorkerPool::generate_step: leader forward failed"
+            );
+        }
         tracing::debug!(
             model = %model_id,
             tokens = tokens_len,
-            leader_ms = leader_start.elapsed().as_millis(),
+            leader_ms,
             leader_ok,
             "WorkerPool::generate_step: leader forward returned"
         );
