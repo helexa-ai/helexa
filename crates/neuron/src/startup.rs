@@ -7,8 +7,16 @@
 
 use crate::harness::HarnessRegistry;
 use cortex_core::harness::ModelSpec;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::signal;
+
+/// Maximum time we wait on a single `unload_model` call during
+/// shutdown. The TP unload path tries `Arc::try_unwrap`, which fails
+/// fast when an inference is in flight, so a healthy unload returns
+/// in milliseconds. The timeout exists to bound a *future* unload
+/// path that might genuinely block on a stuck worker, so a single
+/// wedged model can't burn the whole systemd TimeoutStopSec window.
+const UNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 
 /// Load each spec sequentially against the registry, treating
 /// individual failures as warnings rather than fatal errors.
@@ -79,19 +87,44 @@ pub async fn unload_all_models(registry: &HarnessRegistry) {
     }
 
     tracing::info!(count = listed.len(), "unloading models for shutdown");
+    let mut stuck = 0;
     for model in listed {
         let start = Instant::now();
-        match registry.unload_model(&model.id).await {
-            Ok(()) => tracing::info!(
+        match tokio::time::timeout(UNLOAD_TIMEOUT, registry.unload_model(&model.id)).await {
+            Ok(Ok(())) => tracing::info!(
                 model = %model.id,
                 elapsed_ms = start.elapsed().as_millis() as u64,
                 "unloaded"
             ),
-            Err(e) => tracing::warn!(
-                model = %model.id,
-                error = %e,
-                "unload failed during shutdown"
-            ),
+            // Most common shape today: TP unload bails because an
+            // inference is still mid-flight (the spawned task holds
+            // an `Arc<TpLoadedModel>` clone). Promoted from warn to
+            // error and tagged with the request-state so the operator
+            // can correlate with the chat_completion logs above.
+            Ok(Err(e)) => {
+                stuck += 1;
+                tracing::error!(
+                    model = %model.id,
+                    error = %e,
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "unload failed during shutdown"
+                );
+            }
+            Err(_) => {
+                stuck += 1;
+                tracing::error!(
+                    model = %model.id,
+                    timeout_secs = UNLOAD_TIMEOUT.as_secs(),
+                    "unload timed out during shutdown, continuing"
+                );
+            }
         }
+    }
+    if stuck > 0 {
+        tracing::error!(
+            stuck,
+            "shutdown leaving {stuck} model(s) loaded; VRAM will be \
+             reclaimed by the OS on process exit"
+        );
     }
 }

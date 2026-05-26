@@ -211,6 +211,13 @@ async fn daemon(args: Args) -> Result<()> {
     let registry = state.registry.read().await;
     startup::unload_all_models(&registry).await;
     tracing::info!("shutdown complete");
-
-    Ok(())
+    // Fast-exit instead of returning. Returning lets `#[tokio::main]`
+    // drop the runtime, which in turn waits on the blocking thread
+    // pool to drain. After a CUDA driver error (OOM → illegal address)
+    // a spawn_blocking thread can be wedged inside `cuCtxGetCurrent`,
+    // and tokio's drain has no timeout. systemd then SIGABRTs us and
+    // dumps core. Skipping the drain hands the OS a clean exit code;
+    // the OS reaps the stuck threads. See the 2026-05-26 incident
+    // captured under "Stack trace of thread 2951308" in the journal.
+    std::process::exit(0);
 }
