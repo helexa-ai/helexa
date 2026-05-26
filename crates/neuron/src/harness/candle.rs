@@ -453,10 +453,10 @@ const POOL_LOCK_WARN_THRESHOLD: Duration = Duration::from_secs(2);
 /// the warn happens at the call site — the request whose lock-wait is
 /// slow is the one that knows its prompt_len and other context.
 #[cfg(feature = "cuda")]
-async fn acquire_pool_lock(
-    pool: &tokio::sync::Mutex<super::tp::WorkerPool>,
+async fn acquire_pool_lock<'a>(
+    pool: &'a tokio::sync::Mutex<super::tp::WorkerPool>,
     model_id: &str,
-) -> tokio::sync::MutexGuard<'_, super::tp::WorkerPool> {
+) -> tokio::sync::MutexGuard<'a, super::tp::WorkerPool> {
     let start = std::time::Instant::now();
     // Tick once at the threshold so a stuck request shows up in
     // journalctl even while it's still waiting. Without this the wait
