@@ -29,6 +29,13 @@ pub struct RouteDecision {
     /// when we just triggered an explicit cold-load via the catalogue
     /// path.
     pub cold_start: bool,
+    /// The concrete model id we actually routed to. Equal to the
+    /// caller's requested id unless an alias was resolved (e.g. caller
+    /// asked for `helexa/small`, this carries `Qwen/Qwen3-1.7B`). The
+    /// handler uses this to rewrite the request body's `model` field
+    /// before proxying — neurons reject requests where the body's
+    /// model name doesn't match a loaded model.
+    pub resolved_model_id: String,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -55,8 +62,20 @@ pub enum RouteError {
 /// Asks the neuron for the inference endpoint after selecting a node.
 pub async fn resolve(
     fleet: &Arc<CortexState>,
-    model_id: &str,
+    requested_model_id: &str,
 ) -> Result<RouteDecision, RouteError> {
+    // Alias resolution first — swap `helexa/small` (etc.) for the
+    // concrete id before any node lookups so the rest of routing,
+    // loading, and metrics deal in concrete ids only. `resolve_alias`
+    // returns the input verbatim when it isn't an alias.
+    let model_id = fleet.catalogue.resolve_alias(requested_model_id);
+    if model_id != requested_model_id {
+        tracing::debug!(
+            requested = requested_model_id,
+            resolved = model_id,
+            "alias resolved"
+        );
+    }
     // Snapshot loaded / unloaded state from the poller cache.
     let (loaded_route, unloaded_route, any_healthy) = {
         let nodes = fleet.nodes.read().await;
@@ -326,6 +345,7 @@ async fn finish(
         node_name: node_name.to_string(),
         endpoint,
         cold_start,
+        resolved_model_id: model_id.to_string(),
     })
 }
 

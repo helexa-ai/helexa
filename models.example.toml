@@ -48,3 +48,17 @@ quant = "Q4_K_M"
 vram_mb = 500
 min_devices = 1
 min_device_vram_mb = 4000
+
+# -- Tier aliases ------------------------------------------------------------
+# Optional. Clients can request inference against an alias (e.g.
+# `model: "helexa/small"` in /v1/chat/completions) and cortex
+# transparently routes to the concrete model id below — including
+# rewriting the body's model field so neuron sees a name that matches
+# its loaded handle. Both the alias and the target appear in
+# /v1/models so clients can discover either. Operators can swap
+# targets here without changing client code.
+#
+# [aliases]
+# "helexa/small" = "Qwen/Qwen3-1.7B"
+# "helexa/balanced" = "Qwen/Qwen3-8B"
+# "helexa/large" = "Qwen/Qwen3.6-27B"

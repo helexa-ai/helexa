@@ -60,15 +60,16 @@ async fn chat_completions(
         }
     };
 
-    touch_model(&fleet, &route.node_name, &model_id).await;
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
 
+    let body = rewrite_model_in_body(body, &route.resolved_model_id);
     proxy_with_metrics(
         &fleet,
         &route,
         "/v1/chat/completions",
         headers,
         body,
-        &model_id,
+        &route.resolved_model_id,
     )
     .await
 }
@@ -107,9 +108,18 @@ async fn completions(
         }
     };
 
-    touch_model(&fleet, &route.node_name, &model_id).await;
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
 
-    proxy_with_metrics(&fleet, &route, "/v1/completions", headers, body, &model_id).await
+    let body = rewrite_model_in_body(body, &route.resolved_model_id);
+    proxy_with_metrics(
+        &fleet,
+        &route,
+        "/v1/completions",
+        headers,
+        body,
+        &route.resolved_model_id,
+    )
+    .await
 }
 
 /// `POST /v1/messages` — accept Anthropic format, translate, proxy, translate back.
@@ -166,10 +176,15 @@ async fn anthropic_messages(
         }
     };
 
-    touch_model(&fleet, &route.node_name, &model_id).await;
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
+
+    // Swap the alias for the concrete id in the translated body so
+    // neuron's harness sees a model name that matches what it has
+    // loaded.
+    let openai_body = rewrite_model_in_body(openai_body, &route.resolved_model_id);
 
     let labels = [
-        ("model", model_id.clone()),
+        ("model", route.resolved_model_id.clone()),
         ("node", route.node_name.clone()),
     ];
     metrics::counter!("cortex_requests_total", &labels).increment(1);
@@ -434,6 +449,35 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
         }
     }
 
+    // Pass 4: surface aliases as their own entries pointing at the
+    // same locations as the target id, so a client browsing /v1/models
+    // sees "helexa/small" / "helexa/balanced" / "helexa/large" (or
+    // whatever the operator defined) and can request inference
+    // against them directly. Aliases that point at unknown targets
+    // are skipped — surfacing a dead alias would be misleading.
+    for (alias, target) in &catalogue.aliases {
+        let Some(target_entry) = entries.get(target).cloned() else {
+            tracing::warn!(
+                alias = alias,
+                target = target,
+                "alias points at a model not present in catalogue or fleet; skipping"
+            );
+            continue;
+        };
+        entries.insert(
+            alias.clone(),
+            CortexModelEntry {
+                id: alias.clone(),
+                object: "model".into(),
+                created: now,
+                owned_by: "helexa".into(),
+                loaded: target_entry.loaded,
+                feasible_on: target_entry.feasible_on,
+                locations: target_entry.locations,
+            },
+        );
+    }
+
     let data: Vec<Value> = entries.values().map(|e| json!(e)).collect();
     Json(json!({
         "object": "list",
@@ -510,6 +554,38 @@ async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {
 fn extract_model(body: &[u8]) -> Option<String> {
     let v: Value = serde_json::from_slice(body).ok()?;
     v.get("model")?.as_str().map(|s| s.to_string())
+}
+
+/// Rewrite the `model` field of an OpenAI-style JSON request body to
+/// the resolved concrete id. Returns the original bytes if `new_model`
+/// matches what's already there or the body fails to parse — the
+/// caller has already extracted `model` via `extract_model`, so a
+/// parse failure here would only happen on a body the client crafted
+/// to defeat us, and we'd rather proxy it unchanged than 500.
+///
+/// Needed because neuron rejects requests whose `model` field doesn't
+/// match a loaded model, so a client that sends `model: "helexa/small"`
+/// would hit a 404 at the harness unless we swap it for the concrete
+/// id the alias resolved to.
+fn rewrite_model_in_body(body: Bytes, new_model: &str) -> Bytes {
+    let Ok(mut v) = serde_json::from_slice::<Value>(&body) else {
+        return body;
+    };
+    let needs_rewrite = v
+        .get("model")
+        .and_then(|m| m.as_str())
+        .map(|m| m != new_model)
+        .unwrap_or(false);
+    if !needs_rewrite {
+        return body;
+    }
+    if let Value::Object(obj) = &mut v {
+        obj.insert("model".into(), Value::String(new_model.to_string()));
+    }
+    match serde_json::to_vec(&v) {
+        Ok(bytes) => Bytes::from(bytes),
+        Err(_) => body,
+    }
 }
 
 fn error_response(status: u16, message: &str) -> Response {

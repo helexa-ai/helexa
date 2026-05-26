@@ -2,6 +2,7 @@
 
 use crate::discovery::DeviceInfo;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// A model serving profile loaded from models.toml.
@@ -34,6 +35,14 @@ fn default_min_devices() -> u32 {
 pub struct ModelCatalogue {
     #[serde(default)]
     pub models: Vec<ModelProfile>,
+    /// Tier aliases — clients can send a request with `model: "helexa/small"`
+    /// and the gateway transparently rewrites + routes to the concrete
+    /// model id this maps to. Lets operators define latency/quality
+    /// tiers (`small`/`balanced`/`large`, `fast`/`thinking`, etc.)
+    /// without imposing knowledge of specific model ids on clients.
+    /// Loaded from the `[aliases]` table in models.toml.
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
 }
 
 impl ModelCatalogue {
@@ -69,6 +78,13 @@ impl ModelCatalogue {
     /// Find a profile by model id.
     pub fn get(&self, model_id: &str) -> Option<&ModelProfile> {
         self.models.iter().find(|p| p.id == model_id)
+    }
+
+    /// Resolve an alias to its concrete model id. Returns `id` verbatim
+    /// when it isn't an alias. Aliases never chain — operator config
+    /// is treated as flat — so this is a single lookup.
+    pub fn resolve_alias<'a>(&'a self, id: &'a str) -> &'a str {
+        self.aliases.get(id).map(String::as_str).unwrap_or(id)
     }
 }
 
@@ -163,5 +179,33 @@ mod tests {
         p.min_device_vram_mb = None;
         let devices = [device(0, 1_000), device(1, 1_000)];
         assert!(p.is_feasible_on("anywhere", &devices));
+    }
+
+    #[test]
+    fn resolve_alias_returns_target_when_alias_present() {
+        let mut cat = ModelCatalogue::default();
+        cat.aliases
+            .insert("helexa/small".into(), "Qwen/Qwen3-1.7B".into());
+        assert_eq!(cat.resolve_alias("helexa/small"), "Qwen/Qwen3-1.7B");
+    }
+
+    #[test]
+    fn resolve_alias_passes_through_when_not_an_alias() {
+        let mut cat = ModelCatalogue::default();
+        cat.aliases
+            .insert("helexa/small".into(), "Qwen/Qwen3-1.7B".into());
+        assert_eq!(cat.resolve_alias("Qwen/Qwen3-8B"), "Qwen/Qwen3-8B");
+    }
+
+    #[test]
+    fn aliases_table_round_trips_through_toml() {
+        let src = r#"
+[aliases]
+"helexa/small" = "Qwen/Qwen3-1.7B"
+"helexa/large" = "Qwen/Qwen3.6-27B"
+"#;
+        let cat: ModelCatalogue = toml::from_str(src).expect("parse aliases table");
+        assert_eq!(cat.resolve_alias("helexa/small"), "Qwen/Qwen3-1.7B");
+        assert_eq!(cat.resolve_alias("helexa/large"), "Qwen/Qwen3.6-27B");
     }
 }
