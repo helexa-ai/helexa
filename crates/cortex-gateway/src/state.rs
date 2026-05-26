@@ -27,6 +27,7 @@ impl CortexState {
                     lifecycle_cycles: 0,
                     last_poll: None,
                     discovery: None,
+                    activation: None,
                 },
             );
         }

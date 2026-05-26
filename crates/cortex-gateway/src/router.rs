@@ -79,6 +79,15 @@ pub async fn resolve(
                             unloaded_route = Some((node.name.clone(), node.endpoint.clone(), true));
                         }
                     }
+                    // Loading is gateway-synthesised from neuron's
+                    // activation snapshot; it never appears on the
+                    // wire from neuron's `/models`. Skip — the model
+                    // isn't actually servable yet. The pre-existing
+                    // race (catalogue cold_load fires a parallel
+                    // /models/load against the in-flight load) is no
+                    // worse than before; fixing it needs neuron-side
+                    // in-flight tracking on /models/load itself.
+                    ModelStatus::Loading => {}
                 }
             }
         }

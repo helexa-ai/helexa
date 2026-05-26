@@ -237,3 +237,58 @@ async fn test_poller_removes_stale_models() {
     assert!(node.models.contains_key("keep-me"));
     assert!(!node.models.contains_key("drop-me"));
 }
+
+#[tokio::test]
+async fn test_poller_captures_activation_from_health() {
+    // Mock neuron is mid-prewarm: /models reports nothing (the loading
+    // model hasn't been inserted into the harness map yet), but
+    // /health's activation says model-x is in_progress and model-y is
+    // queued behind it.
+    let mock_url = common::spawn_mock_neuron_with_models_and_health(
+        json!([]),
+        json!({
+            "uptime_secs": 30,
+            "devices": [],
+            "activation": {
+                "state": "pre_warming",
+                "pending": ["Qwen/model-y"],
+                "in_progress": "Qwen/model-x",
+                "completed": [],
+                "failed": []
+            }
+        }),
+    )
+    .await;
+
+    let config = GatewayConfig {
+        gateway: GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: EvictionSettings {
+            strategy: EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![NeuronEndpoint {
+            name: "prewarm-node".into(),
+            endpoint: mock_url,
+        }],
+        models_config: "/dev/null".into(),
+    };
+
+    let fleet = Arc::new(CortexState::from_config(&config));
+    cortex_gateway::poller::poll_once(&fleet).await;
+
+    let nodes = fleet.nodes.read().await;
+    let node = nodes.get("prewarm-node").unwrap();
+    assert!(node.healthy);
+    // /models was empty — no entries in the per-node model map.
+    assert!(node.models.is_empty());
+    // But /health's activation should be captured.
+    let activation = node
+        .activation
+        .as_ref()
+        .expect("activation should be populated after /health poll");
+    assert_eq!(activation.in_progress.as_deref(), Some("Qwen/model-x"));
+    assert_eq!(activation.pending, vec!["Qwen/model-y".to_string()]);
+}

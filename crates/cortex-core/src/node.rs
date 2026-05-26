@@ -1,4 +1,4 @@
-use crate::discovery::DiscoveryResponse;
+use crate::discovery::{ActivationStatus, DiscoveryResponse};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -20,6 +20,12 @@ pub struct NodeState {
     /// successful poll. Used by the router and `/v1/models` to do
     /// catalogue × topology feasibility checks.
     pub discovery: Option<DiscoveryResponse>,
+    /// Last-seen pre-warm progress from this neuron's `/health`
+    /// endpoint. `None` until the first /health poll succeeds. The
+    /// `/v1/models` handler reads `in_progress` + `pending` from here
+    /// to synthesize `Loading` locations so clients see a catalogued
+    /// model that's mid-prewarm as "loading", not "missing".
+    pub activation: Option<ActivationStatus>,
 }
 
 /// A model registered on a node, with its runtime status.
@@ -34,12 +40,21 @@ pub struct ModelEntry {
 }
 
 /// Model lifecycle status.
+///
+/// `Loading` is a gateway-side synthetic status: neurons never emit it
+/// on `/models` (that endpoint only knows about already-loaded handles).
+/// The gateway populates it from a neuron's `/health` activation
+/// snapshot so the unified `/v1/models` can distinguish "model is
+/// catalogued but no one has it" from "model is materialising on
+/// neuron N right now". Other status values are reported verbatim by
+/// neurons.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelStatus {
     Loaded,
     Unloaded,
     Reloading,
+    Loading,
 }
 
 /// Unified model entry as exposed by the gateway's `/v1/models` endpoint.

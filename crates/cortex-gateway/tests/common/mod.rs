@@ -164,6 +164,33 @@ pub async fn spawn_streaming_mock_neuron(chunk_count: usize, chunk_delay: Durati
 
 /// Spawns a mock neuron with a custom models list.
 pub async fn spawn_mock_neuron_with_models(models_response: Value) -> String {
+    spawn_mock_neuron_with_models_and_health(models_response, default_health_response()).await
+}
+
+/// Default `/health` response used by mocks that don't care about the
+/// activation field — empty devices, no in-flight pre-warm, state=ready.
+pub fn default_health_response() -> Value {
+    json!({
+        "uptime_secs": 0,
+        "devices": [],
+        "activation": {
+            "state": "ready",
+            "pending": [],
+            "in_progress": null,
+            "completed": [],
+            "failed": []
+        }
+    })
+}
+
+/// Variant of `spawn_mock_neuron_with_models` that also serves a
+/// `/health` body. Used by tests that drive the gateway's activation
+/// surface (poller reading /health, /v1/models synthesising Loading
+/// locations from in_progress / pending).
+pub async fn spawn_mock_neuron_with_models_and_health(
+    models_response: Value,
+    health_response: Value,
+) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let base_url = format!("http://{addr}");
@@ -174,6 +201,13 @@ pub async fn spawn_mock_neuron_with_models(models_response: Value) -> String {
             "/models",
             get(move || {
                 let resp = models_response.clone();
+                async move { Json(resp) }
+            }),
+        )
+        .route(
+            "/health",
+            get(move || {
+                let resp = health_response.clone();
                 async move { Json(resp) }
             }),
         )

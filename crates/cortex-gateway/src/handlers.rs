@@ -385,6 +385,55 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
         }
     }
 
+    // Pass 3: surface pre-warming models. Each neuron's `/health`
+    // activation snapshot (polled separately from /models) reports
+    // `in_progress` (the model currently materialising) and `pending`
+    // (queued behind it). Neither appears on the neuron's `/models`
+    // yet — that endpoint only knows about fully-loaded handles — so
+    // without this pass a client polling `/v1/models` during pre-warm
+    // sees Qwen3.6-27B with no location and concludes "not there".
+    // Synthesising a Loading location instead tells clients the model
+    // is on its way. Idempotent against Pass 2: if a Loading location
+    // for this node already exists (shouldn't, but be safe) we skip.
+    for node in nodes.values() {
+        let Some(activation) = node.activation.as_ref() else {
+            continue;
+        };
+        let mut loading_ids: Vec<&str> = Vec::new();
+        if let Some(id) = activation.in_progress.as_deref() {
+            loading_ids.push(id);
+        }
+        for id in &activation.pending {
+            loading_ids.push(id.as_str());
+        }
+        for model_id in loading_ids {
+            let location = ModelLocation {
+                node: node.name.clone(),
+                status: cortex_core::node::ModelStatus::Loading,
+                vram_estimate_mb: None,
+            };
+            entries
+                .entry(model_id.to_string())
+                .and_modify(|e| {
+                    let already = e.locations.iter().any(|l| {
+                        l.node == node.name && l.status == cortex_core::node::ModelStatus::Loading
+                    });
+                    if !already {
+                        e.locations.push(location.clone());
+                    }
+                })
+                .or_insert_with(|| CortexModelEntry {
+                    id: model_id.to_string(),
+                    object: "model".into(),
+                    created: now,
+                    owned_by: "helexa".into(),
+                    loaded: false,
+                    feasible_on: Vec::new(),
+                    locations: vec![location],
+                });
+        }
+    }
+
     let data: Vec<Value> = entries.values().map(|e| json!(e)).collect();
     Json(json!({
         "object": "list",

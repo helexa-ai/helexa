@@ -3,7 +3,7 @@
 
 use crate::state::CortexState;
 use chrono::Utc;
-use cortex_core::discovery::DiscoveryResponse;
+use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
 use cortex_core::node::{ModelEntry, ModelStatus};
 use std::sync::Arc;
@@ -142,6 +142,51 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
             node.healthy = false;
         }
     }
+
+    // Release the write lock before the next HTTP call.
+    drop(nodes);
+
+    // Poll /health for the activation snapshot. We don't want this to
+    // flip the node to unhealthy on its own — a neuron that's serving
+    // /models fine is still operational even if /health is briefly
+    // unavailable — so failures are debug-level and leave the existing
+    // activation reading in place.
+    poll_health(fleet, name, endpoint).await;
+}
+
+/// Fetch `/health` and stash the activation snapshot on NodeState.
+/// Decoupled from the /models poll so a /health glitch doesn't mark
+/// the neuron unhealthy or evict the model list.
+async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
+    let url = format!("{endpoint}/health");
+    let resp = match fleet
+        .http_client
+        .get(&url)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            tracing::debug!(node = name, status = %r.status(), "/health probe non-success");
+            return;
+        }
+        Err(e) => {
+            tracing::debug!(node = name, error = %e, "/health probe failed");
+            return;
+        }
+    };
+    match resp.json::<HealthResponse>().await {
+        Ok(h) => {
+            let mut nodes = fleet.nodes.write().await;
+            if let Some(node) = nodes.get_mut(name) {
+                node.activation = Some(h.activation);
+            }
+        }
+        Err(e) => {
+            tracing::debug!(node = name, error = %e, "failed to parse /health response");
+        }
+    }
 }
 
 fn parse_status(s: &str) -> ModelStatus {
@@ -149,6 +194,7 @@ fn parse_status(s: &str) -> ModelStatus {
         "loaded" => ModelStatus::Loaded,
         "unloaded" => ModelStatus::Unloaded,
         "reloading" => ModelStatus::Reloading,
+        "loading" => ModelStatus::Loading,
         _ => ModelStatus::Loaded,
     }
 }
