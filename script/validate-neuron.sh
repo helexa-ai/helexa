@@ -66,6 +66,58 @@ probe_health() {
         || die "neuron not reachable at ${BASE}/health"
 }
 
+# Block until the neuron reports `activation.state == "ready"` on
+# `/health`. Without this, validate-neuron.sh used to race the
+# background pre-warm (the listener binds immediately but big TP
+# loads run for minutes after) and either fail with ECONNREFUSED
+# (pre-2026-05-26 build, where load was synchronous before bind) or
+# get a 404 from /models/load against a partially-loaded model.
+#
+# The poll cap is `NEURON_LOAD_TIMEOUT` since pre-warm and an
+# on-demand load are the same operation under different triggers.
+# Short interval at the start (catches a quick-loading host without
+# extra latency) backs off after the first few iterations to keep
+# log spam down on a slow load.
+wait_for_ready() {
+    local deadline=$(( $(date +%s) + LOAD_TIMEOUT ))
+    local state= attempt=0
+    while (( $(date +%s) < deadline )); do
+        attempt=$(( attempt + 1 ))
+        state=$(
+            curl --silent --max-time 5 "${BASE}/health" \
+                | jq -r '.activation.state // "unknown"'
+        ) || state=unreachable
+        case "${state}" in
+            ready)
+                say "/health activation.state=ready (after ${attempt} probe(s))"
+                return 0
+                ;;
+            pre_warming)
+                local in_progress
+                in_progress=$(
+                    curl --silent --max-time 5 "${BASE}/health" \
+                        | jq -r '.activation.in_progress // "<none>"'
+                ) || in_progress='<unreadable>'
+                say "/health pre_warming (in_progress=${in_progress}); waiting"
+                ;;
+            unreachable)
+                say "/health unreachable; waiting"
+                ;;
+            *)
+                say "/health unexpected activation.state=${state}; waiting"
+                ;;
+        esac
+        # 2s for the first few iterations to catch quick loads, then
+        # 10s to avoid log spam on a multi-minute TP load.
+        if (( attempt < 5 )); then
+            sleep 2
+        else
+            sleep 10
+        fi
+    done
+    die "neuron not ready within ${LOAD_TIMEOUT}s (last state: ${state})"
+}
+
 list_loaded_ids() {
     # The manifest is YAML and uses yq; HTTP responses are JSON and use
     # jq directly. pip-yq parses input as YAML by default, which trips
@@ -157,6 +209,11 @@ run_probe() {
 say "validating neuron at ${BASE}"
 probe_health
 say "/health OK"
+# Background pre-warm from default_models means /health is reachable
+# but `activation.state` can still be `pre_warming` for minutes after
+# service start. Block here so the subsequent is_loaded / trigger_load
+# steps don't race a partially-materialised model.
+wait_for_ready
 
 if is_loaded; then
     say "${MODEL_ID} already loaded"
