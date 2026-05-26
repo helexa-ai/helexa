@@ -233,43 +233,71 @@ fi
 for entry in "${neuron_entries[@]}"; do
     IFS=$'\t' read -r neuron_host neuron_flavour <<< "${entry}"
     package="helexa-neuron-${neuron_flavour}"
+    # First dot-component of the host keys the per-host config file
+    # under asset/neuron/<short>.toml. A host listed in the manifest
+    # without a corresponding config still deploys (the package's
+    # default /etc/neuron/neuron.toml stays in place; no pre-warm).
+    short_host="${neuron_host%%.*}"
+    host_config="${REPO_DIR}/asset/neuron/${short_host}.toml"
 
     ensure_lair_repo "${neuron_host}"
     ensure_cudnn_runtime "${neuron_host}"
     neuron_nvr=$(installed_nvr "${neuron_host}" "${package}")
+
+    # Stop the service unconditionally before any reconfig step.
+    # `default_models` is read at activation, so a config change without
+    # a bounce silently leaves the host on the previous pre-warm set.
+    # Same shape as the cortex flow above. The `[ ! -f … ]` guard skips
+    # the stop on a fresh install where the unit file isn't there yet.
+    if ssh "${neuron_host}" "[ ! -f /usr/lib/systemd/system/neuron.service ] || sudo systemctl stop neuron.service"; then
+        echo "[${neuron_host}] stopped neuron service"
+    else
+        echo "[${neuron_host}] failed to stop neuron service (continuing)"
+    fi
+
     if needs_update "${neuron_host}" "${package}"; then
         echo "[${neuron_host}] ${package} update available (current: ${neuron_nvr})"
-        if ssh "${neuron_host}" "[ ! -f /usr/lib/systemd/system/neuron.service ] || sudo systemctl stop neuron.service"; then
-            echo "[${neuron_host}] stopped neuron service"
-            # --allowerasing lets dnf swap out a previously-installed
-            # bare helexa-neuron or a different flavour without manual
-            # intervention. The Conflicts: clauses in the spec ensure
-            # only one flavour is ever resident.
-            if install_or_upgrade "${neuron_host}" "${package}"; then
-                neuron_nvr=$(installed_nvr "${neuron_host}" "${package}")
-                echo "[${neuron_host}] installed/upgraded ${package} to ${neuron_nvr}"
-                # Ensure firewalld allows neuron port
-                ssh "${neuron_host}" "sudo firewall-cmd --query-service=helexa-neuron --quiet 2>/dev/null || sudo firewall-cmd --add-service=helexa-neuron --permanent && sudo firewall-cmd --reload" 2>/dev/null || true
-                if ssh "${neuron_host}" "sudo systemctl daemon-reload && sudo systemctl start neuron.service"; then
-                    echo "[${neuron_host}] started neuron service"
-                else
-                    echo "[${neuron_host}] failed to start neuron service"
-                fi
-            else
-                echo "[${neuron_host}] failed to install ${package}:"
-                echo "${__DNF_OUTPUT__}" | sed "s/^/[${neuron_host}]   /"
-            fi
+        # --allowerasing lets dnf swap out a previously-installed
+        # bare helexa-neuron or a different flavour without manual
+        # intervention. The Conflicts: clauses in the spec ensure
+        # only one flavour is ever resident.
+        if install_or_upgrade "${neuron_host}" "${package}"; then
+            neuron_nvr=$(installed_nvr "${neuron_host}" "${package}")
+            echo "[${neuron_host}] installed/upgraded ${package} to ${neuron_nvr}"
+            # Ensure firewalld allows neuron port
+            ssh "${neuron_host}" "sudo firewall-cmd --query-service=helexa-neuron --quiet 2>/dev/null || sudo firewall-cmd --add-service=helexa-neuron --permanent && sudo firewall-cmd --reload" 2>/dev/null || true
         else
-            echo "[${neuron_host}] failed to stop neuron service"
+            echo "[${neuron_host}] failed to install ${package}:"
+            echo "${__DNF_OUTPUT__}" | sed "s/^/[${neuron_host}]   /"
         fi
     else
         echo "[${neuron_host}] ${package} is up to date (${neuron_nvr})"
-        if ssh "${neuron_host}" systemctl is-active --quiet neuron.service; then
-            echo "[${neuron_host}] neuron service is active"
-        elif ssh "${neuron_host}" sudo systemctl start neuron.service; then
-            echo "[${neuron_host}] started neuron service"
+    fi
+
+    # Sync per-host neuron.toml — drives default_models pre-warm so
+    # `/v1/models` on the gateway exposes the host's headline model
+    # immediately after the service comes back up. Missing per-host
+    # config leaves the package's installed neuron.toml untouched.
+    if [[ -f "${host_config}" ]]; then
+        if rsync \
+            --archive \
+            --compress \
+            --rsync-path 'sudo rsync' \
+            --chown root:root \
+            --chmod 644 \
+            "${host_config}" \
+            "${neuron_host}:/etc/neuron/neuron.toml"; then
+            echo "[${neuron_host}] sync'd asset/neuron/${short_host}.toml"
         else
-            echo "[${neuron_host}] failed to start neuron service"
+            echo "[${neuron_host}] failed to sync neuron.toml"
         fi
+    else
+        echo "[${neuron_host}] no asset/neuron/${short_host}.toml — leaving /etc/neuron/neuron.toml untouched"
+    fi
+
+    if ssh "${neuron_host}" "sudo systemctl daemon-reload && sudo systemctl start neuron.service"; then
+        echo "[${neuron_host}] started neuron service"
+    else
+        echo "[${neuron_host}] failed to start neuron service"
     fi
 done

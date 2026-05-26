@@ -1,0 +1,19 @@
+# neuron.toml for benjy.hanzalova.internal
+#
+# 1x RTX 4090 (24 GB) — largest single-GPU host on the fleet. Pre-warms
+# Qwen3-8B (bf16, ~18 GB), leaving ~6 GB for KV cache + activations on
+# moderate-length contexts.
+#
+# Synced by script/deploy.sh from asset/neuron/<short-host>.toml.
+
+port = 13131
+
+[[harnesses]]
+name = "candle"
+
+[harness.candle]
+
+[[default_models]]
+model_id = "Qwen/Qwen3-8B"
+harness = "candle"
+devices = [0]

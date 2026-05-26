@@ -1,0 +1,19 @@
+# neuron.toml for quadbrat.hanzalova.internal
+#
+# 1x RTX 3060 (12 GB) — small / quantised tier. Pre-warms Qwen3-1.7B
+# (bf16, ~4 GB), leaving ~7 GB for KV cache so long contexts on a small
+# model still have plenty of room.
+#
+# Synced by script/deploy.sh from asset/neuron/<short-host>.toml.
+
+port = 13131
+
+[[harnesses]]
+name = "candle"
+
+[harness.candle]
+
+[[default_models]]
+model_id = "Qwen/Qwen3-1.7B"
+harness = "candle"
+devices = [0]
