@@ -1,4 +1,5 @@
 use cortex_core::discovery::{DeviceInfo, DiscoveryResponse};
+use neuron::activation::ActivationTracker;
 use neuron::api::{self, NeuronState};
 use neuron::harness::HarnessRegistry;
 use neuron::health::HealthCache;
@@ -15,6 +16,7 @@ async fn spawn_neuron(discovery: DiscoveryResponse) -> String {
         health_cache,
         registry: RwLock::new(registry),
         candle: None,
+        activation: Arc::new(ActivationTracker::new(&[])),
     });
 
     let app = api::neuron_routes().with_state(state);
@@ -160,6 +162,7 @@ async fn test_candle_harness_registers_and_rejects_bogus_model() {
         health_cache,
         registry: RwLock::new(registry),
         candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
     });
 
     let app = api::neuron_routes().with_state(state);
@@ -211,6 +214,7 @@ async fn test_chat_completions_no_candle_harness() {
         health_cache,
         registry: RwLock::new(registry),
         candle: None,
+        activation: Arc::new(ActivationTracker::new(&[])),
     });
     let app = api::neuron_routes().with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -252,6 +256,7 @@ async fn test_chat_completions_model_not_loaded() {
         health_cache,
         registry: RwLock::new(registry),
         candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
     });
     let app = api::neuron_routes().with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -295,6 +300,7 @@ async fn test_chat_completions_streaming_model_not_loaded() {
         health_cache,
         registry: RwLock::new(registry),
         candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
     });
     let app = api::neuron_routes().with_state(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

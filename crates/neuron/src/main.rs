@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use neuron::{
-    api,
+    activation, api,
     config::NeuronConfig,
     discovery,
     harness::{HarnessRegistry, tp},
@@ -173,12 +173,6 @@ async fn daemon(args: Args) -> Result<()> {
     discovery_result.harnesses = registry.names();
     let candle = registry.candle();
 
-    // Activation: load default models before binding the listener.
-    // Each load may take tens of seconds to several minutes depending
-    // on model size and HF cache state — keep TimeoutStartSec in the
-    // systemd unit generous enough to cover the slowest entry.
-    startup::load_default_models(&registry, &cfg.default_models).await;
-
     let health_cache = Arc::new(health::HealthCache::new());
     health_cache
         .set_has_gpus(!discovery_result.devices.is_empty())
@@ -189,17 +183,46 @@ async fn daemon(args: Args) -> Result<()> {
         poller_cache.poll_loop(start_time).await;
     });
 
+    // Track pre-warm progress so `/health` can tell callers whether
+    // configured default_models are still loading. Primed with the
+    // pending list now; the spawned task below flips entries through
+    // in_progress → completed/failed and finally toggles state=ready.
+    let activation = Arc::new(activation::ActivationTracker::new(&cfg.default_models));
+
     let state = Arc::new(api::NeuronState {
         discovery: discovery_result,
         health_cache,
         registry: RwLock::new(registry),
         candle,
+        activation: Arc::clone(&activation),
     });
 
+    // Bind the HTTP listener BEFORE kicking off default_models loading.
+    // Previously load_default_models ran synchronously on this task,
+    // which delayed the bind by minutes for big TP models and made the
+    // host look down to anything probing `/health` during pre-warm.
+    // The pre-warm task runs in the background instead — `/health`
+    // surfaces its progress via the activation field.
     let app = api::neuron_routes().with_state(Arc::clone(&state));
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
-    tracing::info!("neuron listening on {addr}");
     let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!("neuron listening on {addr}");
+
+    if !cfg.default_models.is_empty() {
+        let state_for_prewarm = Arc::clone(&state);
+        let default_models = cfg.default_models.clone();
+        tokio::spawn(async move {
+            // Read lock held for the whole pre-warm run. The unload
+            // path takes the same read lock per call (no writers) and
+            // serialises through the candle harness's own internal
+            // mutex, so concurrent on-demand loads and pre-warm loads
+            // do not race on the same model.
+            let registry = state_for_prewarm.registry.read().await;
+            startup::load_default_models(&registry, &default_models, &state_for_prewarm.activation)
+                .await;
+        });
+    }
+
     axum::serve(listener, app)
         .with_graceful_shutdown(startup::shutdown_signal())
         .await?;

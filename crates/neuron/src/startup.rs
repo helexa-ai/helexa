@@ -5,6 +5,7 @@
 //! graceful-shutdown future. Kept in its own module so the logic is
 //! unit-testable without spinning up a full neuron process.
 
+use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
 use cortex_core::harness::ModelSpec;
 use std::time::{Duration, Instant};
@@ -22,29 +23,46 @@ const UNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 /// individual failures as warnings rather than fatal errors.
 ///
 /// VRAM contention makes parallel loads risky; the sequential path is
-/// boring but correct. The function logs elapsed time per load so an
-/// operator can see which model is hogging activation.
-pub async fn load_default_models(registry: &HarnessRegistry, specs: &[ModelSpec]) {
+/// boring but correct. The function logs elapsed time per load and
+/// updates `activation` so the `/health` endpoint can tell callers
+/// which models are still pre-warming. Caller is expected to run this
+/// in a background `tokio::spawn` task — the HTTP listener binds
+/// independently so the host is reachable during the pre-warm window.
+pub async fn load_default_models(
+    registry: &HarnessRegistry,
+    specs: &[ModelSpec],
+    activation: &ActivationTracker,
+) {
     if specs.is_empty() {
+        activation.mark_ready().await;
         return;
     }
     tracing::info!(count = specs.len(), "loading default models");
     for spec in specs {
         let start = Instant::now();
+        activation.start_loading(&spec.model_id).await;
         match registry.load_model(spec).await {
-            Ok(()) => tracing::info!(
-                model = %spec.model_id,
-                elapsed_ms = start.elapsed().as_millis() as u64,
-                "loaded default model"
-            ),
-            Err(e) => tracing::warn!(
-                model = %spec.model_id,
-                error = %e,
-                elapsed_ms = start.elapsed().as_millis() as u64,
-                "failed to load default model, continuing"
-            ),
+            Ok(()) => {
+                activation.complete_loading(&spec.model_id).await;
+                tracing::info!(
+                    model = %spec.model_id,
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "loaded default model"
+                );
+            }
+            Err(e) => {
+                let rendered = format!("{e:#}");
+                activation.fail_loading(&spec.model_id, &rendered).await;
+                tracing::warn!(
+                    model = %spec.model_id,
+                    error = %rendered,
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "failed to load default model, continuing"
+                );
+            }
         }
     }
+    activation.mark_ready().await;
 }
 
 /// Future that resolves on SIGINT (Ctrl-C) or SIGTERM (systemd stop).

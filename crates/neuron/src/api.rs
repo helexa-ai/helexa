@@ -1,5 +1,6 @@
 //! HTTP API handlers for the neuron daemon.
 
+use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
 use crate::harness::candle::{CandleHarness, InferenceError};
 use crate::health::HealthCache;
@@ -28,6 +29,9 @@ pub struct NeuronState {
     /// startup so `/v1/chat/completions` doesn't have to hold the registry
     /// read lock or perform dyn-Trait dispatch per request.
     pub candle: Option<Arc<CandleHarness>>,
+    /// Activation-time pre-warm progress. Updated by the background
+    /// `load_default_models` task, read by the `/health` handler.
+    pub activation: Arc<ActivationTracker>,
 }
 
 /// Build the neuron API router.
@@ -47,7 +51,13 @@ async fn discovery_handler(State(state): State<Arc<NeuronState>>) -> Json<Discov
 }
 
 async fn health_handler(State(state): State<Arc<NeuronState>>) -> Json<HealthResponse> {
-    Json(state.health_cache.snapshot().await)
+    // HealthCache owns the uptime + per-device readings; the activation
+    // tracker owns the pre-warm progress. We compose the response here
+    // so the cache stays a thin runtime-state cache and doesn't need to
+    // know about activation lifecycle.
+    let mut snapshot = state.health_cache.snapshot().await;
+    snapshot.activation = state.activation.snapshot().await;
+    Json(snapshot)
 }
 
 async fn list_models(State(state): State<Arc<NeuronState>>) -> impl IntoResponse {

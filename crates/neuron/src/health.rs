@@ -24,6 +24,12 @@ impl HealthCache {
             inner: RwLock::new(HealthResponse {
                 uptime_secs: 0,
                 devices: vec![],
+                // The cache only owns the device-state half of /health;
+                // the api handler overlays activation from the tracker.
+                // Initialise with the default (Ready, empty lists) so a
+                // direct read from the cache stays a well-typed
+                // HealthResponse on the wire.
+                activation: Default::default(),
             }),
             has_gpus: RwLock::new(false),
         }

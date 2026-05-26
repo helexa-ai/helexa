@@ -1,3 +1,4 @@
+pub mod activation;
 pub mod api;
 pub mod config;
 pub mod cuda;

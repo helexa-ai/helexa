@@ -36,8 +36,72 @@ pub struct DeviceHealth {
 
 /// Runtime health response from a neuron endpoint.
 /// Returned by `GET /health`.
+///
+/// `activation` was added in 2026-05-26 to distinguish "process is up
+/// and reachable" from "process is ready to serve traffic". A `Type=simple`
+/// systemd unit reports `active` the moment the binary starts — but a
+/// neuron whose `default_models` list takes minutes to materialise
+/// won't bind its listener (or, in the new flow, won't have any models
+/// loaded) until pre-warm completes. The new field is `#[serde(default)]`
+/// so a pre-2026-05-26 gateway polling a new neuron — or vice versa —
+/// keeps working.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     pub uptime_secs: u64,
     pub devices: Vec<DeviceHealth>,
+    #[serde(default)]
+    pub activation: ActivationStatus,
+}
+
+/// High-level activation state of the neuron daemon. The HTTP listener
+/// is bound during both states; what differs is whether the configured
+/// `default_models` have finished loading.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivationState {
+    /// At least one `default_models` entry is still loading. The
+    /// neuron's other endpoints work, but inference against
+    /// not-yet-loaded models will 404.
+    PreWarming,
+    /// Every `default_models` entry has either loaded or failed; the
+    /// neuron is steady-state. Subsequent on-demand loads via
+    /// `/models/load` don't flip back to PreWarming — that field
+    /// reflects the activation-time set only.
+    #[default]
+    Ready,
+}
+
+/// Per-model failure record surfaced in [`ActivationStatus::failed`].
+/// The error string is the rendered anyhow chain at the time of the
+/// failure; operators read it from `/health` to decide whether to
+/// retry, edit the spec, or unload+reload.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreWarmFailure {
+    pub model_id: String,
+    pub error: String,
+}
+
+/// Activation-time progress snapshot. All four lists are populated by
+/// the neuron's pre-warm task and read by the `/health` handler. The
+/// snapshot is consistent: a model id appears in exactly one of
+/// `pending`, `in_progress` (as `Option<String>`), `completed`, or
+/// `failed` at any point in time.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ActivationStatus {
+    pub state: ActivationState,
+    /// Model ids queued but not yet started. Empty in `Ready` state.
+    #[serde(default)]
+    pub pending: Vec<String>,
+    /// Model id currently materialising. None when between models or
+    /// in `Ready` state.
+    #[serde(default)]
+    pub in_progress: Option<String>,
+    /// Model ids that finished loading successfully during this
+    /// activation. Cleared on process restart.
+    #[serde(default)]
+    pub completed: Vec<String>,
+    /// Model ids that failed during this activation, with the rendered
+    /// error chain. Cleared on process restart.
+    #[serde(default)]
+    pub failed: Vec<PreWarmFailure>,
 }
