@@ -47,7 +47,25 @@ jobs:
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
-      - run: cargo clippy --workspace -- -D warnings
+      # sccache occasionally fails with spurious race-condition errors;
+      # retrying the same invocation succeeds without code changes.
+      # Allow up to 3 attempts before declaring real failure.
+      - name: Clippy (with retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::clippy attempt ${attempt}"
+            if cargo clippy --workspace -- -D warnings; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "clippy failed on attempt ${attempt}"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "clippy failed after 3 attempts"
+          exit 1
       - run: sccache --show-stats
 
   test:
@@ -55,7 +73,23 @@ jobs:
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
-      - run: cargo test --workspace
+      # See the clippy job for why this is retried.
+      - name: Test (with retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::test attempt ${attempt}"
+            if cargo test --workspace; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "test failed on attempt ${attempt}"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "test failed after 3 attempts"
+          exit 1
       - run: sccache --show-stats
 
   srpm-cortex:
