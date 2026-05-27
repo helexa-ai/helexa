@@ -61,6 +61,16 @@ Each GPU node runs `neuron` (listening on `:13131`). Neuron uses
 huggingface/candle for in-process inference — there is no external
 inference subprocess to manage.
 
+Inside the daemon, every CUDA device gets one dedicated OS thread
+(named `cuda-dev-N`) that owns the device's CUDA context for the
+daemon's lifetime. Model loads, forward passes, KV-cache resets,
+NCCL collectives, VRAM queries, and unloads all route through that
+thread via a job channel; tensors never escape it alive. This pins
+context binding to a known thread, makes the CUDA Drop contract
+structurally safe, and isolates driver-error poisoning to one worker
+rather than the whole process. See `CLAUDE.md` for the design
+rationale and `crates/neuron/src/harness/device_worker/` for the code.
+
 The neuron RPM (`helexa-neuron`) ships a systemd unit:
 
 ```sh

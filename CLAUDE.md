@@ -84,6 +84,63 @@ Per-request: model, node, prompt_tokens, completion_tokens, total_tokens,
 tok_per_sec, time_to_first_token_ms, total_latency_ms.
 Exposed as Prometheus histograms/counters on a separate port.
 
+### Per-device worker thread (neuron)
+The neuron daemon dedicates one OS thread per CUDA device it loads
+onto. That thread binds the device's `CudaContext` once at startup and
+owns it for the daemon's lifetime; every model load, forward step,
+KV-cache reset, VRAM query, NCCL init/sanity, NCCL all_reduce, and
+model drop on that device routes through this thread via a
+`std::sync::mpsc` job channel. Replies cross back via
+`tokio::sync::oneshot`.
+
+Three properties this gives us, in order of weight:
+
+1. **Context locality.** cudarc binds the CUDA context per OS thread
+   via `cuCtxSetCurrent`. Before this refactor, ad-hoc
+   `tokio::task::spawn_blocking` calls bound the context onto a
+   different thread per request — and `device_vram_mb()` from an
+   async task bound it onto whichever tokio worker happened to be
+   running. Pinning the context to one named thread ends that.
+2. **Drop safety.** Every `CudaSlice` in a `Tensor`, every
+   `cudarc::nccl::Comm`, and the `CudaContext` itself call `cuMemFree` /
+   `ncclCommDestroy` / `cuCtxDestroy` during `Drop` — and require the
+   right context current. With the worker owning the model slab,
+   `Drop` always runs on the right thread. The cudarc Drop constraint
+   is structurally enforced.
+3. **Poisoning blast radius.** When a CUDA driver error makes the
+   context unrecoverable, the poison flag lives on the
+   `DeviceWorkerHandle` itself. Subsequent `submit()` calls fast-reject
+   at the channel boundary with a clear "device worker is poisoned"
+   error before any further CUDA work is attempted. The thread doesn't
+   exit (dropping the slab would re-touch the broken context) — it
+   enters a drain-only mode and replies error to everything until the
+   daemon restarts.
+
+Tensors never escape the worker thread alive. Inference replies carry
+`Vec<f32>` CPU-side logits; the async caller wraps them in a CPU
+candle tensor and runs `apply_repeat_penalty` + `LogitsProcessor::sample`
+without ever rebinding the device context. Sampled tokens come back as
+`u32`; VRAM queries as `(u64, u64)`. The opaque `ArchHandle(u64)` and
+`TpHandle(u64)` are the only "references" callers hold to loaded
+models — they're indices into the worker's state slab, not pointers.
+
+The TP worker subprocesses in `harness/tp/worker.rs` are the same
+pattern out-of-process — a dedicated context-owning process per
+non-zero NCCL rank. The in-process worker in `harness/device_worker/`
+brings the discipline to rank 0.
+
+CPU loads (`Device::Cpu` fallback when CUDA is unavailable) keep the
+legacy `tokio::task::spawn_blocking + Arc<Mutex<ModelArch>>` path —
+there's no context to own and the channel hop would only add latency.
+Four `spawn_blocking` references in `harness/candle.rs` are deliberate
+CPU fallback.
+
+Canonical narrative lives in
+`crates/neuron/src/harness/device_worker/mod.rs`'s module
+doc-comment; touch points (the `Job` enum, the dispatch handlers, the
+`DeviceWorkerState` struct) are in the sibling `jobs.rs` and
+`dispatch.rs`.
+
 ## Tech stack
 
 - **Rust 2024 edition** — workspace with 4 crates
@@ -658,3 +715,42 @@ longer in scope for helexa.
 ~~Originally planned to ship CUDA-versioned mistral.rs RPMs.~~ Replaced
 by the candle harness work in the 2026-05-18 addendum above. With
 mistral.rs out of the dependency tree, there is nothing to package.
+
+## 2026-05-27 addendum: per-device worker thread
+
+Replaced the ad-hoc `tokio::task::spawn_blocking` pattern that drove
+every leader-side CUDA op with one dedicated OS thread per CUDA device,
+permanently bound to that device's `CudaContext`. All leader-side
+inference work (GGUF + dense + TP shard load, forward, kv-cache clear,
+NCCL init/sanity, NCCL all_reduce, VRAM query, model drop) routes
+through the worker via a `std::sync::mpsc` channel; tensors never
+escape the worker thread alive. See "Per-device worker thread (neuron)"
+above and `crates/neuron/src/harness/device_worker/mod.rs` for the
+canonical narrative.
+
+Motivated by the 2026-05-26 silent-hang on beast: a CUDA OOM cascade
+poisoned the device context on whichever spawn_blocking thread caught
+it, and subsequent requests stalled invisibly on the pool lock. After
+the refactor, the same failure mode shows up in journalctl as
+`prefill sample failed; logits unhealthy nan: 248320/248320` followed
+by `failed, model marked poisoned`. The thread stays alive and rejects
+subsequent requests at the channel boundary.
+
+Landed in four PRs:
+
+- **Phase 1** (`081b532`) — device_worker module + 8 VRAM-query sites
+  route through the worker. CPU build only; smoke on beast confirmed
+  a persistent `cuda-dev-0` thread.
+- **Phase 2** (`b179204`) — single-GPU forward + clear_kv + drop via
+  the worker. `LoadedModel.arch_handle: Option<ArchHandle>` replaces
+  `Arc<Mutex<ModelArch>>` for CUDA loads. CPU keeps the legacy path.
+- **Phase 3** (`76ab24d`) — TP forward + NCCL init/sanity + leader
+  KV-clear routed through the worker. `WorkerPool.leader_nccl` moves
+  into the worker's state. `TpLoadedModel.leader_handle: TpHandle`
+  replaces `Arc<Mutex<TpLeaderModel>>`. CUDA-only TP smoke deferred to
+  next deploy.
+- **Phase 4** (`b4f3576`) — GGUF + dense + TP shard loads move onto
+  the worker. The `Job::TransferIn` / `Job::CloneLeaderComm` bridges
+  from Phases 2/3 deleted; `SendComm` newtype no longer needed in the
+  load path. `grep -rn spawn_blocking crates/neuron/src/harness/`
+  returns only deliberate CPU-fallback hits after this PR.
