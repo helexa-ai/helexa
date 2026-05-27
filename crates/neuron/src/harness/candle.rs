@@ -1408,21 +1408,34 @@ impl CandleHarness {
                     })
                     .await;
 
-                // Any failure inside the spawn_blocking touched CUDA via
-                // candle's forward / cache code, so we treat it as a
-                // device-poisoning event. The terminal log at the bottom
-                // of the wrapper reports the error; this flag stops the
-                // NEXT request from going down the same path.
+                // Distinguish "inference returned Err" (almost always a
+                // candle/CUDA failure that propagated through `?`, e.g.
+                // an OOM or driver error — the context is unreliable,
+                // poison the model) from "spawn_blocking task panicked
+                // or was cancelled" (a Rust-level panic in the closure,
+                // not a device fault; failing the one request without
+                // tearing down the model for everyone else is correct).
                 match inference_result {
                     Ok(Ok(v)) => v,
                     Ok(Err(e)) => {
                         loaded.poisoned.store(true, Ordering::Release);
                         return Err(InferenceError::Other(e));
                     }
-                    Err(e) => {
-                        loaded.poisoned.store(true, Ordering::Release);
+                    Err(join_err) => {
+                        let cause = if join_err.is_panic() {
+                            "panicked"
+                        } else if join_err.is_cancelled() {
+                            "was cancelled"
+                        } else {
+                            "ended abnormally"
+                        };
+                        tracing::error!(
+                            cause,
+                            error = %join_err,
+                            "chat_completion: inference task {cause}; model NOT marked poisoned"
+                        );
                         return Err(InferenceError::Other(anyhow::anyhow!(
-                            "inference task panicked: {e}"
+                            "inference task {cause}: {join_err}"
                         )));
                     }
                 }
@@ -2054,28 +2067,48 @@ impl CandleHarness {
 
         let tp_for_marker = Arc::clone(&tp);
         let handle = tokio::spawn(chat_completion_tp_inner(tp, request).instrument(span.clone()));
-        let result = match handle.await {
-            Ok(r) => r,
-            Err(join_err) => Err(InferenceError::Other(anyhow::anyhow!(
-                "TP inference task panicked or was cancelled: {join_err}"
-            ))),
-        };
-        if let Err(ref e) = result {
-            // Mark poisoned: a failure inside the spawned task either
-            // hit a CUDA/NCCL driver error directly or surfaced as a
-            // task panic. Both cases leave the worker subprocesses in
-            // an unknown state — refuse subsequent requests until an
-            // operator unload+reloads. This is the gate that turned
-            // the 2026-05-26 silent-hang into a clean 5xx.
-            tp_for_marker.poisoned.store(true, Ordering::Release);
-            let _g = span.enter();
-            tracing::error!(
-                error = %format!("{e:#}"),
-                total_ms = req_start.elapsed().as_millis(),
-                "TP chat_completion: failed, model marked poisoned"
-            );
+        match handle.await {
+            Ok(Ok(resp)) => Ok(resp),
+            Ok(Err(e)) => {
+                // The inner task returned Err — a real inference
+                // failure that propagated through `?`. CUDA / NCCL
+                // driver errors leave the device context unrecoverable,
+                // so poison the model. This is the gate that turned
+                // the 2026-05-26 silent-hang into a clean 5xx.
+                tp_for_marker.poisoned.store(true, Ordering::Release);
+                let _g = span.enter();
+                tracing::error!(
+                    error = %format!("{e:#}"),
+                    total_ms = req_start.elapsed().as_millis(),
+                    "TP chat_completion: failed, model marked poisoned"
+                );
+                Err(e)
+            }
+            Err(join_err) => {
+                // JoinError: the spawned task panicked or was cancelled.
+                // Tokenizer / sampling / serialisation panics don't touch
+                // the device, so don't poison the model — failing this
+                // one request is enough. (CUDA failures arrive as Err
+                // through `?`, not as panics, and are handled above.)
+                let cause = if join_err.is_panic() {
+                    "panicked"
+                } else if join_err.is_cancelled() {
+                    "was cancelled"
+                } else {
+                    "ended abnormally"
+                };
+                let _g = span.enter();
+                tracing::error!(
+                    cause,
+                    error = %join_err,
+                    total_ms = req_start.elapsed().as_millis(),
+                    "TP chat_completion: inference task {cause}; model NOT marked poisoned"
+                );
+                Err(InferenceError::Other(anyhow::anyhow!(
+                    "TP inference task {cause}: {join_err}"
+                )))
+            }
         }
-        result
     }
 
     /// Streaming counterpart to `chat_completion_tp`. Same per-step
