@@ -174,6 +174,31 @@ async fn chat_completions(
                 Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
             )
                 .into_response(),
+            Err(InferenceError::PromptTooLong { prompt_len, max }) => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("prompt has {prompt_len} tokens but max is {max}"),
+                    "code": "prompt_too_long",
+                    "prompt_len": prompt_len,
+                    "max": max,
+                })),
+            )
+                .into_response(),
+            Err(InferenceError::InsufficientVram {
+                free_mb,
+                required_mb,
+            }) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": format!(
+                        "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
+                    ),
+                    "code": "insufficient_vram",
+                    "free_mb": free_mb,
+                    "required_mb": required_mb,
+                })),
+            )
+                .into_response(),
             Err(InferenceError::Other(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("{e:#}")})),
@@ -186,6 +211,31 @@ async fn chat_completions(
             Err(InferenceError::ModelNotLoaded(id)) => (
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
+            )
+                .into_response(),
+            Err(InferenceError::PromptTooLong { prompt_len, max }) => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!("prompt has {prompt_len} tokens but max is {max}"),
+                    "code": "prompt_too_long",
+                    "prompt_len": prompt_len,
+                    "max": max,
+                })),
+            )
+                .into_response(),
+            Err(InferenceError::InsufficientVram {
+                free_mb,
+                required_mb,
+            }) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": format!(
+                        "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
+                    ),
+                    "code": "insufficient_vram",
+                    "free_mb": free_mb,
+                    "required_mb": required_mb,
+                })),
             )
                 .into_response(),
             Err(InferenceError::Other(e)) => (
