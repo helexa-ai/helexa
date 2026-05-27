@@ -49,7 +49,7 @@ use std::sync::mpsc::{self, Sender};
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
 
-pub use jobs::Job;
+pub use jobs::{ArchHandle, Job};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -148,6 +148,124 @@ impl DeviceWorkerHandle {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
             .send(Job::QueryVram { reply: reply_tx })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Move a freshly-loaded `ModelArch` into the worker's state slab.
+    /// Returns the `ArchHandle` the caller stores on `LoadedModel`.
+    /// The `Box<ModelArch>` crosses the channel; the worker thread
+    /// owns it from here on.
+    pub async fn transfer_in(
+        &self,
+        arch: Box<crate::harness::candle::ModelArch>,
+    ) -> Result<ArchHandle, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TransferIn {
+                arch,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Tell the worker to drop the `ModelArch` for `handle` on the
+    /// worker thread (so CUDA tensors release on the right context).
+    /// Returns `Ok(())` even if the handle wasn't in the slab — Drop
+    /// is idempotent. Reports `Gone` if the worker isn't running.
+    pub async fn drop_arch(&self, handle: ArchHandle) -> Result<(), WorkerError> {
+        // Poisoning doesn't block DropArch — even on a poisoned
+        // context we want callers to unblock and proceed with the
+        // unload bookkeeping. The dispatch handler under poison just
+        // replies `()` without touching the model (the actual Drop
+        // happens via mem::forget at thread exit per the poison
+        // protocol).
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropArch {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(()) => Ok(()),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Reset the KV cache for the model at `handle`. Called at the
+    /// start of every chat completion so the new prompt doesn't
+    /// attend over the previous request's tokens.
+    pub async fn clear_kv_cache(&self, handle: ArchHandle) -> Result<(), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ClearKv {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Run one forward step and return the resulting `[vocab]` logits
+    /// as a CPU-side `Vec<f32>`. The caller then samples on a CPU
+    /// candle Tensor without ever binding the device context on its
+    /// tokio thread.
+    pub async fn forward_logits(
+        &self,
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<f32>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ForwardLogits {
+                handle,
+                tokens,
+                offset,
+                reply: reply_tx,
+            })
             .map_err(|_| WorkerError::Gone {
                 device_index: self.device_index,
             })?;
