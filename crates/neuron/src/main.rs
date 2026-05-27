@@ -118,7 +118,13 @@ async fn tp_smoke(tp_size: u32, cuda_devices: Vec<u32>) -> Result<()> {
         binary = %exe.display(),
         "tp-smoke: spawning worker pool"
     );
-    let mut pool = tp::WorkerPool::spawn(&exe, tp_size, &cuda_devices).await?;
+    // tp_smoke is a diagnostic tool; spawn the leader's device worker
+    // directly. (In the daemon path, CandleHarness::ensure_device_worker
+    // caches one per device.)
+    let leader_worker = neuron::harness::device_worker::DeviceWorkerHandle::spawn(leader_device)
+        .context("spawn leader device worker for tp-smoke")?;
+    let mut pool =
+        tp::WorkerPool::spawn(&exe, tp_size, &cuda_devices, leader_worker.clone()).await?;
 
     tracing::info!("tp-smoke: pinging every worker");
     let pongs = pool.ping_all().await?;

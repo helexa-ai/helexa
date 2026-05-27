@@ -25,7 +25,9 @@ async fn test_init_and_sanity_check_two_ranks() {
         .try_init();
 
     // 2 ranks: leader = rank 0 on device 0, worker = rank 1 on device 1.
-    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 2, &[0, 1])
+    let leader_worker = neuron::harness::device_worker::DeviceWorkerHandle::spawn(0)
+        .expect("spawn leader device worker");
+    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 2, &[0, 1], leader_worker)
         .await
         .expect("spawn worker pool");
 

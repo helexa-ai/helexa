@@ -212,10 +212,15 @@ pub struct WorkerPool {
     /// Path to the neuron binary used to launch workers.
     #[allow(dead_code)]
     exe: PathBuf,
-    /// Leader's own NCCL rank-0 state. Defaults to empty; populated by
-    /// `init_nccl()`. Held here so the leader can participate in
-    /// collectives (rank 0) without spawning a fourth subprocess.
-    leader_nccl: nccl_state::NcclState,
+    /// The leader's per-device CUDA worker thread. Phase 3 moved the
+    /// leader's `NcclState` (rank-0 NCCL Comm) into this thread, so
+    /// every NCCL op (init, sanity, all_reduce inside forward) issues
+    /// from one OS thread for the daemon's lifetime. The handle is
+    /// also used by `load_dense_shard` to clone the leader's
+    /// `Arc<Comm>` for the row-parallel layers' AllReduce ops; in
+    /// Phase 4 the load itself moves onto the worker and that bridge
+    /// goes away.
+    pub(crate) leader_worker: std::sync::Arc<super::device_worker::DeviceWorkerHandle>,
 }
 
 impl WorkerPool {
@@ -228,7 +233,12 @@ impl WorkerPool {
     /// sibling-binary path from `env!("CARGO_BIN_EXE_neuron")`).
     /// `cuda_devices` is one entry per rank including rank 0. Worker
     /// `i` (rank `i`) gets `cuda_devices[i]` as its `--cuda-device`.
-    pub async fn spawn(binary: &Path, world_size: u32, cuda_devices: &[u32]) -> Result<Self> {
+    pub async fn spawn(
+        binary: &Path,
+        world_size: u32,
+        cuda_devices: &[u32],
+        leader_worker: std::sync::Arc<super::device_worker::DeviceWorkerHandle>,
+    ) -> Result<Self> {
         if world_size < 2 {
             anyhow::bail!(
                 "WorkerPool::spawn called with world_size={world_size}; \
@@ -289,7 +299,7 @@ impl WorkerPool {
             world_size,
             workers,
             exe,
-            leader_nccl: nccl_state::NcclState::new(),
+            leader_worker,
         })
     }
 
@@ -321,27 +331,26 @@ impl WorkerPool {
         }
 
         // 2. Leader rank 0 calls Comm::from_rank on its own device.
-        //    Runs on spawn_blocking because NCCL's init blocks until
-        //    every rank has called in — that's exactly the workers
-        //    above. The leader's NcclState is moved through the
-        //    blocking task and returned to the pool.
+        //    Phase 3 moved this from spawn_blocking onto the leader's
+        //    device worker thread (`Job::NcclInit`); the underlying
+        //    `Comm` now lives on the same OS thread for its entire
+        //    lifetime, including every later `Comm::all_reduce` issued
+        //    by the row-parallel layers during forward.
+        //
+        //    NCCL's init blocks until every rank has called in — the
+        //    subprocess workers above and the leader's device worker
+        //    here. The Job's reply unblocks when the leader's
+        //    Comm::from_rank returns.
         let leader_cfg = worker::WorkerConfig {
             rank: 0,
             world_size: self.world_size,
             cuda_device: leader_cuda_device,
         };
-        let comm_id_for_leader = comm_id.clone();
-        // Swap out the leader's NcclState into a fresh empty one so we
-        // can move it into spawn_blocking; restore after the task
-        // returns. (NcclState isn't Clone — it owns a real NCCL Comm.)
-        let mut leader_state = std::mem::take(&mut self.leader_nccl);
-        let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
-            let resp = leader_state.init(leader_cfg, &comm_id_for_leader);
-            (leader_state, resp)
-        })
-        .await
-        .context("leader NCCL init task panicked")?;
-        self.leader_nccl = returned_state;
+        let leader_resp = self
+            .leader_worker
+            .nccl_init(leader_cfg, comm_id.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("leader NCCL init via device worker: {e}"))?;
         match leader_resp {
             rpc::WorkerResponse::InitOk => {}
             rpc::WorkerResponse::Error { kind, message } => {
@@ -387,16 +396,16 @@ impl WorkerPool {
             w.send_only(&WorkerRequest::NcclSanityCheck).await?;
         }
 
-        // 2. Leader's own all_reduce, in spawn_blocking. NCCL operations
-        //    block until every rank participates.
-        let mut leader_state = std::mem::take(&mut self.leader_nccl);
-        let (returned_state, leader_resp) = tokio::task::spawn_blocking(move || {
-            let resp = leader_state.sanity_check();
-            (leader_state, resp)
-        })
-        .await
-        .context("leader NCCL sanity task panicked")?;
-        self.leader_nccl = returned_state;
+        // 2. Leader's own all_reduce, on its device worker thread.
+        //    NCCL operations block until every rank participates;
+        //    Job::NcclSanity returns once the leader's side completes
+        //    (which happens when every subprocess worker reaches its
+        //    all_reduce call too).
+        let leader_resp = self
+            .leader_worker
+            .nccl_sanity()
+            .await
+            .map_err(|e| anyhow::anyhow!("leader NCCL sanity via device worker: {e}"))?;
 
         let expected = self.world_size;
         let leader_sum = match leader_resp {
@@ -483,21 +492,24 @@ impl WorkerPool {
         leader_device: &candle_core::Device,
         dtype: candle_core::DType,
         quant: Option<String>,
-    ) -> Result<std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>> {
+    ) -> Result<super::device_worker::TpHandle> {
         use candle_nn::var_builder::ShardedSafeTensors;
-        use std::sync::Arc;
-        use tokio::sync::Mutex;
 
-        // Wrap the comm in SendComm immediately so it stays Send across
-        // the await points in this method — bare Arc<Comm> would
-        // poison the async fn's Send bound (Comm's raw NCCL pointer is
-        // !Send). The wrapper's safety contract is satisfied by the
-        // pool's outer Mutex serialising callers + the spawn_blocking
-        // thread being the only place ops are issued.
-        let leader_comm =
-            nccl_state::SendComm(self.leader_nccl.comm().ok_or_else(|| {
-                anyhow::anyhow!("leader NCCL not initialised; call init_nccl first")
-            })?);
+        // Ask the leader's device worker for an `Arc<Comm>` clone.
+        // Phase 3 moved `NcclState` ownership onto the worker thread,
+        // so the spawn_blocking load below can no longer reach the
+        // Comm directly. The reply is wrapped in `SendComm` because
+        // the underlying `Arc<Comm>` is `!Send` at the type level;
+        // the safety contract (only one thread issues NCCL ops at a
+        // time) is preserved because the load runs on a single
+        // spawn_blocking thread and AllReduce ops fire only from the
+        // device worker thread later. Phase 4 eliminates this bridge
+        // when the load itself moves onto the worker.
+        let leader_comm = self
+            .leader_worker
+            .clone_leader_comm()
+            .await
+            .map_err(|e| anyhow::anyhow!("clone leader Comm via device worker: {e}"))?;
         let world_size = self.world_size;
         let safetensors_str: Vec<String> = safetensors_paths
             .iter()
@@ -601,15 +613,32 @@ impl WorkerPool {
             }
         }
 
-        Ok(Arc::new(Mutex::new(leader_model)))
+        // Phase 3: move the leader's freshly-built `TpLeaderModel`
+        // into the device worker's TP slab. The model holds
+        // `Arc<Comm>` clones (in its AllReduce ops) plus CUDA
+        // tensors — both need to live on the device worker thread so
+        // every `Comm::all_reduce` and tensor op during forward
+        // dispatches from the same OS thread that bound the CUDA
+        // context.
+        let handle = self
+            .leader_worker
+            .transfer_in_tp(Box::new(leader_model))
+            .await
+            .map_err(|e| anyhow::anyhow!("transfer TP leader model into device worker: {e}"))?;
+        Ok(handle)
     }
 
     /// Run one forward step across every rank. The leader's forward
-    /// returns the last-position logits as a candle Tensor on the
-    /// leader's device; the caller does sampling out-of-band. Workers
-    /// run their own forwards (the AllReduce inside row-parallel layers
-    /// is what lets the leader's collective complete) and reply with
-    /// `GenerateStepOk` — they do not ship logits over the wire.
+    /// runs on the device worker thread via `Job::TpForwardLogits` and
+    /// returns CPU-side `[vocab]` logits as `Vec<f32>`; the async
+    /// caller wraps them in a CPU tensor for `apply_repeat_penalty` +
+    /// sampling without holding a device-resident tensor on a tokio
+    /// thread.
+    ///
+    /// Subprocess workers run their own forwards in parallel (the
+    /// AllReduce CustomOps inside row-parallel layers are what let
+    /// the leader's collective complete) and reply with
+    /// `GenerateStepOk` over the RPC stream — they do not ship logits.
     ///
     /// `tokens` is the input for this step (prompt for prefill, the
     /// previously-sampled token for decode). `offset` is the KV-cache
@@ -618,10 +647,10 @@ impl WorkerPool {
     pub async fn generate_step(
         &mut self,
         model_id: &str,
-        leader_model: std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>,
+        leader_handle: super::device_worker::TpHandle,
         tokens: Vec<u32>,
         offset: usize,
-    ) -> Result<candle_core::Tensor> {
+    ) -> Result<Vec<f32>> {
         let step_start = std::time::Instant::now();
         let tokens_len = tokens.len();
         tracing::debug!(
@@ -630,7 +659,7 @@ impl WorkerPool {
             offset,
             "WorkerPool::generate_step: fan-out"
         );
-        // 1. Fan-out to workers.
+        // 1. Fan-out to subprocess workers.
         for w in &mut self.workers {
             w.send_only(&WorkerRequest::GenerateStep {
                 model_id: model_id.to_string(),
@@ -640,35 +669,30 @@ impl WorkerPool {
             .await?;
         }
 
-        // 2. Leader's forward in spawn_blocking. The AllReduce CustomOps
-        //    inside the row-parallel layers block until every worker's
-        //    forward issues the matching collective.
+        // 2. Leader's forward on its device worker thread. The
+        //    AllReduce CustomOps inside the row-parallel layers block
+        //    until every subprocess worker's forward issues the
+        //    matching collective. Returning CPU-side `Vec<f32>` keeps
+        //    the device tensor from escaping the worker thread —
+        //    that's the invariant the whole refactor exists to
+        //    preserve.
         let leader_start = std::time::Instant::now();
-        let leader_result = tokio::task::spawn_blocking(move || -> Result<candle_core::Tensor> {
-            let mut model = leader_model.blocking_lock();
-            let device = model.device().clone();
-            let input = candle_core::Tensor::new(tokens.as_slice(), &device)?.unsqueeze(0)?;
-            // ForCausalLM::forward returns [B, 1, V] — squeeze both
-            // leading dims to the rank-1 vocab logits the sampler wants.
-            let logits = model.forward(&input, offset)?.squeeze(0)?.squeeze(0)?;
-            Ok(logits)
-        })
-        .await
-        .context("leader forward task panicked");
-        let leader_ok = matches!(leader_result, Ok(Ok(_)));
+        let leader_result = self
+            .leader_worker
+            .tp_forward_logits(leader_handle, tokens, offset)
+            .await;
+        let leader_ok = leader_result.is_ok();
         let leader_ms = leader_start.elapsed().as_millis();
-        // Surface the leader's own error at WARN. Previously this was
-        // silently coerced to `leader_ok=false` while only worker
-        // ranks' errors got logged — when both the leader and a worker
-        // fail together (the typical "CUDA context is now poisoned"
-        // pattern after an OOM), the operator could see only the
-        // worker side and had to guess what hit rank 0.
+        // Surface the leader's own error at WARN before draining
+        // workers so the operator can correlate it with whatever the
+        // subprocess workers logged. Previously this was silently
+        // coerced to a bool.
         if !leader_ok {
-            let detail = match &leader_result {
-                Ok(Err(e)) => format!("{e:#}"),
-                Err(e) => format!("task: {e:#}"),
-                Ok(Ok(_)) => unreachable!("leader_ok=false implies an error path"),
-            };
+            let detail = leader_result
+                .as_ref()
+                .err()
+                .map(|e| format!("{e:#}"))
+                .unwrap_or_default();
             tracing::warn!(
                 model = %model_id,
                 tokens = tokens_len,
@@ -707,7 +731,33 @@ impl WorkerPool {
             "WorkerPool::generate_step: workers drained"
         );
 
-        combine_leader_workers(leader_result, worker_errors, "GenerateStep")
+        // Combine the leader's Result + the workers' string-error
+        // list. Phase 3 inlines this because the upstream
+        // `combine_leader_workers` expects the spawn_blocking-shaped
+        // `Result<Result<T>>`; the new device-worker path produces a
+        // single `Result<T, WorkerError>` instead.
+        match leader_result {
+            Ok(values) => {
+                if worker_errors.is_empty() {
+                    Ok(values)
+                } else {
+                    anyhow::bail!(
+                        "GenerateStep: leader succeeded but workers failed: {}",
+                        worker_errors.join("; ")
+                    )
+                }
+            }
+            Err(e) => {
+                if worker_errors.is_empty() {
+                    Err(anyhow::Error::new(e).context("GenerateStep: leader forward failed"))
+                } else {
+                    Err(anyhow::Error::new(e).context(format!(
+                        "GenerateStep: leader forward failed and workers also failed: {}",
+                        worker_errors.join("; ")
+                    )))
+                }
+            }
+        }
     }
 
     /// Reset the KV cache for `model_id` on every rank. Called at the
@@ -716,7 +766,7 @@ impl WorkerPool {
     pub async fn clear_kv_cache(
         &mut self,
         model_id: &str,
-        #[cfg(feature = "cuda")] leader_model: std::sync::Arc<tokio::sync::Mutex<TpLeaderModel>>,
+        #[cfg(feature = "cuda")] leader_handle: super::device_worker::TpHandle,
     ) -> Result<()> {
         let start = std::time::Instant::now();
         tracing::debug!(model = %model_id, "WorkerPool::clear_kv_cache: fan-out");
@@ -728,13 +778,18 @@ impl WorkerPool {
         }
         #[cfg(feature = "cuda")]
         {
-            let mut m = leader_model.lock().await;
-            m.clear_kv_cache();
+            // Leader-side clear on the device worker thread —
+            // `TpLeaderModel::clear_kv_cache` is infallible but still
+            // routes through Job::TpClearKv so the cache reset runs
+            // on the same thread that owns the model's CUDA tensors.
+            if let Err(e) = self.leader_worker.tp_clear_kv(leader_handle).await {
+                anyhow::bail!("leader TP clear_kv_cache via device worker: {e}");
+            }
         }
         // Drain workers — same rationale as `generate_step`. The
-        // leader's clear_kv_cache is in-process and infallible, but we
-        // still always drain so an error on one worker doesn't leave
-        // pending responses for the others.
+        // leader's clear_kv_cache is now async-via-channel but still
+        // returns before the drain so the workers' KvCacheCleared
+        // replies are processed in order.
         let worker_errors = drain_workers(&mut self.workers, |r| match r {
             WorkerResponse::KvCacheCleared => Ok(()),
             WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),

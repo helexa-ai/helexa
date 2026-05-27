@@ -49,6 +49,8 @@ use std::sync::mpsc::{self, Sender};
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
 
+#[cfg(feature = "cuda")]
+pub use jobs::TpHandle;
 pub use jobs::{ArchHandle, Job};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
@@ -261,6 +263,192 @@ impl DeviceWorkerHandle {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
             .send(Job::ForwardLogits {
+                handle,
+                tokens,
+                offset,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Initialise the leader's NCCL communicator. The reply uses
+    /// `WorkerResponse` (same shape subprocess workers use over stdio
+    /// RPC) so `WorkerPool::init_nccl`'s aggregation treats leader +
+    /// subprocess responses uniformly. Available on no-cuda builds
+    /// too — the dispatch handler calls the no-cuda `NcclState::init`
+    /// stub which replies `cuda_feature_not_enabled`.
+    pub async fn nccl_init(
+        &self,
+        cfg: crate::harness::tp::worker::WorkerConfig,
+        comm_id_hex: String,
+    ) -> Result<crate::harness::tp::rpc::WorkerResponse, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::NcclInit {
+                cfg,
+                comm_id_hex,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        reply_rx.await.map_err(|_| WorkerError::Gone {
+            device_index: self.device_index,
+        })
+    }
+
+    /// Run an NCCL sanity all_reduce on the leader's rank 0.
+    /// Available on no-cuda builds; replies with an error response.
+    pub async fn nccl_sanity(
+        &self,
+    ) -> Result<crate::harness::tp::rpc::WorkerResponse, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::NcclSanity { reply: reply_tx })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        reply_rx.await.map_err(|_| WorkerError::Gone {
+            device_index: self.device_index,
+        })
+    }
+
+    /// Clone the leader's `Arc<Comm>` so a spawn_blocking-based load
+    /// (Phase 3 bridge) can pass it to the row-parallel layers.
+    /// Phase 4 eliminates this once the TP load runs on this thread.
+    #[cfg(feature = "cuda")]
+    pub async fn clone_leader_comm(
+        &self,
+    ) -> Result<crate::harness::tp::nccl_state::SendComm, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::CloneLeaderComm { reply: reply_tx })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Move a freshly-built `TpLeaderModel` into the worker's TP slab.
+    #[cfg(feature = "cuda")]
+    pub async fn transfer_in_tp(
+        &self,
+        model: Box<crate::harness::tp::TpLeaderModel>,
+    ) -> Result<TpHandle, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TransferInTp {
+                model,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop the TP model at `handle` on the worker thread.
+    #[cfg(feature = "cuda")]
+    pub async fn drop_tp(&self, handle: TpHandle) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropTp {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(()) => Ok(()),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Reset the leader's KV cache for a TP model.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_clear_kv(&self, handle: TpHandle) -> Result<(), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpClearKv {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Run one TP forward step on the leader's shard. Returns CPU-side
+    /// logits as `Vec<f32>` ready for sampling. The caller is
+    /// responsible for fan-out / drain of the subprocess workers
+    /// concurrently with this call.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_forward_logits(
+        &self,
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<f32>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpForwardLogits {
                 handle,
                 tokens,
                 offset,

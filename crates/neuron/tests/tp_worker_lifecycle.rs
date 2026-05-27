@@ -5,6 +5,7 @@
 //! `Init` and `NcclSanityCheck` are stubbed in 7a-i, so this test
 //! runs on any host the workspace builds on.
 
+use neuron::harness::device_worker::DeviceWorkerHandle;
 use neuron::harness::tp::{WorkerPool, rpc::WorkerResponse};
 
 /// Path to the neuron binary built by cargo for this test process.
@@ -19,7 +20,8 @@ const NEURON_BIN: &str = env!("CARGO_BIN_EXE_neuron");
 async fn test_spawn_ping_shutdown() {
     // cuda_devices: rank 0 → device 0 (leader, unused here),
     //               rank 1 → device 1 (worker; not actually opened in 7a-i).
-    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 2, &[0, 1])
+    let leader_worker = DeviceWorkerHandle::spawn(0).expect("spawn device worker");
+    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 2, &[0, 1], leader_worker)
         .await
         .expect("spawn worker pool");
 
@@ -44,7 +46,8 @@ async fn test_spawn_ping_shutdown() {
 /// Three workers — exercise the loop in `ping_all` / `shutdown`.
 #[tokio::test]
 async fn test_spawn_three_workers() {
-    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 3, &[0, 1, 2])
+    let leader_worker = DeviceWorkerHandle::spawn(0).expect("spawn device worker");
+    let mut pool = WorkerPool::spawn(NEURON_BIN.as_ref(), 3, &[0, 1, 2], leader_worker)
         .await
         .expect("spawn worker pool");
 

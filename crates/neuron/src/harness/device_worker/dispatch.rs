@@ -14,7 +14,12 @@
 //! `tp_models: HashMap<TpHandle, Box<TpLeaderModel>>`.
 
 use crate::harness::candle::ModelArch;
+#[cfg(feature = "cuda")]
+use crate::harness::device_worker::jobs::TpHandle;
 use crate::harness::device_worker::jobs::{ArchHandle, Job};
+#[cfg(feature = "cuda")]
+use crate::harness::tp::TpLeaderModel;
+use crate::harness::tp::nccl_state::NcclState;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,6 +45,20 @@ struct DeviceWorkerState {
     /// increments and returns the new value. Wraps at u64::MAX after
     /// ~10^19 model loads — not a practical concern.
     next_handle: u64,
+    /// Leader's NCCL state. Populated by `Job::NcclInit`; the
+    /// underlying `Comm`'s libnccl handle lives bound to this thread
+    /// for its entire lifetime. Subprocess workers maintain their own
+    /// `NcclState` in their own processes — that's not visible from
+    /// here.
+    #[allow(dead_code)] // Read only via methods on NcclState
+    nccl: NcclState,
+    /// TP leader model slab. Same lifecycle as `models`; separate
+    /// namespace so `ArchHandle` and `TpHandle` can't collide.
+    #[cfg(feature = "cuda")]
+    tp_models: HashMap<TpHandle, Box<TpLeaderModel>>,
+    /// Counter for minting fresh `TpHandle`s.
+    #[cfg(feature = "cuda")]
+    next_tp_handle: u64,
     #[cfg(feature = "cuda")]
     #[allow(dead_code)]
     /// `None` only if `CudaContext::new()` failed — in that case the
@@ -128,15 +147,93 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let result = forward_logits(&mut state, handle, &tokens, offset);
                 let _ = reply.send(result);
             }
+            Job::NcclInit {
+                cfg,
+                comm_id_hex,
+                reply,
+            } => {
+                let resp = state.nccl.init(cfg, &comm_id_hex);
+                let _ = reply.send(resp);
+            }
+            Job::NcclSanity { reply } => {
+                let resp = state.nccl.sanity_check();
+                let _ = reply.send(resp);
+            }
+            #[cfg(feature = "cuda")]
+            Job::CloneLeaderComm { reply } => {
+                let result = match state.nccl.comm() {
+                    Some(comm) => Ok(crate::harness::tp::nccl_state::SendComm(comm)),
+                    None => Err(anyhow::anyhow!(
+                        "CloneLeaderComm: NcclState has no Comm; call NcclInit first"
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TransferInTp { model, reply } => {
+                let handle = TpHandle(state.next_tp_handle);
+                state.next_tp_handle = state.next_tp_handle.wrapping_add(1);
+                state.tp_models.insert(handle, model);
+                tracing::debug!(
+                    device_index,
+                    tp_handle = handle.0,
+                    slab_size = state.tp_models.len(),
+                    "device worker: TP model transferred in"
+                );
+                let _ = reply.send(Ok(handle));
+            }
+            #[cfg(feature = "cuda")]
+            Job::DropTp { handle, reply } => {
+                let removed = state.tp_models.remove(&handle);
+                let was_present = removed.is_some();
+                drop(removed);
+                tracing::debug!(
+                    device_index,
+                    tp_handle = handle.0,
+                    was_present,
+                    slab_size = state.tp_models.len(),
+                    "device worker: TP model dropped"
+                );
+                let _ = reply.send(());
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpClearKv { handle, reply } => {
+                let result = match state.tp_models.get_mut(&handle) {
+                    Some(model) => {
+                        model.clear_kv_cache();
+                        Ok(())
+                    }
+                    None => Err(anyhow::anyhow!(
+                        "TpClearKv: no TP model for handle {}",
+                        handle.0
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpForwardLogits {
+                handle,
+                tokens,
+                offset,
+                reply,
+            } => {
+                let result = tp_forward_logits(&mut state, handle, &tokens, offset);
+                let _ = reply.send(result);
+            }
             // Handled by the matches!() check above; reaching here
             // means a Shutdown slipped past which is a bug.
             Job::Shutdown => unreachable!("Shutdown should break above"),
         }
     }
 
+    #[cfg(feature = "cuda")]
+    let tp_slab_size = state.tp_models.len();
+    #[cfg(not(feature = "cuda"))]
+    let tp_slab_size = 0_usize;
     tracing::info!(
         device_index,
         slab_size = state.models.len(),
+        tp_slab_size,
         "device worker exiting; dropping remaining models"
     );
     // Drops every model in the slab on this thread before the function
@@ -193,6 +290,9 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             device,
             models: HashMap::new(),
             next_handle: 1,
+            nccl: NcclState::new(),
+            tp_models: HashMap::new(),
+            next_tp_handle: 1,
             ctx,
         }
     }
@@ -203,6 +303,7 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             device: candle_core::Device::Cpu,
             models: HashMap::new(),
             next_handle: 1,
+            nccl: NcclState::new(),
         }
     }
 }
@@ -229,6 +330,38 @@ fn query_vram(state: &DeviceWorkerState) -> anyhow::Result<(u64, u64)> {
 #[cfg(not(feature = "cuda"))]
 fn query_vram(_state: &DeviceWorkerState) -> anyhow::Result<(u64, u64)> {
     Ok((0, 0))
+}
+
+/// TP-equivalent of [`forward_logits`]: looks up the leader's
+/// [`TpLeaderModel`] in the slab, runs its forward, copies the
+/// `[vocab]` logits to a CPU `Vec<f32>`. The leader's `Arc<Comm>`
+/// clones embedded in the TP layers' AllReduce ops fire from this
+/// thread — same thread that bound the CUDA context and that holds
+/// the `Comm` in `state.nccl`.
+#[cfg(feature = "cuda")]
+fn tp_forward_logits(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    tokens: &[u32],
+    offset: usize,
+) -> anyhow::Result<Vec<f32>> {
+    use candle_core::{DType, Tensor};
+
+    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
+
+    let model = state
+        .tp_models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("TpForwardLogits: no model for handle {}", handle.0))?;
+
+    let logits = model.forward(&input, offset)?;
+    // ForCausalLM forward returns [B, 1, V] after the trailing
+    // .i((.., l - 1.., ..))?.apply(lm_head); squeeze both leading
+    // singleton dims to a rank-1 [V] tensor for sampling.
+    let logits = logits.squeeze(0)?.squeeze(0)?;
+    let logits = logits.to_dtype(DType::F32)?.flatten_all()?;
+    let values = logits.to_vec1::<f32>()?;
+    Ok(values)
 }
 
 /// Forward step + copy the `[vocab]` logits to a CPU `Vec<f32>` ready
@@ -295,6 +428,38 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogits { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::NcclInit { reply, .. } => {
+            let _ = reply.send(crate::harness::tp::rpc::WorkerResponse::Error {
+                kind: "device_worker_poisoned".into(),
+                message: format!("device worker {device_index} poisoned"),
+            });
+        }
+        Job::NcclSanity { reply } => {
+            let _ = reply.send(crate::harness::tp::rpc::WorkerResponse::Error {
+                kind: "device_worker_poisoned".into(),
+                message: format!("device worker {device_index} poisoned"),
+            });
+        }
+        #[cfg(feature = "cuda")]
+        Job::CloneLeaderComm { reply } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TransferInTp { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::DropTp { reply, .. } => {
+            let _ = reply.send(());
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpClearKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpForwardLogits { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::Shutdown => {
