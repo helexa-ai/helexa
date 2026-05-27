@@ -307,6 +307,26 @@ pub struct LlamaDense {
 }
 
 impl LlamaDense {
+    /// Constructor used by the dispatch-side loader. Keeps the field
+    /// names private while letting the worker thread build a
+    /// `LlamaDense` from already-loaded weights without going through
+    /// async candle code.
+    pub(crate) fn from_parts(
+        model: llama_dense::Llama,
+        cache: llama_dense::Cache,
+        config: llama_dense::Config,
+        dtype: DType,
+        device: Device,
+    ) -> Self {
+        Self {
+            model,
+            cache,
+            config,
+            dtype,
+            device,
+        }
+    }
+
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> Result<Tensor> {
         Ok(self.model.forward(input, offset, &mut self.cache)?)
     }
@@ -348,7 +368,7 @@ const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &["llama", "qwen3", "qwen3_5", "qwe
 /// The result message names the model_type we saw, the supported set,
 /// and points at the files an operator (or future contributor) needs
 /// to touch to grow the supported set.
-fn check_dense_config_supported(config_json: &str, model_id: &str) -> Result<()> {
+pub(crate) fn check_dense_config_supported(config_json: &str, model_id: &str) -> Result<()> {
     let v: serde_json::Value = serde_json::from_str(config_json)
         .with_context(|| format!("parse config.json for '{model_id}' as JSON"))?;
     let model_type = v.get("model_type").and_then(|x| x.as_str()).unwrap_or("");
@@ -1547,41 +1567,46 @@ impl Harness for CandleHarness {
         let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
         let device = Self::pick_device(&devices)?;
 
-        // Dispatch by source format: GGUF (pre-quantized, single-GPU
-        // only path) vs safetensors dense (bf16/fp16; the path that
-        // grows TP support). `spec.quant` is the signal — Some means
-        // the operator picked a quantized GGUF; None means dense.
-        let (tokenizer_path, arch) = if spec.quant.is_some() {
-            self.load_arch_gguf(spec, &device).await?
-        } else {
-            self.load_arch_dense(spec, &device).await?
-        };
-
-        let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
-
-        // Worker thread for the chosen device. CPU loads (CUDA
-        // unavailable / not requested) skip the worker — there's no
-        // context to own. For CUDA loads, the arch is transferred
-        // into the worker's slab now so the inference path can
-        // reference it via the returned `ArchHandle`. The explicit
-        // type annotation lets the no-cuda build resolve `None` to
-        // the right `Option<Arc<DeviceWorkerHandle>>` type.
+        // Phase 4: load directly on the worker thread for CUDA;
+        // legacy spawn_blocking + Arc<Mutex<>> only for CPU. Resolve
+        // hf-hub paths up front (always async), then either dispatch
+        // a load Job (CUDA) or call the legacy local loader (CPU).
         let worker: Option<Arc<super::device_worker::DeviceWorkerHandle>> = match &device {
             #[cfg(feature = "cuda")]
             Device::Cuda(_) => Some(self.ensure_device_worker(devices[0]).await?),
             _ => None,
         };
-        let (arch_local, arch_handle) = match &worker {
-            Some(w) => {
+
+        let (tokenizer_path, arch_local, arch_handle) = if let Some(w) = &worker {
+            // CUDA path: resolve, then load in the worker.
+            if spec.quant.is_some() {
+                let (gguf_path, tokenizer_path) = self.resolve_files(spec).await?;
                 let handle = w
-                    .transfer_in(Box::new(arch))
+                    .load_gguf(gguf_path, spec.model_id.clone())
                     .await
-                    .map_err(|e| anyhow::anyhow!("transfer arch into device worker: {e}"))?;
-                (None, Some(handle))
+                    .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
+                (tokenizer_path, None, Some(handle))
+            } else {
+                let (config_path, tokenizer_path, safetensors_paths) =
+                    self.resolve_dense_files(spec).await?;
+                let handle = w
+                    .load_dense(config_path, safetensors_paths, spec.model_id.clone())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
+                (tokenizer_path, None, Some(handle))
             }
-            None => (Some(Arc::new(Mutex::new(arch))), None),
+        } else {
+            // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
+            let (tokenizer_path, arch) = if spec.quant.is_some() {
+                self.load_arch_gguf(spec, &device).await?
+            } else {
+                self.load_arch_dense(spec, &device).await?
+            };
+            (tokenizer_path, Some(Arc::new(Mutex::new(arch))), None)
         };
+
+        let tokenizer = Tokenizer::from_file(&tokenizer_path)
+            .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
 
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),

@@ -489,36 +489,19 @@ impl WorkerPool {
         model_id: &str,
         config_json: &str,
         safetensors_paths: &[std::path::PathBuf],
-        leader_device: &candle_core::Device,
+        _leader_device: &candle_core::Device,
         dtype: candle_core::DType,
         quant: Option<String>,
     ) -> Result<super::device_worker::TpHandle> {
-        use candle_nn::var_builder::ShardedSafeTensors;
-
-        // Ask the leader's device worker for an `Arc<Comm>` clone.
-        // Phase 3 moved `NcclState` ownership onto the worker thread,
-        // so the spawn_blocking load below can no longer reach the
-        // Comm directly. The reply is wrapped in `SendComm` because
-        // the underlying `Arc<Comm>` is `!Send` at the type level;
-        // the safety contract (only one thread issues NCCL ops at a
-        // time) is preserved because the load runs on a single
-        // spawn_blocking thread and AllReduce ops fire only from the
-        // device worker thread later. Phase 4 eliminates this bridge
-        // when the load itself moves onto the worker.
-        let leader_comm = self
-            .leader_worker
-            .clone_leader_comm()
-            .await
-            .map_err(|e| anyhow::anyhow!("clone leader Comm via device worker: {e}"))?;
         let world_size = self.world_size;
         let safetensors_str: Vec<String> = safetensors_paths
             .iter()
             .map(|p| p.to_string_lossy().into_owned())
             .collect();
 
-        // 1. Fan out the LoadDenseShard request to every worker without
-        //    awaiting their replies — they'll build their shards in
-        //    parallel with the leader below.
+        // 1. Fan out the LoadDenseShard request to every subprocess
+        //    worker without awaiting their replies — they'll build
+        //    their shards in parallel with the leader below.
         for w in &mut self.workers {
             w.send_only(&WorkerRequest::LoadDenseShard {
                 model_id: model_id.to_string(),
@@ -529,76 +512,32 @@ impl WorkerPool {
             .await?;
         }
 
-        // 2. Build rank 0's shard on the leader. Dispatch on model_type
-        //    — for `qwen3` we build a `TpQwen3ForCausalLM`, for
-        //    `qwen3_5` (Qwen3-Next, Qwen3.6's architecture) we build
-        //    `TpQwen3_5ForCausalLM`. Both end up wrapped in the
-        //    `TpLeaderModel` enum so downstream callers don't care.
-        let model_type = serde_json::from_str::<serde_json::Value>(config_json)
-            .ok()
-            .as_ref()
-            .and_then(|v| v.get("model_type"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-        let paths_for_leader: Vec<std::path::PathBuf> = safetensors_paths.to_vec();
-        let device_for_leader = leader_device.clone();
-        let comm_for_leader = leader_comm;
-        let model_id_for_log = model_id.to_string();
-        let config_json_for_leader = config_json.to_string();
-        let quant_for_leader = quant.clone();
-
-        let leader_model = tokio::task::spawn_blocking(move || -> Result<TpLeaderModel> {
-            // SAFETY: same invariant as the single-GPU dense path —
-            // the HF cache files are treated as immutable while the
-            // mmap is held.
-            let vb = unsafe {
-                ShardedSafeTensors::var_builder(&paths_for_leader, dtype, &device_for_leader)
-                    .context("build ShardedVarBuilder over safetensors")?
-            };
-            // SAFETY: as above — the HF cache files are immutable.
-            let mmap = unsafe {
-                candle_core::safetensors::MmapedSafetensors::multi(&paths_for_leader)
-                    .context("build MmapedSafetensors for leader load")?
-            };
-            let comm = comm_for_leader.into_inner();
-            let loaded = match model_type.as_str() {
-                "qwen3" => {
-                    let cfg: super::tp::tp_qwen3::Config = serde_json::from_str(&config_json_for_leader)
-                        .context("parse Qwen3 Config JSON for leader load")?;
-                    TpLeaderModel::Qwen3(super::tp::tp_qwen3::TpQwen3ForCausalLM::load(
-                        &cfg, &vb, 0, world_size, comm,
-                    )?)
-                }
-                "qwen3_5" => {
-                    let cfg: super::tp::tp_qwen3_5::Config =
-                        serde_json::from_str(&config_json_for_leader)
-                            .context("parse Qwen3-Next Config JSON for leader load")?;
-                    let quant_dtype =
-                        super::tp::worker::parse_quant_string(quant_for_leader.as_deref())?;
-                    TpLeaderModel::Qwen3_5(super::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
-                        cfg,
-                        &vb,
-                        &mmap,
-                        0,
-                        world_size,
-                        comm,
-                        quant_dtype,
-                    )?)
-                }
-                other => anyhow::bail!(
-                    "TP dispatch: unsupported model_type '{other}' on leader (supported: qwen3, qwen3_5)"
-                ),
-            };
-            tracing::info!(rank = 0, model = %model_id_for_log, model_type = %model_type, "loaded TP shard (leader)");
-            Ok(loaded)
-        })
-        .await
-        .context("leader load task panicked")??;
+        // 2. Build rank 0's shard on the leader's device worker
+        //    thread. Phase 4 moved the load itself onto the worker —
+        //    the dispatch handler reads `state.nccl.comm()` directly
+        //    so the leader's `Arc<Comm>` clones embedded in the
+        //    row-parallel layers are constructed and used on the same
+        //    OS thread for the model's entire lifetime. No
+        //    spawn_blocking, no SendComm bridge.
+        let handle = self
+            .leader_worker
+            .tp_load_shard(
+                model_id.to_string(),
+                config_json.to_string(),
+                safetensors_paths.to_vec(),
+                dtype,
+                quant.clone(),
+                world_size,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("leader TP shard load via device worker: {e}"))?;
 
         // 3. Collect worker confirmations. Anything other than
         //    LoadDenseShardOk aborts the whole load — the leader's
-        //    already-loaded shard drops when this fn returns Err.
+        //    already-inserted shard would leak in the worker slab
+        //    until the daemon restarts; an explicit DropTp would be
+        //    cleaner but the failure here is rare and the operator's
+        //    next step is to restart anyway.
         for w in &mut self.workers {
             let resp = w.recv_only().await?;
             match resp {
@@ -613,18 +552,6 @@ impl WorkerPool {
             }
         }
 
-        // Phase 3: move the leader's freshly-built `TpLeaderModel`
-        // into the device worker's TP slab. The model holds
-        // `Arc<Comm>` clones (in its AllReduce ops) plus CUDA
-        // tensors — both need to live on the device worker thread so
-        // every `Comm::all_reduce` and tensor op during forward
-        // dispatches from the same OS thread that bound the CUDA
-        // context.
-        let handle = self
-            .leader_worker
-            .transfer_in_tp(Box::new(leader_model))
-            .await
-            .map_err(|e| anyhow::anyhow!("transfer TP leader model into device worker: {e}"))?;
         Ok(handle)
     }
 

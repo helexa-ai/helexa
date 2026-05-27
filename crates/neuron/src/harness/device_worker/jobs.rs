@@ -5,8 +5,8 @@
 //! async-side `DeviceWorkerHandle` constructs a job, sends it down the
 //! `std::sync::mpsc` channel, and `await`s the oneshot for the reply.
 
-use crate::harness::candle::ModelArch;
 use anyhow::Result;
+use std::path::PathBuf;
 use tokio::sync::oneshot;
 
 /// Opaque handle to a `ModelArch` stored in the worker thread's state
@@ -48,12 +48,24 @@ pub enum Job {
     QueryVram {
         reply: oneshot::Sender<Result<(u64, u64)>>,
     },
-    /// Move a freshly-loaded `ModelArch` into the worker's state slab.
-    /// Returns an `ArchHandle` the caller stores on `LoadedModel` and
-    /// passes back in subsequent `ClearKv` / `ForwardLogits` /
-    /// `DropArch` jobs.
-    TransferIn {
-        arch: Box<ModelArch>,
+    /// Load a GGUF (pre-quantized) single-GPU model on the worker
+    /// thread. The dispatch handler opens the GGUF file, parses
+    /// metadata, dispatches on `general.architecture`, and inserts
+    /// the resulting `ModelArch` into the slab. Returns the fresh
+    /// `ArchHandle`.
+    LoadGguf {
+        gguf_path: PathBuf,
+        model_id: String,
+        reply: oneshot::Sender<Result<ArchHandle>>,
+    },
+    /// Load a dense safetensors single-GPU model on the worker
+    /// thread. The dispatch handler reads `config.json`, dispatches on
+    /// `model_type`, builds a `VarBuilder` over the mmap'd
+    /// safetensors, and inserts the resulting `ModelArch`.
+    LoadDense {
+        config_path: PathBuf,
+        safetensors_paths: Vec<PathBuf>,
+        model_id: String,
         reply: oneshot::Sender<Result<ArchHandle>>,
     },
     /// Remove the model from the slab and drop it. The `Drop` runs on
@@ -105,22 +117,21 @@ pub enum Job {
     NcclSanity {
         reply: oneshot::Sender<crate::harness::tp::rpc::WorkerResponse>,
     },
-    /// Clone the leader's `Arc<Comm>` out of the worker's `NcclState`
-    /// so a spawn_blocking-based load (Phase 3 bridge) can hand it to
-    /// the row-parallel layers. Wrapped in `SendComm` because
-    /// `Arc<Comm>` is `!Send` at the type level (the NCCL contract
-    /// requires serialised access, which we provide structurally).
-    /// Phase 4 eliminates this when `TpLoadShard` becomes a Job and
-    /// the load runs entirely on the worker thread.
+    /// Load the leader's TP shard on the worker thread. The dispatch
+    /// handler reads `state.nccl.comm()` directly (no cross-thread
+    /// `Arc<Comm>` transfer, no `SendComm` wrapper) and builds the
+    /// `TpLeaderModel` against that Comm. The model's embedded
+    /// `Arc<Comm>` clones, `CudaContext`, and all per-rank CUDA
+    /// tensors live on this thread for the model's lifetime.
+    /// Inserts into the TP slab and returns the fresh `TpHandle`.
     #[cfg(feature = "cuda")]
-    CloneLeaderComm {
-        reply: oneshot::Sender<Result<crate::harness::tp::nccl_state::SendComm>>,
-    },
-    /// Move a freshly-built `TpLeaderModel` into the worker's tp slab.
-    /// Returns a `TpHandle` the caller stores on `TpLoadedModel`.
-    #[cfg(feature = "cuda")]
-    TransferInTp {
-        model: Box<crate::harness::tp::TpLeaderModel>,
+    TpLoadShard {
+        model_id: String,
+        config_json: String,
+        safetensors_paths: Vec<PathBuf>,
+        dtype: candle_core::DType,
+        quant: Option<String>,
+        world_size: u32,
         reply: oneshot::Sender<Result<TpHandle>>,
     },
     /// Drop the TP leader model on the worker thread. CUDA tensors

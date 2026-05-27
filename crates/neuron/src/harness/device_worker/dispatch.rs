@@ -100,17 +100,25 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 // discard the reply.
                 let _ = reply.send(result);
             }
-            Job::TransferIn { arch, reply } => {
-                let handle = ArchHandle(state.next_handle);
-                state.next_handle = state.next_handle.wrapping_add(1);
-                state.models.insert(handle, arch);
-                tracing::debug!(
-                    device_index,
-                    handle = handle.0,
-                    slab_size = state.models.len(),
-                    "device worker: model transferred in"
-                );
-                let _ = reply.send(Ok(handle));
+            Job::LoadGguf {
+                gguf_path,
+                model_id,
+                reply,
+            } => {
+                let result = load_gguf_inner(&state.device, &gguf_path, &model_id)
+                    .map(|arch| insert_arch(&mut state, Box::new(arch)));
+                let _ = reply.send(result);
+            }
+            Job::LoadDense {
+                config_path,
+                safetensors_paths,
+                model_id,
+                reply,
+            } => {
+                let result =
+                    load_dense_inner(&state.device, &config_path, &safetensors_paths, &model_id)
+                        .map(|arch| insert_arch(&mut state, Box::new(arch)));
+                let _ = reply.send(result);
             }
             Job::DropArch { handle, reply } => {
                 let removed = state.models.remove(&handle);
@@ -160,27 +168,25 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let _ = reply.send(resp);
             }
             #[cfg(feature = "cuda")]
-            Job::CloneLeaderComm { reply } => {
-                let result = match state.nccl.comm() {
-                    Some(comm) => Ok(crate::harness::tp::nccl_state::SendComm(comm)),
-                    None => Err(anyhow::anyhow!(
-                        "CloneLeaderComm: NcclState has no Comm; call NcclInit first"
-                    )),
-                };
-                let _ = reply.send(result);
-            }
-            #[cfg(feature = "cuda")]
-            Job::TransferInTp { model, reply } => {
-                let handle = TpHandle(state.next_tp_handle);
-                state.next_tp_handle = state.next_tp_handle.wrapping_add(1);
-                state.tp_models.insert(handle, model);
-                tracing::debug!(
-                    device_index,
-                    tp_handle = handle.0,
-                    slab_size = state.tp_models.len(),
-                    "device worker: TP model transferred in"
+            Job::TpLoadShard {
+                model_id,
+                config_json,
+                safetensors_paths,
+                dtype,
+                quant,
+                world_size,
+                reply,
+            } => {
+                let result = tp_load_shard_inner(
+                    &mut state,
+                    &model_id,
+                    &config_json,
+                    &safetensors_paths,
+                    dtype,
+                    quant.as_deref(),
+                    world_size,
                 );
-                let _ = reply.send(Ok(handle));
+                let _ = reply.send(result);
             }
             #[cfg(feature = "cuda")]
             Job::DropTp { handle, reply } => {
@@ -332,6 +338,265 @@ fn query_vram(_state: &DeviceWorkerState) -> anyhow::Result<(u64, u64)> {
     Ok((0, 0))
 }
 
+/// Insert a freshly-built `ModelArch` into the slab and mint a fresh
+/// `ArchHandle`. Used by both `LoadGguf` and `LoadDense` dispatch
+/// handlers — they differ only in *how* the arch is built; the
+/// post-construction bookkeeping is identical.
+fn insert_arch(state: &mut DeviceWorkerState, arch: Box<ModelArch>) -> ArchHandle {
+    let handle = ArchHandle(state.next_handle);
+    state.next_handle = state.next_handle.wrapping_add(1);
+    state.models.insert(handle, arch);
+    tracing::debug!(
+        device_index = state.device_index,
+        handle = handle.0,
+        slab_size = state.models.len(),
+        "device worker: model inserted"
+    );
+    handle
+}
+
+/// Load a GGUF (pre-quantized) model on the worker thread. Pulled
+/// verbatim from the spawn_blocking closure that used to live in
+/// `CandleHarness::load_arch_gguf`; the only change is that `device`
+/// is now `state.device` (the worker's permanently-bound device).
+fn load_gguf_inner(
+    device: &candle_core::Device,
+    gguf_path: &std::path::Path,
+    model_id: &str,
+) -> anyhow::Result<ModelArch> {
+    use anyhow::Context;
+    use candle_core::DType;
+    use candle_core::quantized::gguf_file;
+    use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlamaWeights;
+    use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3Weights;
+    use candle_transformers::models::quantized_qwen3_moe::GGUFQWenMoE;
+
+    tracing::info!(model = %model_id, path = ?gguf_path, "loading GGUF");
+    let mut file = std::fs::File::open(gguf_path).context("open GGUF file")?;
+    let content =
+        gguf_file::Content::read(&mut file).map_err(|e| anyhow::anyhow!("parse GGUF: {e}"))?;
+
+    let architecture = content
+        .metadata
+        .get("general.architecture")
+        .and_then(|v| v.to_string().ok().cloned())
+        .unwrap_or_default();
+    tracing::info!(architecture = %architecture, "GGUF architecture");
+
+    // The `general.architecture` GGUF metadata key follows
+    // llama.cpp conventions (lowercase, no underscores in some
+    // cases) — `qwen3moe`, not `qwen3_moe`.
+    match architecture.as_str() {
+        "qwen3" => {
+            let weights = QuantizedQwen3Weights::from_gguf(content, &mut file, device)
+                .map_err(|e| anyhow::anyhow!("from_gguf qwen3: {e}"))?;
+            Ok(ModelArch::Qwen3Quantized(weights))
+        }
+        "qwen3moe" => {
+            // GGUFQWenMoE takes an explicit compute dtype alongside
+            // the device — F16 matches the GGUF weights' typical
+            // accumulation precision and gives the best tokens/sec on
+            // consumer cards.
+            let weights = GGUFQWenMoE::from_gguf(content, &mut file, device, DType::F16)
+                .map_err(|e| anyhow::anyhow!("from_gguf qwen3_moe: {e}"))?;
+            Ok(ModelArch::Qwen3MoeQuantized(weights))
+        }
+        "llama" => {
+            let weights = QuantizedLlamaWeights::from_gguf(content, &mut file, device)
+                .map_err(|e| anyhow::anyhow!("from_gguf llama: {e}"))?;
+            Ok(ModelArch::LlamaQuantized(weights))
+        }
+        other => anyhow::bail!(
+            "unsupported GGUF architecture '{other}'; quantized path supports \
+             qwen3, qwen3moe, llama"
+        ),
+    }
+}
+
+/// Load a dense safetensors model on the worker thread.
+fn load_dense_inner(
+    device: &candle_core::Device,
+    config_path: &std::path::Path,
+    safetensors_paths: &[std::path::PathBuf],
+    model_id: &str,
+) -> anyhow::Result<ModelArch> {
+    use anyhow::Context;
+    use candle_core::DType;
+    use candle_nn::VarBuilder;
+    use candle_transformers::models::llama as llama_dense;
+    use candle_transformers::models::qwen3 as qwen3_dense;
+    use candle_transformers::models::qwen3_moe as qwen3_moe_dense;
+
+    let cfg_text = std::fs::read_to_string(config_path).context("read config.json")?;
+    crate::harness::candle::check_dense_config_supported(&cfg_text, model_id)?;
+    // Peek at model_type to choose the family before the typed
+    // deserialize — each family has its own Config.
+    let model_type = serde_json::from_str::<serde_json::Value>(&cfg_text)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("model_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    tracing::info!(
+        model = %model_id,
+        model_type = %model_type,
+        shards = safetensors_paths.len(),
+        "loading dense model from safetensors"
+    );
+
+    // bf16 is the canonical distribution dtype for Qwen3 / Llama 3 /
+    // Qwen3 MoE. CUDA on Ada+ has hardware bf16; Ampere has it too.
+    // CPU emulates.
+    let dtype = DType::BF16;
+    // SAFETY: VarBuilder::from_mmaped_safetensors mmaps the files;
+    // mutation by another process while we hold the mapping is UB.
+    // We trust the HF cache is immutable-by-design.
+    let vb = unsafe {
+        VarBuilder::from_mmaped_safetensors(safetensors_paths, dtype, device)
+            .context("build VarBuilder over safetensors")?
+    };
+
+    match model_type.as_str() {
+        "qwen3" => {
+            let cfg: qwen3_dense::Config =
+                serde_json::from_str(&cfg_text).context("parse Qwen3 config.json")?;
+            let model = qwen3_dense::ModelForCausalLM::new(&cfg, vb)
+                .map_err(|e| anyhow::anyhow!("build Qwen3 dense model: {e}"))?;
+            Ok(ModelArch::Qwen3Dense(model))
+        }
+        "qwen3_moe" => {
+            let cfg: qwen3_moe_dense::Config =
+                serde_json::from_str(&cfg_text).context("parse Qwen3 MoE config.json")?;
+            let model = qwen3_moe_dense::ModelForCausalLM::new(&cfg, vb)
+                .map_err(|e| anyhow::anyhow!("build Qwen3 MoE dense model: {e}"))?;
+            Ok(ModelArch::Qwen3MoeDense(model))
+        }
+        "llama" => {
+            let cfg: llama_dense::LlamaConfig =
+                serde_json::from_str(&cfg_text).context("parse Llama config.json")?;
+            let config = cfg.into_config(false);
+            let cache = llama_dense::Cache::new(true, dtype, &config, device)
+                .context("build Llama Cache")?;
+            let model = llama_dense::Llama::load(vb, &config)
+                .map_err(|e| anyhow::anyhow!("build Llama dense model: {e}"))?;
+            Ok(ModelArch::LlamaDense(Box::new(
+                crate::harness::candle::LlamaDense::from_parts(
+                    model,
+                    cache,
+                    config,
+                    dtype,
+                    device.clone(),
+                ),
+            )))
+        }
+        "qwen3_5" => {
+            let cfg: crate::harness::arch::qwen3_5::Config = serde_json::from_str(&cfg_text)
+                .context("parse Qwen3-Next (qwen3_5) config.json")?;
+            let sharded_vb = unsafe {
+                candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                    safetensors_paths,
+                    dtype,
+                    device,
+                )
+                .context("build ShardedVarBuilder for Qwen3-Next")?
+            };
+            let model = crate::harness::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, sharded_vb)
+                .context("build Qwen3-Next dense model")?;
+            Ok(ModelArch::Qwen3_5Dense(model))
+        }
+        other => anyhow::bail!(
+            "unrouted supported model_type '{other}' — \
+             DENSE_SUPPORTED_MODEL_TYPES and load_dense_inner \
+             must stay in sync"
+        ),
+    }
+}
+
+/// Load the leader's TP shard on the worker thread. Reads the Comm
+/// directly from `state.nccl`; no cross-thread Arc<Comm> transfer.
+#[cfg(feature = "cuda")]
+fn tp_load_shard_inner(
+    state: &mut DeviceWorkerState,
+    model_id: &str,
+    config_json: &str,
+    safetensors_paths: &[std::path::PathBuf],
+    dtype: candle_core::DType,
+    quant: Option<&str>,
+    world_size: u32,
+) -> anyhow::Result<TpHandle> {
+    use anyhow::Context;
+    use candle_nn::var_builder::ShardedSafeTensors;
+
+    let comm = state.nccl.comm().ok_or_else(|| {
+        anyhow::anyhow!("TpLoadShard: NcclState has no Comm; call NcclInit first")
+    })?;
+
+    let model_type = serde_json::from_str::<serde_json::Value>(config_json)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("model_type"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // SAFETY: same invariant as the single-GPU dense path — the HF
+    // cache files are treated as immutable while the mmap is held.
+    let vb = unsafe {
+        ShardedSafeTensors::var_builder(safetensors_paths, dtype, &state.device)
+            .context("build ShardedVarBuilder over safetensors")?
+    };
+    let mmap = unsafe {
+        candle_core::safetensors::MmapedSafetensors::multi(safetensors_paths)
+            .context("build MmapedSafetensors for leader load")?
+    };
+
+    let loaded = match model_type.as_str() {
+        "qwen3" => {
+            let cfg: crate::harness::tp::tp_qwen3::Config = serde_json::from_str(config_json)
+                .context("parse Qwen3 Config JSON for leader load")?;
+            TpLeaderModel::Qwen3(crate::harness::tp::tp_qwen3::TpQwen3ForCausalLM::load(
+                &cfg, &vb, 0, world_size, comm,
+            )?)
+        }
+        "qwen3_5" => {
+            let cfg: crate::harness::tp::tp_qwen3_5::Config = serde_json::from_str(config_json)
+                .context("parse Qwen3-Next Config JSON for leader load")?;
+            let quant_dtype = crate::harness::tp::worker::parse_quant_string(quant)?;
+            TpLeaderModel::Qwen3_5(crate::harness::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
+                cfg,
+                &vb,
+                &mmap,
+                0,
+                world_size,
+                comm,
+                quant_dtype,
+            )?)
+        }
+        other => anyhow::bail!(
+            "TP dispatch: unsupported model_type '{other}' on leader (supported: qwen3, qwen3_5)"
+        ),
+    };
+
+    tracing::info!(
+        rank = 0,
+        model = %model_id,
+        model_type = %model_type,
+        "loaded TP shard (leader)"
+    );
+
+    let handle = TpHandle(state.next_tp_handle);
+    state.next_tp_handle = state.next_tp_handle.wrapping_add(1);
+    state.tp_models.insert(handle, Box::new(loaded));
+    tracing::debug!(
+        device_index = state.device_index,
+        tp_handle = handle.0,
+        slab_size = state.tp_models.len(),
+        "device worker: TP model inserted"
+    );
+    Ok(handle)
+}
+
 /// TP-equivalent of [`forward_logits`]: looks up the leader's
 /// [`TpLeaderModel`] in the slab, runs its forward, copies the
 /// `[vocab]` logits to a CPU `Vec<f32>`. The leader's `Arc<Comm>`
@@ -414,7 +679,10 @@ fn drain_poisoned(job: Job, device_index: u32) {
         Job::QueryVram { reply } => {
             let _ = reply.send(Err(err()));
         }
-        Job::TransferIn { reply, .. } => {
+        Job::LoadGguf { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::LoadDense { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::DropArch { reply, .. } => {
@@ -443,11 +711,7 @@ fn drain_poisoned(job: Job, device_index: u32) {
             });
         }
         #[cfg(feature = "cuda")]
-        Job::CloneLeaderComm { reply } => {
-            let _ = reply.send(Err(err()));
-        }
-        #[cfg(feature = "cuda")]
-        Job::TransferInTp { reply, .. } => {
+        Job::TpLoadShard { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         #[cfg(feature = "cuda")]

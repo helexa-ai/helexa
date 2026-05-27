@@ -161,13 +161,15 @@ impl DeviceWorkerHandle {
         }
     }
 
-    /// Move a freshly-loaded `ModelArch` into the worker's state slab.
-    /// Returns the `ArchHandle` the caller stores on `LoadedModel`.
-    /// The `Box<ModelArch>` crosses the channel; the worker thread
-    /// owns it from here on.
-    pub async fn transfer_in(
+    /// Load a GGUF (pre-quantized) single-GPU model on the worker
+    /// thread. The hf-hub resolution happens on the async caller; the
+    /// resolved local `gguf_path` plus the spec's model_id are sent
+    /// into the worker which opens, parses, and constructs the
+    /// `ModelArch` on the right thread.
+    pub async fn load_gguf(
         &self,
-        arch: Box<crate::harness::candle::ModelArch>,
+        gguf_path: std::path::PathBuf,
+        model_id: String,
     ) -> Result<ArchHandle, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -176,8 +178,40 @@ impl DeviceWorkerHandle {
         }
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
-            .send(Job::TransferIn {
-                arch,
+            .send(Job::LoadGguf {
+                gguf_path,
+                model_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Load a dense safetensors single-GPU model on the worker thread.
+    pub async fn load_dense(
+        &self,
+        config_path: std::path::PathBuf,
+        safetensors_paths: Vec<std::path::PathBuf>,
+        model_id: String,
+    ) -> Result<ArchHandle, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::LoadDense {
+                config_path,
+                safetensors_paths,
+                model_id,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
@@ -331,37 +365,21 @@ impl DeviceWorkerHandle {
         })
     }
 
-    /// Clone the leader's `Arc<Comm>` so a spawn_blocking-based load
-    /// (Phase 3 bridge) can pass it to the row-parallel layers.
-    /// Phase 4 eliminates this once the TP load runs on this thread.
+    /// Load the leader's TP shard on the worker thread. The dispatch
+    /// handler reads its own `NcclState`'s `Arc<Comm>` directly — no
+    /// cross-thread Comm transfer — and builds the `TpLeaderModel`
+    /// against it. Phase 4 replaces the Phase 3 Clone/TransferIn
+    /// bridge with this single Job.
     #[cfg(feature = "cuda")]
-    pub async fn clone_leader_comm(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn tp_load_shard(
         &self,
-    ) -> Result<crate::harness::tp::nccl_state::SendComm, WorkerError> {
-        if self.poisoned.load(Ordering::Acquire) {
-            return Err(WorkerError::Poisoned {
-                device_index: self.device_index,
-            });
-        }
-        let (reply_tx, reply_rx) = oneshot::channel();
-        self.tx
-            .send(Job::CloneLeaderComm { reply: reply_tx })
-            .map_err(|_| WorkerError::Gone {
-                device_index: self.device_index,
-            })?;
-        match reply_rx.await {
-            Ok(result) => result.map_err(WorkerError::from),
-            Err(_) => Err(WorkerError::Gone {
-                device_index: self.device_index,
-            }),
-        }
-    }
-
-    /// Move a freshly-built `TpLeaderModel` into the worker's TP slab.
-    #[cfg(feature = "cuda")]
-    pub async fn transfer_in_tp(
-        &self,
-        model: Box<crate::harness::tp::TpLeaderModel>,
+        model_id: String,
+        config_json: String,
+        safetensors_paths: Vec<std::path::PathBuf>,
+        dtype: candle_core::DType,
+        quant: Option<String>,
+        world_size: u32,
     ) -> Result<TpHandle, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -370,8 +388,13 @@ impl DeviceWorkerHandle {
         }
         let (reply_tx, reply_rx) = oneshot::channel();
         self.tx
-            .send(Job::TransferInTp {
-                model,
+            .send(Job::TpLoadShard {
+                model_id,
+                config_json,
+                safetensors_paths,
+                dtype,
+                quant,
+                world_size,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
