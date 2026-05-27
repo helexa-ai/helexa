@@ -562,14 +562,18 @@ impl TpQwen3ForCausalLM {
     ) -> Result<Self> {
         let base = TpQwen3Model::load(cfg, vb, rank, world_size, comm)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
-        Ok(Self { base, lm_head })
+        let model = Self { base, lm_head };
+        log_construction_complete(cfg, rank, world_size, model.device());
+        Ok(model)
     }
 
     #[cfg(not(feature = "cuda"))]
     pub fn load(cfg: &Config, vb: &ShardedVarBuilder, rank: u32, world_size: u32) -> Result<Self> {
         let base = TpQwen3Model::load(cfg, vb, rank, world_size)?;
         let lm_head = build_lm_head(cfg, vb, &base)?;
-        Ok(Self { base, lm_head })
+        let model = Self { base, lm_head };
+        log_construction_complete(cfg, rank, world_size, model.device());
+        Ok(model)
     }
 
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
@@ -602,4 +606,73 @@ fn build_lm_head(cfg: &Config, vb: &ShardedVarBuilder, base: &TpQwen3Model) -> R
         )?;
         Ok(Linear::new(weight, None))
     }
+}
+
+/// VRAM accounting + config dump emitted at the end of
+/// `TpQwen3ForCausalLM::load`. Same intent as the Qwen3-Next variant
+/// in tp_qwen3_5.rs — surface the resolved hyperparameters and
+/// per-rank free VRAM in one line so an operator chasing an OOM or a
+/// numerical issue doesn't have to grep the per-layer load logs.
+#[cfg(feature = "cuda")]
+fn log_construction_complete(cfg: &Config, rank: u32, world_size: u32, device: &Device) {
+    use candle_core::cuda::cudarc::driver::result;
+    use candle_core::cuda_backend::WrapErr;
+    let (free_mb, total_mb) = if let Device::Cuda(dev) = device {
+        if dev.cuda_stream().context().bind_to_thread().w().is_ok() {
+            match result::mem_get_info() {
+                Ok((free, total)) => (free / (1024 * 1024), total / (1024 * 1024)),
+                Err(_) => (0, 0),
+            }
+        } else {
+            (0, 0)
+        }
+    } else {
+        (0, 0)
+    };
+    // Per-rank KV cache cost at one token: K + V × bf16. Vanilla
+    // Qwen3 is dense attention end-to-end, so every layer
+    // contributes. Knowing per-token bytes lets the operator estimate
+    // headroom for a given prompt length before hitting an edge.
+    let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
+    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 * 2;
+    let kv_bytes_per_token = kv_bytes_per_token_per_layer * cfg.num_hidden_layers;
+    tracing::info!(
+        target: "neuron::tp::load",
+        rank,
+        world_size,
+        free_mb,
+        total_mb,
+        vocab_size = cfg.vocab_size,
+        hidden_size = cfg.hidden_size,
+        num_hidden_layers = cfg.num_hidden_layers,
+        num_attention_heads = cfg.num_attention_heads,
+        num_key_value_heads = cfg.num_key_value_heads,
+        head_dim = cfg.head_dim,
+        max_position_embeddings = cfg.max_position_embeddings,
+        per_rank_num_kv_heads,
+        kv_bytes_per_token,
+        "Qwen3 model construction complete"
+    );
+}
+
+#[cfg(not(feature = "cuda"))]
+fn log_construction_complete(cfg: &Config, rank: u32, world_size: u32, _device: &Device) {
+    let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
+    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 * 2;
+    let kv_bytes_per_token = kv_bytes_per_token_per_layer * cfg.num_hidden_layers;
+    tracing::info!(
+        target: "neuron::tp::load",
+        rank,
+        world_size,
+        vocab_size = cfg.vocab_size,
+        hidden_size = cfg.hidden_size,
+        num_hidden_layers = cfg.num_hidden_layers,
+        num_attention_heads = cfg.num_attention_heads,
+        num_key_value_heads = cfg.num_key_value_heads,
+        head_dim = cfg.head_dim,
+        max_position_embeddings = cfg.max_position_embeddings,
+        per_rank_num_kv_heads,
+        kv_bytes_per_token,
+        "Qwen3 model construction complete"
+    );
 }

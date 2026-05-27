@@ -1012,7 +1012,9 @@ impl TpQwen3_5ForCausalLM {
         let cfg = &config.text_config;
         let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm, quant)?;
         let lm_head = build_lm_head(cfg, vb, &base, quant)?;
-        Ok(Self { base, lm_head })
+        let model = Self { base, lm_head };
+        log_construction_complete(cfg, rank, world_size, quant, model.device());
+        Ok(model)
     }
 
     #[cfg(not(feature = "cuda"))]
@@ -1027,7 +1029,9 @@ impl TpQwen3_5ForCausalLM {
         let cfg = &config.text_config;
         let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, quant)?;
         let lm_head = build_lm_head(cfg, vb, &base, quant)?;
-        Ok(Self { base, lm_head })
+        let model = Self { base, lm_head };
+        log_construction_complete(cfg, rank, world_size, quant, model.device());
+        Ok(model)
     }
 
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
@@ -1129,3 +1133,75 @@ fn log_vram(device: &Device, rank: u32, tag: &str) {
 #[cfg(not(feature = "cuda"))]
 #[allow(dead_code)]
 fn log_vram(_device: &Device, _rank: u32, _tag: &str) {}
+
+/// Summary line emitted at end of `TpQwen3_5ForCausalLM::load`, after
+/// the per-layer load loop AND after the lm_head + any post-construct
+/// allocations. Logs the resolved config knobs (the ones an operator
+/// would want to know when chasing a numerical or OOM issue) plus a
+/// final free/total VRAM snapshot per rank.
+///
+/// The free_mb here is the most diagnostic number we have at this
+/// stage: the gap between the last "after layer N" log and this line
+/// is everything else the model construction allocated — lm_head,
+/// embedding (if not tied), per-layer buffers held by candle's
+/// allocator, the RotaryEmbedding tables, and any working space.
+///
+/// `kv_cache_per_layer_per_token_bytes` is a back-of-envelope estimate
+/// — the actual cache grows as inference proceeds, but knowing the
+/// per-token cost at this point lets an operator estimate "for a
+/// 14k-token prompt I need ~X GB extra VRAM" without having to dig
+/// into the architecture's attention modules.
+fn log_construction_complete(
+    cfg: &TextConfig,
+    rank: u32,
+    world_size: u32,
+    quant: Option<GgmlDType>,
+    device: &Device,
+) {
+    let (free_mb, total_mb) = cuda_mem_mb(device);
+    // Distribution of attention kinds across layers. Qwen3-Next is
+    // hybrid: most layers are linear (Gated DeltaNet), a few are full
+    // softmax attention. Knowing the split at a glance helps when
+    // reasoning about KV cache size — only full-attention layers
+    // contribute to the standard kv cache.
+    let mut full_attn_layers = 0;
+    let mut linear_attn_layers = 0;
+    for kind in &cfg.layer_types {
+        match kind.as_str() {
+            "full_attention" => full_attn_layers += 1,
+            "linear_attention" => linear_attn_layers += 1,
+            _ => {}
+        }
+    }
+    // KV cache per-layer-per-token byte estimate for the per-rank
+    // full-attention layers. bf16 = 2 bytes, K + V doubles it, and
+    // sharded across world_size. Linear-attention layers carry a
+    // fixed-size state instead of a growing cache.
+    let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
+    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 /* K+V */ * 2 /* bf16 */;
+    let kv_bytes_per_token = kv_bytes_per_token_per_layer * full_attn_layers;
+    tracing::info!(
+        target: "neuron::tp::load",
+        rank,
+        world_size,
+        quant = ?quant,
+        free_mb,
+        total_mb,
+        vocab_size = cfg.vocab_size,
+        hidden_size = cfg.hidden_size,
+        num_hidden_layers = cfg.num_hidden_layers,
+        num_attention_heads = cfg.num_attention_heads,
+        num_key_value_heads = cfg.num_key_value_heads,
+        head_dim = cfg.head_dim,
+        max_position_embeddings = cfg.max_position_embeddings,
+        full_attn_layers,
+        linear_attn_layers,
+        linear_num_value_heads = cfg.linear_num_value_heads,
+        linear_num_key_heads = cfg.linear_num_key_heads,
+        linear_key_head_dim = cfg.linear_key_head_dim,
+        linear_value_head_dim = cfg.linear_value_head_dim,
+        per_rank_num_kv_heads,
+        kv_bytes_per_token,
+        "Qwen3-Next model construction complete"
+    );
+}
