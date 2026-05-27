@@ -19,6 +19,6 @@ name = "candle"
 [[default_models]]
 model_id = "Qwen/Qwen3.6-27B"
 harness = "candle"
-quant = "q5k"
+quant = "q6k"
 tensor_parallel = 2
 devices = [0, 1]
