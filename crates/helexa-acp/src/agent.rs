@@ -60,6 +60,10 @@ struct AgentInner {
     /// for Stage 2 because session/set_model lands in Stage 4 — a
     /// session with no model can't prompt anything.
     default_model: Option<String>,
+    /// Per-endpoint `max_tokens` override. Looked up by endpoint
+    /// name after resolution. `None` (or an absent entry) means the
+    /// upstream picks its own default.
+    max_tokens: std::collections::HashMap<String, u64>,
     sessions: SessionStore,
     system_prompt_path: Option<PathBuf>,
     /// Monotonic counter for minting session ids. The wire format is
@@ -87,11 +91,17 @@ impl Agent {
                 default.name
             );
         }
+        let max_tokens = cfg
+            .endpoints
+            .iter()
+            .filter_map(|ep| ep.max_tokens.map(|m| (ep.name.clone(), m)))
+            .collect();
         Ok(Self {
             inner: Arc::new(AgentInner {
                 providers,
                 default_endpoint_name: default.name.clone(),
                 default_model: default.default_model.clone(),
+                max_tokens,
                 sessions: session::new_store(),
                 system_prompt_path: cfg.system_prompt_path.clone(),
                 next_session_id: AtomicU64::new(1),
@@ -401,7 +411,7 @@ async fn drive_prompt(
             tools: vec![],
             temperature: None,
             top_p: None,
-            max_tokens: None,
+            max_tokens: inner.max_tokens.get(provider.name()).copied(),
         };
 
         let mut stream = match provider.complete(completion_req, cancel.clone()).await {

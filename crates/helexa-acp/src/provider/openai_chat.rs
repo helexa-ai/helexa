@@ -148,6 +148,7 @@ mod tests {
             default_model: None,
             api_key: None,
             api_key_env: None,
+            max_tokens: None,
         }
     }
 

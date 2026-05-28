@@ -90,6 +90,14 @@ pub struct EndpointConfig {
     /// unauthenticated calls.
     #[serde(default)]
     pub api_key_env: Option<String>,
+    /// Cap on the model's output tokens per turn. `None` lets the
+    /// upstream pick its own default (cortex/neuron's default is
+    /// often small enough to trip Zed's "Output Limit Reached" on
+    /// long responses). Set to e.g. `32768` to let the model
+    /// produce longer turns. Goes into the OpenAI `max_tokens`
+    /// request field.
+    #[serde(default)]
+    pub max_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -159,7 +167,7 @@ impl Config {
 
     /// Single-endpoint config constructed from `HELEXA_ACP_BASE_URL`,
     /// `HELEXA_ACP_MODEL`, `HELEXA_ACP_API_KEY`,
-    /// `HELEXA_ACP_SYSTEM_PROMPT_PATH`.
+    /// `HELEXA_ACP_SYSTEM_PROMPT_PATH`, `HELEXA_ACP_MAX_TOKENS`.
     pub fn from_env() -> anyhow::Result<Self> {
         let base_url = std::env::var("HELEXA_ACP_BASE_URL")
             .ok()
@@ -176,6 +184,15 @@ impl Config {
             .ok()
             .filter(|s| !s.is_empty())
             .map(PathBuf::from);
+        let max_tokens = std::env::var("HELEXA_ACP_MAX_TOKENS")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.parse::<u64>().with_context(|| {
+                    format!("HELEXA_ACP_MAX_TOKENS is not a positive integer ({s})")
+                })
+            })
+            .transpose()?;
         Ok(Self {
             default_endpoint: Some(DEFAULT_ENDPOINT_NAME.into()),
             endpoints: vec![EndpointConfig {
@@ -185,6 +202,7 @@ impl Config {
                 default_model: Some(default_model),
                 api_key,
                 api_key_env: None,
+                max_tokens,
             }],
             system_prompt_path,
         })
@@ -297,6 +315,7 @@ mod tests {
             default_model: None,
             api_key: None,
             api_key_env: None,
+            max_tokens: None,
         };
         assert_eq!(
             ep.chat_completions_url().as_str(),
