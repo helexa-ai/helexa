@@ -18,11 +18,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use agent_client_protocol::schema::SessionId;
+use agent_client_protocol::schema::{SessionId, SessionModeId};
 use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::provider::Message;
+
+/// Mode id advertised as the gated default. Writes / bash prompt for
+/// permission via `session/request_permission`.
+pub const MODE_DEFAULT: &str = "default";
+
+/// Mode id advertised as "auto-allow everything". Matches the
+/// favorite name (`bypassPermissions`) Zed clients tend to reference.
+pub const MODE_BYPASS: &str = "bypassPermissions";
 
 /// State carried for a single ACP session.
 ///
@@ -50,6 +58,11 @@ pub struct SessionState {
     /// token is "spent" — firing it does nothing — which is fine,
     /// `session/cancel` is a no-op when there's nothing to cancel.
     pub cancel: CancellationToken,
+    /// Permission gating mode. Stage 3 advertises two ids in
+    /// `NewSessionResponse.modes`: [`MODE_DEFAULT`] (writes / bash
+    /// prompt the user) and [`MODE_BYPASS`] (auto-allow). Mutated by
+    /// `session/set_mode`.
+    pub mode_id: SessionModeId,
 }
 
 impl SessionState {
@@ -59,6 +72,7 @@ impl SessionState {
             cwd,
             model_id,
             cancel: CancellationToken::new(),
+            mode_id: SessionModeId::new(MODE_DEFAULT),
         }
     }
 }

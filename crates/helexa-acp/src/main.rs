@@ -20,6 +20,8 @@ mod config;
 mod prompt;
 mod provider;
 mod session;
+mod tool_runner;
+mod tools;
 
 use agent::Agent;
 use config::{Config, EndpointConfig, WireApi};

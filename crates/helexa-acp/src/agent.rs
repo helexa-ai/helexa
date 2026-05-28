@@ -1,19 +1,17 @@
-//! ACP agent loop — text-only (Stage 2).
+//! ACP agent loop with tools and session modes (Stage 3).
 //!
 //! Handlers:
 //!
-//! | ACP method        | Behaviour                                                  |
-//! |-------------------|------------------------------------------------------------|
-//! | `initialize`      | echo client's protocol version, advertise capabilities     |
-//! | `session/new`     | mint a session id, register state, return it               |
-//! | `session/prompt`  | flatten user blocks → history, stream provider → updates   |
-//! | `session/cancel`  | fire the session's cancellation token                      |
-//! | (anything else)   | "not implemented yet" error                                |
+//! | ACP method            | Behaviour                                                   |
+//! |-----------------------|-------------------------------------------------------------|
+//! | `initialize`          | echo protocol version, advertise capabilities               |
+//! | `session/new`         | mint id, register state, advertise [Default, Bypass] modes  |
+//! | `session/prompt`      | tool-call loop: stream → dispatch tools → re-enter, repeat  |
+//! | `session/cancel`      | fire the session's cancellation token                       |
+//! | `session/set_mode`    | mutate the session's mode (gated vs. bypass-permissions)    |
+//! | (anything else)       | "not implemented yet" error                                 |
 //!
-//! Stage 3 adds tool calls; Stage 4 wires `session/set_model`; Stage 5
-//! flips on image content. Stage 2 deliberately answers the model-picker
-//! and session-modes fields with `None` so editors render a single model
-//! / single mode UI.
+//! Stage 4 wires `session/set_model`; Stage 5 flips on image content.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,18 +20,28 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use agent_client_protocol::schema::{
     AgentCapabilities, CancelNotification, ContentBlock, InitializeRequest, InitializeResponse,
     NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    SessionId, SessionNotification, SessionUpdate, StopReason, TextContent,
+    SessionId, SessionMode, SessionModeId, SessionModeState, SessionNotification, SessionUpdate,
+    SetSessionModeRequest, SetSessionModeResponse, StopReason, TextContent,
 };
 use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, Dispatch, Stdio};
 use futures::StreamExt;
+use std::collections::BTreeMap;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::{Config, parse_model_selector};
 use crate::prompt::build_system_prompt;
 use crate::provider::{
-    CompletionEvent, CompletionRequest, Message, MessageContent, Provider, Role,
+    CompletionEvent, CompletionRequest, Message, MessageContent, Provider, Role, ToolCall,
 };
-use crate::session::{self, SessionState, SessionStore};
+use crate::session::{self, MODE_BYPASS, MODE_DEFAULT, SessionState, SessionStore};
+use crate::tool_runner::{AcpClientOps, ToolCallEvent, dispatch_tool_call};
+use crate::tools;
+
+/// Maximum number of provider→tool→provider round-trips per
+/// `session/prompt` request. Bound exists to keep a runaway model
+/// from looping forever; the spec maps this to
+/// [`StopReason::MaxTurnRequests`].
+const MAX_TOOL_ROUNDS: usize = 25;
 
 /// Public entry point. Wraps an `Arc<AgentInner>` so handlers can clone
 /// it cheaply into every closure.
@@ -126,6 +134,18 @@ impl Agent {
                 },
                 agent_client_protocol::on_receive_request!(),
             )
+            .on_receive_request(
+                {
+                    let inner = inner.clone();
+                    async move |req: SetSessionModeRequest, responder, _cx| {
+                        match handle_set_session_mode(&inner, req).await {
+                            Ok(()) => responder.respond(SetSessionModeResponse::new()),
+                            Err(e) => responder.respond_with_internal_error(format!("{e:#}")),
+                        }
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
             .on_receive_notification(
                 {
                     let inner = inner.clone();
@@ -187,7 +207,48 @@ async fn handle_new_session(
         cwd = %cwd_display,
         "session created"
     );
-    Ok(NewSessionResponse::new(session_id))
+    Ok(NewSessionResponse::new(session_id).modes(default_mode_state()))
+}
+
+/// The two modes every Stage 3 session advertises. Stage 7 may grow
+/// this list (e.g. "plan" for plan-only output, "ask" for read-only),
+/// but Default + Bypass cover the two operationally distinct
+/// permission policies.
+fn default_mode_state() -> SessionModeState {
+    SessionModeState::new(
+        SessionModeId::new(MODE_DEFAULT),
+        vec![
+            SessionMode::new(SessionModeId::new(MODE_DEFAULT), "Default")
+                .description("Prompt for permission before writes or shell commands."),
+            SessionMode::new(SessionModeId::new(MODE_BYPASS), "Bypass Permissions")
+                .description("Auto-allow all tool calls. Use with care."),
+        ],
+    )
+}
+
+async fn handle_set_session_mode(
+    inner: &AgentInner,
+    req: SetSessionModeRequest,
+) -> anyhow::Result<()> {
+    let Some(state) = session::get(&inner.sessions, &req.session_id).await else {
+        anyhow::bail!("unknown session id {}", req.session_id.0);
+    };
+    let accepted = req.mode_id.0.as_ref() == MODE_DEFAULT || req.mode_id.0.as_ref() == MODE_BYPASS;
+    if !accepted {
+        anyhow::bail!(
+            "unknown mode '{}' — must be one of: {}, {}",
+            req.mode_id.0,
+            MODE_DEFAULT,
+            MODE_BYPASS
+        );
+    }
+    state.lock().await.mode_id = req.mode_id.clone();
+    tracing::info!(
+        session_id = %req.session_id.0,
+        mode = %req.mode_id.0,
+        "session mode changed"
+    );
+    Ok(())
 }
 
 async fn handle_cancel(inner: &AgentInner, notif: CancelNotification) {
@@ -239,11 +300,11 @@ async fn drive_prompt(
         return Ok(());
     };
 
-    // Snapshot the inputs to the upstream call under the session
-    // lock, then drop the lock before any `await` that touches the
-    // network. We *also* install a fresh cancellation token so
-    // `session/cancel` can fire only this prompt.
-    let (mut history, model_id, cwd, cancel) = {
+    // Snapshot the inputs under the session lock, then drop the lock
+    // before any `await` that touches the network. `mode_id` is
+    // refreshed between tool rounds (the user can toggle modes
+    // mid-turn).
+    let (existing_history, model_id, cwd, cancel, mut mode_id) = {
         let mut state = session_arc.lock().await;
         let cancel = CancellationToken::new();
         state.cancel = cancel.clone();
@@ -257,6 +318,7 @@ async fn drive_prompt(
             state.model_id.clone(),
             state.cwd.clone(),
             cancel,
+            state.mode_id.clone(),
         )
     };
 
@@ -276,96 +338,218 @@ async fn drive_prompt(
         session_id = %session_id.0,
         endpoint = %provider.name(),
         model = %local_model,
-        history_turns = history.len(),
+        mode = %mode_id.0,
+        history_turns = existing_history.len(),
         "sending prompt upstream"
     );
 
-    let mut messages = Vec::with_capacity(history.len() + 1);
+    let ops = AcpClientOps::new(cx.clone());
+
+    // `messages` is the rolling conversation we send to the provider
+    // each round. We seed it with the system prompt + the snapshot
+    // (which includes the new user turn) and grow it with each
+    // round's assistant turn + tool-result turns.
+    let mut messages: Vec<Message> = Vec::with_capacity(existing_history.len() + 1);
     messages.push(Message {
         role: Role::System,
         content: MessageContent::Text(system_prompt),
     });
-    messages.append(&mut history);
+    messages.extend(existing_history);
 
-    let completion_req = CompletionRequest {
-        model: local_model,
-        messages,
-        tools: vec![],
-        temperature: None,
-        top_p: None,
-        max_tokens: None,
-    };
+    // Whatever new turns this prompt generates beyond the user's
+    // input — we persist these to session.history at the end so
+    // future prompts see them.
+    let mut new_turns: Vec<Message> = Vec::new();
 
-    let stream_result = provider.complete(completion_req, cancel.clone()).await;
-    let mut stream = match stream_result {
-        Ok(s) => s,
-        Err(e) => {
-            let _ = responder
-                .respond_with_internal_error(format!("{} complete: {e:#}", provider.name()));
-            return Ok(());
-        }
-    };
-
-    let mut assistant_text = String::new();
+    let tool_specs = tools::all_tools();
     let mut stop_reason = StopReason::EndTurn;
 
-    while let Some(event) = stream.next().await {
-        let event = match event {
-            Ok(e) => e,
+    for round in 0..MAX_TOOL_ROUNDS {
+        if cancel.is_cancelled() {
+            stop_reason = StopReason::Cancelled;
+            break;
+        }
+
+        let completion_req = CompletionRequest {
+            model: local_model.clone(),
+            messages: messages.clone(),
+            tools: tool_specs.clone(),
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+        };
+
+        let mut stream = match provider.complete(completion_req, cancel.clone()).await {
+            Ok(s) => s,
             Err(e) => {
-                tracing::warn!(error = %format!("{e:#}"), "stream error; ending turn");
-                break;
+                let _ = responder
+                    .respond_with_internal_error(format!("{} complete: {e:#}", provider.name()));
+                return Ok(());
             }
         };
-        match event {
-            CompletionEvent::TextDelta(t) => {
-                assistant_text.push_str(&t);
-                send_chunk(
-                    &cx,
-                    &session_id,
-                    SessionUpdate::AgentMessageChunk(text_chunk(t)),
-                );
+
+        let mut assistant_text = String::new();
+        let mut finish_reason: Option<String> = None;
+        // `BTreeMap` keyed by the provider's tool-call index keeps
+        // insertion order while allowing arg deltas to mutate any
+        // bucket — `ToolCallStart` may arrive interleaved with
+        // `ToolCallArgsDelta` for different indices.
+        let mut tool_buckets: BTreeMap<usize, ToolCallBucket> = BTreeMap::new();
+
+        while let Some(event) = stream.next().await {
+            let event = match event {
+                Ok(e) => e,
+                Err(e) => {
+                    tracing::warn!(error = %format!("{e:#}"), "stream error; ending round");
+                    break;
+                }
+            };
+            match event {
+                CompletionEvent::TextDelta(t) => {
+                    assistant_text.push_str(&t);
+                    send_chunk(
+                        &cx,
+                        &session_id,
+                        SessionUpdate::AgentMessageChunk(text_chunk(t)),
+                    );
+                }
+                CompletionEvent::ReasoningDelta(t) => {
+                    send_chunk(
+                        &cx,
+                        &session_id,
+                        SessionUpdate::AgentThoughtChunk(text_chunk(t)),
+                    );
+                }
+                CompletionEvent::ToolCallStart { index, id, name } => {
+                    tool_buckets.insert(
+                        index,
+                        ToolCallBucket {
+                            id,
+                            name,
+                            arguments: String::new(),
+                        },
+                    );
+                }
+                CompletionEvent::ToolCallArgsDelta { index, args_delta } => {
+                    tool_buckets
+                        .entry(index)
+                        .or_default()
+                        .arguments
+                        .push_str(&args_delta);
+                }
+                CompletionEvent::Finish { reason } => finish_reason = reason,
+                CompletionEvent::Usage(_) => {}
             }
-            CompletionEvent::ReasoningDelta(t) => {
-                send_chunk(
-                    &cx,
-                    &session_id,
-                    SessionUpdate::AgentThoughtChunk(text_chunk(t)),
-                );
+        }
+
+        if cancel.is_cancelled() {
+            stop_reason = StopReason::Cancelled;
+            // Persist any partial text so the next turn has context.
+            if !assistant_text.is_empty() {
+                new_turns.push(Message {
+                    role: Role::Assistant,
+                    content: MessageContent::Text(assistant_text),
+                });
             }
-            CompletionEvent::Finish { reason } => {
-                stop_reason = map_finish_reason(reason.as_deref());
+            break;
+        }
+
+        let has_tool_calls = !tool_buckets.is_empty();
+
+        if !has_tool_calls {
+            // Terminal turn: just text. Save and finish.
+            if !assistant_text.is_empty() {
+                new_turns.push(Message {
+                    role: Role::Assistant,
+                    content: MessageContent::Text(assistant_text),
+                });
             }
-            // Stage 2 ignores tool calls and usage. Tool calls land in
-            // Stage 3; usage telemetry isn't in the (non-unstable)
-            // PromptResponse, so there's nothing to attach it to today.
-            CompletionEvent::ToolCallStart { .. }
-            | CompletionEvent::ToolCallArgsDelta { .. }
-            | CompletionEvent::Usage(_) => {}
+            stop_reason = map_finish_reason(finish_reason.as_deref());
+            break;
+        }
+
+        // Assistant turn carrying the tool calls.
+        let calls: Vec<ToolCall> = tool_buckets
+            .values()
+            .map(|b| ToolCall {
+                id: b.id.clone(),
+                name: b.name.clone(),
+                arguments: b.arguments.clone(),
+            })
+            .collect();
+        let assistant_turn = Message {
+            role: Role::Assistant,
+            content: MessageContent::ToolCalls {
+                text: (!assistant_text.is_empty()).then_some(assistant_text),
+                calls,
+            },
+        };
+        new_turns.push(assistant_turn.clone());
+        messages.push(assistant_turn);
+
+        // Refresh the mode in case the user toggled it during the
+        // streaming above (cheap — one mutex acquisition).
+        mode_id = session_arc.lock().await.mode_id.clone();
+
+        // Dispatch every tool call sequentially. Parallelism is
+        // tempting but would require Zed to handle interleaved
+        // permission prompts; serial is friendlier.
+        for bucket in tool_buckets.into_values() {
+            if cancel.is_cancelled() {
+                stop_reason = StopReason::Cancelled;
+                break;
+            }
+            let event = ToolCallEvent {
+                id: bucket.id,
+                name: bucket.name,
+                arguments: bucket.arguments,
+            };
+            let result =
+                dispatch_tool_call(&ops, &session_id, &mode_id, &cwd, event, &cancel).await;
+            let result_turn = Message {
+                role: Role::Tool,
+                content: MessageContent::ToolResult {
+                    tool_call_id: result.tool_call_id,
+                    content: result.content,
+                },
+            };
+            new_turns.push(result_turn.clone());
+            messages.push(result_turn);
+        }
+
+        if cancel.is_cancelled() {
+            stop_reason = StopReason::Cancelled;
+            break;
+        }
+
+        if round + 1 == MAX_TOOL_ROUNDS {
+            tracing::warn!(
+                session_id = %session_id.0,
+                rounds = MAX_TOOL_ROUNDS,
+                "hit MAX_TOOL_ROUNDS, returning MaxTurnRequests"
+            );
+            stop_reason = StopReason::MaxTurnRequests;
         }
     }
 
-    // If cancellation fired, override whatever finish reason we got
-    // (or didn't get). Per spec: a `session/cancel` MUST result in
-    // `StopReason::Cancelled`, regardless of partial output.
-    if cancel.is_cancelled() {
-        stop_reason = StopReason::Cancelled;
-    }
-
-    // Re-acquire the lock just long enough to persist the assistant
-    // turn (even partial output, so future turns have the context).
     {
         let mut state = session_arc.lock().await;
-        if !assistant_text.is_empty() {
-            state.history.push(Message {
-                role: Role::Assistant,
-                content: MessageContent::Text(assistant_text),
-            });
-        }
+        state.history.extend(new_turns);
     }
 
     let _ = responder.respond(PromptResponse::new(stop_reason));
     Ok(())
+}
+
+/// Accumulator for one streamed tool call: the OpenAI wire format
+/// sends `id` + `name` once (in the first chunk for that index) and
+/// then argument bytes piecemeal. We gather them all before
+/// dispatching.
+#[derive(Debug, Default)]
+struct ToolCallBucket {
+    id: String,
+    name: String,
+    arguments: String,
 }
 
 fn send_chunk(cx: &ConnectionTo<Client>, session_id: &SessionId, update: SessionUpdate) {
