@@ -28,6 +28,59 @@ use agent::Agent;
 use config::{Config, EndpointConfig, WireApi};
 use provider::{Provider, openai_chat::OpenAIChatProvider};
 
+/// Set up tracing. Logs go to stderr by default — stdout is
+/// reserved for the JSON-RPC stream. Setting `HELEXA_ACP_LOG_FILE`
+/// to an absolute path appends logs to that file instead, which is
+/// the practical way to capture debug output when the agent runs
+/// under an editor (Zed, etc.) that doesn't surface stderr.
+///
+/// `RUST_LOG` still controls levels (e.g. `helexa_acp=debug`).
+/// ANSI colours are auto-stripped when writing to a file so the log
+/// is plain text.
+fn init_tracing() {
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
+
+    let log_file = std::env::var("HELEXA_ACP_LOG_FILE")
+        .ok()
+        .filter(|s| !s.is_empty());
+
+    match log_file {
+        Some(path) => match std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            Ok(file) => {
+                tracing_subscriber::fmt()
+                    .with_writer(std::sync::Mutex::new(file))
+                    .with_env_filter(env_filter)
+                    .with_ansi(false)
+                    .init();
+            }
+            Err(e) => {
+                // Fall back to stderr and shout. We don't want a
+                // typo'd log path to silence the agent entirely.
+                tracing_subscriber::fmt()
+                    .with_writer(std::io::stderr)
+                    .with_env_filter(env_filter)
+                    .init();
+                tracing::warn!(
+                    path = %path,
+                    error = %e,
+                    "HELEXA_ACP_LOG_FILE could not be opened; using stderr"
+                );
+            }
+        },
+        None => {
+            tracing_subscriber::fmt()
+                .with_writer(std::io::stderr)
+                .with_env_filter(env_filter)
+                .init();
+        }
+    }
+}
+
 /// Build a provider for `endpoint` according to its declared
 /// `wire_api`. Future wire types (OpenAI Responses, Anthropic
 /// /v1/messages, Ollama native) slot in here without changing the
@@ -49,14 +102,7 @@ fn build_provider(endpoint: EndpointConfig) -> anyhow::Result<Arc<dyn Provider>>
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Logs go to stderr — stdout is reserved for the JSON-RPC stream.
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    init_tracing();
 
     let cfg = Config::load()
         .map_err(|e| agent_client_protocol::util::internal_error(format!("config: {e:#}")))?;
