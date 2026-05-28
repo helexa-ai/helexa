@@ -1,0 +1,162 @@
+//! Provider trait — the seam between the ACP-side agent loop and
+//! whatever wire protocol an endpoint actually speaks.
+//!
+//! Every concrete provider (OpenAI chat completions, OpenAI Responses,
+//! Anthropic /v1/messages, Ollama native, …) implements
+//! [`Provider`]. The agent constructs a [`CompletionRequest`] using
+//! provider-agnostic types and consumes a stream of
+//! [`CompletionEvent`]s — neither end knows which wire format is on
+//! the other side of the trait.
+//!
+//! Day-1 provider: [`openai_chat::OpenAIChatProvider`]. Day-N
+//! providers slot in without touching `agent.rs`.
+
+// Many fields and variants in the public surface here aren't read yet:
+// the agent loop that consumes `CompletionEvent`s and constructs
+// `CompletionRequest`s lands in the next commit. They're not
+// speculative — the unit tests in `provider::openai_chat::tests`
+// already verify the encoder/decoder produces them. Once `agent.rs`
+// arrives this allow comes off.
+#![allow(dead_code)]
+
+use async_trait::async_trait;
+use futures::stream::BoxStream;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio_util::sync::CancellationToken;
+
+pub mod openai_chat;
+
+/// Provider-agnostic LLM endpoint. Implementations translate between
+/// [`CompletionRequest`] / [`CompletionEvent`] and whatever wire
+/// format their endpoint speaks.
+#[async_trait]
+pub trait Provider: Send + Sync {
+    /// Endpoint name as configured by the user (e.g. `"helexa"`,
+    /// `"openrouter"`). Used in logs and in the `endpoint:model`
+    /// selector.
+    fn name(&self) -> &str;
+
+    /// List models available at this endpoint. Used to build the
+    /// model-picker dropdown in editor clients. Should return quickly
+    /// (cache if necessary).
+    async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>>;
+
+    /// Run a chat completion. Returns a stream of provider-agnostic
+    /// events. The stream stops when the upstream finishes, when
+    /// `cancel` is fired, or when the stream is dropped.
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+        cancel: CancellationToken,
+    ) -> anyhow::Result<BoxStream<'static, anyhow::Result<CompletionEvent>>>;
+}
+
+/// One model exposed by a provider.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    /// Human-friendly name, if the endpoint exposes one. Otherwise
+    /// `id` is used as the display name.
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// Inputs to a completion. Provider-agnostic — concrete providers
+/// translate this into their wire format.
+#[derive(Debug, Clone)]
+pub struct CompletionRequest {
+    /// Endpoint-local model id (without the `endpoint:` prefix).
+    pub model: String,
+    pub messages: Vec<Message>,
+    /// Tools the model is allowed to call. Empty list means no tool
+    /// support advertised.
+    pub tools: Vec<ToolSpec>,
+    pub temperature: Option<f64>,
+    pub top_p: Option<f64>,
+    pub max_tokens: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Message {
+    pub role: Role,
+    pub content: MessageContent,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    System,
+    User,
+    Assistant,
+    /// Tool result message. Provider impls turn this into whatever
+    /// shape the upstream wire format wants (OpenAI uses
+    /// `role: "tool"` + `tool_call_id`; Anthropic uses content blocks).
+    Tool,
+}
+
+#[derive(Debug, Clone)]
+pub enum MessageContent {
+    Text(String),
+    /// Assistant turn that called one or more tools.
+    ToolCalls {
+        /// Optional text the assistant said alongside the tool calls.
+        text: Option<String>,
+        calls: Vec<ToolCall>,
+    },
+    /// Tool result. `tool_call_id` matches the assistant's call id.
+    ToolResult {
+        tool_call_id: String,
+        content: String,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolCall {
+    /// Provider-assigned id that ties the call to its result.
+    pub id: String,
+    pub name: String,
+    /// JSON-encoded arguments. Kept as a string because providers
+    /// stream argument bytes incrementally and only validate at the
+    /// end; the agent decodes once the call is complete.
+    pub arguments: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToolSpec {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema of the arguments object.
+    pub parameters: Value,
+}
+
+/// Events emitted by a provider during a streaming completion.
+#[derive(Debug, Clone)]
+pub enum CompletionEvent {
+    /// Incremental visible text from the assistant.
+    TextDelta(String),
+    /// Incremental "reasoning" / thought text, if the model emits one
+    /// (e.g. Qwen3 with `<think>` tags surfaced as a separate stream,
+    /// or OpenAI reasoning models).
+    ReasoningDelta(String),
+    /// A new tool call has started.
+    ToolCallStart {
+        index: usize,
+        id: String,
+        name: String,
+    },
+    /// More argument bytes for a tool call already announced via
+    /// [`Self::ToolCallStart`].
+    ToolCallArgsDelta { index: usize, args_delta: String },
+    /// Stream finished. Carries the upstream `finish_reason` if it
+    /// gave one (`"stop"`, `"length"`, `"tool_calls"`, …).
+    Finish { reason: Option<String> },
+    /// Final usage stats, if the provider supplied them.
+    Usage(UsageStats),
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct UsageStats {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}

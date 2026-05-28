@@ -1,0 +1,39 @@
+[package]
+name = "helexa-acp"
+version = "0.1.16"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://git.lair.cafe/helexa/cortex"
+description = """
+Agent Client Protocol bridge for the helexa self-hosted LLM stack.
+Speaks ACP to ACP-compatible editor clients (Zed, etc.) and forwards
+the conversation to any OpenAI-compatible HTTP endpoint — defaulting
+to cortex (helexa's reverse-proxy / fleet gateway).
+"""
+
+# This crate is intentionally self-contained — no dependencies on other
+# workspace crates (cortex-core, cortex-gateway, neuron). The goal is
+# a painless migration to a dedicated GitHub repo in the future if the
+# project grows beyond helexa's needs. All deps are crates.io.
+[dependencies]
+agent-client-protocol = "0.12"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "process", "signal"] }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
+thiserror = "2"
+async-trait = "0.1"
+futures = "0.3"
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["rt"] }
+eventsource-stream = "0.2"
+async-stream = "0.3"
+url = { version = "2", features = ["serde"] }
+
+[[bin]]
+name = "helexa-acp"
+path = "src/main.rs"
