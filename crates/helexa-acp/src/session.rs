@@ -152,7 +152,9 @@ mod tests {
             .history
             .push(Message {
                 role: Role::User,
-                content: MessageContent::Text("hello".into()),
+                content: MessageContent::Text {
+                    text: "hello".into(),
+                },
             });
 
         assert_eq!(

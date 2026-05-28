@@ -21,6 +21,7 @@ mod prompt;
 mod provider;
 mod qwen3;
 mod session;
+mod store;
 mod tool_runner;
 mod tools;
 

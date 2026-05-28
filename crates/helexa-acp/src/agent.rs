@@ -19,9 +19,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::{
     AgentCapabilities, CancelNotification, ContentBlock, InitializeRequest, InitializeResponse,
-    NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
-    SessionId, SessionMode, SessionModeId, SessionModeState, SessionNotification, SessionUpdate,
-    SetSessionModeRequest, SetSessionModeResponse, StopReason, TextContent,
+    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
+    PromptCapabilities, PromptRequest, PromptResponse, SessionId, SessionMode, SessionModeId,
+    SessionModeState, SessionNotification, SessionUpdate, SetSessionModeRequest,
+    SetSessionModeResponse, StopReason, TextContent,
 };
 use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, Dispatch, Stdio};
 use futures::StreamExt;
@@ -34,6 +35,7 @@ use crate::provider::{
     CompletionEvent, CompletionRequest, Message, MessageContent, Provider, Role, ToolCall,
 };
 use crate::session::{self, MODE_BYPASS, MODE_DEFAULT, SessionState, SessionStore};
+use crate::store::{self, PersistedSession};
 use crate::tool_runner::{AcpClientOps, ToolCallEvent, dispatch_tool_call};
 use crate::tools;
 
@@ -138,6 +140,20 @@ impl Agent {
             .on_receive_request(
                 {
                     let inner = inner.clone();
+                    async move |req: LoadSessionRequest, responder, _cx| match handle_load_session(
+                        &inner, req,
+                    )
+                    .await
+                    {
+                        Ok(resp) => responder.respond(resp),
+                        Err(e) => responder.respond_with_internal_error(format!("{e:#}")),
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                {
+                    let inner = inner.clone();
                     async move |req: PromptRequest, responder, cx: ConnectionTo<Client>| {
                         spawn_prompt(inner.clone(), cx, req, responder)
                     }
@@ -205,8 +221,16 @@ fn initialize_response(req: &InitializeRequest) -> InitializeResponse {
     // Stage 2: text-only prompts. Image / audio / embedded resources
     // flip on in later stages.
     let prompt_caps = PromptCapabilities::default();
-    InitializeResponse::new(req.protocol_version)
-        .agent_capabilities(AgentCapabilities::new().prompt_capabilities(prompt_caps))
+    InitializeResponse::new(req.protocol_version).agent_capabilities(
+        AgentCapabilities::new()
+            .prompt_capabilities(prompt_caps)
+            // Stage 3b: `session/load` is implemented. Persisted
+            // sessions live on disk under
+            // `$XDG_DATA_HOME/helexa-acp/sessions/`; clients (Zed)
+            // can hand us back any session_id we previously
+            // minted to resume the conversation.
+            .load_session(true),
+    )
 }
 
 async fn handle_new_session(
@@ -238,6 +262,57 @@ async fn handle_new_session(
         "session created"
     );
     Ok(NewSessionResponse::new(session_id).modes(default_mode_state()))
+}
+
+/// Rehydrate a session from disk.
+///
+/// Behaviour:
+///
+/// - Reads the persisted JSON from
+///   `$XDG_DATA_HOME/helexa-acp/sessions/{id}.json`. Missing file →
+///   error (Zed falls back to `session/new`).
+/// - Overwrites the persisted `cwd` with the one the client just
+///   sent. The user may have moved or symlinked the repo since
+///   the session was first created; the *current* cwd is the
+///   right place to root subsequent tool dispatches.
+/// - Materialises an in-memory `SessionState` with the persisted
+///   model + mode + history.
+/// - Returns `LoadSessionResponse` carrying the same mode list as
+///   `session/new`, plus the persisted `current_mode_id` so the
+///   client renders the mode dropdown in the correct state.
+async fn handle_load_session(
+    inner: &AgentInner,
+    req: LoadSessionRequest,
+) -> anyhow::Result<LoadSessionResponse> {
+    if !req.cwd.is_absolute() {
+        anyhow::bail!("session cwd must be absolute, got {}", req.cwd.display());
+    }
+    let persisted = store::load(&req.session_id)?;
+    // Snapshot the values we need for logging + the response
+    // before we move pieces of `persisted` into `state`.
+    let model_id = persisted.model_id.clone();
+    let mode_id = persisted.mode_id.clone();
+    let history_turns = persisted.history.len();
+
+    let mut state = SessionState::new(req.cwd.clone(), persisted.model_id);
+    state.history = persisted.history;
+    state.mode_id = SessionModeId::new(persisted.mode_id);
+    session::insert(&inner.sessions, req.session_id.clone(), state).await;
+
+    tracing::info!(
+        session_id = %req.session_id.0,
+        model_id = %model_id,
+        mode = %mode_id,
+        cwd = %req.cwd.display(),
+        history_turns,
+        "session loaded from disk"
+    );
+
+    let modes = SessionModeState::new(
+        SessionModeId::new(mode_id),
+        default_mode_state().available_modes,
+    );
+    Ok(LoadSessionResponse::new().modes(modes))
 }
 
 /// The two modes every Stage 3 session advertises. Stage 7 may grow
@@ -341,7 +416,7 @@ async fn drive_prompt(
         let user_text = flatten_prompt(&req.prompt);
         state.history.push(Message {
             role: Role::User,
-            content: MessageContent::Text(user_text),
+            content: MessageContent::Text { text: user_text },
         });
         (
             state.history.clone(),
@@ -383,7 +458,9 @@ async fn drive_prompt(
     let mut messages: Vec<Message> = Vec::with_capacity(existing_history.len() + 1);
     messages.push(Message {
         role: Role::System,
-        content: MessageContent::Text(system_prompt),
+        content: MessageContent::Text {
+            text: system_prompt,
+        },
     });
     messages.extend(existing_history);
 
@@ -494,7 +571,9 @@ async fn drive_prompt(
             if !assistant_text.is_empty() {
                 new_turns.push(Message {
                     role: Role::Assistant,
-                    content: MessageContent::Text(assistant_text),
+                    content: MessageContent::Text {
+                        text: assistant_text,
+                    },
                 });
             }
             break;
@@ -540,7 +619,9 @@ async fn drive_prompt(
             if !assistant_text.is_empty() {
                 new_turns.push(Message {
                     role: Role::Assistant,
-                    content: MessageContent::Text(assistant_text),
+                    content: MessageContent::Text {
+                        text: assistant_text,
+                    },
                 });
             }
             stop_reason = map_finish_reason(finish_reason.as_deref());
@@ -567,7 +648,9 @@ async fn drive_prompt(
                         calls,
                     }
                 } else {
-                    MessageContent::Text(assistant_text)
+                    MessageContent::Text {
+                        text: assistant_text,
+                    }
                 },
             };
             new_turns.push(assistant_turn.clone());
@@ -638,9 +721,39 @@ async fn drive_prompt(
         }
     }
 
-    {
+    // Append the new turns to the session's in-memory history, then
+    // snapshot the state for persistence. We snapshot *under the
+    // lock* so the on-disk store reflects exactly what's in memory,
+    // but the actual blocking I/O (file write) happens outside the
+    // lock so a slow disk doesn't stall concurrent session work.
+    let snapshot = {
         let mut state = session_arc.lock().await;
         state.history.extend(new_turns);
+        PersistedSession {
+            session_id: session_id.0.as_ref().to_string(),
+            cwd: state.cwd.clone(),
+            model_id: state.model_id.clone(),
+            mode_id: state.mode_id.0.as_ref().to_string(),
+            history: state.history.clone(),
+            // `created_at` would be ideal to preserve across saves;
+            // we read it back via store::load on resume but the
+            // in-memory SessionState doesn't carry it (yet). For
+            // now persistence treats every save as a refresh,
+            // updating both timestamps. Future work: thread
+            // `created_at` through SessionState.
+            created_at: store::now_secs(),
+            updated_at: store::now_secs(),
+        }
+    };
+    if let Err(e) = store::save(&snapshot) {
+        // Persistence failure is a warning, not a fatal — the
+        // prompt response still goes through. Operator can grep
+        // for this to diagnose disk issues.
+        tracing::warn!(
+            session_id = %session_id.0,
+            error = %format!("{e:#}"),
+            "session/persist failed; resume from disk will miss this turn"
+        );
     }
 
     let _ = responder.respond(PromptResponse::new(stop_reason));

@@ -159,11 +159,13 @@ mod tests {
             messages: vec![
                 Message {
                     role: Role::System,
-                    content: MessageContent::Text("you are helpful".into()),
+                    content: MessageContent::Text {
+                        text: "you are helpful".into(),
+                    },
                 },
                 Message {
                     role: Role::User,
-                    content: MessageContent::Text("hi".into()),
+                    content: MessageContent::Text { text: "hi".into() },
                 },
             ],
             tools: vec![],
@@ -503,9 +505,13 @@ fn encode_request(req: &CompletionRequest) -> Value {
 
 fn encode_message(m: &Message) -> Value {
     match (m.role, &m.content) {
-        (Role::System, MessageContent::Text(s)) => json!({"role": "system", "content": s}),
-        (Role::User, MessageContent::Text(s)) => json!({"role": "user", "content": s}),
-        (Role::Assistant, MessageContent::Text(s)) => json!({"role": "assistant", "content": s}),
+        (Role::System, MessageContent::Text { text }) => {
+            json!({"role": "system", "content": text})
+        }
+        (Role::User, MessageContent::Text { text }) => json!({"role": "user", "content": text}),
+        (Role::Assistant, MessageContent::Text { text }) => {
+            json!({"role": "assistant", "content": text})
+        }
         // Qwen3 wire shape: assistant turns that called tools come
         // back to the model with `<tool_call>{…}</tool_call>` blocks
         // inline in `content`, *not* via the structured `tool_calls`
@@ -553,7 +559,7 @@ fn role_str(r: Role) -> &'static str {
 
 fn content_as_text(c: &MessageContent) -> String {
     match c {
-        MessageContent::Text(s) => s.clone(),
+        MessageContent::Text { text } => text.clone(),
         MessageContent::ToolCalls { text, .. } => text.clone().unwrap_or_default(),
         MessageContent::ToolResult { content, .. } => content.clone(),
     }

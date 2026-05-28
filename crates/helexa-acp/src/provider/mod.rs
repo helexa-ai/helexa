@@ -73,13 +73,14 @@ pub struct CompletionRequest {
     pub max_tokens: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     pub content: MessageContent,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Role {
     System,
     User,
@@ -88,17 +89,21 @@ pub enum Role {
     /// shape the upstream wire format wants (OpenAI uses
     /// `role: "tool"` + `tool_call_id`; Anthropic uses content blocks).
     /// Stage 3 (tools) constructs this; Stage 2 never does.
-    #[allow(dead_code)]
     Tool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum MessageContent {
-    Text(String),
+    /// Plain text turn (system / user / assistant). Struct variant
+    /// rather than newtype so the persisted JSON has an explicit
+    /// `text` field — that lets us use internal tagging on the
+    /// enum, which is incompatible with newtype-of-primitive
+    /// variants.
+    Text { text: String },
     /// Assistant turn that called one or more tools. Stage 3 starts
     /// constructing this when the provider stream yields a
     /// `ToolCallStart` / `ToolCallArgsDelta` sequence.
-    #[allow(dead_code)]
     ToolCalls {
         /// Optional text the assistant said alongside the tool calls.
         text: Option<String>,
@@ -106,14 +111,13 @@ pub enum MessageContent {
     },
     /// Tool result. `tool_call_id` matches the assistant's call id.
     /// Stage 3 constructs this after the tool runner finishes.
-    #[allow(dead_code)]
     ToolResult {
         tool_call_id: String,
         content: String,
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Provider-assigned id that ties the call to its result. The
     /// Qwen3 wire format we use today doesn't carry this on the
