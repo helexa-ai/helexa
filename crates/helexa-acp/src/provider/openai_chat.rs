@@ -96,6 +96,16 @@ impl Provider for OpenAIChatProvider {
         cancel: CancellationToken,
     ) -> anyhow::Result<BoxStream<'static, anyhow::Result<CompletionEvent>>> {
         let body = encode_request(&request);
+        // Diagnostics for "the model isn't using tools" issues:
+        // at debug level we log the full body so an operator can
+        // confirm `tools` is in the request and inspect message
+        // shapes. Stays at debug because chat history can be large.
+        tracing::debug!(
+            endpoint = %self.endpoint.name,
+            url = %self.endpoint.chat_completions_url(),
+            body = %serde_json::to_string(&body).unwrap_or_else(|_| "<unserializable>".into()),
+            "POST /chat/completions"
+        );
         let mut req = self
             .http
             .post(self.endpoint.chat_completions_url())
