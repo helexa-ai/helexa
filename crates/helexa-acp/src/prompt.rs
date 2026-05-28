@@ -1,25 +1,38 @@
 //! System prompt assembly.
 //!
-//! Stage 2 ships a small built-in prompt aimed at coding assistance:
-//! it tells the model the working directory and reminds it that no
-//! tools are available yet. Users who want something different point
-//! `HELEXA_ACP_SYSTEM_PROMPT_PATH` (env) or `system_prompt_path` (TOML)
-//! at a file and we read that verbatim. The literal token `{cwd}` in
-//! a user-supplied file is substituted with the session's working
-//! directory so editor templates can include it without templating.
+//! The built-in prompt tells the model the working directory and
+//! enumerates the tools it actually has — without this, models trained
+//! to "be safe when you don't know your environment" tend to refuse
+//! tool use and ask the user to paste content instead. Override with
+//! `HELEXA_ACP_SYSTEM_PROMPT_PATH` (env) or `system_prompt_path`
+//! (TOML); the literal token `{cwd}` in a user-supplied file is
+//! substituted with the session's working directory.
 
 use anyhow::Context;
 use std::path::Path;
 
 const DEFAULT_PROMPT: &str = "\
-You are helexa-acp, a coding assistant.
+You are helexa-acp, a coding assistant working inside an editor.
 
 Working directory: {cwd}
 
-Stage 2 build: you have no tools available — answer with text only.
-When you need to refer to files or directories, describe paths
-relative to the working directory above. Be concise; the user is
-reading your output in an editor pane.";
+You have the following tools. Call them whenever the user's request
+involves looking at or modifying files, or running commands — do not
+ask the user to paste file contents you could read yourself.
+
+- read_file(path, line?, limit?) — Read a text file's contents.
+- write_file(path, content) — Create or overwrite a file.
+- edit_file(path, old_text, new_text) — Replace one unique substring
+  in a file. Fails if old_text is not unique; call multiple times for
+  multiple edits.
+- list_dir(path) — List a directory's entries.
+- bash(command, cwd?) — Run a shell command via `sh -c`. Returns
+  combined stdout+stderr and the exit status.
+
+All file paths must be absolute. Writes and shell commands may
+prompt the user for permission depending on the session mode.
+
+Be concise; the user is reading your output in an editor pane.";
 
 /// Build the system prompt for a session.
 ///
