@@ -297,6 +297,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn decodes_qwen3_inline_think_block_to_reasoning_deltas() {
+        // Qwen3-shaped output: a `<think>…</think>` block lives
+        // inside `delta.content`. The decoder should route bytes
+        // inside the block to ReasoningDelta and the surrounding
+        // content to TextDelta. Marker boundaries split across
+        // chunks to exercise the parser's prefix-hold logic.
+        let sse = fake_sse(vec![
+            r#"{"choices":[{"delta":{"content":"<thi"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"nk>internal reasoning</thi"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"nk>visible answer"}}]}"#,
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+            "[DONE]",
+        ]);
+        let events: Vec<_> = decode_stream(sse, CancellationToken::new())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                CompletionEvent::TextDelta(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        let reasoning: String = events
+            .iter()
+            .filter_map(|e| match e {
+                CompletionEvent::ReasoningDelta(r) => Some(r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "visible answer");
+        assert_eq!(reasoning, "internal reasoning");
+        assert!(matches!(
+            events.last(),
+            Some(CompletionEvent::Finish { reason }) if reason.as_deref() == Some("stop")
+        ));
+    }
+
+    #[tokio::test]
     async fn decodes_qwen3_inline_tool_call_from_content_stream() {
         // Qwen3-shaped output: `<tool_call>{…}</tool_call>` inside
         // ordinary `delta.content`, split across multiple chunks at
@@ -638,6 +681,11 @@ where
         // structured tool-call events, holding back only the suffix
         // bytes that could be the start of a marker.
         let mut qwen_parser = crate::qwen3::ToolCallParser::new();
+        // Same shape, second stage: take the plain-text events out
+        // of the tool-call parser and split off `<think>…</think>`
+        // blocks into ReasoningDelta so Zed can render them in its
+        // dedicated thought UI rather than the message pane.
+        let mut think_parser = crate::qwen3::ThinkParser::new();
 
         let mut sse = Box::pin(sse);
         loop {
@@ -678,7 +726,21 @@ where
                             for ev in qwen_parser.feed(&text) {
                                 match ev {
                                     crate::qwen3::ParserEvent::Text(t) if !t.is_empty() => {
-                                        yield Ok(CompletionEvent::TextDelta(t));
+                                        for tev in think_parser.feed(&t) {
+                                            match tev {
+                                                crate::qwen3::ThinkEvent::Text(s)
+                                                    if !s.is_empty() =>
+                                                {
+                                                    yield Ok(CompletionEvent::TextDelta(s));
+                                                }
+                                                crate::qwen3::ThinkEvent::Reasoning(s)
+                                                    if !s.is_empty() =>
+                                                {
+                                                    yield Ok(CompletionEvent::ReasoningDelta(s));
+                                                }
+                                                _ => {}
+                                            }
+                                        }
                                     }
                                     crate::qwen3::ParserEvent::Text(_) => {}
                                     crate::qwen3::ParserEvent::Start { index, name } => {
@@ -747,7 +809,21 @@ where
                             for ev in qwen_parser.finish() {
                                 match ev {
                                     crate::qwen3::ParserEvent::Text(t) if !t.is_empty() => {
-                                        yield Ok(CompletionEvent::TextDelta(t));
+                                        for tev in think_parser.feed(&t) {
+                                            match tev {
+                                                crate::qwen3::ThinkEvent::Text(s)
+                                                    if !s.is_empty() =>
+                                                {
+                                                    yield Ok(CompletionEvent::TextDelta(s));
+                                                }
+                                                crate::qwen3::ThinkEvent::Reasoning(s)
+                                                    if !s.is_empty() =>
+                                                {
+                                                    yield Ok(CompletionEvent::ReasoningDelta(s));
+                                                }
+                                                _ => {}
+                                            }
+                                        }
                                     }
                                     crate::qwen3::ParserEvent::Text(_) => {}
                                     crate::qwen3::ParserEvent::Start { index, name } => {
@@ -766,6 +842,21 @@ where
                                     crate::qwen3::ParserEvent::Malformed { raw } => {
                                         tracing::warn!(raw = %raw, "qwen3: unterminated <tool_call> at stream end");
                                     }
+                                }
+                            }
+                            // Flush the think parser too — any
+                            // unclosed <think> at stream end becomes
+                            // a final ReasoningDelta rather than
+                            // being lost.
+                            for tev in think_parser.finish() {
+                                match tev {
+                                    crate::qwen3::ThinkEvent::Text(s) if !s.is_empty() => {
+                                        yield Ok(CompletionEvent::TextDelta(s));
+                                    }
+                                    crate::qwen3::ThinkEvent::Reasoning(s) if !s.is_empty() => {
+                                        yield Ok(CompletionEvent::ReasoningDelta(s));
+                                    }
+                                    _ => {}
                                 }
                             }
                             yield Ok(CompletionEvent::Finish { reason: Some(reason) });

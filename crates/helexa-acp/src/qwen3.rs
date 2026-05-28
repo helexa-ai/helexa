@@ -37,6 +37,11 @@ const TOOL_CALL_OPEN: &str = "<tool_call>";
 /// One closing marker. Length 12.
 const TOOL_CALL_CLOSE: &str = "</tool_call>";
 
+/// Reasoning open. Length 7.
+const THINK_OPEN: &str = "<think>";
+/// Reasoning close. Length 8.
+const THINK_CLOSE: &str = "</think>";
+
 // ── System-prompt-side rendering ────────────────────────────────────
 
 /// Append-this-to-the-system-prompt block describing the available
@@ -293,6 +298,98 @@ struct ToolCallBody {
     // both.
     #[serde(default)]
     arguments: serde_json::Value,
+}
+
+// ── Think-block parser ──────────────────────────────────────────────
+
+/// Events from [`ThinkParser`]. Plain text outside any `<think>`
+/// block stays `Text`; bytes between `<think>` and `</think>` become
+/// `Reasoning` so the agent can route them to a thought-channel
+/// notification (Zed surfaces these in a dedicated UI affordance
+/// rather than the main message pane).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThinkEvent {
+    Text(String),
+    Reasoning(String),
+}
+
+/// Streaming parser for Qwen3-style inline reasoning. Same
+/// chunk-boundary discipline as [`ToolCallParser`]: hold back only
+/// the suffix that could be the start of the marker we're scanning
+/// for. Markers (`<think>`, `</think>`) never nest; a stray
+/// `</think>` outside a block is emitted as text (the model
+/// occasionally writes the tag conversationally).
+#[derive(Debug, Default)]
+pub struct ThinkParser {
+    buffer: String,
+    in_think: bool,
+}
+
+impl ThinkParser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn feed(&mut self, chunk: &str) -> Vec<ThinkEvent> {
+        self.buffer.push_str(chunk);
+        self.drain()
+    }
+
+    /// Flush any buffered tail at end-of-stream. If we end mid-think
+    /// (no closing tag arrived), emit what we have as reasoning so
+    /// the partial thought isn't silently dropped.
+    pub fn finish(&mut self) -> Vec<ThinkEvent> {
+        let mut events = self.drain();
+        if !self.buffer.is_empty() {
+            let raw = std::mem::take(&mut self.buffer);
+            if self.in_think {
+                events.push(ThinkEvent::Reasoning(raw));
+            } else {
+                events.push(ThinkEvent::Text(raw));
+            }
+        }
+        self.in_think = false;
+        events
+    }
+
+    fn drain(&mut self) -> Vec<ThinkEvent> {
+        let mut events = Vec::new();
+        loop {
+            if self.in_think {
+                if let Some(end) = self.buffer.find(THINK_CLOSE) {
+                    let body = self.buffer[..end].to_string();
+                    if !body.is_empty() {
+                        events.push(ThinkEvent::Reasoning(body));
+                    }
+                    self.buffer.drain(..end + THINK_CLOSE.len());
+                    self.in_think = false;
+                } else {
+                    let hold = longest_marker_prefix_suffix(&self.buffer, THINK_CLOSE);
+                    let safe = self.buffer.len() - hold;
+                    if safe > 0 {
+                        let r: String = self.buffer.drain(..safe).collect();
+                        events.push(ThinkEvent::Reasoning(r));
+                    }
+                    return events;
+                }
+            } else if let Some(start) = self.buffer.find(THINK_OPEN) {
+                let text = self.buffer[..start].to_string();
+                if !text.is_empty() {
+                    events.push(ThinkEvent::Text(text));
+                }
+                self.buffer.drain(..start + THINK_OPEN.len());
+                self.in_think = true;
+            } else {
+                let hold = longest_marker_prefix_suffix(&self.buffer, THINK_OPEN);
+                let safe = self.buffer.len() - hold;
+                if safe > 0 {
+                    let t: String = self.buffer.drain(..safe).collect();
+                    events.push(ThinkEvent::Text(t));
+                }
+                return events;
+            }
+        }
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -598,6 +695,148 @@ mod tests {
                 .iter()
                 .any(|e| matches!(e, ParserEvent::Malformed { .. }))
         );
+    }
+
+    // ── ThinkParser ─────────────────────────────────────────────────
+
+    fn drive_think(parser: &mut ThinkParser, chunks: &[&str]) -> Vec<ThinkEvent> {
+        let mut events = Vec::new();
+        for c in chunks {
+            events.extend(parser.feed(c));
+        }
+        events.extend(parser.finish());
+        events
+    }
+
+    #[test]
+    fn think_plain_text_passes_through() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["hello ", "world"]);
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0], ThinkEvent::Text("hello ".into()));
+        assert_eq!(events[1], ThinkEvent::Text("world".into()));
+    }
+
+    #[test]
+    fn think_splits_text_reasoning_text() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["before <think>thinking now</think> after"]);
+        assert_eq!(events[0], ThinkEvent::Text("before ".into()));
+        assert_eq!(events[1], ThinkEvent::Reasoning("thinking now".into()));
+        assert_eq!(events[2], ThinkEvent::Text(" after".into()));
+    }
+
+    #[test]
+    fn think_open_marker_split_across_chunks() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["pre <", "think>middle</think> post"]);
+        let texts: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ThinkEvent::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        let reasoning: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ThinkEvent::Reasoning(r) => Some(r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, "pre  post");
+        assert_eq!(reasoning, "middle");
+    }
+
+    #[test]
+    fn think_close_marker_split_across_chunks() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["a<think>b<", "/think>c"]);
+        let reasoning: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ThinkEvent::Reasoning(r) => Some(r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reasoning, "b");
+        let last_text = events.iter().rev().find_map(|e| match e {
+            ThinkEvent::Text(t) => Some(t.as_str()),
+            _ => None,
+        });
+        assert_eq!(last_text, Some("c"));
+    }
+
+    #[test]
+    fn think_one_byte_at_a_time_matches_single_chunk() {
+        let input = "x<think>internal</think>y";
+        let mut single = ThinkParser::new();
+        let single_events = drive_think(&mut single, &[input]);
+
+        let chunks: Vec<String> = input.chars().map(|c| c.to_string()).collect();
+        let chunk_refs: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
+        let mut byte = ThinkParser::new();
+        let byte_events = drive_think(&mut byte, &chunk_refs);
+
+        let text = |evs: &[ThinkEvent]| -> (String, String) {
+            let mut t = String::new();
+            let mut r = String::new();
+            for e in evs {
+                match e {
+                    ThinkEvent::Text(s) => t.push_str(s),
+                    ThinkEvent::Reasoning(s) => r.push_str(s),
+                }
+            }
+            (t, r)
+        };
+        assert_eq!(text(&single_events), text(&byte_events));
+        assert_eq!(text(&byte_events), ("xy".into(), "internal".into()));
+    }
+
+    #[test]
+    fn think_empty_block_emits_no_reasoning_event() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["<think></think>real"]);
+        // No Reasoning event for an empty <think></think>; just the
+        // trailing text.
+        assert!(
+            !events.iter().any(|e| matches!(e, ThinkEvent::Reasoning(_))),
+            "events: {events:?}"
+        );
+        assert_eq!(events[0], ThinkEvent::Text("real".into()));
+    }
+
+    #[test]
+    fn think_unterminated_block_flushes_as_reasoning_on_finish() {
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["x<think>thinking but no close"]);
+        assert_eq!(events[0], ThinkEvent::Text("x".into()));
+        let reasoning: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ThinkEvent::Reasoning(r) => Some(r.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reasoning, "thinking but no close");
+    }
+
+    #[test]
+    fn think_bare_close_marker_passes_through_as_text() {
+        // Model emits </think> with no preceding <think>. Treat the
+        // bare close as ordinary text — the agent doesn't try to
+        // retroactively reclassify earlier deltas.
+        let mut p = ThinkParser::new();
+        let events = drive_think(&mut p, &["hello </think> world"]);
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ThinkEvent::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "hello </think> world");
+        assert!(!events.iter().any(|e| matches!(e, ThinkEvent::Reasoning(_))));
     }
 
     #[test]
