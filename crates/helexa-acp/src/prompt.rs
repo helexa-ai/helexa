@@ -1,53 +1,59 @@
 //! System prompt assembly.
 //!
-//! The built-in prompt tells the model the working directory and
-//! enumerates the tools it actually has — without this, models trained
-//! to "be safe when you don't know your environment" tend to refuse
-//! tool use and ask the user to paste content instead. Override with
-//! `HELEXA_ACP_SYSTEM_PROMPT_PATH` (env) or `system_prompt_path`
-//! (TOML); the literal token `{cwd}` in a user-supplied file is
-//! substituted with the session's working directory.
+//! The system message has two parts:
+//!
+//! 1. A short human-readable preamble (working directory, style
+//!    instructions). Either the built-in [`DEFAULT_PROMPT`] or a
+//!    user-supplied file at `HELEXA_ACP_SYSTEM_PROMPT_PATH` /
+//!    `system_prompt_path`. `{cwd}` is substituted in both.
+//! 2. A `# Tools` block in Qwen3 Hermes format (see [`crate::qwen3`])
+//!    describing the available functions. This is what makes the
+//!    model actually call them — neuron/cortex don't honour the
+//!    OpenAI `tools` API field, so the tool list has to live in the
+//!    prompt itself.
 
 use anyhow::Context;
 use std::path::Path;
+
+use crate::provider::ToolSpec;
+use crate::qwen3;
 
 const DEFAULT_PROMPT: &str = "\
 You are helexa-acp, a coding assistant working inside an editor.
 
 Working directory: {cwd}
 
-You have the following tools. Call them whenever the user's request
-involves looking at or modifying files, or running commands — do not
-ask the user to paste file contents you could read yourself.
-
-- read_file(path, line?, limit?) — Read a text file's contents.
-- write_file(path, content) — Create or overwrite a file.
-- edit_file(path, old_text, new_text) — Replace one unique substring
-  in a file. Fails if old_text is not unique; call multiple times for
-  multiple edits.
-- list_dir(path) — List a directory's entries.
-- bash(command, cwd?) — Run a shell command via `sh -c`. Returns
-  combined stdout+stderr and the exit status.
-
-All file paths must be absolute. Writes and shell commands may
-prompt the user for permission depending on the session mode.
+Use the tools described below whenever the user's request involves
+looking at or modifying files, or running commands. Do not ask the
+user to paste file contents you could read yourself. All file paths
+must be absolute. Writes and shell commands may prompt the user for
+permission depending on the session mode.
 
 Be concise; the user is reading your output in an editor pane.";
 
 /// Build the system prompt for a session.
 ///
-/// `cwd` is the session's working directory (substituted for `{cwd}`
-/// in both the default prompt and any user-supplied template).
-/// `override_path` is the user's `system_prompt_path` (TOML) or
-/// `HELEXA_ACP_SYSTEM_PROMPT_PATH` (env) value, already resolved by
-/// [`crate::config::Config`].
-pub fn build_system_prompt(cwd: &Path, override_path: Option<&Path>) -> anyhow::Result<String> {
+/// - `cwd`: session working directory (substituted for `{cwd}` in
+///   the preamble — both the default and any user-supplied template).
+/// - `override_path`: path to a user-supplied template, already
+///   resolved by [`crate::config::Config`]. The `# Tools` block is
+///   appended *after* the user's template so a custom preamble
+///   still gets the tool descriptions the model needs.
+/// - `tools`: the tools to advertise. Empty list → no `# Tools`
+///   block is appended at all.
+pub fn build_system_prompt(
+    cwd: &Path,
+    override_path: Option<&Path>,
+    tools: &[ToolSpec],
+) -> anyhow::Result<String> {
     let template = match override_path {
         Some(path) => std::fs::read_to_string(path)
             .with_context(|| format!("read system prompt from {}", path.display()))?,
         None => DEFAULT_PROMPT.to_string(),
     };
-    Ok(template.replace("{cwd}", &cwd.display().to_string()))
+    let mut prompt = template.replace("{cwd}", &cwd.display().to_string());
+    prompt.push_str(&qwen3::render_tool_block(tools));
+    Ok(prompt)
 }
 
 #[cfg(test)]
@@ -57,7 +63,7 @@ mod tests {
 
     #[test]
     fn default_prompt_substitutes_cwd() {
-        let prompt = build_system_prompt(Path::new("/home/me/proj"), None).unwrap();
+        let prompt = build_system_prompt(Path::new("/home/me/proj"), None, &[]).unwrap();
         assert!(
             prompt.contains("/home/me/proj"),
             "cwd not interpolated: {prompt}"
@@ -67,6 +73,22 @@ mod tests {
             !prompt.contains("{cwd}"),
             "left-over placeholder in default prompt"
         );
+        // With no tools, the # Tools block is absent.
+        assert!(!prompt.contains("# Tools"));
+    }
+
+    #[test]
+    fn tools_are_appended_in_hermes_format() {
+        let spec = ToolSpec {
+            name: "read_file".into(),
+            description: "Read a file.".into(),
+            parameters: serde_json::json!({"type":"object","properties":{}, "required":[]}),
+        };
+        let prompt = build_system_prompt(Path::new("/x"), None, &[spec]).unwrap();
+        assert!(prompt.contains("# Tools"));
+        assert!(prompt.contains("<tools>"));
+        assert!(prompt.contains("\"name\":\"read_file\""));
+        assert!(prompt.contains("<tool_call>"));
     }
 
     #[test]
@@ -78,8 +100,8 @@ mod tests {
         let path = tmp.path().to_path_buf();
         drop(tmp);
 
-        let prompt =
-            build_system_prompt(Path::new("/etc"), Some(path.as_path())).expect("read override");
+        let prompt = build_system_prompt(Path::new("/etc"), Some(path.as_path()), &[])
+            .expect("read override");
         assert_eq!(prompt, "custom prompt for /etc only");
 
         let _ = std::fs::remove_file(&path);
@@ -90,6 +112,7 @@ mod tests {
         let err = build_system_prompt(
             Path::new("/tmp"),
             Some(Path::new("/definitely/not/a/real/path")),
+            &[],
         )
         .unwrap_err();
         assert!(format!("{err:#}").contains("read system prompt"));

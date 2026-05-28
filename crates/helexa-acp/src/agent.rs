@@ -322,7 +322,8 @@ async fn drive_prompt(
         )
     };
 
-    let system_prompt = build_system_prompt(&cwd, inner.system_prompt_path.as_deref())
+    let tool_specs = tools::all_tools();
+    let system_prompt = build_system_prompt(&cwd, inner.system_prompt_path.as_deref(), &tool_specs)
         .map_err(|e| anyhow::anyhow!("build system prompt: {e:#}"))?;
 
     let (provider, local_model) =
@@ -361,7 +362,6 @@ async fn drive_prompt(
     // future prompts see them.
     let mut new_turns: Vec<Message> = Vec::new();
 
-    let tool_specs = tools::all_tools();
     let mut stop_reason = StopReason::EndTurn;
 
     for round in 0..MAX_TOOL_ROUNDS {
@@ -370,10 +370,15 @@ async fn drive_prompt(
             break;
         }
 
+        // Tool descriptions reach the model via the Qwen3 `# Tools`
+        // block in the system prompt, not via the OpenAI `tools`
+        // request field — cortex/neuron pass that field through to
+        // the encoder unread, and including it would double-describe
+        // tools once a strict-OpenAI backend lands. Leave empty.
         let completion_req = CompletionRequest {
             model: local_model.clone(),
             messages: messages.clone(),
-            tools: tool_specs.clone(),
+            tools: vec![],
             temperature: None,
             top_p: None,
             max_tokens: None,

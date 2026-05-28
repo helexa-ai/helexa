@@ -115,7 +115,14 @@ pub enum MessageContent {
 
 #[derive(Debug, Clone)]
 pub struct ToolCall {
-    /// Provider-assigned id that ties the call to its result.
+    /// Provider-assigned id that ties the call to its result. The
+    /// Qwen3 wire format we use today doesn't carry this on the
+    /// model side (calls and results are matched positionally inside
+    /// a turn), so the field looks unused in the prod build — but it
+    /// flows through to `MessageContent::ToolResult.tool_call_id` for
+    /// history bookkeeping and a future strict-OpenAI backend will
+    /// consume it directly.
+    #[allow(dead_code)]
     pub id: String,
     pub name: String,
     /// JSON-encoded arguments. Kept as a string because providers

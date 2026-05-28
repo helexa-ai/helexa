@@ -19,6 +19,7 @@ mod agent;
 mod config;
 mod prompt;
 mod provider;
+mod qwen3;
 mod session;
 mod tool_runner;
 mod tools;

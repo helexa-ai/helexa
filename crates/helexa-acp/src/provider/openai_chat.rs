@@ -219,19 +219,40 @@ mod tests {
             max_tokens: None,
         };
         let body = encode_request(&req);
-        // Tool defs flow through:
+        // Tool defs flow through as a courtesy to any future
+        // strict-OpenAI backend; today's Qwen3 path puts them in
+        // the prompt instead.
         let tools = body["tools"].as_array().unwrap();
         assert_eq!(tools[0]["function"]["name"], "read_file");
-        // Assistant tool_calls flow through:
+
+        // Qwen3 wire shape for the assistant turn: tool calls are
+        // inline in `content` as `<tool_call>{…}</tool_call>` blocks,
+        // *not* in a structured `tool_calls` field.
         let asst = &body["messages"][0];
         assert_eq!(asst["role"], "assistant");
-        assert_eq!(asst["tool_calls"][0]["id"], "call_1");
-        assert_eq!(asst["tool_calls"][0]["function"]["name"], "read_file");
-        // Tool result flows through:
+        assert!(
+            asst.get("tool_calls").is_none(),
+            "tool_calls should not be set"
+        );
+        let content = asst["content"].as_str().expect("content is a string");
+        assert!(
+            content.starts_with("calling read_file\n<tool_call>"),
+            "content was: {content}"
+        );
+        assert!(content.contains(r#""name":"read_file""#));
+        assert!(content.contains(r#""path":"/tmp/a.txt""#));
+        assert!(content.ends_with("</tool_call>"));
+
+        // Qwen3 wire shape for the tool result: a user-role turn
+        // wrapped in `<tool_response>`. No `role: "tool"`.
         let tool = &body["messages"][1];
-        assert_eq!(tool["role"], "tool");
-        assert_eq!(tool["tool_call_id"], "call_1");
-        assert_eq!(tool["content"], "file contents");
+        assert_eq!(tool["role"], "user");
+        assert!(tool.get("tool_call_id").is_none());
+        let tool_content = tool["content"].as_str().expect("content is a string");
+        assert_eq!(
+            tool_content,
+            "<tool_response>\nfile contents\n</tool_response>"
+        );
     }
 
     /// Build a fake eventsource stream from canned SSE `data:` lines.
@@ -273,6 +294,56 @@ mod tests {
         );
         assert!(matches!(&events[3], CompletionEvent::Usage(u) if u.total_tokens == 7));
         assert_eq!(events.len(), 4);
+    }
+
+    #[tokio::test]
+    async fn decodes_qwen3_inline_tool_call_from_content_stream() {
+        // Qwen3-shaped output: `<tool_call>{…}</tool_call>` inside
+        // ordinary `delta.content`, split across multiple chunks at
+        // arbitrary byte boundaries.
+        let sse = fake_sse(vec![
+            r#"{"choices":[{"delta":{"content":"sure, let me read it.\n<too"}}]}"#,
+            r#"{"choices":[{"delta":{"content":"l_call>\n{\"name\":\"read_file\","}}]}"#,
+            r#"{"choices":[{"delta":{"content":"\"arguments\":{\"path\":\"/etc/hostname\"}}\n</tool_call>"}}]}"#,
+            r#"{"choices":[{"delta":{},"finish_reason":"stop"}]}"#,
+            "[DONE]",
+        ]);
+        let events: Vec<_> = decode_stream(sse, CancellationToken::new())
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|r| r.unwrap())
+            .collect();
+
+        // Concatenated text deltas should equal the leading prose
+        // (everything before `<tool_call>`).
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                CompletionEvent::TextDelta(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "sure, let me read it.\n");
+        // Exactly one structured tool call.
+        assert!(matches!(
+            events.iter().find(|e| matches!(e, CompletionEvent::ToolCallStart { .. })),
+            Some(CompletionEvent::ToolCallStart { index: 0, name, .. }) if name == "read_file"
+        ));
+        let args: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                CompletionEvent::ToolCallArgsDelta { args_delta, .. } => Some(args_delta.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(args.len(), 1);
+        assert!(args[0].contains(r#""path":"/etc/hostname""#));
+        // Finish reason still propagates.
+        assert!(matches!(
+            events.last(),
+            Some(CompletionEvent::Finish { reason }) if reason.as_deref() == Some("stop")
+        ));
     }
 
     #[tokio::test]
@@ -391,41 +462,31 @@ fn encode_message(m: &Message) -> Value {
         (Role::System, MessageContent::Text(s)) => json!({"role": "system", "content": s}),
         (Role::User, MessageContent::Text(s)) => json!({"role": "user", "content": s}),
         (Role::Assistant, MessageContent::Text(s)) => json!({"role": "assistant", "content": s}),
+        // Qwen3 wire shape: assistant turns that called tools come
+        // back to the model with `<tool_call>{…}</tool_call>` blocks
+        // inline in `content`, *not* via the structured `tool_calls`
+        // field. Using the OpenAI shape here would invisibly drop
+        // the tool calls from the model's context the next round,
+        // because neuron's chat template only renders `content`.
         (Role::Assistant, MessageContent::ToolCalls { text, calls }) => {
-            let calls_json: Vec<Value> = calls
-                .iter()
-                .map(|c| {
-                    json!({
-                        "id": c.id,
-                        "type": "function",
-                        "function": {
-                            "name": c.name,
-                            "arguments": c.arguments,
-                        }
-                    })
-                })
-                .collect();
             json!({
                 "role": "assistant",
-                "content": text.clone().unwrap_or_default(),
-                "tool_calls": calls_json,
+                "content": crate::qwen3::render_assistant_with_tool_calls(text.as_deref(), calls),
             })
         }
+        // Qwen3 convention: tool results live in a *user* turn
+        // wrapped in `<tool_response>…</tool_response>`. The model
+        // wasn't trained on a separate `role: "tool"`.
         (
             Role::Tool,
             MessageContent::ToolResult {
-                tool_call_id,
+                tool_call_id: _,
                 content,
             },
         ) => json!({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": content,
+            "role": "user",
+            "content": crate::qwen3::render_tool_response(content),
         }),
-        // Mismatched (role, content) combinations shouldn't happen
-        // — the agent constructs them in pairs. If they do, degrade
-        // gracefully to a plain text turn so the request still goes
-        // out rather than crashing the conversation.
         (role, content) => {
             tracing::warn!(
                 ?role,
@@ -562,17 +623,25 @@ where
 {
     async_stream::stream! {
         // Track which (index) tool calls we've already announced. The
-        // OpenAI stream emits the id and name only on the first delta
-        // for each tool call; later deltas just carry argument bytes.
+        // For structured OpenAI tool calls (the canonical wire
+        // format) we still want to dedupe ToolCallStart events per
+        // index — only the first chunk for a given index carries the
+        // id and name. This stays alongside the qwen3 text-stream
+        // parser below; backends that *do* emit structured
+        // tool_calls (a future strict-OpenAI endpoint) just keep
+        // working without going through the Qwen3 path.
         let mut announced: std::collections::HashSet<usize> = Default::default();
+
+        // Qwen3 wire path: tool calls come through `delta.content` as
+        // literal `<tool_call>{…}</tool_call>` blocks. The parser
+        // splits content into plain-text passthrough and
+        // structured tool-call events, holding back only the suffix
+        // bytes that could be the start of a marker.
+        let mut qwen_parser = crate::qwen3::ToolCallParser::new();
 
         let mut sse = Box::pin(sse);
         loop {
             tokio::select! {
-                // `biased;` checks `cancel.cancelled()` first on every
-                // poll — without it, a pre-cancelled token loses to a
-                // ready SSE chunk, and a mid-stream cancellation could
-                // still consume one more chunk before noticing.
                 biased;
                 _ = cancel.cancelled() => {
                     tracing::debug!("openai_chat: cancellation requested, ending stream");
@@ -606,13 +675,43 @@ where
                         if let Some(text) = choice.delta.content
                             && !text.is_empty()
                         {
-                            yield Ok(CompletionEvent::TextDelta(text));
+                            for ev in qwen_parser.feed(&text) {
+                                match ev {
+                                    crate::qwen3::ParserEvent::Text(t) if !t.is_empty() => {
+                                        yield Ok(CompletionEvent::TextDelta(t));
+                                    }
+                                    crate::qwen3::ParserEvent::Text(_) => {}
+                                    crate::qwen3::ParserEvent::Start { index, name } => {
+                                        yield Ok(CompletionEvent::ToolCallStart {
+                                            index,
+                                            id: format!("call_{index}"),
+                                            name,
+                                        });
+                                    }
+                                    crate::qwen3::ParserEvent::Args { index, args_json } => {
+                                        yield Ok(CompletionEvent::ToolCallArgsDelta {
+                                            index,
+                                            args_delta: args_json,
+                                        });
+                                    }
+                                    crate::qwen3::ParserEvent::Malformed { raw } => {
+                                        tracing::warn!(raw = %raw, "qwen3: malformed <tool_call> block; passing through as text");
+                                        yield Ok(CompletionEvent::TextDelta(format!(
+                                            "<tool_call>{raw}</tool_call>"
+                                        )));
+                                    }
+                                }
+                            }
                         }
                         if let Some(reasoning) = choice.delta.reasoning_content
                             && !reasoning.is_empty()
                         {
                             yield Ok(CompletionEvent::ReasoningDelta(reasoning));
                         }
+                        // Pass-through for backends that *do* emit
+                        // structured tool_calls (a future strict
+                        // OpenAI endpoint). Today cortex never
+                        // populates this, so this branch stays cold.
                         for tc in choice.delta.tool_calls {
                             let idx = tc.index;
                             if announced.insert(idx) {
@@ -639,6 +738,36 @@ where
                             }
                         }
                         if let Some(reason) = choice.finish_reason {
+                            // Flush any tail bytes from the qwen
+                            // parser before announcing the finish so
+                            // the agent's stop-reason logic sees the
+                            // complete picture (in particular, any
+                            // trailing <tool_call> block that
+                            // arrived without a close tag).
+                            for ev in qwen_parser.finish() {
+                                match ev {
+                                    crate::qwen3::ParserEvent::Text(t) if !t.is_empty() => {
+                                        yield Ok(CompletionEvent::TextDelta(t));
+                                    }
+                                    crate::qwen3::ParserEvent::Text(_) => {}
+                                    crate::qwen3::ParserEvent::Start { index, name } => {
+                                        yield Ok(CompletionEvent::ToolCallStart {
+                                            index,
+                                            id: format!("call_{index}"),
+                                            name,
+                                        });
+                                    }
+                                    crate::qwen3::ParserEvent::Args { index, args_json } => {
+                                        yield Ok(CompletionEvent::ToolCallArgsDelta {
+                                            index,
+                                            args_delta: args_json,
+                                        });
+                                    }
+                                    crate::qwen3::ParserEvent::Malformed { raw } => {
+                                        tracing::warn!(raw = %raw, "qwen3: unterminated <tool_call> at stream end");
+                                    }
+                                }
+                            }
                             yield Ok(CompletionEvent::Finish { reason: Some(reason) });
                         }
                     }
