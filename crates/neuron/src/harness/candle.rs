@@ -1381,7 +1381,7 @@ impl CandleHarness {
 
             let temperature = request.temperature.unwrap_or(0.7);
             let top_p = request.top_p;
-            let max_new = request.max_tokens.unwrap_or(512) as usize;
+            let max_new = request.max_tokens.unwrap_or(8192) as usize;
             let seed = unix_subsec_nanos();
 
             let eos_id = loaded
@@ -1620,7 +1620,7 @@ impl CandleHarness {
 
         let temperature = request.temperature.unwrap_or(0.7);
         let top_p = request.top_p;
-        let max_new = request.max_tokens.unwrap_or(512) as usize;
+        let max_new = request.max_tokens.unwrap_or(8192) as usize;
         let seed = unix_subsec_nanos();
 
         let eos_id = loaded
@@ -2264,7 +2264,7 @@ impl CandleHarness {
 
         let temperature = request.temperature.unwrap_or(0.7);
         let top_p = request.top_p;
-        let max_new = request.max_tokens.unwrap_or(512) as usize;
+        let max_new = request.max_tokens.unwrap_or(8192) as usize;
         let seed = unix_subsec_nanos();
 
         let eos_id = tp
@@ -2598,7 +2598,7 @@ async fn chat_completion_tp_inner(
 
     let temperature = request.temperature.unwrap_or(0.7);
     let top_p = request.top_p;
-    let max_new = request.max_tokens.unwrap_or(512) as usize;
+    let max_new = request.max_tokens.unwrap_or(8192) as usize;
     let seed = unix_subsec_nanos();
 
     let eos_id = tp
