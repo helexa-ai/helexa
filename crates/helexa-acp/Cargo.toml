@@ -33,6 +33,10 @@ tokio-util = { version = "0.7", features = ["rt"] }
 eventsource-stream = "0.2"
 async-stream = "0.3"
 url = { version = "2", features = ["serde"] }
+# Already transitively pulled via the ACP SDK; declared directly so we
+# can format ISO 8601 timestamps for `SessionInfo.updated_at` in the
+# session/list response.
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 
 [[bin]]
 name = "helexa-acp"

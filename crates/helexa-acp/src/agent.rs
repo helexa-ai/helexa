@@ -19,9 +19,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use agent_client_protocol::schema::{
     AgentCapabilities, CancelNotification, ContentBlock, InitializeRequest, InitializeResponse,
-    LoadSessionRequest, LoadSessionResponse, NewSessionRequest, NewSessionResponse,
-    PromptCapabilities, PromptRequest, PromptResponse, SessionId, SessionMode, SessionModeId,
-    SessionModeState, SessionNotification, SessionUpdate, SetSessionModeRequest,
+    ListSessionsRequest, ListSessionsResponse, LoadSessionRequest, LoadSessionResponse,
+    NewSessionRequest, NewSessionResponse, PromptCapabilities, PromptRequest, PromptResponse,
+    SessionCapabilities, SessionId, SessionInfo, SessionListCapabilities, SessionMode,
+    SessionModeId, SessionModeState, SessionNotification, SessionUpdate, SetSessionModeRequest,
     SetSessionModeResponse, StopReason, TextContent,
 };
 use agent_client_protocol::{Agent as AgentRole, Client, ConnectionTo, Dispatch, Stdio};
@@ -152,6 +153,15 @@ impl Agent {
                 agent_client_protocol::on_receive_request!(),
             )
             .on_receive_request(
+                async move |req: ListSessionsRequest, responder, _cx| match handle_list_sessions(
+                    req,
+                ) {
+                    Ok(resp) => responder.respond(resp),
+                    Err(e) => responder.respond_with_internal_error(format!("{e:#}")),
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
                 {
                     let inner = inner.clone();
                     async move |req: PromptRequest, responder, cx: ConnectionTo<Client>| {
@@ -221,14 +231,18 @@ fn initialize_response(req: &InitializeRequest) -> InitializeResponse {
     // Stage 2: text-only prompts. Image / audio / embedded resources
     // flip on in later stages.
     let prompt_caps = PromptCapabilities::default();
+    // Stage 3b: advertise both the top-level `load_session` flag and
+    // the `session/list` sub-capability. Zed (and other ACP clients)
+    // uses `session/list` to discover the session id that belongs to
+    // a workspace before sending `session/load` — without it, the
+    // client only knows how to mint new sessions and resume never
+    // fires regardless of what's on disk.
+    let session_caps =
+        SessionCapabilities::default().list(Some(SessionListCapabilities::default()));
     InitializeResponse::new(req.protocol_version).agent_capabilities(
         AgentCapabilities::new()
             .prompt_capabilities(prompt_caps)
-            // Stage 3b: `session/load` is implemented. Persisted
-            // sessions live on disk under
-            // `$XDG_DATA_HOME/helexa-acp/sessions/`; clients (Zed)
-            // can hand us back any session_id we previously
-            // minted to resume the conversation.
+            .session_capabilities(session_caps)
             .load_session(true),
     )
 }
@@ -313,6 +327,58 @@ async fn handle_load_session(
         default_mode_state().available_modes,
     );
     Ok(LoadSessionResponse::new().modes(modes))
+}
+
+/// Enumerate persisted sessions for the `session/list` ACP method.
+///
+/// Zed calls this on workspace open to find the session belonging
+/// to the cwd it's reopening — without it, even though `session/load`
+/// works, the client has no way to discover the session_id and
+/// always falls back to `session/new`. That's exactly the
+/// "history didn't survive the restart" symptom.
+///
+/// Cursor pagination from the request is accepted but ignored:
+/// helexa-acp's session counts are too small to need it. We always
+/// return the whole filtered list with `next_cursor = None`.
+fn handle_list_sessions(req: ListSessionsRequest) -> anyhow::Result<ListSessionsResponse> {
+    let sessions = store::list(req.cwd.as_deref())?;
+    let infos: Vec<SessionInfo> = sessions
+        .into_iter()
+        .map(|s| {
+            let mut info = SessionInfo::new(SessionId::new(s.session_id), s.cwd);
+            info = info.title(derive_session_title(&s.history));
+            info = info.updated_at(store::unix_to_iso8601(s.updated_at));
+            info
+        })
+        .collect();
+    tracing::info!(
+        cwd = ?req.cwd,
+        count = infos.len(),
+        "session/list responded"
+    );
+    Ok(ListSessionsResponse::new(infos))
+}
+
+/// Best-effort human-readable title for a session, derived from the
+/// first user turn's text (truncated to ~60 chars). Empty string
+/// becomes `None` so Zed can fall back to its own placeholder.
+fn derive_session_title(history: &[Message]) -> Option<String> {
+    history
+        .iter()
+        .find_map(|msg| match (msg.role, &msg.content) {
+            (Role::User, MessageContent::Text { text }) => Some(text.as_str()),
+            _ => None,
+        })
+        .map(|s| {
+            let trimmed = s.trim();
+            if trimmed.chars().count() > 60 {
+                let prefix: String = trimmed.chars().take(60).collect();
+                format!("{prefix}…")
+            } else {
+                trimmed.to_string()
+            }
+        })
+        .filter(|s| !s.is_empty())
 }
 
 /// The two modes every Stage 3 session advertises. Stage 7 may grow

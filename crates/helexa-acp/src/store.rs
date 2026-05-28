@@ -116,6 +116,64 @@ pub fn load_from_dir(
     Ok(session)
 }
 
+/// List all persisted sessions, optionally filtered by `cwd`. Used
+/// by the `session/list` handler so a client (Zed) can find the
+/// session that belongs to the workspace it's reopening.
+///
+/// `filter_cwd = None` returns every session on disk. `Some(path)`
+/// returns only sessions whose persisted `cwd` is exactly equal.
+///
+/// Files that fail to parse are skipped with a warning rather than
+/// aborting the whole list — one corrupt session shouldn't make
+/// the resume picker unusable.
+pub fn list(filter_cwd: Option<&std::path::Path>) -> anyhow::Result<Vec<PersistedSession>> {
+    let dir = sessions_dir()
+        .ok_or_else(|| anyhow::anyhow!("can't resolve XDG_DATA_HOME or HOME for session store"))?;
+    list_in_dir(&dir, filter_cwd)
+}
+
+/// Explicit-dir variant for tests, mirroring [`save_to_dir`] /
+/// [`load_from_dir`].
+pub fn list_in_dir(
+    dir: &std::path::Path,
+    filter_cwd: Option<&std::path::Path>,
+) -> anyhow::Result<Vec<PersistedSession>> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(anyhow::anyhow!("read_dir {}: {e}", dir.display())),
+    };
+    let mut out = Vec::new();
+    for entry in read.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        match std::fs::read(&path).and_then(|bytes| {
+            serde_json::from_slice::<PersistedSession>(&bytes).map_err(std::io::Error::other)
+        }) {
+            Ok(session) => {
+                if let Some(want) = filter_cwd
+                    && session.cwd != want
+                {
+                    continue;
+                }
+                out.push(session);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "store: skipping unparseable session file"
+                );
+            }
+        }
+    }
+    // Most-recent first by updated_at.
+    out.sort_by_key(|s| std::cmp::Reverse(s.updated_at));
+    Ok(out)
+}
+
 /// Seconds-since-epoch, saturating to 0 if the system clock is
 /// behind epoch (which shouldn't happen but the type system
 /// requires a fallible read).
@@ -124,6 +182,16 @@ pub fn now_secs() -> u64 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Format seconds-since-epoch as an ISO 8601 / RFC 3339 string
+/// (`YYYY-MM-DDTHH:MM:SSZ`) for `SessionInfo.updated_at`. Returns
+/// `None` for values outside the representable range, in which
+/// case the caller should omit the field.
+pub fn unix_to_iso8601(secs: u64) -> Option<String> {
+    use chrono::TimeZone;
+    let dt = chrono::Utc.timestamp_opt(secs as i64, 0).single()?;
+    Some(dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
 /// Strip anything that isn't a safe filename character so a
@@ -263,6 +331,65 @@ mod tests {
             other => panic!("expected ToolCalls, got {other:?}"),
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_filters_by_cwd_and_sorts_recent_first() {
+        let dir = unique_dir();
+        let mut a = sample("a");
+        a.cwd = PathBuf::from("/home/me/proj-x");
+        a.updated_at = 1_700_000_010;
+        let mut b = sample("b");
+        b.cwd = PathBuf::from("/home/me/proj-x");
+        b.updated_at = 1_700_000_020;
+        let mut c = sample("c");
+        c.cwd = PathBuf::from("/home/me/elsewhere");
+        c.updated_at = 1_700_000_030;
+        save_to_dir(&dir, &a).unwrap();
+        save_to_dir(&dir, &b).unwrap();
+        save_to_dir(&dir, &c).unwrap();
+
+        let proj_x = PathBuf::from("/home/me/proj-x");
+        let list = list_in_dir(&dir, Some(&proj_x)).unwrap();
+        let ids: Vec<&str> = list.iter().map(|s| s.session_id.as_str()).collect();
+        // Filtered to proj-x; b before a because b is more recent.
+        assert_eq!(ids, vec!["b", "a"]);
+
+        let all = list_in_dir(&dir, None).unwrap();
+        assert_eq!(all.len(), 3);
+        // Global list still sorted recent-first across all cwds.
+        assert_eq!(all[0].session_id, "c");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_returns_empty_for_missing_dir() {
+        let dir = unique_dir().join("does-not-exist");
+        let list = list_in_dir(&dir, None).unwrap();
+        assert!(list.is_empty());
+    }
+
+    #[test]
+    fn list_skips_unparseable_files() {
+        let dir = unique_dir();
+        save_to_dir(&dir, &sample("good")).unwrap();
+        std::fs::write(dir.join("garbage.json"), b"{not valid json").unwrap();
+        let list = list_in_dir(&dir, None).unwrap();
+        // Garbage skipped; good survives.
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].session_id, "good");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn iso8601_formats_unix_seconds() {
+        // 2024-01-01T00:00:00Z is 1704067200 unix seconds.
+        assert_eq!(
+            unix_to_iso8601(1_704_067_200),
+            Some("2024-01-01T00:00:00Z".into())
+        );
+        assert_eq!(unix_to_iso8601(0), Some("1970-01-01T00:00:00Z".into()));
     }
 
     #[test]
