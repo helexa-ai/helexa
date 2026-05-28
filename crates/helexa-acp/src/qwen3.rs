@@ -250,23 +250,93 @@ impl ToolCallParser {
 
     fn emit_completed_tool_call(&mut self, events: &mut Vec<ParserEvent>) {
         let body = std::mem::take(&mut self.tool_call_buf);
-        let trimmed = body.trim();
-        let parsed: Result<ToolCallBody, _> = serde_json::from_str(trimmed);
-        match parsed {
-            Ok(call) => {
+        // <tool_call></tool_call> with nothing inside: nothing to do.
+        if body.trim().is_empty() {
+            return;
+        }
+        match parse_tool_call_body(&body) {
+            Some(call) => {
                 let index = self.next_index;
                 self.next_index += 1;
-                let name = call.name;
                 let args_json =
                     serde_json::to_string(&call.arguments).unwrap_or_else(|_| "{}".to_string());
-                events.push(ParserEvent::Start { index, name });
+                events.push(ParserEvent::Start {
+                    index,
+                    name: call.name,
+                });
                 events.push(ParserEvent::Args { index, args_json });
             }
-            Err(_) => {
+            None => {
                 events.push(ParserEvent::Malformed { raw: body });
             }
         }
     }
+}
+
+/// Best-effort parse of a `<tool_call>` body, with repair for common
+/// model misemissions. Returns `None` only when no reasonable
+/// interpretation produces a tool call with a name.
+///
+/// Repairs handled (in order of attempt):
+///
+/// 1. The body parses cleanly as `{name, arguments}` — done.
+/// 2. The body has trailing extra `}` characters (model overshoots
+///    the closing brace count). Strip up to three trailing `}` and
+///    retry. Common for chunked-sampling models that emit the closing
+///    of `arguments` then re-emit the closing of the outer object.
+/// 3. The body parses as JSON but has no top-level `name`; instead
+///    `name` is nested inside `arguments`. Hoist it out. Common when
+///    the model's training distribution had `{name, arguments}`
+///    inverted in some examples.
+fn parse_tool_call_body(body: &str) -> Option<ToolCallBody> {
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(call) = serde_json::from_str::<ToolCallBody>(trimmed) {
+        return Some(call);
+    }
+    // Repair 1: strip 1..=3 trailing closing braces. We only consider
+    // this if the body actually ends with `}`, so the strip is
+    // structural not random.
+    for n in 1..=3 {
+        if trimmed.len() <= n {
+            break;
+        }
+        let candidate = &trimmed[..trimmed.len() - n];
+        if !candidate.ends_with('}') {
+            // Stripping further would leave the JSON without a
+            // closing brace at all — definitely worse, not better.
+            break;
+        }
+        if let Ok(call) = serde_json::from_str::<ToolCallBody>(candidate) {
+            tracing::debug!(
+                stripped = n,
+                "qwen3: recovered tool call by trimming trailing brace(s)"
+            );
+            return Some(call);
+        }
+    }
+    // Repair 2: hoist `name` from inside `arguments`.
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && value.get("name").is_none()
+        && let Some(args_value) = value.get("arguments")
+        && let Some(name) = args_value.get("name").and_then(|n| n.as_str())
+    {
+        let mut hoisted = args_value.clone();
+        if let Some(obj) = hoisted.as_object_mut() {
+            obj.remove("name");
+        }
+        tracing::debug!(
+            name = %name,
+            "qwen3: recovered tool call by hoisting name out of arguments"
+        );
+        return Some(ToolCallBody {
+            name: name.to_string(),
+            arguments: hoisted,
+        });
+    }
+    None
 }
 
 /// Returns the length of the longest suffix of `haystack` that is a
@@ -662,6 +732,93 @@ mod tests {
             })
             .collect();
         assert_eq!(starts, vec![(0, "a".into()), (1, "b".into())]);
+    }
+
+    #[test]
+    fn recovers_from_extra_trailing_close_brace() {
+        // Real failure case captured in the field: model emits one
+        // extra `}` after closing the outer object. Parser should
+        // recover, not surface as Malformed.
+        let body = r#"<tool_call>{"name":"read_file","arguments":{"path":"/tmp/a"}}}</tool_call>"#;
+        let mut p = ToolCallParser::new();
+        let events = drive(&mut p, &[body]);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Start { name, .. } if name == "read_file")),
+            "expected recovered Start event; got {events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Malformed { .. })),
+            "should not have produced Malformed: {events:?}"
+        );
+    }
+
+    #[test]
+    fn recovers_from_two_extra_trailing_close_braces() {
+        let body = r#"<tool_call>{"name":"bash","arguments":{"command":"ls"}}}}</tool_call>"#;
+        let mut p = ToolCallParser::new();
+        let events = drive(&mut p, &[body]);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Start { name, .. } if name == "bash"))
+        );
+    }
+
+    #[test]
+    fn recovers_from_name_nested_in_arguments() {
+        // Another field-observed failure: the model puts `name`
+        // inside `arguments`. Parser should hoist it.
+        let body = r#"<tool_call>{"arguments":{"command":"head -100 readme.md","name":"bash"}}</tool_call>"#;
+        let mut p = ToolCallParser::new();
+        let events = drive(&mut p, &[body]);
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Start { name, .. } if name == "bash")),
+            "expected hoisted Start event; got {events:?}"
+        );
+        let args: Vec<&str> = events
+            .iter()
+            .filter_map(|e| match e {
+                ParserEvent::Args { args_json, .. } => Some(args_json.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(args.len(), 1);
+        // After hoisting, the `name` key should be removed from
+        // arguments so it's not double-counted.
+        assert!(!args[0].contains(r#""name""#));
+        assert!(args[0].contains(r#""command""#));
+    }
+
+    #[test]
+    fn empty_tool_call_block_is_noop() {
+        let mut p = ToolCallParser::new();
+        let events = drive(&mut p, &["before<tool_call></tool_call>after"]);
+        // No Start/Args/Malformed events for an empty body; just the
+        // surrounding text passes through.
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Start { .. }))
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, ParserEvent::Malformed { .. }))
+        );
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                ParserEvent::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text, "beforeafter");
     }
 
     #[test]

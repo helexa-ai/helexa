@@ -391,6 +391,9 @@ async fn drive_prompt(
     // input — we persist these to session.history at the end so
     // future prompts see them.
     let mut new_turns: Vec<Message> = Vec::new();
+    // Monotonic counter for synthetic ids assigned to unparseable
+    // <tool_call> blocks across all rounds of this prompt.
+    let mut next_malformed_index: usize = 0;
 
     let mut stop_reason = StopReason::EndTurn;
 
@@ -430,6 +433,11 @@ async fn drive_prompt(
         // bucket — `ToolCallStart` may arrive interleaved with
         // `ToolCallArgsDelta` for different indices.
         let mut tool_buckets: BTreeMap<usize, ToolCallBucket> = BTreeMap::new();
+        // <tool_call> blocks whose JSON couldn't be parsed even with
+        // qwen3's repair pass. We surface each as a Failed
+        // ToolCall card and feed a synthetic error result back to
+        // the model so it can retry on the next round.
+        let mut malformed_calls: Vec<String> = Vec::new();
 
         while let Some(event) = stream.next().await {
             let event = match event {
@@ -472,6 +480,9 @@ async fn drive_prompt(
                         .arguments
                         .push_str(&args_delta);
                 }
+                CompletionEvent::MalformedToolCall { raw } => {
+                    malformed_calls.push(raw);
+                }
                 CompletionEvent::Finish { reason } => finish_reason = reason,
                 CompletionEvent::Usage(_) => {}
             }
@@ -490,8 +501,9 @@ async fn drive_prompt(
         }
 
         let has_tool_calls = !tool_buckets.is_empty();
+        let has_malformed = !malformed_calls.is_empty();
 
-        if !has_tool_calls {
+        if !has_tool_calls && !has_malformed {
             // Terminal turn: just text. Save and finish.
             if !assistant_text.is_empty() {
                 new_turns.push(Message {
@@ -503,7 +515,9 @@ async fn drive_prompt(
             break;
         }
 
-        // Assistant turn carrying the tool calls.
+        // Assistant turn carrying any successfully-parsed tool calls
+        // (malformed ones are handled separately so each gets its
+        // own Failed card with its raw body intact).
         let calls: Vec<ToolCall> = tool_buckets
             .values()
             .map(|b| ToolCall {
@@ -512,15 +526,21 @@ async fn drive_prompt(
                 arguments: b.arguments.clone(),
             })
             .collect();
-        let assistant_turn = Message {
-            role: Role::Assistant,
-            content: MessageContent::ToolCalls {
-                text: (!assistant_text.is_empty()).then_some(assistant_text),
-                calls,
-            },
-        };
-        new_turns.push(assistant_turn.clone());
-        messages.push(assistant_turn);
+        if has_tool_calls || !assistant_text.is_empty() {
+            let assistant_turn = Message {
+                role: Role::Assistant,
+                content: if has_tool_calls {
+                    MessageContent::ToolCalls {
+                        text: (!assistant_text.is_empty()).then_some(assistant_text),
+                        calls,
+                    }
+                } else {
+                    MessageContent::Text(assistant_text)
+                },
+            };
+            new_turns.push(assistant_turn.clone());
+            messages.push(assistant_turn);
+        }
 
         // Refresh the mode in case the user toggled it during the
         // streaming above (cheap — one mutex acquisition).
@@ -548,6 +568,25 @@ async fn drive_prompt(
                     content: result.content,
                 },
             };
+            new_turns.push(result_turn.clone());
+            messages.push(result_turn);
+        }
+
+        // Handle malformed calls last — each becomes a Failed
+        // SessionUpdate::ToolCall card (so Zed renders structured
+        // failure UI instead of dumping raw JSON inline) plus a
+        // synthetic tool-result message so the model gets concrete
+        // feedback for self-correction on the next round.
+        for raw in malformed_calls.drain(..) {
+            if cancel.is_cancelled() {
+                stop_reason = StopReason::Cancelled;
+                break;
+            }
+            let synthetic_id = next_synthetic_id(&mut next_malformed_index);
+            emit_malformed_tool_card(&cx, &session_id, &synthetic_id, &raw);
+            let (call_turn, result_turn) = synthesize_malformed_history(&synthetic_id, &raw);
+            new_turns.push(call_turn.clone());
+            messages.push(call_turn);
             new_turns.push(result_turn.clone());
             messages.push(result_turn);
         }
@@ -597,6 +636,75 @@ fn send_chunk(cx: &ConnectionTo<Client>, session_id: &SessionId, update: Session
 fn text_chunk(text: String) -> agent_client_protocol::schema::ContentChunk {
     use agent_client_protocol::schema::ContentChunk;
     ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
+}
+
+/// Mint a synthetic tool_call_id for a malformed `<tool_call>` block.
+/// The format mirrors successful calls (`call_<n>`) but uses its own
+/// counter so the ids don't collide.
+fn next_synthetic_id(counter: &mut usize) -> String {
+    let id = format!("call_malformed_{}", *counter);
+    *counter += 1;
+    id
+}
+
+/// Emit a `SessionUpdate::ToolCall` with `Failed` status so Zed
+/// renders the malformed call as a structured failure card (raw
+/// body visible inside the card) instead of leaving it as inline
+/// text in the message pane.
+fn emit_malformed_tool_card(
+    cx: &ConnectionTo<Client>,
+    session_id: &SessionId,
+    tool_call_id: &str,
+    raw: &str,
+) {
+    use agent_client_protocol::schema::{
+        Content, ToolCall as AcpToolCall, ToolCallContent, ToolCallId, ToolCallStatus, ToolKind,
+    };
+    let body = format!(
+        "Tool call JSON could not be parsed. Raw body:\n\n```\n{raw}\n```\n\n\
+         Expected schema:\n\n```json\n{{\"name\": \"<function>\", \"arguments\": {{...}}}}\n```",
+    );
+    let card = AcpToolCall::new(ToolCallId::new(tool_call_id), "Malformed tool call")
+        .kind(ToolKind::Other)
+        .status(ToolCallStatus::Failed)
+        .raw_input(serde_json::Value::String(raw.to_string()))
+        .content(vec![ToolCallContent::Content(Content::new(
+            ContentBlock::Text(TextContent::new(body)),
+        ))]);
+    send_chunk(cx, session_id, SessionUpdate::ToolCall(card));
+}
+
+/// Build the assistant-turn / tool-result pair for a malformed
+/// `<tool_call>`. The assistant turn carries the raw body verbatim
+/// (so the model sees its own previous output), and the tool
+/// result spells out *why* it failed with the expected schema —
+/// enough for a competent model to self-correct on the next round.
+fn synthesize_malformed_history(tool_call_id: &str, raw: &str) -> (Message, Message) {
+    let call = Message {
+        role: Role::Assistant,
+        content: MessageContent::ToolCalls {
+            text: None,
+            calls: vec![ToolCall {
+                id: tool_call_id.to_string(),
+                // Real tool names never start with `<` — using this
+                // placeholder makes the malformed call's identity
+                // unambiguous in the rendered transcript.
+                name: "<invalid>".to_string(),
+                arguments: raw.to_string(),
+            }],
+        },
+    };
+    let result = Message {
+        role: Role::Tool,
+        content: MessageContent::ToolResult {
+            tool_call_id: tool_call_id.to_string(),
+            content: format!(
+                "ERROR: previous <tool_call> body was not valid JSON. Body was:\n{raw}\n\n\
+                 Retry with the schema: {{\"name\": \"<function>\", \"arguments\": {{…}}}}"
+            ),
+        },
+    };
+    (call, result)
 }
 
 fn map_finish_reason(reason: Option<&str>) -> StopReason {

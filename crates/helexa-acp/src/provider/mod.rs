@@ -163,6 +163,14 @@ pub enum CompletionEvent {
     /// the bytes by `index` until the call's arguments are complete.
     #[allow(dead_code)]
     ToolCallArgsDelta { index: usize, args_delta: String },
+    /// A `<tool_call>` block whose JSON couldn't be parsed even with
+    /// the qwen3 module's repair attempts. The agent surfaces this
+    /// as a Failed `SessionUpdate::ToolCall` card with the raw body
+    /// visible (so the editor renders structured failure UI rather
+    /// than dumping the body inline in the message pane), and feeds
+    /// a synthetic tool-error message back into history so the
+    /// model can self-correct on the next round.
+    MalformedToolCall { raw: String },
     /// Stream finished. Carries the upstream `finish_reason` if it
     /// gave one (`"stop"`, `"length"`, `"tool_calls"`, …).
     Finish { reason: Option<String> },

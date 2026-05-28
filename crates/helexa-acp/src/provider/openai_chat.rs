@@ -758,10 +758,8 @@ where
                                         });
                                     }
                                     crate::qwen3::ParserEvent::Malformed { raw } => {
-                                        tracing::warn!(raw = %raw, "qwen3: malformed <tool_call> block; passing through as text");
-                                        yield Ok(CompletionEvent::TextDelta(format!(
-                                            "<tool_call>{raw}</tool_call>"
-                                        )));
+                                        tracing::warn!(raw = %raw, "qwen3: malformed <tool_call> block; surfacing as Failed tool card");
+                                        yield Ok(CompletionEvent::MalformedToolCall { raw });
                                     }
                                 }
                             }
@@ -842,6 +840,7 @@ where
                                     }
                                     crate::qwen3::ParserEvent::Malformed { raw } => {
                                         tracing::warn!(raw = %raw, "qwen3: unterminated <tool_call> at stream end");
+                                        yield Ok(CompletionEvent::MalformedToolCall { raw });
                                     }
                                 }
                             }
