@@ -499,6 +499,16 @@ pub async fn dispatch_tool_call(
 
     match outcome {
         Ok((result_text, content)) => {
+            // Log a snippet of what we'll feed back to the model.
+            // This is the single most useful log line for "the model
+            // says the tool failed but I gave it a result" debugging.
+            let snippet: String = result_text.chars().take(200).collect();
+            tracing::debug!(
+                tool = %call.name,
+                result_bytes = result_text.len(),
+                snippet = %snippet,
+                "tool completed; folding result back into history"
+            );
             ops.send_session_update(
                 session_id,
                 SessionUpdate::ToolCallUpdate(ToolCallUpdate::new(
@@ -514,7 +524,10 @@ pub async fn dispatch_tool_call(
                 is_error: false,
             }
         }
-        Err(msg) => finish_failed(ops, session_id, &tool_call_id, &call.id, &msg),
+        Err(msg) => {
+            tracing::debug!(tool = %call.name, error = %msg, "tool failed");
+            finish_failed(ops, session_id, &tool_call_id, &call.id, &msg)
+        }
     }
 }
 
@@ -669,6 +682,12 @@ async fn exec_bash(
         serde_json::from_value(args_value.clone()).map_err(|e| format!("bash: {e}"))?;
     let cwd = args.cwd.unwrap_or_else(|| session_cwd.to_path_buf());
 
+    tracing::debug!(
+        command = %args.command,
+        cwd = %cwd.display(),
+        "bash: terminal/create"
+    );
+
     let terminal = ops
         .create_terminal(
             session_id,
@@ -692,11 +711,29 @@ async fn exec_bash(
             res.map_err(|e| format!("bash: terminal/wait_for_exit: {e:#}"))?
         }
     };
+    tracing::debug!(
+        terminal_id = %terminal.0,
+        exit_code = ?exit.exit_code,
+        signal = ?exit.signal,
+        "bash: terminal exited"
+    );
 
     let output_resp = ops
         .terminal_output(session_id, &terminal)
         .await
         .map_err(|e| format!("bash: terminal/output: {e:#}"))?;
+    // Critical diagnostic: what did Zed actually buffer for us?
+    // `len()` here is bytes including any control chars; the snippet
+    // is the first 200 chars so we don't dump multi-megabyte file
+    // contents into the journal at debug level.
+    let snippet: String = output_resp.output.chars().take(200).collect();
+    tracing::debug!(
+        terminal_id = %terminal.0,
+        output_bytes = output_resp.output.len(),
+        truncated = output_resp.truncated,
+        snippet = %snippet,
+        "bash: terminal/output"
+    );
     let _ = ops.release_terminal(session_id, &terminal).await;
 
     let summary = render_bash_result(&exit, &output_resp);
