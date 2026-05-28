@@ -2,23 +2,26 @@
 //! setups (helexa, LM Studio, Ollama, OpenRouter, OpenAI, Anthropic,
 //! …) with a clean per-endpoint wire-format selector.
 //!
-//! Speaks ACP over stdio to an editor client (Zed today). The
-//! conversation is forwarded to one of the configured endpoints via
-//! a wire-format-specific [`provider::Provider`] implementation.
-//! The agent loop itself is provider-agnostic — adding e.g. an
-//! Anthropic /v1/messages provider doesn't touch `agent.rs`.
+//! Speaks ACP over stdio to an editor client (Zed today). Every
+//! configured endpoint produces a wire-format-specific
+//! [`provider::Provider`] implementation; the agent loop in
+//! [`agent::Agent`] is provider-agnostic, so adding e.g. an Anthropic
+//! /v1/messages provider doesn't touch `agent.rs`.
 //!
 //! Config: `$XDG_CONFIG_HOME/helexa-acp/config.toml` for the multi-
 //! endpoint case; env vars (`HELEXA_ACP_BASE_URL`, etc.) for the
 //! single-endpoint case when no config file exists.
 
-use agent_client_protocol::schema::{AgentCapabilities, InitializeRequest, InitializeResponse};
-use agent_client_protocol::{Agent, Client, ConnectionTo, Dispatch, Result, Stdio};
+use agent_client_protocol::{Result, Stdio};
 use std::sync::Arc;
 
+mod agent;
 mod config;
+mod prompt;
 mod provider;
+mod session;
 
+use agent::Agent;
 use config::{Config, EndpointConfig, WireApi};
 use provider::{Provider, openai_chat::OpenAIChatProvider};
 
@@ -86,36 +89,8 @@ async fn main() -> Result<()> {
             }
         }
     }
-    if providers.is_empty() {
-        return Err(agent_client_protocol::util::internal_error(
-            "no usable endpoints — check config",
-        ));
-    }
 
-    Agent
-        .builder()
-        .name("helexa-acp")
-        .on_receive_request(
-            async move |initialize: InitializeRequest, responder, _connection| {
-                // Phase 1 wiring — capabilities only. Real session
-                // handling lands in the next iteration (agent.rs).
-                responder.respond(
-                    InitializeResponse::new(initialize.protocol_version)
-                        .agent_capabilities(AgentCapabilities::new()),
-                )
-            },
-            agent_client_protocol::on_receive_request!(),
-        )
-        .on_receive_dispatch(
-            async move |message: Dispatch, cx: ConnectionTo<Client>| {
-                tracing::warn!(method = ?message.method(), "unhandled ACP message");
-                message.respond_with_error(
-                    agent_client_protocol::util::internal_error("not implemented yet"),
-                    cx,
-                )
-            },
-            agent_client_protocol::on_receive_dispatch!(),
-        )
-        .connect_to(Stdio::new())
-        .await
+    let agent = Agent::new(&cfg, providers)
+        .map_err(|e| agent_client_protocol::util::internal_error(format!("agent: {e:#}")))?;
+    agent.serve(Stdio::new()).await
 }

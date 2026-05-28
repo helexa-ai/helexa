@@ -11,14 +11,6 @@
 //! Day-1 provider: [`openai_chat::OpenAIChatProvider`]. Day-N
 //! providers slot in without touching `agent.rs`.
 
-// Many fields and variants in the public surface here aren't read yet:
-// the agent loop that consumes `CompletionEvent`s and constructs
-// `CompletionRequest`s lands in the next commit. They're not
-// speculative — the unit tests in `provider::openai_chat::tests`
-// already verify the encoder/decoder produces them. Once `agent.rs`
-// arrives this allow comes off.
-#![allow(dead_code)]
-
 use async_trait::async_trait;
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
@@ -38,8 +30,9 @@ pub trait Provider: Send + Sync {
     fn name(&self) -> &str;
 
     /// List models available at this endpoint. Used to build the
-    /// model-picker dropdown in editor clients. Should return quickly
-    /// (cache if necessary).
+    /// model-picker dropdown in editor clients (Stage 4). Should
+    /// return quickly (cache if necessary).
+    #[allow(dead_code)]
     async fn list_models(&self) -> anyhow::Result<Vec<ModelInfo>>;
 
     /// Run a chat completion. Returns a stream of provider-agnostic
@@ -52,7 +45,10 @@ pub trait Provider: Send + Sync {
     ) -> anyhow::Result<BoxStream<'static, anyhow::Result<CompletionEvent>>>;
 }
 
-/// One model exposed by a provider.
+/// One model exposed by a provider. Constructed by `list_models` —
+/// Stage 4 is when the agent loop starts consuming it for the
+/// model-picker dropdown.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
     pub id: String,
@@ -91,19 +87,26 @@ pub enum Role {
     /// Tool result message. Provider impls turn this into whatever
     /// shape the upstream wire format wants (OpenAI uses
     /// `role: "tool"` + `tool_call_id`; Anthropic uses content blocks).
+    /// Stage 3 (tools) constructs this; Stage 2 never does.
+    #[allow(dead_code)]
     Tool,
 }
 
 #[derive(Debug, Clone)]
 pub enum MessageContent {
     Text(String),
-    /// Assistant turn that called one or more tools.
+    /// Assistant turn that called one or more tools. Stage 3 starts
+    /// constructing this when the provider stream yields a
+    /// `ToolCallStart` / `ToolCallArgsDelta` sequence.
+    #[allow(dead_code)]
     ToolCalls {
         /// Optional text the assistant said alongside the tool calls.
         text: Option<String>,
         calls: Vec<ToolCall>,
     },
     /// Tool result. `tool_call_id` matches the assistant's call id.
+    /// Stage 3 constructs this after the tool runner finishes.
+    #[allow(dead_code)]
     ToolResult {
         tool_call_id: String,
         content: String,
@@ -138,22 +141,36 @@ pub enum CompletionEvent {
     /// (e.g. Qwen3 with `<think>` tags surfaced as a separate stream,
     /// or OpenAI reasoning models).
     ReasoningDelta(String),
-    /// A new tool call has started.
+    /// A new tool call has started. Stage 2 ignores the payload; the
+    /// agent loop in Stage 3 reads `index` to correlate with
+    /// [`Self::ToolCallArgsDelta`], `id` for the eventual tool-result
+    /// turn, and `name` to dispatch the runner.
+    #[allow(dead_code)]
     ToolCallStart {
         index: usize,
         id: String,
         name: String,
     },
     /// More argument bytes for a tool call already announced via
-    /// [`Self::ToolCallStart`].
+    /// [`Self::ToolCallStart`]. Stage 2 ignores; Stage 3 accumulates
+    /// the bytes by `index` until the call's arguments are complete.
+    #[allow(dead_code)]
     ToolCallArgsDelta { index: usize, args_delta: String },
     /// Stream finished. Carries the upstream `finish_reason` if it
     /// gave one (`"stop"`, `"length"`, `"tool_calls"`, …).
     Finish { reason: Option<String> },
-    /// Final usage stats, if the provider supplied them.
+    /// Final usage stats, if the provider supplied them. Stage 2
+    /// matches the variant to drop it; Stage 6b (token metrics) is
+    /// when the payload starts being read.
+    #[allow(dead_code)]
     Usage(UsageStats),
 }
 
+/// Token accounting reported by the provider at the end of a stream.
+/// Stage 2 doesn't surface usage anywhere — the stable `PromptResponse`
+/// has no usage field, and the unstable variant is gated. Stage 6b
+/// turns these on with Prometheus metrics.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct UsageStats {
     pub prompt_tokens: u64,

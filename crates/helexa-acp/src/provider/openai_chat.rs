@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{
     CompletionEvent, CompletionRequest, Message, MessageContent, ModelInfo, Provider, Role,
-    ToolCall, ToolSpec, UsageStats,
+    ToolSpec, UsageStats,
 };
 use crate::config::EndpointConfig;
 
@@ -126,6 +126,7 @@ impl Provider for OpenAIChatProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::ToolCall;
     use futures::stream;
     use url::Url;
 

@@ -134,7 +134,10 @@ impl EndpointConfig {
         join_segments(&self.base_url, &["chat", "completions"])
     }
 
-    /// `{base_url}/models`.
+    /// `{base_url}/models`. Called from `Provider::list_models`, which
+    /// Stage 4 wires into the model-picker dropdown; until then it's
+    /// reachable code with no in-tree callers.
+    #[allow(dead_code)]
     pub fn models_url(&self) -> Url {
         join_segments(&self.base_url, &["models"])
     }
