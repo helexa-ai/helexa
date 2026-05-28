@@ -3393,7 +3393,9 @@ mod tests {
         // Missing handle is a dispatch-side bug, not a device fault.
         assert!(!is_device_fault("ForwardLogits: no model for handle 42"));
         // DecodeStream errors during SSE are not device faults.
-        assert!(!is_device_fault("decode_stream step failed: invalid prefix"));
+        assert!(!is_device_fault(
+            "decode_stream step failed: invalid prefix"
+        ));
     }
 
     #[test]
