@@ -141,13 +141,26 @@ impl Agent {
             .on_receive_request(
                 {
                     let inner = inner.clone();
-                    async move |req: LoadSessionRequest, responder, _cx| match handle_load_session(
-                        &inner, req,
-                    )
-                    .await
-                    {
-                        Ok(resp) => responder.respond(resp),
-                        Err(e) => responder.respond_with_internal_error(format!("{e:#}")),
+                    async move |req: LoadSessionRequest, responder, cx: ConnectionTo<Client>| {
+                        let session_id = req.session_id.clone();
+                        match handle_load_session(&inner, req).await {
+                            Ok((resp, history)) => {
+                                let send_result = responder.respond(resp);
+                                // History replay happens off the
+                                // dispatch loop so the load reply
+                                // returns immediately. Zed receives
+                                // the response, then sees a stream
+                                // of session/update events that
+                                // repopulate the chat panel.
+                                let cx_clone = cx.clone();
+                                let _ = cx.spawn(async move {
+                                    replay_history(&cx_clone, &session_id, &history);
+                                    Ok(())
+                                });
+                                send_result
+                            }
+                            Err(e) => responder.respond_with_internal_error(format!("{e:#}")),
+                        }
                     }
                 },
                 agent_client_protocol::on_receive_request!(),
@@ -297,15 +310,17 @@ async fn handle_new_session(
 async fn handle_load_session(
     inner: &AgentInner,
     req: LoadSessionRequest,
-) -> anyhow::Result<LoadSessionResponse> {
+) -> anyhow::Result<(LoadSessionResponse, Vec<Message>)> {
     if !req.cwd.is_absolute() {
         anyhow::bail!("session cwd must be absolute, got {}", req.cwd.display());
     }
     let persisted = store::load(&req.session_id)?;
-    // Snapshot the values we need for logging + the response
-    // before we move pieces of `persisted` into `state`.
+    // Snapshot the values we need for logging, the response, and
+    // the post-load history replay before we move pieces of
+    // `persisted` into `state`.
     let model_id = persisted.model_id.clone();
     let mode_id = persisted.mode_id.clone();
+    let history_for_replay = persisted.history.clone();
     let history_turns = persisted.history.len();
 
     let mut state = SessionState::new(req.cwd.clone(), persisted.model_id);
@@ -326,7 +341,158 @@ async fn handle_load_session(
         SessionModeId::new(mode_id),
         default_mode_state().available_modes,
     );
-    Ok(LoadSessionResponse::new().modes(modes))
+    Ok((LoadSessionResponse::new().modes(modes), history_for_replay))
+}
+
+/// Re-emit a session's persisted history as `session/update`
+/// notifications so an ACP client (Zed) can render the prior chat
+/// after a `session/load`. Without this, even a successful load
+/// leaves the agent panel blank because Zed doesn't cache the
+/// transcript client-side for custom agent_servers entries — that
+/// caching only happens for first-party agents where Zed itself
+/// owns the conversation state.
+///
+/// Mapping:
+///
+/// - `Role::User` text → `SessionUpdate::UserMessageChunk`
+/// - `Role::Assistant` text → `SessionUpdate::AgentMessageChunk`
+/// - `Role::Assistant` with tool calls → text chunk (if any) plus
+///   one `ToolCall` event per call. We emit each with status =
+///   `Completed` because the call already ran; the matching
+///   `Role::Tool` result message is folded into the card's
+///   content via a subsequent `ToolCallUpdate`.
+/// - `Role::Tool` (tool result) → `ToolCallUpdate` carrying the
+///   result text, keyed by `tool_call_id` so it lands on the
+///   right card.
+/// - `Role::System` → skipped; system prompts aren't rendered.
+fn replay_history(cx: &ConnectionTo<Client>, session_id: &SessionId, history: &[Message]) {
+    use agent_client_protocol::schema::{
+        Content, ToolCall as AcpToolCall, ToolCallContent, ToolCallId, ToolCallStatus,
+        ToolCallUpdate, ToolCallUpdateFields,
+    };
+
+    fn tool_kind_for(name: &str) -> agent_client_protocol::schema::ToolKind {
+        use agent_client_protocol::schema::ToolKind;
+        match name {
+            "read_file" | "list_dir" => ToolKind::Read,
+            "write_file" | "edit_file" => ToolKind::Edit,
+            "bash" => ToolKind::Execute,
+            _ => ToolKind::Other,
+        }
+    }
+    fn title_for(name: &str, args_json: &str) -> String {
+        match (
+            name,
+            serde_json::from_str::<serde_json::Value>(args_json).ok(),
+        ) {
+            ("read_file", Some(v)) => format!(
+                "Read {}",
+                v.get("path").and_then(|p| p.as_str()).unwrap_or("?")
+            ),
+            ("write_file", Some(v)) => format!(
+                "Write {}",
+                v.get("path").and_then(|p| p.as_str()).unwrap_or("?")
+            ),
+            ("edit_file", Some(v)) => format!(
+                "Edit {}",
+                v.get("path").and_then(|p| p.as_str()).unwrap_or("?")
+            ),
+            ("list_dir", Some(v)) => format!(
+                "List {}",
+                v.get("path").and_then(|p| p.as_str()).unwrap_or("?")
+            ),
+            ("bash", Some(v)) => {
+                let cmd = v.get("command").and_then(|p| p.as_str()).unwrap_or("?");
+                let snippet = if cmd.len() > 60 {
+                    format!("{}…", &cmd[..60])
+                } else {
+                    cmd.to_string()
+                };
+                format!("Run: {snippet}")
+            }
+            (other, _) => format!("Tool: {other}"),
+        }
+    }
+
+    let send = |update: SessionUpdate| {
+        let notif = SessionNotification::new(session_id.clone(), update);
+        if let Err(e) = cx.send_notification(notif) {
+            tracing::warn!(
+                error = %format!("{e:#}"),
+                "replay: failed to forward history event"
+            );
+        }
+    };
+
+    let mut total_events: usize = 0;
+    for msg in history {
+        match (msg.role, &msg.content) {
+            (Role::User, MessageContent::Text { text }) => {
+                send(SessionUpdate::UserMessageChunk(text_chunk(text.clone())));
+                total_events += 1;
+            }
+            (Role::Assistant, MessageContent::Text { text }) => {
+                send(SessionUpdate::AgentMessageChunk(text_chunk(text.clone())));
+                total_events += 1;
+            }
+            (Role::Assistant, MessageContent::ToolCalls { text, calls }) => {
+                if let Some(t) = text
+                    && !t.is_empty()
+                {
+                    send(SessionUpdate::AgentMessageChunk(text_chunk(t.clone())));
+                    total_events += 1;
+                }
+                for call in calls {
+                    let raw_input = serde_json::from_str::<serde_json::Value>(&call.arguments)
+                        .unwrap_or_else(|_| serde_json::Value::String(call.arguments.clone()));
+                    let card = AcpToolCall::new(
+                        ToolCallId::new(call.id.clone()),
+                        title_for(&call.name, &call.arguments),
+                    )
+                    .kind(tool_kind_for(&call.name))
+                    .status(ToolCallStatus::Completed)
+                    .raw_input(raw_input);
+                    send(SessionUpdate::ToolCall(card));
+                    total_events += 1;
+                }
+            }
+            (
+                Role::Tool,
+                MessageContent::ToolResult {
+                    tool_call_id,
+                    content,
+                },
+            ) => {
+                let update = ToolCallUpdate::new(
+                    ToolCallId::new(tool_call_id.clone()),
+                    ToolCallUpdateFields::new()
+                        .status(ToolCallStatus::Completed)
+                        .content(vec![ToolCallContent::Content(Content::new(
+                            ContentBlock::Text(TextContent::new(content.clone())),
+                        ))]),
+                );
+                send(SessionUpdate::ToolCallUpdate(update));
+                total_events += 1;
+            }
+            (Role::System, _) => {
+                // System prompts aren't shown in the chat panel.
+            }
+            (role, content) => {
+                tracing::debug!(
+                    ?role,
+                    ?content,
+                    "replay: unrecognised (role, content) shape; skipping"
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        session_id = %session_id.0,
+        events = total_events,
+        history_turns = history.len(),
+        "session history replayed to client"
+    );
 }
 
 /// Enumerate persisted sessions for the `session/list` ACP method.
