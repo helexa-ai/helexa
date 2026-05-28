@@ -140,6 +140,55 @@ pub fn all_tools() -> Vec<ToolSpec> {
     ]
 }
 
+/// Try to infer which tool was intended from the shape of an
+/// `arguments` object alone. Used by the agent when the model
+/// emits a `<tool_call>` whose JSON has the right arguments but a
+/// missing or invalid top-level `name` field — a recurring
+/// Qwen3.6-27B failure mode.
+///
+/// Returns `Some(name)` only when the argument keys uniquely match
+/// exactly one tool in the catalogue. Ambiguous shapes (`{path}`
+/// alone could be either [`READ_FILE`] or [`LIST_DIR`]) return
+/// `None` so the caller surfaces a Failed-card and lets the model
+/// retry rather than guessing wrong.
+///
+/// Inference table (key set → tool):
+///
+/// | Keys                                  | Tool         |
+/// |---------------------------------------|--------------|
+/// | `{command}` or `{command, cwd}`       | `bash`       |
+/// | `{path, content}`                     | `write_file` |
+/// | `{path, old_text, new_text}`          | `edit_file`  |
+/// | `{path}` / `{path, line}` / `{path, line, limit}` | *ambiguous* — None |
+/// | (anything else)                       | None         |
+pub fn infer_tool_name(arguments: &serde_json::Value) -> Option<&'static str> {
+    let obj = arguments.as_object()?;
+    let keys: std::collections::HashSet<&str> = obj.keys().map(|s| s.as_str()).collect();
+
+    // `command` is unique to bash. Allow the optional `cwd` arg
+    // alongside but nothing else (any unrecognised keys → bail and
+    // let the model retry rather than misroute).
+    if keys.contains("command") && keys.iter().all(|k| matches!(*k, "command" | "cwd")) {
+        return Some(BASH);
+    }
+    // `content` is unique to write_file.
+    if keys.contains("content") && keys.contains("path") && keys.len() == 2 {
+        return Some(WRITE_FILE);
+    }
+    // `old_text` + `new_text` are unique to edit_file.
+    if keys.contains("old_text")
+        && keys.contains("new_text")
+        && keys.contains("path")
+        && keys.len() == 3
+    {
+        return Some(EDIT_FILE);
+    }
+    // `{path}` / `{path, line}` / `{path, line, limit}` overlap
+    // between read_file (file contents) and list_dir (directory
+    // contents). No safe inference — refuse.
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,6 +201,78 @@ mod tests {
             names,
             vec![READ_FILE, WRITE_FILE, EDIT_FILE, LIST_DIR, BASH]
         );
+    }
+
+    #[test]
+    fn infer_bash_from_command_only() {
+        let args = serde_json::json!({"command": "ls /tmp"});
+        assert_eq!(infer_tool_name(&args), Some(BASH));
+    }
+
+    #[test]
+    fn infer_bash_from_command_and_cwd() {
+        let args = serde_json::json!({"command": "ls", "cwd": "/tmp"});
+        assert_eq!(infer_tool_name(&args), Some(BASH));
+    }
+
+    #[test]
+    fn infer_bash_from_mkdir_like_real_failure() {
+        // Lifted verbatim from the agent failure that motivated
+        // this helper (helexa-acp.log @ 10:03:11).
+        let args = serde_json::json!({
+            "command": "mkdir -p /home/grenade/git/beat/beat/doc/plan/{01-discovery,02-segmentation,03-description,04-summary,05-output}"
+        });
+        assert_eq!(infer_tool_name(&args), Some(BASH));
+    }
+
+    #[test]
+    fn infer_write_file() {
+        let args = serde_json::json!({"path": "/tmp/x", "content": "hi"});
+        assert_eq!(infer_tool_name(&args), Some(WRITE_FILE));
+    }
+
+    #[test]
+    fn infer_edit_file() {
+        let args = serde_json::json!({
+            "path": "/tmp/x", "old_text": "a", "new_text": "b"
+        });
+        assert_eq!(infer_tool_name(&args), Some(EDIT_FILE));
+    }
+
+    #[test]
+    fn refuse_ambiguous_path_only() {
+        let args = serde_json::json!({"path": "/tmp/x"});
+        assert_eq!(infer_tool_name(&args), None);
+    }
+
+    #[test]
+    fn refuse_ambiguous_path_with_optionals() {
+        // read_file accepts these optionals; list_dir doesn't —
+        // but Qwen wouldn't reliably emit them either, so we
+        // can't use their presence to disambiguate. Refuse.
+        let args = serde_json::json!({"path": "/tmp/x", "line": 1, "limit": 50});
+        assert_eq!(infer_tool_name(&args), None);
+    }
+
+    #[test]
+    fn refuse_command_with_extra_unknown_keys() {
+        // Defence in depth: an unrecognised key alongside
+        // `command` means we don't really know what tool the
+        // model wanted; refuse rather than guess.
+        let args = serde_json::json!({"command": "ls", "extra": "?"});
+        assert_eq!(infer_tool_name(&args), None);
+    }
+
+    #[test]
+    fn refuse_empty_args() {
+        let args = serde_json::json!({});
+        assert_eq!(infer_tool_name(&args), None);
+    }
+
+    #[test]
+    fn refuse_non_object_args() {
+        let args = serde_json::json!("not an object");
+        assert_eq!(infer_tool_name(&args), None);
     }
 
     #[test]

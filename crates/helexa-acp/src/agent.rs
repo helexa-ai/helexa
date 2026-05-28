@@ -500,6 +500,38 @@ async fn drive_prompt(
             break;
         }
 
+        // Recovery pass before deciding "is there work to do?".
+        // For each malformed body, try shape-based inference
+        // against the tool catalogue (handles the "model emitted
+        // `arguments` but forgot `name`" case). Successes get
+        // promoted to real tool buckets; failures stay in
+        // `malformed_calls` for the Failed-card path below.
+        malformed_calls.retain(|raw| match try_repair_missing_name(raw) {
+            Some((name, args_json)) => {
+                let idx = tool_buckets
+                    .keys()
+                    .max()
+                    .copied()
+                    .map(|m| m + 1)
+                    .unwrap_or(0);
+                tracing::debug!(
+                    inferred_name = %name,
+                    index = idx,
+                    "qwen3: recovered missing-name tool call via shape inference"
+                );
+                tool_buckets.insert(
+                    idx,
+                    ToolCallBucket {
+                        id: format!("call_recovered_{idx}"),
+                        name,
+                        arguments: args_json,
+                    },
+                );
+                false
+            }
+            None => true,
+        });
+
         let has_tool_calls = !tool_buckets.is_empty();
         let has_malformed = !malformed_calls.is_empty();
 
@@ -679,6 +711,32 @@ fn emit_malformed_tool_card(
 /// (so the model sees its own previous output), and the tool
 /// result spells out *why* it failed with the expected schema —
 /// enough for a competent model to self-correct on the next round.
+/// Last-chance repair for a malformed `<tool_call>` body: if the
+/// model emitted a structurally-valid JSON object with `arguments`
+/// but a missing `name`, infer the intended tool from the
+/// arguments' shape (see [`tools::infer_tool_name`]). Returns
+/// `Some((name, arguments_json))` only when the inference is
+/// unambiguous; ambiguous or unrecognised shapes return `None`
+/// so the caller surfaces a Failed card.
+///
+/// We don't try to repair anything qwen3.rs already gave up on for
+/// structural reasons (truncation, free-form prose) — those stay
+/// Failed and the model retries.
+fn try_repair_missing_name(raw: &str) -> Option<(String, String)> {
+    let value: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
+    // If a `name` exists at the top level, the parser's own
+    // earlier repair passes already had a shot at this and decided
+    // it was malformed for some other reason. Don't second-guess
+    // them here.
+    if value.get("name").is_some() {
+        return None;
+    }
+    let arguments = value.get("arguments")?;
+    let name = tools::infer_tool_name(arguments)?;
+    let args_json = serde_json::to_string(arguments).ok()?;
+    Some((name.to_string(), args_json))
+}
+
 fn synthesize_malformed_history(tool_call_id: &str, raw: &str) -> (Message, Message) {
     let call = Message {
         role: Role::Assistant,
