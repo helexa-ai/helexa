@@ -158,11 +158,31 @@ impl Agent {
             )
             .on_receive_dispatch(
                 async move |message: Dispatch, cx: ConnectionTo<Client>| {
-                    tracing::warn!(method = ?message.method(), "unhandled ACP message");
-                    message.respond_with_error(
-                        agent_client_protocol::util::internal_error("not implemented yet"),
-                        cx,
-                    )
+                    // `Dispatch` has three variants. For Request and
+                    // Notification we want the "not implemented yet"
+                    // error response. For *Response* we MUST forward
+                    // the result to its awaiting `ResponseRouter` —
+                    // otherwise our own outbound ACP calls
+                    // (`fs/read_text_file`, `session/request_permission`,
+                    // `terminal/*`, …) get their replies silently
+                    // overwritten with whatever error we'd send a
+                    // peer for an unknown method. That's how Stage 3
+                    // tool dispatches were appearing as
+                    // "Internal error: not implemented yet" results
+                    // to the model.
+                    match message {
+                        Dispatch::Response(result, router) => router.respond_with_result(result),
+                        other => {
+                            tracing::warn!(
+                                method = ?other.method(),
+                                "unhandled ACP message"
+                            );
+                            other.respond_with_error(
+                                agent_client_protocol::util::internal_error("not implemented yet"),
+                                cx,
+                            )
+                        }
+                    }
                 },
                 agent_client_protocol::on_receive_dispatch!(),
             )
