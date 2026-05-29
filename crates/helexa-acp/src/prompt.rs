@@ -12,11 +12,13 @@
 //!    OpenAI `tools` API field, so the tool list has to live in the
 //!    prompt itself.
 
+use agent_client_protocol::schema::SessionModeId;
 use anyhow::Context;
 use std::path::Path;
 
 use crate::provider::ToolSpec;
 use crate::qwen3;
+use crate::session::MODE_PLAN;
 
 const DEFAULT_PROMPT: &str = "\
 You are helexa-acp, a coding assistant working inside an editor.
@@ -41,10 +43,21 @@ Be concise; the user is reading your output in an editor pane.";
 ///   still gets the tool descriptions the model needs.
 /// - `tools`: the tools to advertise. Empty list → no `# Tools`
 ///   block is appended at all.
+/// - `mode`: current session mode. When the mode is [`MODE_PLAN`]
+///   a plan-mode addendum describing the restrictions and the
+///   completion menu is appended *after* the `# Tools` block so it
+///   is the last thing the model reads before user input.
+/// - `plan_dir`: resolved plan directory for the cwd. Only consulted
+///   when `mode == MODE_PLAN`. `None` means the plan directory could
+///   not be resolved (no `HOME` / `XDG_DATA_HOME`) — the addendum
+///   still renders but with a placeholder so the model knows to
+///   surface the error to the user rather than guess a path.
 pub fn build_system_prompt(
     cwd: &Path,
     override_path: Option<&Path>,
     tools: &[ToolSpec],
+    mode: &SessionModeId,
+    plan_dir: Option<&Path>,
 ) -> anyhow::Result<String> {
     let template = match override_path {
         Some(path) => std::fs::read_to_string(path)
@@ -53,17 +66,81 @@ pub fn build_system_prompt(
     };
     let mut prompt = template.replace("{cwd}", &cwd.display().to_string());
     prompt.push_str(&qwen3::render_tool_block(tools));
+    if mode.0.as_ref() == MODE_PLAN {
+        prompt.push_str(&render_plan_mode_block(plan_dir));
+    }
     Ok(prompt)
+}
+
+/// Plan-mode instruction block. Tells the model:
+///
+/// 1. Where it may write — only inside `plan_dir`.
+/// 2. What it may *not* do — bash is disabled; writes outside
+///    `plan_dir` are refused by the runtime.
+/// 3. How to finish — emit the 3-option menu so the user can
+///    switch modes and either kick off implementation (with or
+///    without permission prompts) or keep iterating on the plan.
+fn render_plan_mode_block(plan_dir: Option<&Path>) -> String {
+    let plan_path = plan_dir
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "<plan directory could not be resolved — tell the user>".to_string());
+    format!(
+        "\n\n# Plan mode\n\
+         \n\
+         You are in **plan mode**. Your task is to draft a written\n\
+         implementation plan for the user; you must NOT modify any\n\
+         project files or run shell commands.\n\
+         \n\
+         Rules in plan mode:\n\
+         \n\
+         - `read_file` and `list_dir` are unrestricted — use them to\n\
+           explore the codebase as needed.\n\
+         - `write_file` and `edit_file` are allowed ONLY under the\n\
+           plan directory: `{plan_path}`. The runtime will refuse any\n\
+           write outside it.\n\
+         - `bash` is disabled. Do not call it.\n\
+         \n\
+         Write the plan as one or more Markdown files under\n\
+         `{plan_path}`. Use descriptive filenames\n\
+         (`01-overview.md`, `02-data-model.md`, etc.). It is fine to\n\
+         iterate — overwrite the file when you refine a section.\n\
+         \n\
+         When the plan is complete, do NOT begin implementation.\n\
+         Instead, end your turn with this menu, verbatim, so the\n\
+         user can choose how to proceed:\n\
+         \n\
+         ---\n\
+         **Plan complete.** To proceed, switch the session mode in\n\
+         the agent dropdown and send a follow-up message:\n\
+         \n\
+         1. **Bypass Permissions** — implement the plan now, skipping\n\
+            per-tool permission prompts.\n\
+         2. **Default** — implement the plan now, prompting before\n\
+            each write or shell command.\n\
+         3. **Plan** (stay here) — refine the plan; reply with the\n\
+            change you want and I will revise it.\n\
+         ---\n"
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::{MODE_DEFAULT, MODE_PLAN};
     use std::io::Write;
+
+    fn default_mode() -> SessionModeId {
+        SessionModeId::new(MODE_DEFAULT)
+    }
+    fn plan_mode() -> SessionModeId {
+        SessionModeId::new(MODE_PLAN)
+    }
 
     #[test]
     fn default_prompt_substitutes_cwd() {
-        let prompt = build_system_prompt(Path::new("/home/me/proj"), None, &[]).unwrap();
+        let prompt =
+            build_system_prompt(Path::new("/home/me/proj"), None, &[], &default_mode(), None)
+                .unwrap();
         assert!(
             prompt.contains("/home/me/proj"),
             "cwd not interpolated: {prompt}"
@@ -75,6 +152,8 @@ mod tests {
         );
         // With no tools, the # Tools block is absent.
         assert!(!prompt.contains("# Tools"));
+        // Default mode does not get the plan-mode addendum.
+        assert!(!prompt.contains("# Plan mode"));
     }
 
     #[test]
@@ -84,7 +163,8 @@ mod tests {
             description: "Read a file.".into(),
             parameters: serde_json::json!({"type":"object","properties":{}, "required":[]}),
         };
-        let prompt = build_system_prompt(Path::new("/x"), None, &[spec]).unwrap();
+        let prompt =
+            build_system_prompt(Path::new("/x"), None, &[spec], &default_mode(), None).unwrap();
         assert!(prompt.contains("# Tools"));
         assert!(prompt.contains("<tools>"));
         assert!(prompt.contains("\"name\":\"read_file\""));
@@ -100,8 +180,14 @@ mod tests {
         let path = tmp.path().to_path_buf();
         drop(tmp);
 
-        let prompt = build_system_prompt(Path::new("/etc"), Some(path.as_path()), &[])
-            .expect("read override");
+        let prompt = build_system_prompt(
+            Path::new("/etc"),
+            Some(path.as_path()),
+            &[],
+            &default_mode(),
+            None,
+        )
+        .expect("read override");
         assert_eq!(prompt, "custom prompt for /etc only");
 
         let _ = std::fs::remove_file(&path);
@@ -113,9 +199,43 @@ mod tests {
             Path::new("/tmp"),
             Some(Path::new("/definitely/not/a/real/path")),
             &[],
+            &default_mode(),
+            None,
         )
         .unwrap_err();
         assert!(format!("{err:#}").contains("read system prompt"));
+    }
+
+    #[test]
+    fn plan_mode_addendum_includes_plan_dir_and_menu() {
+        let plan_dir = Path::new("/home/me/.local/share/helexa-acp/plans/proj-deadbeef");
+        let prompt = build_system_prompt(
+            Path::new("/home/me/proj"),
+            None,
+            &[],
+            &plan_mode(),
+            Some(plan_dir),
+        )
+        .unwrap();
+        assert!(prompt.contains("# Plan mode"));
+        assert!(
+            prompt.contains(plan_dir.to_str().unwrap()),
+            "plan dir not interpolated: {prompt}"
+        );
+        // The 3-option menu must be present so the model emits it verbatim.
+        assert!(prompt.contains("Bypass Permissions"));
+        assert!(prompt.contains("**Default**"));
+        assert!(prompt.contains("3. **Plan**"));
+        // Bash disabled instruction must be present.
+        assert!(prompt.contains("`bash` is disabled"));
+    }
+
+    #[test]
+    fn plan_mode_addendum_handles_unresolved_plan_dir() {
+        let prompt =
+            build_system_prompt(Path::new("/home/me/proj"), None, &[], &plan_mode(), None).unwrap();
+        assert!(prompt.contains("# Plan mode"));
+        assert!(prompt.contains("could not be resolved"));
     }
 
     /// Tiny temp-file helper that doesn't pull in the `tempfile` crate.

@@ -32,6 +32,13 @@ pub const MODE_DEFAULT: &str = "default";
 /// favorite name (`bypassPermissions`) Zed clients tend to reference.
 pub const MODE_BYPASS: &str = "bypassPermissions";
 
+/// Mode id for read-and-plan-only operation. The model may read files
+/// and list directories freely, may write *only* into the per-project
+/// plan directory under `$XDG_DATA_HOME/helexa-acp/plans/<project-id>/`,
+/// and cannot run shell commands. Designed for "draft the
+/// implementation plan, then I'll review and let you execute" flows.
+pub const MODE_PLAN: &str = "plan";
+
 /// State carried for a single ACP session.
 ///
 /// Mutated under `Mutex<SessionState>`; never share a clone across

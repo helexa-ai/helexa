@@ -35,7 +35,7 @@ use crate::prompt::build_system_prompt;
 use crate::provider::{
     CompletionEvent, CompletionRequest, Message, MessageContent, Provider, Role, ToolCall,
 };
-use crate::session::{self, MODE_BYPASS, MODE_DEFAULT, SessionState, SessionStore};
+use crate::session::{self, MODE_BYPASS, MODE_DEFAULT, MODE_PLAN, SessionState, SessionStore};
 use crate::store::{self, PersistedSession};
 use crate::tool_runner::{AcpClientOps, ToolCallEvent, dispatch_tool_call};
 use crate::tools;
@@ -547,10 +547,14 @@ fn derive_session_title(history: &[Message]) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-/// The two modes every Stage 3 session advertises. Stage 7 may grow
-/// this list (e.g. "plan" for plan-only output, "ask" for read-only),
-/// but Default + Bypass cover the two operationally distinct
-/// permission policies.
+/// The three modes every Stage 3 session advertises:
+///
+/// - **Default** — writes / bash prompt the user.
+/// - **Bypass Permissions** — auto-allow.
+/// - **Plan** — read-and-plan-only. Writes are restricted to a
+///   per-project plan directory under `$XDG_DATA_HOME/helexa-acp/plans/`
+///   and bash is disabled. Designed for "draft the implementation
+///   plan, then I'll review and let you execute" flows.
 fn default_mode_state() -> SessionModeState {
     SessionModeState::new(
         SessionModeId::new(MODE_DEFAULT),
@@ -559,6 +563,8 @@ fn default_mode_state() -> SessionModeState {
                 .description("Prompt for permission before writes or shell commands."),
             SessionMode::new(SessionModeId::new(MODE_BYPASS), "Bypass Permissions")
                 .description("Auto-allow all tool calls. Use with care."),
+            SessionMode::new(SessionModeId::new(MODE_PLAN), "Plan")
+                .description("Write plans to the plan directory; no shell, no writes outside it."),
         ],
     )
 }
@@ -570,13 +576,17 @@ async fn handle_set_session_mode(
     let Some(state) = session::get(&inner.sessions, &req.session_id).await else {
         anyhow::bail!("unknown session id {}", req.session_id.0);
     };
-    let accepted = req.mode_id.0.as_ref() == MODE_DEFAULT || req.mode_id.0.as_ref() == MODE_BYPASS;
+    let accepted = matches!(
+        req.mode_id.0.as_ref(),
+        MODE_DEFAULT | MODE_BYPASS | MODE_PLAN
+    );
     if !accepted {
         anyhow::bail!(
-            "unknown mode '{}' — must be one of: {}, {}",
+            "unknown mode '{}' — must be one of: {}, {}, {}",
             req.mode_id.0,
             MODE_DEFAULT,
-            MODE_BYPASS
+            MODE_BYPASS,
+            MODE_PLAN
         );
     }
     state.lock().await.mode_id = req.mode_id.clone();
@@ -639,8 +649,9 @@ async fn drive_prompt(
 
     // Snapshot the inputs under the session lock, then drop the lock
     // before any `await` that touches the network. `mode_id` is
-    // refreshed between tool rounds (the user can toggle modes
-    // mid-turn).
+    // refreshed at the top of every round (the user can toggle modes
+    // mid-turn and we want the next round's streaming + tool gating
+    // to reflect that).
     let (existing_history, model_id, cwd, cancel, mut mode_id) = {
         let mut state = session_arc.lock().await;
         // Fire the session's current cancel before installing a new
@@ -668,8 +679,10 @@ async fn drive_prompt(
     };
 
     let tool_specs = tools::all_tools();
-    let system_prompt = build_system_prompt(&cwd, inner.system_prompt_path.as_deref(), &tool_specs)
-        .map_err(|e| anyhow::anyhow!("build system prompt: {e:#}"))?;
+    // Plan-mode write target. Resolved once because the cwd doesn't
+    // change for a session's lifetime; the directory is created
+    // lazily by the runtime when a write lands inside it.
+    let plan_dir = store::plan_dir_for(&cwd);
 
     let (provider, local_model) =
         match resolve_provider(&inner.providers, &inner.default_endpoint_name, &model_id) {
@@ -692,14 +705,14 @@ async fn drive_prompt(
     let ops = AcpClientOps::new(cx.clone());
 
     // `messages` is the rolling conversation we send to the provider
-    // each round. We seed it with the system prompt + the snapshot
-    // (which includes the new user turn) and grow it with each
-    // round's assistant turn + tool-result turns.
+    // each round. Slot 0 is the system prompt — rebuilt at the top
+    // of every round so a mid-turn mode toggle takes effect. We seed
+    // a placeholder here and overwrite it on the first iteration.
     let mut messages: Vec<Message> = Vec::with_capacity(existing_history.len() + 1);
     messages.push(Message {
         role: Role::System,
         content: MessageContent::Text {
-            text: system_prompt,
+            text: String::new(),
         },
     });
     messages.extend(existing_history);
@@ -716,17 +729,42 @@ async fn drive_prompt(
     let mut stop_reason = StopReason::EndTurn;
 
     for round in 0..MAX_TOOL_ROUNDS {
-        tracing::info!(
-            session_id = %session_id.0,
-            round = round + 1,
-            of = MAX_TOOL_ROUNDS,
-            history_turns = messages.len(),
-            "prompt round: streaming"
-        );
         if cancel.is_cancelled() {
             stop_reason = StopReason::Cancelled;
             break;
         }
+
+        // Refresh mode + rebuild system prompt at the top of every
+        // round. Cheap (one mutex acquisition + one string build);
+        // the win is that if the user flips the mode dropdown
+        // mid-turn — particularly the Plan ↔ Bypass transitions
+        // the plan-mode menu invites them to make — the new mode
+        // gates both this round's streaming *and* its tool
+        // dispatch.
+        mode_id = session_arc.lock().await.mode_id.clone();
+        let system_prompt = build_system_prompt(
+            &cwd,
+            inner.system_prompt_path.as_deref(),
+            &tool_specs,
+            &mode_id,
+            plan_dir.as_deref(),
+        )
+        .map_err(|e| anyhow::anyhow!("build system prompt: {e:#}"))?;
+        messages[0] = Message {
+            role: Role::System,
+            content: MessageContent::Text {
+                text: system_prompt,
+            },
+        };
+
+        tracing::info!(
+            session_id = %session_id.0,
+            round = round + 1,
+            of = MAX_TOOL_ROUNDS,
+            mode = %mode_id.0,
+            history_turns = messages.len(),
+            "prompt round: streaming"
+        );
 
         // Tool descriptions reach the model via the Qwen3 `# Tools`
         // block in the system prompt, not via the OpenAI `tools`
@@ -904,10 +942,6 @@ async fn drive_prompt(
             new_turns.push(assistant_turn.clone());
             messages.push(assistant_turn);
         }
-
-        // Refresh the mode in case the user toggled it during the
-        // streaming above (cheap — one mutex acquisition).
-        mode_id = session_arc.lock().await.mode_id.clone();
 
         // Dispatch every tool call sequentially. Parallelism is
         // tempting but would require Zed to handle interleaved

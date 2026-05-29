@@ -28,6 +28,7 @@ use crate::provider::Message;
 
 const APP_DIRNAME: &str = "helexa-acp";
 const SESSIONS_DIRNAME: &str = "sessions";
+const PLANS_DIRNAME: &str = "plans";
 
 /// The shape persisted to disk for one session. Only what we can't
 /// rebuild from the running config goes in here: the conversation
@@ -182,6 +183,63 @@ pub fn now_secs() -> u64 {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Root directory for plan-mode artefacts. Mirrors [`sessions_dir`]
+/// but under `…/helexa-acp/plans/` so plans and conversation
+/// transcripts are siblings, not nested.
+pub fn plans_root() -> Option<PathBuf> {
+    sessions_dir().and_then(|s| s.parent().map(|p| p.join(PLANS_DIRNAME)))
+}
+
+/// Per-project plan directory:
+/// `$XDG_DATA_HOME/helexa-acp/plans/<project-id>/`. The id derives
+/// from the session's cwd so plans for the same project survive
+/// across cwd-changes (a `/home/foo/git/bar` ↔ symlinked
+/// `/srv/checkout/bar` would technically diverge, accepted as a
+/// won't-fix corner case).
+pub fn plan_dir_for(cwd: &std::path::Path) -> Option<PathBuf> {
+    plans_root().map(|root| root.join(project_id_for(cwd)))
+}
+
+/// Deterministic, human-readable project identifier. Format:
+/// `<basename>-<8-hex>` where the 8-hex suffix is FNV-1a of the
+/// full path. Basename keeps the path skim-readable when poking
+/// around `$XDG_DATA_HOME` by hand; the hash suffix disambiguates
+/// repos that share a final path component (e.g. multiple
+/// `/.../checkout/beat` checkouts).
+///
+/// FNV-1a rather than `std::collections::hash::DefaultHasher`
+/// because the latter (SipHash) reseeds per process, so it'd give
+/// us a different project_id on every run.
+pub fn project_id_for(cwd: &std::path::Path) -> String {
+    let basename = cwd
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    let sanitised: String = basename
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let hash = fnv1a_32(cwd.to_string_lossy().as_bytes());
+    format!("{sanitised}-{hash:08x}")
+}
+
+/// FNV-1a (32-bit). Deterministic, no third-party crate. Used for
+/// project ids only — not cryptographic.
+fn fnv1a_32(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c_9dc5;
+    for b in bytes {
+        h ^= u32::from(*b);
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    h
 }
 
 /// Format seconds-since-epoch as an ISO 8601 / RFC 3339 string

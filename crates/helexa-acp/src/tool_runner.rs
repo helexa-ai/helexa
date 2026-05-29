@@ -37,7 +37,8 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use crate::session::{MODE_BYPASS, MODE_DEFAULT};
+use crate::session::{MODE_BYPASS, MODE_DEFAULT, MODE_PLAN};
+use crate::store;
 use crate::tools::{BASH, EDIT_FILE, LIST_DIR, READ_FILE, WRITE_FILE};
 
 /// Accumulated state of a single tool call streamed from the
@@ -408,8 +409,61 @@ pub async fn dispatch_tool_call(
         );
     }
 
-    // ── Permission gate ──────────────────────────────────────────────
-    if is_gated(&call.name) && mode.0.as_ref() != MODE_BYPASS {
+    // ── Plan-mode gate ───────────────────────────────────────────────
+    // Plan mode is the most restrictive: bash is disabled outright,
+    // writes are confined to the plan directory, and there is no
+    // permission prompt (writes inside plan_dir auto-allow because
+    // writing the plan IS the whole purpose). Reads pass through.
+    if mode.0.as_ref() == MODE_PLAN {
+        let plan_dir = store::plan_dir_for(session_cwd);
+        match call.name.as_str() {
+            BASH => {
+                return finish_failed(
+                    ops,
+                    session_id,
+                    &tool_call_id,
+                    &call.id,
+                    "plan mode: shell execution is disabled. Switch to Default or \
+                     Bypass Permissions to run commands.",
+                );
+            }
+            WRITE_FILE | EDIT_FILE => {
+                let path = args_value
+                    .get("path")
+                    .and_then(|v| v.as_str())
+                    .map(std::path::PathBuf::from);
+                let inside_plan_dir = match (path.as_deref(), plan_dir.as_deref()) {
+                    (Some(p), Some(pd)) => p.starts_with(pd),
+                    _ => false,
+                };
+                if !inside_plan_dir {
+                    let plan_dir_str = plan_dir
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<unresolved>".to_string());
+                    let attempted = path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| "<missing path>".to_string());
+                    return finish_failed(
+                        ops,
+                        session_id,
+                        &tool_call_id,
+                        &call.id,
+                        &format!(
+                            "plan mode: writes are restricted to {plan_dir_str}; \
+                             refused write to {attempted}."
+                        ),
+                    );
+                }
+                // Inside plan_dir: skip the permission prompt and
+                // fall through to execution.
+            }
+            _ => {
+                // read_file, list_dir: allowed without prompt.
+            }
+        }
+    } else if is_gated(&call.name) && mode.0.as_ref() != MODE_BYPASS {
         // Default mode (or any non-bypass id): always ask. The user's
         // "Allow" decision is per-call here; we don't carry over an
         // "Allow always" across calls — that's a Stage 7 polish item
@@ -926,6 +980,9 @@ mod tests {
     fn mode_bypass() -> SessionModeId {
         SessionModeId::new(MODE_BYPASS)
     }
+    fn mode_plan() -> SessionModeId {
+        SessionModeId::new(MODE_PLAN)
+    }
 
     fn make_call(name: &str, args: serde_json::Value) -> ToolCallEvent {
         ToolCallEvent {
@@ -1082,5 +1139,126 @@ mod tests {
         assert!(is_gated(WRITE_FILE));
         assert!(is_gated(EDIT_FILE));
         assert!(is_gated(BASH));
+    }
+
+    // ── Plan-mode gating ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn plan_mode_refuses_bash() {
+        let fake = FakeClient::default();
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_plan(),
+            Path::new("/tmp"),
+            make_call(BASH, json!({"command": "ls"})),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(res.is_error, "expected error: {}", res.content);
+        assert!(
+            res.content.contains("plan mode"),
+            "expected plan-mode error, got: {}",
+            res.content
+        );
+        let events = fake.events();
+        assert!(
+            !events.iter().any(|e| e.starts_with("CreateTerminal")),
+            "bash must not run in plan mode: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| e == "RequestPermission"),
+            "plan mode must not prompt for bash: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_refuses_write_outside_plan_dir() {
+        let fake = FakeClient::default();
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_plan(),
+            Path::new("/home/me/proj"),
+            make_call(
+                WRITE_FILE,
+                json!({"path": "/home/me/proj/src/main.rs", "content": "fn main() {}"}),
+            ),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(res.is_error, "expected error: {}", res.content);
+        assert!(
+            res.content.contains("plan mode") && res.content.contains("/home/me/proj/src/main.rs"),
+            "expected refusal naming attempted path, got: {}",
+            res.content
+        );
+        let events = fake.events();
+        assert!(
+            !events.iter().any(|e| e.starts_with("Write")),
+            "no write must happen for refused path: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_allows_write_inside_plan_dir_without_permission() {
+        // Skip if we can't resolve a plan dir in this environment
+        // (would happen with no HOME / XDG_DATA_HOME — neither
+        // realistic in CI nor for an interactive run).
+        let Some(plan_dir) = store::plan_dir_for(Path::new("/home/me/proj")) else {
+            eprintln!("skipping: plan_dir unresolvable in this env");
+            return;
+        };
+        let target = plan_dir.join("01-overview.md");
+
+        let fake = FakeClient::default();
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_plan(),
+            Path::new("/home/me/proj"),
+            make_call(
+                WRITE_FILE,
+                json!({"path": target.to_str().unwrap(), "content": "# Overview"}),
+            ),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(
+            !res.is_error,
+            "expected success writing inside plan dir, got: {}",
+            res.content
+        );
+        let events = fake.events();
+        assert!(
+            !events.iter().any(|e| e == "RequestPermission"),
+            "plan mode must not prompt for in-plan-dir writes: {events:?}"
+        );
+        assert!(
+            events.iter().any(|e| e.starts_with("Write")),
+            "expected write to land: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_allows_read_anywhere() {
+        let fake = FakeClient::default();
+        fake.set_read(PathBuf::from("/etc/hostname"), Ok("host".into()));
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_plan(),
+            Path::new("/home/me/proj"),
+            make_call(READ_FILE, json!({"path": "/etc/hostname"})),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(!res.is_error, "result: {}", res.content);
+        assert_eq!(res.content, "host");
+        let events = fake.events();
+        assert!(
+            !events.iter().any(|e| e == "RequestPermission"),
+            "reads in plan mode must not prompt: {events:?}"
+        );
     }
 }
