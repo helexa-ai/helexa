@@ -18,6 +18,7 @@ use std::sync::Arc;
 mod agent;
 mod compaction;
 mod config;
+mod path_util;
 mod prompt;
 mod provider;
 mod qwen3;

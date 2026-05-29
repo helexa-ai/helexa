@@ -37,6 +37,7 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
+use crate::path_util::expand_path;
 use crate::session::{MODE_BYPASS, MODE_DEFAULT, MODE_PLAN};
 use crate::store;
 use crate::tools::{BASH, EDIT_FILE, LIST_DIR, READ_FILE, WRITE_FILE};
@@ -431,7 +432,7 @@ pub async fn dispatch_tool_call(
                 let path = args_value
                     .get("path")
                     .and_then(|v| v.as_str())
-                    .map(std::path::PathBuf::from);
+                    .map(|s| expand_path(std::path::Path::new(s)));
                 let inside_plan_dir = match (path.as_deref(), plan_dir.as_deref()) {
                     (Some(p), Some(pd)) => p.starts_with(pd),
                     _ => false,
@@ -621,16 +622,62 @@ async fn exec_read_file(
 ) -> Result<(String, Vec<ToolCallContent>), String> {
     let args: ReadFileArgs =
         serde_json::from_value(args_value.clone()).map_err(|e| format!("read_file: {e}"))?;
-    let content = ops
-        .read_text_file(session_id, args.path, args.line, args.limit)
-        .await
-        .map_err(|e| format!("read_file: {e:#}"))?;
+    let path = expand_path(&args.path);
+
+    // Try the editor's filesystem first. Zed will show the open
+    // buffer (if any) and respect any per-workspace mount points
+    // / overlays it has configured.
+    let acp_result = ops
+        .read_text_file(session_id, path.clone(), args.line, args.limit)
+        .await;
+    let content = match acp_result {
+        Ok(c) => c,
+        Err(e) => {
+            // ACP failures on read are almost always Zed's
+            // workspace-boundary check (read paths outside the
+            // session cwd are refused). Fall back to local
+            // std::fs so the agent can still pull in shared
+            // material like `~/git/architecture/generic.md` that
+            // sits outside the active project. The user-process
+            // file permissions still apply — this is not a
+            // sandbox escape, just a way around Zed's
+            // workspace-only default.
+            tracing::warn!(
+                path = %path.display(),
+                error = %format!("{e:#}"),
+                "fs/read_text_file failed; falling back to local std::fs"
+            );
+            let raw = std::fs::read_to_string(&path).map_err(|fs_err| {
+                format!("read_file: ACP returned {e:#}; local fallback also failed: {fs_err}")
+            })?;
+            apply_line_limit(&raw, args.line, args.limit)
+        }
+    };
+
     let blocks = vec![ToolCallContent::Content(
         agent_client_protocol::schema::Content::new(ContentBlock::Text(TextContent::new(
             content.clone(),
         ))),
     )];
     Ok((content, blocks))
+}
+
+/// Slice a file's contents the same way ACP's `fs/read_text_file`
+/// does (1-based line, optional line count). Used by the local-fs
+/// fallback in `exec_read_file` so out-of-workspace reads honour
+/// the same `line`/`limit` args the model passed.
+fn apply_line_limit(content: &str, line: Option<u32>, limit: Option<u32>) -> String {
+    if line.is_none() && limit.is_none() {
+        return content.to_string();
+    }
+    let start = line.unwrap_or(1).max(1) as usize - 1;
+    let count = limit.map(|l| l as usize).unwrap_or(usize::MAX);
+    content
+        .lines()
+        .skip(start)
+        .take(count)
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 async fn exec_write_file(
@@ -640,25 +687,22 @@ async fn exec_write_file(
 ) -> Result<(String, Vec<ToolCallContent>), String> {
     let args: WriteFileArgs =
         serde_json::from_value(args_value.clone()).map_err(|e| format!("write_file: {e}"))?;
+    let path = expand_path(&args.path);
     // Best-effort read of the existing file so Zed can render a diff.
     // Failure here just means we render the write as an additive diff
     // — not a fatal error, the actual write below still runs.
     let old_text = ops
-        .read_text_file(session_id, args.path.clone(), None, None)
+        .read_text_file(session_id, path.clone(), None, None)
         .await
         .ok();
-    ops.write_text_file(session_id, args.path.clone(), args.content.clone())
+    ops.write_text_file(session_id, path.clone(), args.content.clone())
         .await
         .map_err(|e| format!("write_file: {e:#}"))?;
-    let mut diff = Diff::new(args.path.clone(), args.content.clone());
+    let mut diff = Diff::new(path.clone(), args.content.clone());
     if let Some(old) = old_text {
         diff = diff.old_text(old);
     }
-    let summary = format!(
-        "wrote {} ({} bytes)",
-        args.path.display(),
-        args.content.len()
-    );
+    let summary = format!("wrote {} ({} bytes)", path.display(), args.content.len());
     Ok((summary, vec![ToolCallContent::Diff(diff)]))
 }
 
@@ -669,41 +713,39 @@ async fn exec_edit_file(
 ) -> Result<(String, Vec<ToolCallContent>), String> {
     let args: EditFileArgs =
         serde_json::from_value(args_value.clone()).map_err(|e| format!("edit_file: {e}"))?;
+    let path = expand_path(&args.path);
     let original = ops
-        .read_text_file(session_id, args.path.clone(), None, None)
+        .read_text_file(session_id, path.clone(), None, None)
         .await
-        .map_err(|e| format!("edit_file: read {}: {e:#}", args.path.display()))?;
+        .map_err(|e| format!("edit_file: read {}: {e:#}", path.display()))?;
     let occurrences = original.matches(args.old_text.as_str()).count();
     if occurrences == 0 {
         return Err(format!(
             "edit_file: old_text not found in {}",
-            args.path.display()
+            path.display()
         ));
     }
     if occurrences > 1 {
         return Err(format!(
             "edit_file: old_text appears {occurrences} times in {} — make it unique",
-            args.path.display()
+            path.display()
         ));
     }
     let new_content = original.replacen(args.old_text.as_str(), args.new_text.as_str(), 1);
-    ops.write_text_file(session_id, args.path.clone(), new_content.clone())
+    ops.write_text_file(session_id, path.clone(), new_content.clone())
         .await
-        .map_err(|e| format!("edit_file: write {}: {e:#}", args.path.display()))?;
-    let diff = Diff::new(args.path.clone(), new_content.clone()).old_text(original);
-    let summary = format!(
-        "edited {} ({} bytes)",
-        args.path.display(),
-        new_content.len()
-    );
+        .map_err(|e| format!("edit_file: write {}: {e:#}", path.display()))?;
+    let diff = Diff::new(path.clone(), new_content.clone()).old_text(original);
+    let summary = format!("edited {} ({} bytes)", path.display(), new_content.len());
     Ok((summary, vec![ToolCallContent::Diff(diff)]))
 }
 
 fn exec_list_dir(args_value: &serde_json::Value) -> Result<(String, Vec<ToolCallContent>), String> {
     let args: ListDirArgs =
         serde_json::from_value(args_value.clone()).map_err(|e| format!("list_dir: {e}"))?;
-    let entries = std::fs::read_dir(&args.path)
-        .map_err(|e| format!("list_dir: read {}: {e}", args.path.display()))?;
+    let path = expand_path(&args.path);
+    let entries =
+        std::fs::read_dir(&path).map_err(|e| format!("list_dir: read {}: {e}", path.display()))?;
     let mut lines: Vec<String> = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
@@ -734,7 +776,15 @@ async fn exec_bash(
 ) -> Result<(String, Vec<ToolCallContent>), String> {
     let args: BashArgs =
         serde_json::from_value(args_value.clone()).map_err(|e| format!("bash: {e}"))?;
-    let cwd = args.cwd.unwrap_or_else(|| session_cwd.to_path_buf());
+    // Expand the cwd if the model passed one; otherwise inherit the
+    // session cwd verbatim. Don't expand the command string — sh
+    // already handles `~` and `$HOME` inside the command line, and
+    // pre-expanding would break the more interesting cases
+    // (`echo ~`, `cd ~`, …).
+    let cwd = match args.cwd {
+        Some(c) => expand_path(&c),
+        None => session_cwd.to_path_buf(),
+    };
 
     tracing::debug!(
         command = %args.command,
@@ -1260,5 +1310,149 @@ mod tests {
             !events.iter().any(|e| e == "RequestPermission"),
             "reads in plan mode must not prompt: {events:?}"
         );
+    }
+
+    // ── Path expansion + local read fallback ────────────────────────
+
+    #[tokio::test]
+    // We must hold the env-mutation lock across the await — releasing
+    // it would let another test mutate HOME mid-dispatch and lose
+    // the very thing we're testing for. The clippy lint is the
+    // correct *default*; this is the documented exception.
+    #[allow(clippy::await_holding_lock)]
+    async fn read_file_expands_tilde_before_dispatch() {
+        // HOME mutation is process-global; serialise tests that
+        // touch it under a single std::sync::Mutex.
+        use std::sync::Mutex;
+        static LOCK: Mutex<()> = Mutex::new(());
+        let _g = LOCK.lock().unwrap();
+        let prior = std::env::var("HOME").ok();
+        unsafe {
+            std::env::set_var("HOME", "/home/me");
+        }
+
+        let fake = FakeClient::default();
+        // The fake's canned-read map is keyed on the expanded path,
+        // not the literal `~/...` — if expansion didn't happen the
+        // lookup would miss and ACP would error → fallback to
+        // local-fs (which also misses → final error). So a success
+        // path here proves expansion ran before dispatch.
+        fake.set_read(PathBuf::from("/home/me/notes.md"), Ok("body".into()));
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_default(),
+            Path::new("/tmp"),
+            make_call(READ_FILE, json!({"path": "~/notes.md"})),
+            &CancellationToken::new(),
+        )
+        .await;
+
+        unsafe {
+            match prior {
+                Some(p) => std::env::set_var("HOME", p),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+
+        assert!(!res.is_error, "result: {}", res.content);
+        assert_eq!(res.content, "body");
+    }
+
+    #[tokio::test]
+    async fn read_file_falls_back_to_local_fs_when_acp_errors() {
+        // ACP read errors → local std::fs reads succeed for a file
+        // we control. Use a temp file under CARGO_TARGET_TMPDIR.
+        let tmpdir = std::env::var("CARGO_TARGET_TMPDIR")
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&tmpdir).unwrap();
+        let pid = std::process::id();
+        let target = tmpdir.join(format!("helexa-acp-fallback-{pid}.txt"));
+        std::fs::write(&target, "line 1\nline 2\nline 3\n").unwrap();
+
+        let fake = FakeClient::default();
+        // No canned read → ACP returns Err. Fallback path should
+        // pick up the local file.
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_default(),
+            Path::new("/tmp"),
+            make_call(READ_FILE, json!({"path": target.to_str().unwrap()})),
+            &CancellationToken::new(),
+        )
+        .await;
+        let _ = std::fs::remove_file(&target);
+        assert!(!res.is_error, "expected fallback success: {}", res.content);
+        assert!(
+            res.content.contains("line 1") && res.content.contains("line 3"),
+            "unexpected fallback content: {}",
+            res.content
+        );
+    }
+
+    #[tokio::test]
+    async fn read_file_fallback_honours_line_and_limit() {
+        let tmpdir = std::env::var("CARGO_TARGET_TMPDIR")
+            .ok()
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        std::fs::create_dir_all(&tmpdir).unwrap();
+        let pid = std::process::id();
+        let target = tmpdir.join(format!("helexa-acp-fallback-slice-{pid}.txt"));
+        std::fs::write(&target, "a\nb\nc\nd\ne\n").unwrap();
+
+        let fake = FakeClient::default();
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_default(),
+            Path::new("/tmp"),
+            make_call(
+                READ_FILE,
+                json!({"path": target.to_str().unwrap(), "line": 2, "limit": 2}),
+            ),
+            &CancellationToken::new(),
+        )
+        .await;
+        let _ = std::fs::remove_file(&target);
+        assert!(!res.is_error, "result: {}", res.content);
+        assert_eq!(res.content, "b\nc");
+    }
+
+    #[tokio::test]
+    async fn read_file_fallback_failure_surfaces_combined_error() {
+        let fake = FakeClient::default();
+        let res = dispatch_tool_call(
+            &fake,
+            &sid(),
+            &mode_default(),
+            Path::new("/tmp"),
+            make_call(
+                READ_FILE,
+                json!({"path": "/definitely/not/a/real/path/xyz"}),
+            ),
+            &CancellationToken::new(),
+        )
+        .await;
+        assert!(res.is_error, "expected error: {}", res.content);
+        // The error message should cite BOTH the ACP failure and
+        // the local-fs failure so the model knows what happened.
+        assert!(
+            res.content.contains("local fallback also failed"),
+            "expected combined error message, got: {}",
+            res.content
+        );
+    }
+
+    #[test]
+    fn apply_line_limit_basic_slice() {
+        let body = "a\nb\nc\nd\ne";
+        assert_eq!(apply_line_limit(body, None, None), body);
+        assert_eq!(apply_line_limit(body, Some(1), Some(2)), "a\nb");
+        assert_eq!(apply_line_limit(body, Some(3), None), "c\nd\ne");
+        assert_eq!(apply_line_limit(body, None, Some(2)), "a\nb");
     }
 }
