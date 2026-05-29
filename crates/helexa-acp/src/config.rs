@@ -98,6 +98,14 @@ pub struct EndpointConfig {
     /// request field.
     #[serde(default)]
     pub max_tokens: Option<u64>,
+    /// Model context window in tokens (prompt + response). When set,
+    /// the agent compacts conversation history before each completion
+    /// so the prompt fits within `context_window - max_tokens - safety`
+    /// tokens — long sessions on small-context local models (Qwen3 at
+    /// 32 K) survive past the first few tool-call rounds rather than
+    /// dying with `prompt_too_long`. `None` disables compaction.
+    #[serde(default)]
+    pub context_window: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -193,6 +201,15 @@ impl Config {
                 })
             })
             .transpose()?;
+        let context_window = std::env::var("HELEXA_ACP_CONTEXT_WINDOW")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                s.parse::<usize>().with_context(|| {
+                    format!("HELEXA_ACP_CONTEXT_WINDOW is not a positive integer ({s})")
+                })
+            })
+            .transpose()?;
         Ok(Self {
             default_endpoint: Some(DEFAULT_ENDPOINT_NAME.into()),
             endpoints: vec![EndpointConfig {
@@ -203,6 +220,7 @@ impl Config {
                 api_key,
                 api_key_env: None,
                 max_tokens,
+                context_window,
             }],
             system_prompt_path,
         })
@@ -316,6 +334,7 @@ mod tests {
             api_key: None,
             api_key_env: None,
             max_tokens: None,
+            context_window: None,
         };
         assert_eq!(
             ep.chat_completions_url().as_str(),

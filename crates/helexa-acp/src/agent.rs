@@ -30,6 +30,7 @@ use futures::StreamExt;
 use std::collections::BTreeMap;
 use tokio_util::sync::CancellationToken;
 
+use crate::compaction;
 use crate::config::{Config, parse_model_selector};
 use crate::prompt::build_system_prompt;
 use crate::provider::{
@@ -67,6 +68,11 @@ struct AgentInner {
     /// name after resolution. `None` (or an absent entry) means the
     /// upstream picks its own default.
     max_tokens: std::collections::HashMap<String, u64>,
+    /// Per-endpoint model context window in tokens. When set, the
+    /// agent compacts history before each completion so the prompt
+    /// fits inside `context_window - max_tokens - safety` tokens.
+    /// Absent entry → no compaction (legacy behaviour).
+    context_window: std::collections::HashMap<String, usize>,
     sessions: SessionStore,
     system_prompt_path: Option<PathBuf>,
     /// Monotonic counter for minting session ids. The wire format is
@@ -99,12 +105,18 @@ impl Agent {
             .iter()
             .filter_map(|ep| ep.max_tokens.map(|m| (ep.name.clone(), m)))
             .collect();
+        let context_window = cfg
+            .endpoints
+            .iter()
+            .filter_map(|ep| ep.context_window.map(|w| (ep.name.clone(), w)))
+            .collect();
         Ok(Self {
             inner: Arc::new(AgentInner {
                 providers,
                 default_endpoint_name: default.name.clone(),
                 default_model: default.default_model.clone(),
                 max_tokens,
+                context_window,
                 sessions: session::new_store(),
                 system_prompt_path: cfg.system_prompt_path.clone(),
                 next_session_id: AtomicU64::new(1),
@@ -766,6 +778,34 @@ async fn drive_prompt(
             "prompt round: streaming"
         );
 
+        // Project history into the model's context window when the
+        // endpoint advertises one. Compaction is a per-request
+        // *projection* — `messages` (and the persisted session
+        // history downstream) stay intact; only what we send
+        // upstream shrinks. Without this, a 32 K Qwen3 dies after
+        // the first few `read_file` results pile up in history.
+        let provider_max_tokens = inner.max_tokens.get(provider.name()).copied();
+        let messages_for_provider = match inner.context_window.get(provider.name()).copied() {
+            Some(ctx) => {
+                let budget = prompt_budget(ctx, provider_max_tokens);
+                let (compacted, stats) = compaction::compact_to_budget(&messages, budget);
+                if stats.elided_messages > 0 {
+                    tracing::info!(
+                        session_id = %session_id.0,
+                        round = round + 1,
+                        context_window = ctx,
+                        budget,
+                        original_tokens = stats.original_tokens,
+                        final_tokens = stats.final_tokens,
+                        elided = stats.elided_messages,
+                        "context compaction applied"
+                    );
+                }
+                compacted
+            }
+            None => messages.clone(),
+        };
+
         // Tool descriptions reach the model via the Qwen3 `# Tools`
         // block in the system prompt, not via the OpenAI `tools`
         // request field — cortex/neuron pass that field through to
@@ -773,11 +813,11 @@ async fn drive_prompt(
         // tools once a strict-OpenAI backend lands. Leave empty.
         let completion_req = CompletionRequest {
             model: local_model.clone(),
-            messages: messages.clone(),
+            messages: messages_for_provider,
             tools: vec![],
             temperature: None,
             top_p: None,
-            max_tokens: inner.max_tokens.get(provider.name()).copied(),
+            max_tokens: provider_max_tokens,
         };
 
         let mut stream = match provider.complete(completion_req, cancel.clone()).await {
@@ -1203,6 +1243,26 @@ fn synthesize_malformed_history(tool_call_id: &str, raw: &str) -> (Message, Mess
     (call, result)
 }
 
+/// Compute the prompt token budget for an endpoint given its
+/// `context_window` and `max_tokens` settings. The model needs room
+/// for both the prompt and its response inside the context window,
+/// so the prompt budget is the remainder after subtracting the
+/// response cap (defaulting to a conservative 2048 when the endpoint
+/// didn't set one) and a small safety margin for tokenizer
+/// disagreement.
+///
+/// The safety margin matters because our per-character estimate in
+/// [`compaction`] can drift a few percent from any given upstream
+/// tokenizer; we'd rather under-fill the context window than have a
+/// well-compacted history still trip `prompt_too_long`.
+fn prompt_budget(context_window: usize, max_tokens: Option<u64>) -> usize {
+    const SAFETY_MARGIN: usize = 512;
+    let max_tokens = max_tokens.unwrap_or(2048) as usize;
+    context_window
+        .saturating_sub(max_tokens)
+        .saturating_sub(SAFETY_MARGIN)
+}
+
 fn map_finish_reason(reason: Option<&str>) -> StopReason {
     match reason {
         Some("length") => StopReason::MaxTokens,
@@ -1348,6 +1408,28 @@ mod tests {
     }
 
     // ── map_finish_reason ───────────────────────────────────────────
+
+    // ── prompt_budget ───────────────────────────────────────────────
+
+    #[test]
+    fn prompt_budget_reserves_response_and_safety() {
+        // 32K window, 8K response cap → 32768 - 8192 - 512 = 24064.
+        assert_eq!(prompt_budget(32_768, Some(8_192)), 24_064);
+    }
+
+    #[test]
+    fn prompt_budget_uses_default_when_max_tokens_unset() {
+        // Default response cap = 2048; safety = 512.
+        assert_eq!(prompt_budget(32_768, None), 32_768 - 2_048 - 512);
+    }
+
+    #[test]
+    fn prompt_budget_saturates_when_window_too_small() {
+        // Pathological config: window smaller than response + safety.
+        // Don't underflow — return zero so compaction tries hardest
+        // and upstream surfaces the inevitable error.
+        assert_eq!(prompt_budget(1_000, Some(8_192)), 0);
+    }
 
     #[test]
     fn maps_known_finish_reasons() {

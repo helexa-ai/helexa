@@ -16,6 +16,7 @@ use agent_client_protocol::{Result, Stdio};
 use std::sync::Arc;
 
 mod agent;
+mod compaction;
 mod config;
 mod prompt;
 mod provider;
