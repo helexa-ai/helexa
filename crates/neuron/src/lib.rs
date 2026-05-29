@@ -6,3 +6,4 @@ pub mod discovery;
 pub mod harness;
 pub mod health;
 pub mod startup;
+pub mod wire;

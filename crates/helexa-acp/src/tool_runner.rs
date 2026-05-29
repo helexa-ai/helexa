@@ -1251,7 +1251,20 @@ mod tests {
     }
 
     #[tokio::test]
+    // Holds the env lock across an await — the await is the
+    // tool dispatch, which itself re-reads HOME via plan_dir_for.
+    // Releasing the lock would let another test mutate HOME
+    // between this test's setup and the gate's lookup.
+    #[allow(clippy::await_holding_lock)]
     async fn plan_mode_allows_write_inside_plan_dir_without_permission() {
+        // Plan-mode gate calls store::plan_dir_for at runtime
+        // (which reads HOME). If a parallel test mutates HOME
+        // mid-flight, the gate's plan_dir would differ from the
+        // one we computed up here and the path check would fail.
+        // Share the crate-wide env lock so we and any HOME-mutator
+        // serialise.
+        let _g = crate::path_util::ENV_LOCK.lock().unwrap();
+
         // Skip if we can't resolve a plan dir in this environment
         // (would happen with no HOME / XDG_DATA_HOME — neither
         // realistic in CI nor for an interactive run).
@@ -1321,11 +1334,9 @@ mod tests {
     // correct *default*; this is the documented exception.
     #[allow(clippy::await_holding_lock)]
     async fn read_file_expands_tilde_before_dispatch() {
-        // HOME mutation is process-global; serialise tests that
-        // touch it under a single std::sync::Mutex.
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _g = LOCK.lock().unwrap();
+        // HOME mutation is process-global; share the crate-wide
+        // ENV_LOCK with path_util's tests so workers don't race.
+        let _g = crate::path_util::ENV_LOCK.lock().unwrap();
         let prior = std::env::var("HOME").ok();
         unsafe {
             std::env::set_var("HOME", "/home/me");

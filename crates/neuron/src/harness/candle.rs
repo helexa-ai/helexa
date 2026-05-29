@@ -23,9 +23,10 @@ use candle_transformers::models::qwen3_moe as qwen3_moe_dense;
 use cortex_core::harness::{Harness, HarnessHealth, ModelInfo, ModelSpec};
 use cortex_core::openai::{
     ChatCompletionChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
-    ChatMessage, ChunkChoice, MessageContent, Usage,
+    ChatMessage, MessageContent, Usage,
 };
-use serde_json::json;
+
+use crate::wire::{FinishReason, InferenceEvent, openai_chat as wire_chat};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -1635,36 +1636,24 @@ impl CandleHarness {
         let created = unix_now_secs();
 
         // Bounded channel so the producer (blocking inference) is back-
-        // pressured by the consumer (SSE writer). 32 is generous —
-        // tokens arrive one at a time and the SSE writer is async.
-        let (tx, rx) = mpsc::channel::<ChatCompletionChunk>(32);
+        // pressured by the consumer (SSE writer, via the wire
+        // projector). 32 is generous — tokens arrive one at a time
+        // and downstream consumption is async.
+        let (tx, event_rx) = mpsc::channel::<InferenceEvent>(32);
 
-        // Lead chunk: announce the assistant role per OpenAI streaming
-        // conventions. Tools that auto-detect a streaming reply expect
-        // this before any content delta.
-        let role_chunk = ChatCompletionChunk {
-            id: id.clone(),
-            object: "chat.completion.chunk".into(),
-            created,
-            model: model_id.clone(),
-            choices: vec![ChunkChoice {
-                index: 0,
-                delta: json!({"role": "assistant"}),
-                finish_reason: None,
-                extra: serde_json::Value::Object(Default::default()),
-            }],
-            usage: None,
-            extra: serde_json::Value::Object(Default::default()),
-        };
         // Refuse if the model is already poisoned. No point opening
-        // an SSE stream just to send the role chunk and then bail.
+        // an SSE stream just to send the Start event and then bail.
         if loaded.poisoned.load(Ordering::Acquire) {
             return Err(poisoned_error(&model_id));
         }
 
-        // If sending the role chunk fails the receiver is already gone;
-        // bail before kicking off the heavy blocking work.
-        tx.send(role_chunk)
+        // Start event: tells the wire projector to emit its
+        // format-specific "the assistant is about to speak" frame
+        // (an OpenAI `delta: {role: "assistant"}` chunk here; a
+        // `response.created` + `response.output_item.added` pair on
+        // the Responses path). If sending fails the receiver is
+        // already gone; bail before kicking off the heavy work.
+        tx.send(InferenceEvent::Start)
             .await
             .map_err(|_| InferenceError::Other(anyhow::anyhow!("client disconnected")))?;
 
@@ -1728,9 +1717,6 @@ impl CandleHarness {
                             top_p,
                             seed,
                             eos_id,
-                            id,
-                            created,
-                            model_id,
                             tx,
                         )
                         .await
@@ -1787,9 +1773,6 @@ impl CandleHarness {
                     top_p,
                     seed,
                     eos_id,
-                    &id,
-                    created,
-                    &model_id,
                     &tx,
                 ) {
                     Ok(()) => tracing::info!(
@@ -1824,6 +1807,12 @@ impl CandleHarness {
             )));
         }
 
+        // Wrap the InferenceEvent receiver in the OpenAI chat
+        // projection so the HTTP handler keeps receiving
+        // ChatCompletionChunks bit-for-bit identical to before.
+        // The id/created/model_id snapshot taken at request setup
+        // gets stamped into every emitted chunk.
+        let rx = wire_chat::project_chat_stream(event_rx, id, created, model_id);
         Ok(rx)
     }
 }
@@ -2277,27 +2266,16 @@ impl CandleHarness {
         let created = unix_now_secs();
         let tokenizer = tp.tokenizer.clone();
 
-        // Bounded channel — back-pressures the producer when the SSE
-        // writer is slow.
-        let (tx, rx) = mpsc::channel::<ChatCompletionChunk>(32);
+        // Bounded channel — back-pressures the producer when
+        // downstream consumption (wire projector → SSE writer) is
+        // slow.
+        let (tx, event_rx) = mpsc::channel::<InferenceEvent>(32);
 
-        // Role chunk first, before kicking off the heavy work — if the
-        // receiver is gone by now there's no point starting inference.
-        let role_chunk = ChatCompletionChunk {
-            id: id.clone(),
-            object: "chat.completion.chunk".into(),
-            created,
-            model: model_id.clone(),
-            choices: vec![ChunkChoice {
-                index: 0,
-                delta: json!({"role": "assistant"}),
-                finish_reason: None,
-                extra: serde_json::Value::Object(Default::default()),
-            }],
-            usage: None,
-            extra: serde_json::Value::Object(Default::default()),
-        };
-        tx.send(role_chunk)
+        // Start event first, before kicking off the heavy work — if
+        // the receiver is gone by now there's no point starting
+        // inference. The wire projector materialises this as the
+        // OpenAI `delta: {role: "assistant"}` chunk.
+        tx.send(InferenceEvent::Start)
             .await
             .map_err(|_| InferenceError::Other(anyhow::anyhow!("client disconnected")))?;
 
@@ -2344,7 +2322,7 @@ impl CandleHarness {
                 // UTF-8 mid-codepoint boundaries when BPE byte-fallback
                 // split a multi-byte char across tokens.
                 let mut decode_stream = tokenizer.decode_stream(true);
-                let mut finish_reason = "length".to_string();
+                let mut finish_reason = FinishReason::Length;
 
                 'work: {
                     if let Err(e) = pool.clear_kv_cache(&model_id, leader_handle).await {
@@ -2412,12 +2390,12 @@ impl CandleHarness {
                         };
 
                     if Some(next_token) == eos_id {
-                        finish_reason = "stop".into();
+                        finish_reason = FinishReason::Stop;
                     } else {
                         all_tokens.push(next_token);
                         match decode_stream.step(next_token) {
                             Ok(Some(delta)) => {
-                                if !emit_delta(&delta, &tx, &id, created, &model_id).await {
+                                if !emit_delta(&delta, &tx).await {
                                     // Client gone — treat as normal stream end,
                                     // not a failure. No log spam.
                                     break 'work;
@@ -2489,13 +2467,13 @@ impl CandleHarness {
                                 "TP chat_completion (stream): decode step"
                             );
                             if Some(next_token) == eos_id {
-                                finish_reason = "stop".into();
+                                finish_reason = FinishReason::Stop;
                                 break;
                             }
                             all_tokens.push(next_token);
                             match decode_stream.step(next_token) {
                                 Ok(Some(delta)) => {
-                                    if !emit_delta(&delta, &tx, &id, created, &model_id).await {
+                                    if !emit_delta(&delta, &tx).await {
                                         break 'work;
                                     }
                                 }
@@ -2535,37 +2513,32 @@ impl CandleHarness {
                     tracing::info!(
                         prompt_tokens = prompt_len,
                         completion_tokens = all_tokens.len(),
-                        finish_reason = %finish_reason,
+                        finish_reason = finish_reason.as_openai_str(),
                         total_ms = req_start.elapsed().as_millis(),
                         "TP chat_completion (stream): done"
                     );
                 }
 
-                // Final chunk carrying finish_reason — only on the success
-                // path. On failure we drop the channel so the client sees
-                // the SSE stream end abruptly (matches pre-change behaviour
-                // when the failed-path early-returned without final chunk).
+                // Finish event — only on the success path. On
+                // failure we drop the channel so the client sees the
+                // SSE stream end abruptly (matches the pre-refactor
+                // behaviour when the failed-path early-returned
+                // without a final chunk).
                 if failure.is_none() {
-                    let final_chunk = ChatCompletionChunk {
-                        id: id.clone(),
-                        object: "chat.completion.chunk".into(),
-                        created,
-                        model: model_id.clone(),
-                        choices: vec![ChunkChoice {
-                            index: 0,
-                            delta: serde_json::Value::Object(Default::default()),
-                            finish_reason: Some(finish_reason),
-                            extra: serde_json::Value::Object(Default::default()),
-                        }],
-                        usage: None,
-                        extra: serde_json::Value::Object(Default::default()),
-                    };
-                    let _ = tx.send(final_chunk).await;
+                    let _ = tx
+                        .send(InferenceEvent::Finish {
+                            reason: finish_reason,
+                        })
+                        .await;
                 }
             }
             .instrument(span),
         );
 
+        // Wrap the InferenceEvent receiver in the OpenAI chat
+        // projection so the HTTP handler keeps consuming
+        // ChatCompletionChunks unchanged.
+        let rx = wire_chat::project_chat_stream(event_rx, id, created, model_id);
         Ok(rx)
     }
 }
@@ -2793,68 +2766,36 @@ async fn chat_completion_tp_inner(
     })
 }
 
-/// Send `delta` as a `chat.completion.chunk`. Returns `false` if the
-/// receiver has hung up — the caller should bail. Empty deltas (the
-/// DecodeStream is buffering an incomplete UTF-8 sequence) are a
-/// no-op return-true so the caller can treat "no delta yet" and "tx
-/// still live" uniformly.
+/// Send `delta` as an [`InferenceEvent::TextDelta`]. Returns `false`
+/// if the receiver has hung up — the caller should bail. Empty
+/// deltas (the DecodeStream is buffering an incomplete UTF-8
+/// sequence) are a no-op return-true so the caller can treat "no
+/// delta yet" and "tx still live" uniformly.
+///
+/// Wire-format-specific metadata (chunk id, created, model_id)
+/// stays out of this function — the wire projector in
+/// [`crate::wire::openai_chat`] stamps it onto every chunk
+/// downstream.
 #[cfg(feature = "cuda")]
-async fn emit_delta(
-    delta: &str,
-    tx: &mpsc::Sender<ChatCompletionChunk>,
-    id: &str,
-    created: u64,
-    model_id: &str,
-) -> bool {
+async fn emit_delta(delta: &str, tx: &mpsc::Sender<InferenceEvent>) -> bool {
     if delta.is_empty() {
         return true;
     }
-    let chunk = ChatCompletionChunk {
-        id: id.into(),
-        object: "chat.completion.chunk".into(),
-        created,
-        model: model_id.into(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: json!({ "content": delta }),
-            finish_reason: None,
-            extra: serde_json::Value::Object(Default::default()),
-        }],
-        usage: None,
-        extra: serde_json::Value::Object(Default::default()),
-    };
-    tx.send(chunk).await.is_ok()
+    tx.send(InferenceEvent::TextDelta(delta.into()))
+        .await
+        .is_ok()
 }
 
 /// Sync counterpart of [`emit_delta`] for the CPU path's
 /// `spawn_blocking` closure. Same shape, `blocking_send` instead of
 /// `send`. Kept as a separate fn so the async / blocking-send choice
 /// is local to one place per path.
-fn emit_delta_blocking(
-    delta: &str,
-    tx: &mpsc::Sender<ChatCompletionChunk>,
-    id: &str,
-    created: u64,
-    model_id: &str,
-) -> bool {
+fn emit_delta_blocking(delta: &str, tx: &mpsc::Sender<InferenceEvent>) -> bool {
     if delta.is_empty() {
         return true;
     }
-    let chunk = ChatCompletionChunk {
-        id: id.into(),
-        object: "chat.completion.chunk".into(),
-        created,
-        model: model_id.into(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: json!({ "content": delta }),
-            finish_reason: None,
-            extra: serde_json::Value::Object(Default::default()),
-        }],
-        usage: None,
-        extra: serde_json::Value::Object(Default::default()),
-    };
-    tx.blocking_send(chunk).is_ok()
+    tx.blocking_send(InferenceEvent::TextDelta(delta.into()))
+        .is_ok()
 }
 
 /// Errors returned by `CandleHarness::chat_completion`. The
@@ -3019,10 +2960,7 @@ async fn stream_inference_via_worker(
     top_p: Option<f64>,
     seed: u64,
     eos_id: Option<u32>,
-    id: String,
-    created: u64,
-    model_id: String,
-    tx: mpsc::Sender<ChatCompletionChunk>,
+    tx: mpsc::Sender<InferenceEvent>,
 ) -> Result<String> {
     let mut logits_processor = {
         let sampling = if temperature <= 0.0 {
@@ -3045,7 +2983,7 @@ async fn stream_inference_via_worker(
     // codepoint; `Ok(None)` while it's buffering an incomplete one.
     let mut decode_stream = tokenizer.decode_stream(true);
     let prompt_len = prompt_tokens.len();
-    let mut finish_reason = "length".to_string();
+    let mut finish_reason = FinishReason::Length;
 
     worker
         .clear_kv_cache(handle)
@@ -3071,13 +3009,13 @@ async fn stream_inference_via_worker(
     };
 
     if Some(next_token) == eos_id {
-        finish_reason = "stop".into();
+        finish_reason = FinishReason::Stop;
     } else {
         all_tokens.push(next_token);
         match decode_stream.step(next_token) {
             Ok(Some(delta)) => {
-                if !emit_delta(&delta, &tx, &id, created, &model_id).await {
-                    return Ok(finish_reason);
+                if !emit_delta(&delta, &tx).await {
+                    return Ok(finish_reason.as_openai_str().to_string());
                 }
             }
             Ok(None) => {}
@@ -3103,14 +3041,14 @@ async fn stream_inference_via_worker(
                 }
             };
             if Some(next_token) == eos_id {
-                finish_reason = "stop".into();
+                finish_reason = FinishReason::Stop;
                 break;
             }
             all_tokens.push(next_token);
             match decode_stream.step(next_token) {
                 Ok(Some(delta)) => {
-                    if !emit_delta(&delta, &tx, &id, created, &model_id).await {
-                        return Ok(finish_reason);
+                    if !emit_delta(&delta, &tx).await {
+                        return Ok(finish_reason.as_openai_str().to_string());
                     }
                 }
                 Ok(None) => {}
@@ -3119,25 +3057,16 @@ async fn stream_inference_via_worker(
         }
     }
 
-    // Final chunk carrying finish_reason. Matches the run_inference_streaming
-    // shape so the SSE consumer sees an identical termination sequence.
-    let final_chunk = ChatCompletionChunk {
-        id: id.clone(),
-        object: "chat.completion.chunk".into(),
-        created,
-        model: model_id.clone(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: serde_json::Value::Object(Default::default()),
-            finish_reason: Some(finish_reason.clone()),
-            extra: serde_json::Value::Object(Default::default()),
-        }],
-        usage: None,
-        extra: serde_json::Value::Object(Default::default()),
-    };
-    let _ = tx.send(final_chunk).await;
+    // Terminal Finish event. The wire projector turns this into a
+    // format-specific final chunk (`finish_reason: "stop"` on
+    // OpenAI chat, `response.completed` on Responses).
+    let _ = tx
+        .send(InferenceEvent::Finish {
+            reason: finish_reason,
+        })
+        .await;
 
-    Ok(finish_reason)
+    Ok(finish_reason.as_openai_str().to_string())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3204,10 +3133,7 @@ fn run_inference_streaming(
     top_p: Option<f64>,
     seed: u64,
     eos_id: Option<u32>,
-    id: &str,
-    created: u64,
-    model_id: &str,
-    tx: &mpsc::Sender<ChatCompletionChunk>,
+    tx: &mpsc::Sender<InferenceEvent>,
 ) -> Result<()> {
     let mut logits_processor = {
         let sampling = if temperature <= 0.0 {
@@ -3227,19 +3153,19 @@ fn run_inference_streaming(
     // buffers incomplete multi-byte UTF-8 sequences across token
     // boundaries and only emits when a clean codepoint completes.
     let mut decode_stream = tokenizer.decode_stream(true);
-    let mut finish_reason = "length".to_string();
+    let mut finish_reason = FinishReason::Length;
 
     arch.clear_kv_cache()?;
     let logits = chunked_prefill_local(arch, device, prompt_tokens)?;
     let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
 
     if Some(next_token) == eos_id {
-        finish_reason = "stop".into();
+        finish_reason = FinishReason::Stop;
     } else {
         all_tokens.push(next_token);
         match decode_stream.step(next_token) {
             Ok(Some(delta)) => {
-                if !emit_delta_blocking(&delta, tx, id, created, model_id) {
+                if !emit_delta_blocking(&delta, tx) {
                     return Ok(());
                 }
             }
@@ -3252,13 +3178,13 @@ fn run_inference_streaming(
             let logits = arch.forward(&input, prompt_tokens.len() + index)?;
             next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
             if Some(next_token) == eos_id {
-                finish_reason = "stop".into();
+                finish_reason = FinishReason::Stop;
                 break;
             }
             all_tokens.push(next_token);
             match decode_stream.step(next_token) {
                 Ok(Some(delta)) => {
-                    if !emit_delta_blocking(&delta, tx, id, created, model_id) {
+                    if !emit_delta_blocking(&delta, tx) {
                         return Ok(());
                     }
                 }
@@ -3268,21 +3194,9 @@ fn run_inference_streaming(
         }
     }
 
-    let final_chunk = ChatCompletionChunk {
-        id: id.into(),
-        object: "chat.completion.chunk".into(),
-        created,
-        model: model_id.into(),
-        choices: vec![ChunkChoice {
-            index: 0,
-            delta: serde_json::Value::Object(Default::default()),
-            finish_reason: Some(finish_reason),
-            extra: serde_json::Value::Object(Default::default()),
-        }],
-        usage: None,
-        extra: serde_json::Value::Object(Default::default()),
-    };
-    let _ = tx.blocking_send(final_chunk);
+    let _ = tx.blocking_send(InferenceEvent::Finish {
+        reason: finish_reason,
+    });
     Ok(())
 }
 

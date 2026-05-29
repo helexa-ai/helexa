@@ -26,6 +26,16 @@
 
 use std::path::{Path, PathBuf};
 
+/// Process-global lock for tests that mutate `HOME`. Anyone in the
+/// crate touching `HOME` must hold this for the duration of the
+/// read-modify-restore window — otherwise concurrent `cargo test`
+/// workers race and flake.
+///
+/// Only built into the test binaries. Production code never mutates
+/// env vars.
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Expand `~`, `~/`, `$HOME`, and `$HOME/` prefixes against the
 /// current user's home directory. All other inputs pass through
 /// unchanged.
@@ -56,13 +66,11 @@ mod tests {
     use super::*;
 
     /// Set HOME for the duration of the test. Tests using this run
-    /// serially under one mutex because env mutation isn't
-    /// thread-safe — `cargo test` parallel workers would race
-    /// without it.
+    /// serially under the crate-wide [`ENV_LOCK`] because env
+    /// mutation isn't thread-safe — `cargo test` parallel workers
+    /// would race without it.
     fn with_home<F: FnOnce()>(home: &str, body: F) {
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _g = LOCK.lock().unwrap();
+        let _g = ENV_LOCK.lock().unwrap();
         let prior = std::env::var("HOME").ok();
         // SAFETY: tests touch process-global env. The mutex
         // serialises access; sub-threads in other test modules
@@ -148,10 +156,10 @@ mod tests {
 
     #[test]
     fn no_home_env_passes_through() {
-        // Lock + clear HOME for this one.
-        use std::sync::Mutex;
-        static LOCK: Mutex<()> = Mutex::new(());
-        let _g = LOCK.lock().unwrap();
+        // Share the same crate-wide lock as `with_home` — otherwise
+        // a parallel test setting HOME races this clear-and-assert
+        // window.
+        let _g = ENV_LOCK.lock().unwrap();
         let prior = std::env::var("HOME").ok();
         // SAFETY: serialised by LOCK above.
         unsafe {
