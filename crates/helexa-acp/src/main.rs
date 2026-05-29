@@ -142,6 +142,7 @@ async fn main() -> Result<()> {
     }
 
     let agent = Agent::new(&cfg, providers)
+        .await
         .map_err(|e| agent_client_protocol::util::internal_error(format!("agent: {e:#}")))?;
     agent.serve(Stdio::new()).await
 }

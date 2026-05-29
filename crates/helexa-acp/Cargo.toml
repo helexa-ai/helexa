@@ -16,7 +16,12 @@ to cortex (helexa's reverse-proxy / fleet gateway).
 # a painless migration to a dedicated GitHub repo in the future if the
 # project grows beyond helexa's needs. All deps are crates.io.
 [dependencies]
-agent-client-protocol = "0.12"
+# `unstable_session_model` flips on the SessionModelState type and the
+# session/set_model RPC the model-picker dropdown in Zed needs. The
+# feature is upstream-marked unstable; we accept that risk because the
+# model picker is core UX and the alternative (rolling our own
+# extension method) drifts further from spec each time it moves.
+agent-client-protocol = { version = "0.12", features = ["unstable_session_model"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "io-util", "process", "signal"] }
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
 serde = { version = "1", features = ["derive"] }
