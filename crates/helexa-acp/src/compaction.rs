@@ -32,7 +32,7 @@
 //! (over-estimates tokens slightly) so we compact a touch early
 //! rather than a touch late.
 
-use crate::provider::{Message, MessageContent, Role};
+use crate::provider::{Message, MessageContent, MessagePart, Role};
 
 /// Most-recent N messages that are never elided. Roughly "the
 /// current tool round in flight" — assistant turn that called the
@@ -53,6 +53,13 @@ const CHARS_PER_TOKEN: f32 = 3.5;
 /// Per-message envelope overhead (role + JSON framing). Comes out
 /// to a few tokens; tiny but it adds up across long histories.
 const ENVELOPE_TOKENS: usize = 8;
+
+/// Rough per-image token cost used by the budget estimator. Real
+/// vision tokenizers vary widely (256–1024 tokens for typical
+/// resolutions on Qwen3-VL, OpenAI's `low`/`high` detail toggles
+/// pick between ~85 and ~1000+). 512 is a defensible middle that
+/// keeps compaction from treating images as free.
+const IMAGE_TOKENS_APPROX: usize = 512;
 
 /// Stats reported back from [`compact_to_budget`] for the caller to
 /// log. The numbers are estimates (see [`estimate_tokens`]), so
@@ -87,6 +94,19 @@ impl CompactionStats {
 pub fn estimate_tokens(msg: &Message) -> usize {
     let chars = match &msg.content {
         MessageContent::Text { text } => text.len(),
+        MessageContent::MultiPart { parts } => parts
+            .iter()
+            .map(|p| match p {
+                MessagePart::Text { text } => text.len(),
+                // Each image is one block in the context window; the
+                // upstream tokenizer handles the real cost (and it
+                // varies wildly by model — Qwen3-VL uses ~256-1024
+                // tokens per image depending on size). Take a
+                // middle estimate so the budget tracker doesn't
+                // pretend images are free.
+                MessagePart::Image(_) => IMAGE_TOKENS_APPROX * CHARS_PER_TOKEN as usize,
+            })
+            .sum(),
         MessageContent::ToolCalls { text, calls } => {
             let txt = text.as_deref().map(|s| s.len()).unwrap_or(0);
             let calls_size: usize = calls
@@ -205,6 +225,15 @@ fn elide_in_place(msg: &mut Message) -> bool {
             }
             *text = format!("(elided: {} bytes of assistant prose)", text.len());
             true
+        }
+        MessageContent::MultiPart { .. } => {
+            // MultiPart messages today only exist as User turns,
+            // and User turns are protected by the role check in
+            // `compact_to_budget` — so this branch is unreachable
+            // for current call sites. Returning false keeps the
+            // unreachable path benign if a future stage starts
+            // emitting MultiPart on other roles.
+            false
         }
     }
 }

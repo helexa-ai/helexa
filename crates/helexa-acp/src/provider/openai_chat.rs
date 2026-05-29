@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    CompletionEvent, CompletionRequest, Message, MessageContent, ModelInfo, Provider, Role,
-    ToolSpec, UsageStats,
+    CompletionEvent, CompletionRequest, ImageData, Message, MessageContent, MessagePart, ModelInfo,
+    Provider, Role, ToolSpec, UsageStats,
 };
 use crate::config::EndpointConfig;
 
@@ -187,6 +187,71 @@ mod tests {
         assert_eq!(messages[1]["content"], "hi");
         assert!(body.get("tools").is_none(), "empty tools omitted");
         assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn encodes_user_multipart_with_image_as_content_array() {
+        let req = CompletionRequest {
+            model: "vl".into(),
+            messages: vec![Message {
+                role: Role::User,
+                content: MessageContent::MultiPart {
+                    parts: vec![
+                        MessagePart::Text {
+                            text: "what's in this?".into(),
+                        },
+                        MessagePart::Image(ImageData {
+                            mime_type: "image/png".into(),
+                            data: "iVBORw0KGgo=".into(),
+                            uri: None,
+                        }),
+                    ],
+                },
+            }],
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+        };
+        let body = encode_request(&req);
+        let msg = &body["messages"][0];
+        assert_eq!(msg["role"], "user");
+        let content = msg["content"].as_array().expect("content array");
+        assert_eq!(content.len(), 2);
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["text"], "what's in this?");
+        assert_eq!(content[1]["type"], "image_url");
+        assert_eq!(
+            content[1]["image_url"]["url"],
+            "data:image/png;base64,iVBORw0KGgo="
+        );
+    }
+
+    #[test]
+    fn encodes_text_only_user_message_as_string() {
+        // Regression: even though we accept MultiPart now, the
+        // string form must stay the encoded shape for plain text
+        // messages — some upstreams treat array-form as a vision
+        // request and refuse on text-only models.
+        let req = CompletionRequest {
+            model: "m".into(),
+            messages: vec![Message {
+                role: Role::User,
+                content: MessageContent::Text {
+                    text: "plain".into(),
+                },
+            }],
+            tools: vec![],
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+        };
+        let body = encode_request(&req);
+        assert_eq!(body["messages"][0]["content"], "plain");
+        assert!(
+            body["messages"][0]["content"].as_array().is_none(),
+            "text-only must not become array form"
+        );
     }
 
     #[test]
@@ -510,6 +575,10 @@ fn encode_message(m: &Message) -> Value {
             json!({"role": "system", "content": text})
         }
         (Role::User, MessageContent::Text { text }) => json!({"role": "user", "content": text}),
+        (Role::User, MessageContent::MultiPart { parts }) => json!({
+            "role": "user",
+            "content": encode_user_parts(parts),
+        }),
         (Role::Assistant, MessageContent::Text { text }) => {
             json!({"role": "assistant", "content": text})
         }
@@ -549,6 +618,38 @@ fn encode_message(m: &Message) -> Value {
     }
 }
 
+/// Encode a [`MessageContent::MultiPart`] user message as the OpenAI
+/// chat content-array form:
+///
+/// ```jsonc
+/// [
+///   {"type": "text", "text": "describe this:"},
+///   {"type": "image_url", "image_url": {"url": "data:image/png;base64,…"}}
+/// ]
+/// ```
+///
+/// Images use a `data:` URI built from `mime_type` + base64 `data`.
+/// `uri` is intentionally ignored here — the inline data form
+/// round-trips through every upstream we care about (cortex's
+/// model loaders read the bytes directly, OpenAI accepts both
+/// data and remote URLs but data is portable). Sticking to one
+/// shape keeps wire-level surprises down.
+fn encode_user_parts(parts: &[MessagePart]) -> Value {
+    let items: Vec<Value> = parts
+        .iter()
+        .map(|p| match p {
+            MessagePart::Text { text } => json!({ "type": "text", "text": text }),
+            MessagePart::Image(ImageData {
+                mime_type, data, ..
+            }) => json!({
+                "type": "image_url",
+                "image_url": { "url": format!("data:{mime_type};base64,{data}") },
+            }),
+        })
+        .collect();
+    Value::Array(items)
+}
+
 fn role_str(r: Role) -> &'static str {
     match r {
         Role::System => "system",
@@ -561,6 +662,14 @@ fn role_str(r: Role) -> &'static str {
 fn content_as_text(c: &MessageContent) -> String {
     match c {
         MessageContent::Text { text } => text.clone(),
+        MessageContent::MultiPart { parts } => parts
+            .iter()
+            .filter_map(|p| match p {
+                MessagePart::Text { text } => Some(text.as_str()),
+                MessagePart::Image(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n"),
         MessageContent::ToolCalls { text, .. } => text.clone().unwrap_or_default(),
         MessageContent::ToolResult { content, .. } => content.clone(),
     }

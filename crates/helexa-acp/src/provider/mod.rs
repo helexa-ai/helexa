@@ -101,6 +101,11 @@ pub enum MessageContent {
     /// enum, which is incompatible with newtype-of-primitive
     /// variants.
     Text { text: String },
+    /// Mixed text + image user turn. Stage 5 introduces this when
+    /// Zed sends an `ImageContent` block alongside the user's prompt.
+    /// Providers that don't support vision should down-convert by
+    /// dropping image parts and concatenating text parts.
+    MultiPart { parts: Vec<MessagePart> },
     /// Assistant turn that called one or more tools. Stage 3 starts
     /// constructing this when the provider stream yields a
     /// `ToolCallStart` / `ToolCallArgsDelta` sequence.
@@ -115,6 +120,31 @@ pub enum MessageContent {
         tool_call_id: String,
         content: String,
     },
+}
+
+/// One part of a [`MessageContent::MultiPart`] message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum MessagePart {
+    Text { text: String },
+    Image(ImageData),
+}
+
+/// Inline image attachment. `data` is base64-encoded raw image
+/// bytes; the encoder constructs an `image_url` data URI from it
+/// at request time. `uri` carries any pointer the client supplied
+/// (e.g. `file:///tmp/x.png`) — we keep it on the message for
+/// debugging / future providers but the OpenAI encoder ignores it
+/// when `data` is present (data wins, since it round-trips through
+/// every wire format).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageData {
+    pub mime_type: String,
+    /// Base64-encoded image bytes (no `data:` prefix, no padding
+    /// stripped — exactly what `ImageContent.data` carried).
+    pub data: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

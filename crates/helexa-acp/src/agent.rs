@@ -12,7 +12,8 @@
 //! | `session/set_model`   | switch the session's active model (endpoint:model selector) |
 //! | (anything else)       | "not implemented yet" error                                 |
 //!
-//! Stage 5 flips on image content.
+//! Stage 5 flipped on image content. Stage 6 starts adding new wire
+//! protocols (Anthropic /v1/messages first).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -288,9 +289,9 @@ impl Agent {
 }
 
 fn initialize_response(req: &InitializeRequest) -> InitializeResponse {
-    // Stage 2: text-only prompts. Image / audio / embedded resources
-    // flip on in later stages.
-    let prompt_caps = PromptCapabilities::default();
+    // Stage 5: image is on (Zed clipboard / drag-drop). Audio and
+    // embedded resources flip on in later stages.
+    let prompt_caps = PromptCapabilities::default().image(true);
     // Stage 3b: advertise both the top-level `load_session` flag and
     // the `session/list` sub-capability. Zed (and other ACP clients)
     // uses `session/list` to discover the session id that belongs to
@@ -488,6 +489,31 @@ fn replay_history(cx: &ConnectionTo<Client>, session_id: &SessionId, history: &[
                 send(SessionUpdate::UserMessageChunk(text_chunk(text.clone())));
                 total_events += 1;
             }
+            (Role::User, MessageContent::MultiPart { parts }) => {
+                // We can re-emit text parts as UserMessageChunks.
+                // Images get a placeholder line so the user sees
+                // *that* an image was attached; re-replaying the
+                // image bytes themselves through ACP would require
+                // a path round-trip we don't currently keep.
+                for part in parts {
+                    match part {
+                        crate::provider::MessagePart::Text { text } => {
+                            send(SessionUpdate::UserMessageChunk(text_chunk(text.clone())));
+                            total_events += 1;
+                        }
+                        crate::provider::MessagePart::Image(img) => {
+                            let label = match &img.uri {
+                                Some(u) => format!("[image: {u}]"),
+                                None => {
+                                    format!("[image: {} ({} bytes)]", img.mime_type, img.data.len())
+                                }
+                            };
+                            send(SessionUpdate::UserMessageChunk(text_chunk(label)));
+                            total_events += 1;
+                        }
+                    }
+                }
+            }
             (Role::Assistant, MessageContent::Text { text }) => {
                 send(SessionUpdate::AgentMessageChunk(text_chunk(text.clone())));
                 total_events += 1;
@@ -586,10 +612,18 @@ fn handle_list_sessions(req: ListSessionsRequest) -> anyhow::Result<ListSessions
 /// first user turn's text (truncated to ~60 chars). Empty string
 /// becomes `None` so Zed can fall back to its own placeholder.
 fn derive_session_title(history: &[Message]) -> Option<String> {
+    use crate::provider::MessagePart;
     history
         .iter()
         .find_map(|msg| match (msg.role, &msg.content) {
-            (Role::User, MessageContent::Text { text }) => Some(text.as_str()),
+            (Role::User, MessageContent::Text { text }) => Some(text.clone()),
+            (Role::User, MessageContent::MultiPart { parts }) => parts.iter().find_map(|p| {
+                if let MessagePart::Text { text } = p {
+                    Some(text.clone())
+                } else {
+                    None
+                }
+            }),
             _ => None,
         })
         .map(|s| {
@@ -823,10 +857,10 @@ async fn drive_prompt(
         state.cancel.cancel();
         let cancel = CancellationToken::new();
         state.cancel = cancel.clone();
-        let user_text = flatten_prompt(&req.prompt);
+        let user_content = flatten_prompt(&req.prompt);
         state.history.push(Message {
             role: Role::User,
-            content: MessageContent::Text { text: user_text },
+            content: user_content,
         });
         (
             state.history.clone(),
@@ -1422,31 +1456,76 @@ fn map_finish_reason(reason: Option<&str>) -> StopReason {
 }
 
 /// Pure helper — turn a prompt's ContentBlocks into the user-message
-/// text that goes into history. Lifted out so unit tests don't need a
-/// running runtime.
-fn flatten_prompt(blocks: &[ContentBlock]) -> String {
-    let mut out = String::new();
-    for block in blocks {
-        if !out.is_empty() {
-            out.push_str("\n\n");
+/// content that goes into history.
+///
+/// - All-text prompts collapse to [`MessageContent::Text`] (cheaper
+///   to encode upstream — many OpenAI-compatible servers prefer the
+///   string form when there's no reason to use the array form).
+/// - Anything with at least one image becomes
+///   [`MessageContent::MultiPart`], preserving block order so the
+///   user's "this image, then this text" pacing reaches the model.
+/// - `ResourceLink` is rendered as inline text so the model knows
+///   it was referenced. Audio and embedded resources aren't
+///   advertised as supported in [`PromptCapabilities`]; drop with a
+///   warning if a non-conformant client sends one.
+fn flatten_prompt(blocks: &[ContentBlock]) -> MessageContent {
+    use crate::provider::{ImageData, MessagePart};
+
+    let mut parts: Vec<MessagePart> = Vec::new();
+    let mut text_buf = String::new();
+    let flush_text = |buf: &mut String, parts: &mut Vec<MessagePart>| {
+        if !buf.is_empty() {
+            parts.push(MessagePart::Text {
+                text: std::mem::take(buf),
+            });
         }
+    };
+
+    for block in blocks {
         match block {
-            ContentBlock::Text(t) => out.push_str(&t.text),
-            ContentBlock::ResourceLink(link) => {
-                // Stage 2 has no fs access; surface the link as a
-                // textual reference so the model at least knows it
-                // was asked about something.
-                out.push_str(&format!("[resource link: {}]", link.uri));
+            ContentBlock::Text(t) => {
+                if !text_buf.is_empty() {
+                    text_buf.push_str("\n\n");
+                }
+                text_buf.push_str(&t.text);
             }
-            // Image / Audio / Resource: not advertised in
-            // PromptCapabilities for Stage 2; a well-behaved client
-            // shouldn't send these. If one does, drop and warn.
+            ContentBlock::ResourceLink(link) => {
+                if !text_buf.is_empty() {
+                    text_buf.push_str("\n\n");
+                }
+                text_buf.push_str(&format!("[resource link: {}]", link.uri));
+            }
+            ContentBlock::Image(img) => {
+                flush_text(&mut text_buf, &mut parts);
+                parts.push(MessagePart::Image(ImageData {
+                    mime_type: img.mime_type.clone(),
+                    data: img.data.clone(),
+                    uri: img.uri.clone(),
+                }));
+            }
             other => {
-                tracing::warn!(?other, "ignoring unsupported content block in Stage 2");
+                tracing::warn!(?other, "ignoring unsupported content block");
             }
         }
     }
-    out
+    flush_text(&mut text_buf, &mut parts);
+
+    // Collapse to plain Text when there's no image part — the
+    // OpenAI string-form is friendlier to non-vision endpoints
+    // (some treat the array form as a vision-only path).
+    let has_image = parts.iter().any(|p| matches!(p, MessagePart::Image(_)));
+    if !has_image {
+        let text = parts
+            .into_iter()
+            .filter_map(|p| match p {
+                MessagePart::Text { text } => Some(text),
+                MessagePart::Image(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        return MessageContent::Text { text };
+    }
+    MessageContent::MultiPart { parts }
 }
 
 /// Pure helper — pick which provider handles a session's `model_id`.
@@ -1475,9 +1554,16 @@ mod tests {
 
     // ── flatten_prompt ──────────────────────────────────────────────
 
+    fn expect_text(content: &MessageContent) -> &str {
+        match content {
+            MessageContent::Text { text } => text.as_str(),
+            other => panic!("expected MessageContent::Text, got {other:?}"),
+        }
+    }
+
     #[test]
     fn flatten_empty_prompt_is_empty() {
-        assert_eq!(flatten_prompt(&[]), "");
+        assert_eq!(expect_text(&flatten_prompt(&[])), "");
     }
 
     #[test]
@@ -1486,7 +1572,7 @@ mod tests {
             ContentBlock::Text(TextContent::new("first")),
             ContentBlock::Text(TextContent::new("second")),
         ];
-        assert_eq!(flatten_prompt(&blocks), "first\n\nsecond");
+        assert_eq!(expect_text(&flatten_prompt(&blocks)), "first\n\nsecond");
     }
 
     #[test]
@@ -1495,7 +1581,50 @@ mod tests {
             "readme",
             "file:///tmp/x",
         ))];
-        assert_eq!(flatten_prompt(&blocks), "[resource link: file:///tmp/x]");
+        assert_eq!(
+            expect_text(&flatten_prompt(&blocks)),
+            "[resource link: file:///tmp/x]"
+        );
+    }
+
+    #[test]
+    fn flatten_text_and_image_produces_multipart_in_order() {
+        use crate::provider::MessagePart;
+        let blocks = vec![
+            ContentBlock::Text(TextContent::new("describe:")),
+            ContentBlock::Image(agent_client_protocol::schema::ImageContent::new(
+                "iVBORw0KGgo=",
+                "image/png",
+            )),
+            ContentBlock::Text(TextContent::new("…in detail.")),
+        ];
+        let content = flatten_prompt(&blocks);
+        match content {
+            MessageContent::MultiPart { parts } => {
+                assert_eq!(parts.len(), 3);
+                assert!(matches!(&parts[0], MessagePart::Text { text } if text == "describe:"));
+                assert!(matches!(&parts[1], MessagePart::Image(img)
+                    if img.mime_type == "image/png" && img.data == "iVBORw0KGgo="));
+                assert!(matches!(&parts[2], MessagePart::Text { text } if text == "…in detail."));
+            }
+            other => panic!("expected MultiPart, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn flatten_image_only_still_produces_multipart() {
+        use crate::provider::MessagePart;
+        let blocks = vec![ContentBlock::Image(
+            agent_client_protocol::schema::ImageContent::new("AAAA", "image/jpeg"),
+        )];
+        match flatten_prompt(&blocks) {
+            MessageContent::MultiPart { parts } => {
+                assert_eq!(parts.len(), 1);
+                assert!(matches!(&parts[0], MessagePart::Image(img)
+                    if img.mime_type == "image/jpeg"));
+            }
+            other => panic!("expected MultiPart, got {other:?}"),
+        }
     }
 
     // ── resolve_provider ────────────────────────────────────────────
