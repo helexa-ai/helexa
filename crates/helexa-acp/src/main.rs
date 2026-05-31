@@ -29,7 +29,9 @@ mod tools;
 
 use agent::Agent;
 use config::{Config, EndpointConfig, WireApi};
-use provider::{Provider, openai_chat::OpenAIChatProvider};
+use provider::{
+    Provider, openai_chat::OpenAIChatProvider, openai_responses::OpenAIResponsesProvider,
+};
 
 /// Set up tracing. Logs go to stderr by default — stdout is
 /// reserved for the JSON-RPC stream. Setting `HELEXA_ACP_LOG_FILE`
@@ -91,11 +93,7 @@ fn init_tracing() {
 fn build_provider(endpoint: EndpointConfig) -> anyhow::Result<Arc<dyn Provider>> {
     match endpoint.wire_api {
         WireApi::OpenAiChat => Ok(Arc::new(OpenAIChatProvider::new(endpoint)?)),
-        WireApi::OpenAiResponses => Err(anyhow::anyhow!(
-            "endpoint '{}' wire_api 'openai-responses' is reserved for a future provider; \
-             use 'openai-chat' for now or wait for the OpenAIResponsesProvider impl",
-            endpoint.name
-        )),
+        WireApi::OpenAiResponses => Ok(Arc::new(OpenAIResponsesProvider::new(endpoint)?)),
         WireApi::AnthropicMessages => Err(anyhow::anyhow!(
             "endpoint '{}' wire_api 'anthropic-messages' is reserved for a future provider",
             endpoint.name

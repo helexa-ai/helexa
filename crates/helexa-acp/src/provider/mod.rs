@@ -18,6 +18,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 pub mod openai_chat;
+pub mod openai_responses;
 
 /// Provider-agnostic LLM endpoint. Implementations translate between
 /// [`CompletionRequest`] / [`CompletionEvent`] and whatever wire
