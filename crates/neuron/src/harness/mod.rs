@@ -2,6 +2,7 @@
 
 pub mod arch;
 pub mod candle;
+pub mod chat_template;
 pub mod device_worker;
 pub mod tp;
 

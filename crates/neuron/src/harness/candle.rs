@@ -167,6 +167,15 @@ pub struct LoadedModel {
     /// through as plain text in that case and the consumer parses
     /// the markers itself if it knows how.
     pub tool_call_tokens: Option<ToolCallTokenPair>,
+    /// Raw Jinja `chat_template` string loaded from this model's
+    /// `tokenizer_config.json` at load time. `None` when the file
+    /// is absent / unparseable / lacks the field. When `Some`,
+    /// the prompt-build path renders it through `minijinja` with
+    /// `chat_template_kwargs` from the request body; when `None`,
+    /// the hardcoded Qwen3 ChatML fallback (`format_qwen3_prompt`)
+    /// is used. The `NEURON_USE_CHAT_TEMPLATE=false` env var
+    /// forces the fallback path even when `Some`.
+    pub chat_template: Option<String>,
 }
 
 impl LoadedModel {
@@ -229,6 +238,8 @@ pub struct TpLoadedModel {
     pub reasoning_tokens: Option<ReasoningTokenPair>,
     /// Same shape as [`LoadedModel::tool_call_tokens`].
     pub tool_call_tokens: Option<ToolCallTokenPair>,
+    /// Same shape as [`LoadedModel::chat_template`].
+    pub chat_template: Option<String>,
 }
 
 #[cfg(feature = "cuda")]
@@ -1397,7 +1408,7 @@ impl CandleHarness {
         let _inference_guard = loaded.inference_lock.lock().await;
 
         let result = async {
-            let prompt = format_qwen3_prompt(&request.messages);
+            let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request);
 
             let encoding = loaded
                 .tokenizer
@@ -1702,7 +1713,7 @@ impl CandleHarness {
             }
         };
 
-        let prompt = format_qwen3_prompt(&request.messages);
+        let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request);
         let encoding = loaded
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -2081,6 +2092,19 @@ impl Harness for CandleHarness {
                 "tool-call markers detected — streaming will emit structured ToolCall events"
             );
         }
+        // Probe `tokenizer_config.json` in the same snapshot dir.
+        // When present and non-empty, the inference path renders
+        // this Jinja template with the request's
+        // `chat_template_kwargs` instead of using the hardcoded
+        // ChatML formatter. Best-effort: missing or unparseable
+        // configs silently fall through to the legacy path.
+        let chat_template = super::chat_template::load_chat_template_alongside(&tokenizer_path);
+        if chat_template.is_some() {
+            tracing::info!(
+                model = %spec.model_id,
+                "chat_template loaded from tokenizer_config.json — prompt assembly will use the model's own template"
+            );
+        }
 
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
@@ -2095,6 +2119,7 @@ impl Harness for CandleHarness {
             inference_lock: tokio::sync::Mutex::new(()),
             reasoning_tokens,
             tool_call_tokens,
+            chat_template,
         });
 
         let mut models = self.models.write().await;
@@ -2288,6 +2313,13 @@ impl CandleHarness {
                 "TP load: tool-call markers detected"
             );
         }
+        let chat_template = super::chat_template::load_chat_template_alongside(&tokenizer_path);
+        if chat_template.is_some() {
+            tracing::info!(
+                model = %spec.model_id,
+                "TP load: chat_template loaded from tokenizer_config.json"
+            );
+        }
 
         let tp_loaded = StdArc::new(TpLoadedModel {
             model_id: spec.model_id.clone(),
@@ -2303,6 +2335,7 @@ impl CandleHarness {
             worker: leader_worker,
             reasoning_tokens,
             tool_call_tokens,
+            chat_template,
         });
 
         let mut models = self.models.write().await;
@@ -2429,7 +2462,7 @@ impl CandleHarness {
             return Err(poisoned_error(&request.model));
         }
 
-        let prompt = format_qwen3_prompt(&request.messages);
+        let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request);
         let encoding = tp
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -2893,7 +2926,7 @@ async fn chat_completion_tp_inner(
     let req_start = std::time::Instant::now();
     let model_id = request.model.clone();
 
-    let prompt = format_qwen3_prompt(&request.messages);
+    let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request);
     let encoding = tp
         .tokenizer
         .encode(prompt.as_str(), true)
@@ -3240,6 +3273,66 @@ pub enum InferenceError {
     InsufficientVram { free_mb: u64, required_mb: u64 },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+/// Build the model's prompt from a [`ChatCompletionRequest`].
+///
+/// Prefers the model's own `chat_template` when one was loaded
+/// from `tokenizer_config.json` at startup and the
+/// `NEURON_USE_CHAT_TEMPLATE` kill switch isn't tripped. The
+/// request's `chat_template_kwargs` (e.g.
+/// `{"enable_thinking": false}` on Qwen3) and `tools` array flow
+/// into the template's Jinja context so model-specific behaviour
+/// like reasoning-suppression-at-generation works.
+///
+/// Falls back to [`format_qwen3_prompt`] (the legacy hardcoded
+/// ChatML glue) on any of:
+///
+/// - no `chat_template` loaded for this model (older quantised
+///   variants, fallback-only models)
+/// - the env kill switch is set to a falsy value
+/// - the template rendered to an error (caller can flip the env
+///   var to force fallback while debugging the template)
+///
+/// Failures are logged at `warn` so an operator running with
+/// `RUST_LOG=neuron=debug` sees which path each request took.
+fn build_prompt_for_request(
+    chat_template: Option<&str>,
+    request: &ChatCompletionRequest,
+) -> String {
+    if !super::chat_template::chat_templates_enabled() {
+        return format_qwen3_prompt(&request.messages);
+    }
+    let Some(tmpl) = chat_template else {
+        return format_qwen3_prompt(&request.messages);
+    };
+
+    // Pull `chat_template_kwargs` and `tools` from the request's
+    // catch-all `extra` field. Both are optional; absent fields
+    // become `Value::Null`, which the renderer skips inserting
+    // into the Jinja context.
+    let kwargs = request
+        .extra
+        .get("chat_template_kwargs")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let tools = request
+        .extra
+        .get("tools")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    match super::chat_template::render_chat_template(tmpl, &request.messages, &tools, &kwargs) {
+        Ok(prompt) => prompt,
+        Err(e) => {
+            tracing::warn!(
+                model = %request.model,
+                error = %format!("{e:#}"),
+                "chat_template render failed; falling back to format_qwen3_prompt"
+            );
+            format_qwen3_prompt(&request.messages)
+        }
+    }
 }
 
 /// Apply the Qwen3 chat template:

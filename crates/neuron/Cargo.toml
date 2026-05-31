@@ -76,6 +76,15 @@ cudarc = { version = "0.19", optional = true, default-features = false, features
 half = { version = "2.5", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.4", features = ["tokio"] }
+# Jinja-compatible template renderer for the model's
+# `tokenizer_config.json::chat_template`. Hugging Face's chat
+# templates use a strict subset of Jinja2 that minijinja supports
+# out of the box. ~80KB compiled; pure Rust, no async surface.
+# Features: `builtins` for the `is defined` / `default` filters HF
+# templates use; `json` for `tojson` (some Qwen3 templates emit
+# tool definitions via tojson); `serde` so we can hand it a
+# serde_json::Value as the context.
+minijinja = { version = "2", features = ["builtins", "json", "serde"] }
 # Direct dep on `safetensors` (re-exported by candle but its `TensorView`
 # / `slice::IndexOp` types are public-but-not-re-exported). Used by the
 # tp `fused_load` module to read per-rank slices of fused QKV tensors
