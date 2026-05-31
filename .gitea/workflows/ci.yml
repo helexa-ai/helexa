@@ -105,6 +105,23 @@ jobs:
   cuda-check:
     name: CUDA type-check
     runs-on: cuda-13.0
+    # The workflow-level env sets `RUSTC_WRAPPER: sccache` for the
+    # `rust` runner (where fmt/clippy/test live and sccache is
+    # installed). The `cuda-13.0` runner doesn't have sccache on
+    # PATH, so inheriting the wrapper makes cargo bail with
+    # `could not execute process `sccache rustc -vV` (never executed)`
+    # before borrow-check even starts. Clear it locally. Also clear
+    # SCCACHE_* so cargo doesn't try to contact the cache (the
+    # remote auth headers come from secrets that aren't present on
+    # this runner either). Lose the cache, keep the gate.
+    env:
+      RUSTC_WRAPPER: ""
+      SCCACHE_BUCKET: ""
+      SCCACHE_ENDPOINT: ""
+      SCCACHE_REGION: ""
+      SCCACHE_S3_USE_SSL: ""
+      AWS_ACCESS_KEY_ID: ""
+      AWS_SECRET_ACCESS_KEY: ""
     steps:
       - uses: actions/checkout@v4
       - name: cargo check --features cuda (with retry)
