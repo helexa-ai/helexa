@@ -92,10 +92,40 @@ jobs:
           exit 1
       - run: sccache --show-stats
 
+  # Type-check the CUDA-only code path. Borrow-check-only — we
+  # never run the tests here (the runner has no GPU). This catches
+  # the category of bug where a refactor compiles fine under the
+  # default feature set (which is what the `clippy` and `test` jobs
+  # exercise) but fails inside a `#[cfg(feature = "cuda")]` block.
+  # Lives on `runs-on: rpm` because that's where nvcc / cudarc's
+  # build prerequisites are installed; the generic `rust` runner
+  # doesn't have them.
+  cuda-check:
+    name: CUDA type-check
+    runs-on: rpm
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo check --features cuda (with retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::cuda-check attempt ${attempt}"
+            if cargo check -p neuron --features cuda --all-targets; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "cuda-check failed on attempt ${attempt}"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "cuda-check failed after 3 attempts"
+          exit 1
+
   srpm-cortex:
     name: Build cortex SRPM
     runs-on: rpm
-    needs: [fmt, clippy, test]
+    needs: [fmt, clippy, test, cuda-check]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +185,7 @@ jobs:
   srpm-neuron:
     name: Build neuron SRPM
     runs-on: rpm
-    needs: [fmt, clippy, test]
+    needs: [fmt, clippy, test, cuda-check]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
