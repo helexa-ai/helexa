@@ -2265,6 +2265,13 @@ impl CandleHarness {
         let id = format!("chatcmpl-{:x}", unix_subsec_nanos());
         let created = unix_now_secs();
         let tokenizer = tp.tokenizer.clone();
+        // The spawned orchestration task below consumes both `id`
+        // and `model_id` (tracing, pool lookups, NCCL ops use them
+        // heavily). The wire projector at the bottom of this fn
+        // also needs them to stamp request metadata onto every
+        // chunk. Clone here so each side owns its copy.
+        let projector_id = id.clone();
+        let projector_model_id = model_id.clone();
 
         // Bounded channel — back-pressures the producer when
         // downstream consumption (wire projector → SSE writer) is
@@ -2537,8 +2544,11 @@ impl CandleHarness {
 
         // Wrap the InferenceEvent receiver in the OpenAI chat
         // projection so the HTTP handler keeps consuming
-        // ChatCompletionChunks unchanged.
-        let rx = wire_chat::project_chat_stream(event_rx, id, created, model_id);
+        // ChatCompletionChunks unchanged. Uses the clones we
+        // stashed before the spawn — the originals were moved
+        // into the orchestration task above.
+        let rx =
+            wire_chat::project_chat_stream(event_rx, projector_id, created, projector_model_id);
         Ok(rx)
     }
 }
