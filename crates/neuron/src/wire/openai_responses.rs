@@ -325,6 +325,19 @@ async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &Respon
     let frames = [
         ResponseStreamFrame {
             event_name: events::CREATED,
+            data: json!({ "response": shell.clone() }),
+        },
+        // `response.in_progress` carries the same shell as
+        // `response.created` — both report the "in_progress"
+        // status and both are payload-light bookkeeping events.
+        // The distinction is meaningful to clients that
+        // differentiate "request validated" from "model is
+        // generating" in their UI (loading spinner vs streaming
+        // spinner). OpenAI's own Responses SSE emits them as a
+        // pair; matching the wire shape avoids subtle client
+        // breakage.
+        ResponseStreamFrame {
+            event_name: events::IN_PROGRESS,
             data: json!({ "response": shell }),
         },
         ResponseStreamFrame {
@@ -722,6 +735,7 @@ mod tests {
             names,
             vec![
                 events::CREATED,
+                events::IN_PROGRESS,
                 events::OUTPUT_ITEM_ADDED,
                 events::CONTENT_PART_ADDED,
                 events::OUTPUT_TEXT_DELTA,
@@ -733,15 +747,17 @@ mod tests {
             ]
         );
 
-        // The two deltas should carry the right text.
-        assert_eq!(frames[3].data["delta"], "hel");
-        assert_eq!(frames[4].data["delta"], "lo");
+        // The two deltas should carry the right text. Indices
+        // shifted by one after IN_PROGRESS inserted between
+        // CREATED and OUTPUT_ITEM_ADDED.
+        assert_eq!(frames[4].data["delta"], "hel");
+        assert_eq!(frames[5].data["delta"], "lo");
 
         // The done event has the full accumulated text.
-        assert_eq!(frames[5].data["text"], "hello");
+        assert_eq!(frames[6].data["text"], "hello");
 
         // Completed event carries the full message item.
-        let completed = &frames[8].data["response"];
+        let completed = &frames[9].data["response"];
         assert_eq!(completed["status"], "completed");
         let output = completed["output"].as_array().unwrap();
         assert_eq!(output.len(), 1);

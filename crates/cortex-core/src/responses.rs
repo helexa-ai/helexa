@@ -212,6 +212,11 @@ pub struct ResponsesUsage {
 /// Responses API.
 pub mod events {
     pub const CREATED: &str = "response.created";
+    /// Fired between `response.created` and the first output-item
+    /// event. Marks "request validated, model is generating" —
+    /// some clients use it to differentiate the "warming up" state
+    /// from "streaming tokens" in their UI.
+    pub const IN_PROGRESS: &str = "response.in_progress";
     pub const OUTPUT_ITEM_ADDED: &str = "response.output_item.added";
     pub const CONTENT_PART_ADDED: &str = "response.content_part.added";
     pub const OUTPUT_TEXT_DELTA: &str = "response.output_text.delta";
