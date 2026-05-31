@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+pub mod anthropic_messages;
 pub mod openai_chat;
 pub mod openai_responses;
 
