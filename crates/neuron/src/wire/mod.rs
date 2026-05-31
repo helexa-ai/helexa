@@ -21,4 +21,7 @@ pub mod event;
 pub mod openai_chat;
 pub mod openai_responses;
 
-pub use event::{FinishReason, InferenceEvent, ReasoningTokenPair, detect_reasoning_token_pair};
+pub use event::{
+    FinishReason, InferenceEvent, ReasoningTokenPair, ToolCallTokenPair,
+    detect_reasoning_token_pair, detect_tool_call_token_pair,
+};

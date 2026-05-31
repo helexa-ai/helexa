@@ -172,6 +172,22 @@ pub fn project_chat_stream_with(
                     was_in_reasoning = true;
                     chunks
                 }
+                InferenceEvent::ToolCall {
+                    index,
+                    id: call_id,
+                    name,
+                    arguments,
+                } => {
+                    // OpenAI streaming shape for tool calls:
+                    // `delta.tool_calls[]` with id + function.name
+                    // on the first chunk per index, then
+                    // function.arguments deltas. We have the
+                    // complete arguments buffered already, so one
+                    // delta carries everything.
+                    vec![tool_call_chunk(
+                        &id, created, &model_id, index, &call_id, &name, &arguments,
+                    )]
+                }
                 InferenceEvent::Finish { reason } => {
                     vec![final_chunk(&id, created, &model_id, reason)]
                 }
@@ -214,6 +230,47 @@ fn content_chunk(id: &str, created: u64, model_id: &str, text: &str) -> ChatComp
         choices: vec![ChunkChoice {
             index: 0,
             delta: json!({ "content": text }),
+            finish_reason: None,
+            extra: serde_json::Value::Object(Default::default()),
+        }],
+        usage: None,
+        extra: serde_json::Value::Object(Default::default()),
+    }
+}
+
+/// OpenAI chat streaming shape for a tool call. One chunk per
+/// call slot, carrying id + name + the complete arguments JSON.
+/// Mirrors the format real OpenAI emits on the streaming path,
+/// minus the per-token arguments-streaming complication (we have
+/// the whole buffer already after the model finishes the
+/// `<tool_call>...</tool_call>` block).
+fn tool_call_chunk(
+    id: &str,
+    created: u64,
+    model_id: &str,
+    index: usize,
+    call_id: &str,
+    name: &str,
+    arguments: &str,
+) -> ChatCompletionChunk {
+    ChatCompletionChunk {
+        id: id.into(),
+        object: "chat.completion.chunk".into(),
+        created,
+        model: model_id.into(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: json!({
+                "tool_calls": [{
+                    "index": index,
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": arguments,
+                    }
+                }],
+            }),
             finish_reason: None,
             extra: serde_json::Value::Object(Default::default()),
         }],

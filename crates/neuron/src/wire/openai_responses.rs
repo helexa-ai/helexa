@@ -296,6 +296,13 @@ async fn run_projection(
                 // Stage where it'd land: a `response.reasoning_*`
                 // event family alongside `response.output_text.*`.
             }
+            InferenceEvent::ToolCall { .. } => {
+                // Responses-side tool-call routing not wired yet
+                // (would emit response.function_call_arguments.*
+                // events). Drop for now; the chat-completions
+                // projector handles tool calls. Future work
+                // tracked in #7 alongside the in_progress event.
+            }
             InferenceEvent::Finish { reason } => {
                 finish = Some(reason);
             }

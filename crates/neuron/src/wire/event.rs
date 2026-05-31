@@ -44,16 +44,29 @@ pub enum InferenceEvent {
     /// concatenate into the complete reply.
     TextDelta(String),
     /// Reasoning / scratchpad text the model emitted inside a
-    /// `<think>` block (or equivalent). Producers that don't
-    /// surface reasoning separately use [`TextDelta`] for
-    /// everything; future split lives here.
-    ///
-    /// Not yet emitted by the candle harness — present so future
-    /// stages (qwen3 `<think>` routing, OpenAI o-series reasoning)
-    /// have a typed home without breaking the existing
-    /// projections.
-    #[allow(dead_code)]
+    /// `<think>` block (or equivalent). The harness routes
+    /// content between marker tokens here so wire projectors can
+    /// decide what to do with it (chat completions drops by
+    /// default; Responses API has a dedicated event family).
     ReasoningDelta(String),
+    /// A tool call has been parsed out of a `<tool_call>{json}</tool_call>`
+    /// block. Carries the parsed name + arguments JSON string
+    /// (Anthropic / OpenAI projectors emit their own wire shape
+    /// from this).
+    ///
+    /// `index` is the call slot — incremented per tool call in a
+    /// turn so wire formats that order calls by index
+    /// (OpenAI chat completions) can correlate.
+    ToolCall {
+        index: usize,
+        id: String,
+        name: String,
+        /// Complete JSON arguments string. The model could in
+        /// principle stream these token-by-token, but our
+        /// extraction buffers the whole block until `</tool_call>`
+        /// arrives and emits exactly one event per call.
+        arguments: String,
+    },
     /// The stream is complete. Carries the reason so wire formats
     /// that use it (OpenAI's `finish_reason`, Anthropic's
     /// `stop_reason`) can render it without re-parsing.
@@ -137,6 +150,51 @@ const KNOWN_REASONING_MARKERS: &[(&str, &str)] = &[
     ("<reasoning>", "</reasoning>"),
 ];
 
+/// Open/close token IDs for the model's tool-call marker
+/// convention (or `None` for models that don't emit structured
+/// tool calls). Same shape as [`ReasoningTokenPair`]: probed once
+/// at load time, consumed by the inference loop to switch between
+/// "emit visible deltas" and "buffer JSON for the next tool
+/// call".
+#[derive(Debug, Clone)]
+pub struct ToolCallTokenPair {
+    pub open_id: u32,
+    pub close_id: u32,
+    pub open_text: String,
+    pub close_text: String,
+}
+
+/// Tool-call marker conventions. Open-weight tool-use models
+/// converged on `<tool_call>` / `</tool_call>` (Qwen3-Coder /
+/// -Instruct, the Hermes function-call format, DeepSeek-Coder,
+/// gpt-oss). The pair lives alongside the reasoning markers in
+/// the same `added_tokens` table.
+const KNOWN_TOOL_CALL_MARKERS: &[(&str, &str)] = &[("<tool_call>", "</tool_call>")];
+
+/// Probe a tokenizer for known tool-call marker pairs. Mirrors
+/// [`detect_reasoning_token_pair`] — both open AND close must
+/// resolve for the pair to be returned. `None` means the model
+/// doesn't emit structured tool calls (or its tokenizer split
+/// the markers across tokens).
+pub fn detect_tool_call_token_pair<F>(token_to_id: F) -> Option<ToolCallTokenPair>
+where
+    F: Fn(&str) -> Option<u32>,
+{
+    for (open_text, close_text) in KNOWN_TOOL_CALL_MARKERS {
+        let open_id = token_to_id(open_text);
+        let close_id = token_to_id(close_text);
+        if let (Some(open_id), Some(close_id)) = (open_id, close_id) {
+            return Some(ToolCallTokenPair {
+                open_id,
+                close_id,
+                open_text: (*open_text).into(),
+                close_text: (*close_text).into(),
+            });
+        }
+    }
+    None
+}
+
 /// Inspect a tokenizer for known reasoning-marker pairs and return
 /// the first match. The tokenizer types this trait is defined over
 /// just need to expose `token_to_id(&str) -> Option<u32>` so this
@@ -211,6 +269,24 @@ mod tests {
     fn returns_none_for_non_reasoning_tokenizer() {
         let m: HashMap<&'static str, u32> = HashMap::new();
         assert!(detect_reasoning_token_pair(lookup(&m)).is_none());
+    }
+
+    #[test]
+    fn detects_tool_call_markers() {
+        let mut m = HashMap::new();
+        m.insert("<tool_call>", 151657);
+        m.insert("</tool_call>", 151658);
+        let pair = detect_tool_call_token_pair(lookup(&m)).expect("pair detected");
+        assert_eq!(pair.open_id, 151657);
+        assert_eq!(pair.close_id, 151658);
+        assert_eq!(pair.open_text, "<tool_call>");
+        assert_eq!(pair.close_text, "</tool_call>");
+    }
+
+    #[test]
+    fn returns_none_for_non_tool_use_tokenizer() {
+        let m: HashMap<&'static str, u32> = HashMap::new();
+        assert!(detect_tool_call_token_pair(lookup(&m)).is_none());
     }
 
     #[test]
