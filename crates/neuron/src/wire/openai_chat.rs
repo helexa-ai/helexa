@@ -30,12 +30,41 @@ use cortex_core::openai::{ChatCompletionChunk, ChunkChoice};
 use serde_json::json;
 use tokio::sync::mpsc;
 
-use super::event::{FinishReason, InferenceEvent};
+use super::event::{FinishReason, InferenceEvent, ReasoningTokenPair};
 
 /// Output channel buffer size. Mirrors the input side's bound; one
 /// event maps to at most one chunk, so equal capacity keeps the
 /// two ends in sync without surprising memory growth.
 const CHUNK_CHANNEL_CAPACITY: usize = 32;
+
+/// Per-stream config for the chat projector. Used by the
+/// production handler to thread per-request choices (currently:
+/// whether to surface reasoning content) into the projection
+/// without bloating the function signature.
+#[derive(Debug, Clone, Default)]
+pub struct ChatProjectionConfig {
+    /// When `true`, reasoning content is re-wrapped with the
+    /// model's literal open/close markers and emitted as content
+    /// deltas — preserving the on-the-wire shape that
+    /// reasoning-aware clients like helexa-acp's `ThinkParser`
+    /// expect.
+    ///
+    /// When `false` (the default), [`InferenceEvent::ReasoningDelta`]s
+    /// are dropped entirely so consumers that don't know about
+    /// reasoning (Zed's commit-message generator, any vanilla
+    /// OpenAI client) don't have model-internal scratchpad
+    /// material leaking into their UI. The chat-completions wire
+    /// format has no slot for reasoning, so the default chooses
+    /// the safer-for-naïve-clients behaviour.
+    pub include_thinking: bool,
+    /// Open/close marker strings to re-emit when `include_thinking`
+    /// is set. Sourced from the loaded model's
+    /// [`ReasoningTokenPair`]; `None` for non-reasoning models or
+    /// when the caller doesn't have the pair handy (in which case
+    /// `include_thinking` becomes equivalent to dropping reasoning
+    /// because there's nothing to wrap).
+    pub reasoning_markers: Option<ReasoningTokenPair>,
+}
 
 /// Project an [`InferenceEvent`] receiver into a
 /// [`ChatCompletionChunk`] receiver. Spawns one tokio task that
@@ -46,15 +75,55 @@ const CHUNK_CHANNEL_CAPACITY: usize = 32;
 /// chunk so the receiver can stay generic (decoupled from
 /// per-request metadata).
 pub fn project_chat_stream(
-    mut rx: mpsc::Receiver<InferenceEvent>,
+    rx: mpsc::Receiver<InferenceEvent>,
     id: String,
     created: u64,
     model_id: String,
 ) -> mpsc::Receiver<ChatCompletionChunk> {
+    // Default config: include_thinking off, no marker rewrap.
+    project_chat_stream_with(rx, id, created, model_id, ChatProjectionConfig::default())
+}
+
+/// Same as [`project_chat_stream`] but with a per-stream config
+/// (currently controlling reasoning surfacing). Production
+/// callers that need the opt-in path call this directly; the
+/// shorter wrapper above stays as the no-config convenience.
+pub fn project_chat_stream_with(
+    mut rx: mpsc::Receiver<InferenceEvent>,
+    id: String,
+    created: u64,
+    model_id: String,
+    config: ChatProjectionConfig,
+) -> mpsc::Receiver<ChatCompletionChunk> {
     let (tx, out_rx) = mpsc::channel::<ChatCompletionChunk>(CHUNK_CHANNEL_CAPACITY);
 
     tokio::spawn(async move {
+        // Track whether the previous event was inside a reasoning
+        // block — used to decide when to emit the literal close
+        // marker on the include_thinking re-wrap path. When this
+        // flips from true → false (a TextDelta or Finish lands
+        // after one or more ReasoningDeltas), we emit the close
+        // marker exactly once.
+        let mut was_in_reasoning = false;
+
         while let Some(event) = rx.recv().await {
+            // Close-marker insertion: if we're leaving a reasoning
+            // chain, emit the literal close marker before the
+            // current event.
+            if was_in_reasoning && !matches!(event, InferenceEvent::ReasoningDelta(_)) {
+                if let Some(marker) = config
+                    .include_thinking
+                    .then_some(())
+                    .and(config.reasoning_markers.as_ref())
+                {
+                    let chunk = content_chunk(&id, created, &model_id, &marker.close_text);
+                    if tx.send(chunk).await.is_err() {
+                        return;
+                    }
+                }
+                was_in_reasoning = false;
+            }
+
             let chunks = match event {
                 InferenceEvent::Start => vec![role_chunk(&id, created, &model_id)],
                 InferenceEvent::TextDelta(text) => {
@@ -66,12 +135,42 @@ pub fn project_chat_stream(
                     }
                     vec![content_chunk(&id, created, &model_id, &text)]
                 }
-                InferenceEvent::ReasoningDelta(_) => {
-                    // Reasoning isn't representable in OpenAI chat
-                    // streaming today. The o-series uses a separate
-                    // `summary` event but it's gated by the
-                    // Responses API; chat-completions just drops it.
-                    continue;
+                InferenceEvent::ReasoningDelta(text) => {
+                    if !config.include_thinking {
+                        // Default path — reasoning has no slot in
+                        // chat completions, so it's dropped. Naïve
+                        // clients (Zed commit-message generator,
+                        // any vanilla OpenAI client) get clean
+                        // output.
+                        continue;
+                    }
+                    let Some(markers) = config.reasoning_markers.as_ref() else {
+                        // Caller asked to include thinking but
+                        // didn't supply markers — best we can do
+                        // is emit the content as visible text.
+                        // Skip the wrap entirely.
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let chunk = content_chunk(&id, created, &model_id, &text);
+                        if tx.send(chunk).await.is_err() {
+                            return;
+                        }
+                        continue;
+                    };
+                    // First chunk of a reasoning block → open
+                    // marker prelude. Subsequent reasoning deltas
+                    // in the same block reuse `was_in_reasoning`
+                    // to skip the prelude.
+                    let mut chunks = Vec::new();
+                    if !was_in_reasoning {
+                        chunks.push(content_chunk(&id, created, &model_id, &markers.open_text));
+                    }
+                    if !text.is_empty() {
+                        chunks.push(content_chunk(&id, created, &model_id, &text));
+                    }
+                    was_in_reasoning = true;
+                    chunks
                 }
                 InferenceEvent::Finish { reason } => {
                     vec![final_chunk(&id, created, &model_id, reason)]
@@ -237,5 +336,166 @@ mod tests {
         let out = collect(out_rx).await;
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].choices[0].delta["content"], "real");
+    }
+
+    fn pair() -> ReasoningTokenPair {
+        ReasoningTokenPair {
+            open_id: 0,
+            close_id: 1,
+            open_text: "<think>".into(),
+            close_text: "</think>".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn include_thinking_rewraps_reasoning_with_literal_markers() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out_rx = project_chat_stream_with(
+            rx,
+            "id".into(),
+            1,
+            "m".into(),
+            ChatProjectionConfig {
+                include_thinking: true,
+                reasoning_markers: Some(pair()),
+            },
+        );
+        tx.send(InferenceEvent::ReasoningDelta("first ".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::ReasoningDelta("second".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::TextDelta("answer".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        // Expected sequence: open marker → reasoning content (2 chunks)
+        // → close marker → visible answer → final chunk.
+        let contents: Vec<&str> = out
+            .iter()
+            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .collect();
+        assert_eq!(
+            contents,
+            vec!["<think>", "first ", "second", "</think>", "answer"]
+        );
+        assert_eq!(
+            out.last().unwrap().choices[0].finish_reason.as_deref(),
+            Some("stop")
+        );
+    }
+
+    #[tokio::test]
+    async fn include_thinking_closes_marker_at_finish_when_no_trailing_text() {
+        // Edge case: stream ends inside a reasoning block (model
+        // hit max_tokens mid-thought, no visible answer ever).
+        // The Finish event still triggers the close marker so the
+        // stream is balanced.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream_with(
+            rx,
+            "id".into(),
+            1,
+            "m".into(),
+            ChatProjectionConfig {
+                include_thinking: true,
+                reasoning_markers: Some(pair()),
+            },
+        );
+        tx.send(InferenceEvent::ReasoningDelta("thinking...".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Length,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        let contents: Vec<&str> = out
+            .iter()
+            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .collect();
+        assert_eq!(contents, vec!["<think>", "thinking...", "</think>"]);
+        assert_eq!(
+            out.last().unwrap().choices[0].finish_reason.as_deref(),
+            Some("length")
+        );
+    }
+
+    #[tokio::test]
+    async fn include_thinking_without_markers_emits_content_directly() {
+        // Defensive: if the caller asks for thinking but the
+        // model declared no markers, we still emit the content
+        // rather than dropping it. Better to leak than to lose.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream_with(
+            rx,
+            "id".into(),
+            1,
+            "m".into(),
+            ChatProjectionConfig {
+                include_thinking: true,
+                reasoning_markers: None,
+            },
+        );
+        tx.send(InferenceEvent::ReasoningDelta("raw".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        let contents: Vec<&str> = out
+            .iter()
+            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .collect();
+        assert_eq!(contents, vec!["raw"]);
+    }
+
+    #[tokio::test]
+    async fn include_thinking_off_drops_reasoning_even_with_markers() {
+        // Default behaviour even when markers happen to be
+        // configured. The flag is the gate, not the marker
+        // presence.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream_with(
+            rx,
+            "id".into(),
+            1,
+            "m".into(),
+            ChatProjectionConfig {
+                include_thinking: false,
+                reasoning_markers: Some(pair()),
+            },
+        );
+        tx.send(InferenceEvent::ReasoningDelta("hidden".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::TextDelta("visible".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        let contents: Vec<&str> = out
+            .iter()
+            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .collect();
+        assert_eq!(contents, vec!["visible"]);
     }
 }

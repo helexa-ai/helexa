@@ -97,3 +97,134 @@ impl FinishReason {
         }
     }
 }
+
+/// Open/close token IDs for the reasoning marker a loaded model uses
+/// (or `None` for non-reasoning models). The harness reads this once
+/// at load time from the tokenizer's added-tokens table, then the
+/// inference loop checks `next_token` against the pair to flip
+/// between [`InferenceEvent::TextDelta`] and
+/// [`InferenceEvent::ReasoningDelta`].
+///
+/// `open` and `close` text are kept alongside the IDs so wire
+/// projectors that want to re-emit the literal markers (the
+/// opt-in `include_thinking` path on chat completions) don't have
+/// to reach back into the tokenizer for the strings.
+#[derive(Debug, Clone)]
+pub struct ReasoningTokenPair {
+    pub open_id: u32,
+    pub close_id: u32,
+    pub open_text: String,
+    pub close_text: String,
+}
+
+/// Known reasoning-marker conventions. Each is a `(open, close)`
+/// pair of literal token strings. Each modern reasoning model
+/// declares its markers in the tokenizer's `added_tokens` table;
+/// at load time we probe for whichever pair the loaded tokenizer
+/// has and stash both IDs.
+///
+/// Ordering matters only for tie-breaking when a model declares
+/// multiple pairs (shouldn't happen in practice); the first hit
+/// wins.
+const KNOWN_REASONING_MARKERS: &[(&str, &str)] = &[
+    // Qwen3, DeepSeek-R1, gpt-oss, and most other open-weight
+    // reasoning models.
+    ("<think>", "</think>"),
+    // Mistral Magistral.
+    ("[THINK]", "[/THINK]"),
+    // Some older derivatives; harmless to probe.
+    ("<thought>", "</thought>"),
+    ("<reasoning>", "</reasoning>"),
+];
+
+/// Inspect a tokenizer for known reasoning-marker pairs and return
+/// the first match. The tokenizer types this trait is defined over
+/// just need to expose `token_to_id(&str) -> Option<u32>` so this
+/// stays decoupled from the candle crate — the production caller
+/// passes a `tokenizers::Tokenizer`, but tests can fake one.
+///
+/// Returns `None` when no known marker pair is fully declared
+/// (both open AND close token ids must resolve). That's the
+/// pass-through case — non-reasoning models, or reasoning models
+/// whose tokenizer split the markers across multiple tokens (rare
+/// in practice; modern reasoning tokenizers list them as
+/// `added_tokens`).
+pub fn detect_reasoning_token_pair<F>(token_to_id: F) -> Option<ReasoningTokenPair>
+where
+    F: Fn(&str) -> Option<u32>,
+{
+    for (open_text, close_text) in KNOWN_REASONING_MARKERS {
+        let open_id = token_to_id(open_text);
+        let close_id = token_to_id(close_text);
+        if let (Some(open_id), Some(close_id)) = (open_id, close_id) {
+            return Some(ReasoningTokenPair {
+                open_id,
+                close_id,
+                open_text: (*open_text).into(),
+                close_text: (*close_text).into(),
+            });
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn lookup<'a>(map: &'a HashMap<&'static str, u32>) -> impl Fn(&str) -> Option<u32> + 'a {
+        |s| map.get(s).copied()
+    }
+
+    #[test]
+    fn detects_qwen3_style_think_markers() {
+        let mut m = HashMap::new();
+        m.insert("<think>", 151648);
+        m.insert("</think>", 151649);
+        let pair = detect_reasoning_token_pair(lookup(&m)).expect("pair detected");
+        assert_eq!(pair.open_id, 151648);
+        assert_eq!(pair.close_id, 151649);
+        assert_eq!(pair.open_text, "<think>");
+        assert_eq!(pair.close_text, "</think>");
+    }
+
+    #[test]
+    fn detects_mistral_magistral_markers() {
+        let mut m = HashMap::new();
+        m.insert("[THINK]", 100);
+        m.insert("[/THINK]", 101);
+        let pair = detect_reasoning_token_pair(lookup(&m)).expect("pair detected");
+        assert_eq!(pair.open_text, "[THINK]");
+    }
+
+    #[test]
+    fn returns_none_when_only_open_marker_present() {
+        // A pathological tokenizer that has `<think>` but not
+        // `</think>` shouldn't half-detect. Pass-through.
+        let mut m = HashMap::new();
+        m.insert("<think>", 1);
+        assert!(detect_reasoning_token_pair(lookup(&m)).is_none());
+    }
+
+    #[test]
+    fn returns_none_for_non_reasoning_tokenizer() {
+        let m: HashMap<&'static str, u32> = HashMap::new();
+        assert!(detect_reasoning_token_pair(lookup(&m)).is_none());
+    }
+
+    #[test]
+    fn first_match_wins_when_multiple_pairs_declared() {
+        // Hypothetical tokenizer with both Qwen-style AND Mistral-style
+        // markers — the `<think>` pair is earlier in the convention
+        // table so it wins.
+        let mut m = HashMap::new();
+        m.insert("<think>", 1);
+        m.insert("</think>", 2);
+        m.insert("[THINK]", 3);
+        m.insert("[/THINK]", 4);
+        let pair = detect_reasoning_token_pair(lookup(&m)).unwrap();
+        assert_eq!(pair.open_id, 1);
+        assert_eq!(pair.close_id, 2);
+    }
+}

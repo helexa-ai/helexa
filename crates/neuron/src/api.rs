@@ -4,7 +4,7 @@ use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
 use crate::harness::candle::{CandleHarness, InferenceError};
 use crate::health::HealthCache;
-use crate::wire::openai_responses;
+use crate::wire::{openai_chat, openai_responses};
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -148,6 +148,7 @@ async fn model_endpoint(
 /// `ChatCompletionResponse`.
 async fn chat_completions(
     State(state): State<Arc<NeuronState>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
     let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
@@ -158,8 +159,23 @@ async fn chat_completions(
             .into_response();
     };
 
+    // Reasoning-content opt-in. Off by default → naïve clients
+    // (Zed's commit-message generator, vanilla OpenAI clients)
+    // never see `<think>` blocks. On when the caller sends
+    // `x-include-thinking: true` (helexa-acp does this so its
+    // own ThinkParser keeps working unchanged).
+    let include_thinking = headers
+        .get("x-include-thinking")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| matches!(s.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+        .unwrap_or(false);
+    let chat_config = openai_chat::ChatProjectionConfig {
+        include_thinking,
+        reasoning_markers: None, // filled in from the loaded model inside candle
+    };
+
     if req.stream.unwrap_or(false) {
-        match candle.chat_completion_stream(req).await {
+        match candle.chat_completion_stream_with(req, chat_config).await {
             Ok(rx) => {
                 // Each chunk → one SSE `data: {json}` line. After the
                 // channel closes, append the OpenAI [DONE] terminator.

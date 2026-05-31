@@ -109,6 +109,16 @@ impl Provider for OpenAIChatProvider {
         let mut req = self
             .http
             .post(self.endpoint.chat_completions_url())
+            // Tell reasoning-aware servers (neuron after issue #8)
+            // to include the model's `<think>` markers in the
+            // stream rather than stripping them. helexa-acp's
+            // ThinkParser routes the marked content to Zed's
+            // thought UI; without this header neuron would
+            // default to clean content (the right choice for
+            // naïve clients like Zed's commit-message generator
+            // but wrong for us). Servers that don't recognise
+            // the header ignore it harmlessly.
+            .header("x-include-thinking", "true")
             .json(&body);
         if let Some(key) = &self.api_key {
             req = req.bearer_auth(key);
