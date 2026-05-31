@@ -126,6 +126,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: cargo check --features cuda (with retry)
         run: |
+          # act launches the step shell without /etc/profile, so the
+          # gitea_runner user's inherited PATH lacks /usr/local/cuda-13.0/bin.
+          # cudarc's build.rs:157 shells out to `nvcc --version` (because
+          # the neuron crate enables cuda-version-from-build-system) and
+          # panics with ENOENT if nvcc isn't resolvable. build-prerelease.yml
+          # does the same export — keep them in sync.
+          export PATH="/usr/local/cuda-13.0/bin:${PATH}"
+          export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
+          export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
           for attempt in 1 2 3; do
             echo "::group::cuda-check attempt ${attempt}"
             if cargo check -p neuron --features cuda --all-targets; then
