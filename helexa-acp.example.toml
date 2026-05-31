@@ -1,0 +1,85 @@
+# helexa-acp.example.toml — example configuration
+#
+# Copy to $XDG_CONFIG_HOME/helexa-acp/config.toml (typically
+# ~/.config/helexa-acp/config.toml) and adjust for your environment.
+#
+# helexa-acp is the ACP (Agent Client Protocol) bridge that connects
+# editors like Zed to multiple LLM endpoints. Each endpoint speaks a
+# specific wire format (openai-chat, openai-responses, or
+# anthropic-messages); helexa-acp picks the right provider at runtime
+# based on the `wire_api` field.
+#
+# Selecting a model from the editor follows the `endpoint:model`
+# syntax — e.g. `openrouter:anthropic/claude-opus-4` routes the
+# request to the `openrouter` endpoint with model
+# `anthropic/claude-opus-4`. A bare `<model>` (no colon) falls
+# through to whichever endpoint is named in `default_endpoint`.
+
+default_endpoint = "helexa"
+
+# Optional: override the built-in system prompt with a file of your own.
+# When unset, helexa-acp uses a concise coder prompt from src/prompt.rs.
+# `{cwd}` in the file gets substituted with the session's working
+# directory at request time.
+# system_prompt_path = "/home/me/.config/helexa-acp/system-prompt.md"
+
+# ── helexa (cortex/neuron, self-hosted) ────────────────────────────
+#
+# The canonical default. Drives cortex's reverse-proxy / fleet
+# gateway, which routes to whichever neuron has the model loaded.
+# `openai-chat` works against any cortex deployment; for vision
+# models or reasoning surface, switch to `openai-responses` (cortex
+# 0.1.16+).
+
+[[endpoints]]
+name = "helexa"
+base_url = "http://hanzalova.internal:31313/v1"
+wire_api = "openai-chat"
+default_model = "Qwen/Qwen3.6-27B"
+max_tokens = 8192
+# Compaction kicks in when the rolling history grows past this token
+# budget. Set to your model's context window. Disable by removing
+# the field entirely.
+context_window = 32768
+
+# ── OpenRouter (proxy for OpenAI/Anthropic/Google/etc.) ────────────
+
+[[endpoints]]
+name = "openrouter"
+base_url = "https://openrouter.ai/api/v1"
+wire_api = "openai-chat"
+api_key_env = "OPENROUTER_API_KEY"
+default_model = "anthropic/claude-opus-4"
+
+# ── OpenAI directly (Responses API) ────────────────────────────────
+#
+# Use `openai-responses` for the o-series and any model that
+# benefits from the newer Responses API surface (web search,
+# computer use, reasoning effort, etc.).
+
+[[endpoints]]
+name = "openai"
+base_url = "https://api.openai.com/v1"
+wire_api = "openai-responses"
+api_key_env = "OPENAI_API_KEY"
+default_model = "gpt-5"
+
+# ── Anthropic directly ─────────────────────────────────────────────
+
+[[endpoints]]
+name = "anthropic"
+base_url = "https://api.anthropic.com/v1"
+wire_api = "anthropic-messages"
+api_key_env = "ANTHROPIC_API_KEY"
+default_model = "claude-opus-4"
+
+# ── Local LM Studio / Ollama (compat mode) ─────────────────────────
+#
+# Most local-LLM servers expose OpenAI-compatible chat completions.
+# Use `wire_api = "openai-chat"` and point at the local port.
+
+# [[endpoints]]
+# name = "lmstudio"
+# base_url = "http://localhost:1234/v1"
+# wire_api = "openai-chat"
+# default_model = "auto"
