@@ -6,4 +6,5 @@ pub mod harness;
 pub mod metrics;
 pub mod node;
 pub mod openai;
+pub mod responses;
 pub mod translate;

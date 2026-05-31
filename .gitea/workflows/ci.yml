@@ -97,12 +97,14 @@ jobs:
   # the category of bug where a refactor compiles fine under the
   # default feature set (which is what the `clippy` and `test` jobs
   # exercise) but fails inside a `#[cfg(feature = "cuda")]` block.
-  # Lives on `runs-on: rpm` because that's where nvcc / cudarc's
-  # build prerequisites are installed; the generic `rust` runner
-  # doesn't have them.
+  # `runs-on: cuda-13.0` selects the runner that ships nvcc /
+  # cudarc's build prerequisites. The generic `rust` and `rpm`
+  # runners don't have them (the previous label `rpm` was tried
+  # first and tripped cudarc's `nvcc --version` build script —
+  # see commit history).
   cuda-check:
     name: CUDA type-check
-    runs-on: rpm
+    runs-on: cuda-13.0
     steps:
       - uses: actions/checkout@v4
       - name: cargo check --features cuda (with retry)

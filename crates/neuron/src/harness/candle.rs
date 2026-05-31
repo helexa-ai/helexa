@@ -1595,6 +1595,49 @@ impl CandleHarness {
         &self,
         request: ChatCompletionRequest,
     ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
+        let stream = self.inference_stream(request).await?;
+        Ok(wire_chat::project_chat_stream(
+            stream.events,
+            stream.id,
+            stream.created,
+            stream.model_id,
+        ))
+    }
+
+    /// Streaming OpenAI Responses API entry point. Same harness
+    /// output as [`Self::chat_completion_stream`], projected into
+    /// the named-event SSE frames the Responses API client wants.
+    /// `response_id` and `message_item_id` are stamped into every
+    /// frame so the consumer can correlate.
+    pub async fn responses_stream(
+        &self,
+        request: ChatCompletionRequest,
+        response_id: String,
+        message_item_id: String,
+    ) -> Result<mpsc::Receiver<crate::wire::openai_responses::ResponseStreamFrame>, InferenceError>
+    {
+        let stream = self.inference_stream(request).await?;
+        let meta = crate::wire::openai_responses::ResponseMeta {
+            response_id,
+            created_at: stream.created,
+            model_id: stream.model_id,
+            message_item_id,
+        };
+        Ok(crate::wire::openai_responses::project_responses_stream(
+            stream.events,
+            meta,
+        ))
+    }
+
+    /// Format-agnostic streaming inference. Returns the raw
+    /// [`InferenceEvent`] receiver plus the per-request metadata
+    /// wire projectors stamp onto their frames. Lets every wire
+    /// format land on the same harness output without duplicating
+    /// setup / dispatch / spawn logic.
+    async fn inference_stream(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<InferenceStream, InferenceError> {
         let handle = {
             let models = self.models.read().await;
             models.get(&request.model).cloned()
@@ -1608,7 +1651,7 @@ impl CandleHarness {
             LoadedHandle::Single(m) => m,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
-                return self.chat_completion_tp_stream(m, request).await;
+                return self.inference_tp_stream(m, request).await;
             }
         };
 
@@ -1807,14 +1850,37 @@ impl CandleHarness {
             )));
         }
 
-        // Wrap the InferenceEvent receiver in the OpenAI chat
-        // projection so the HTTP handler keeps receiving
-        // ChatCompletionChunks bit-for-bit identical to before.
-        // The id/created/model_id snapshot taken at request setup
-        // gets stamped into every emitted chunk.
-        let rx = wire_chat::project_chat_stream(event_rx, id, created, model_id);
-        Ok(rx)
+        // Hand the raw event channel back to the public entry
+        // points (chat_completion_stream / responses_stream); they
+        // pick the wire projection.
+        Ok(InferenceStream {
+            events: event_rx,
+            id,
+            created,
+            model_id,
+        })
     }
+}
+
+/// The seam between inference (one shape, always) and wire formats
+/// (many shapes, projector-per-format). Public so the format
+/// projectors live outside the harness and the harness's
+/// streaming-inference internals stay encapsulated.
+pub struct InferenceStream {
+    /// Stream of model-output events. Producers (the various
+    /// inference loops) emit on this; consumers (wire projectors)
+    /// read from it.
+    pub events: mpsc::Receiver<InferenceEvent>,
+    /// Request id stamped into every wire-format frame
+    /// (`chatcmpl-…` for chat completions; the Responses path
+    /// makes its own `resp_…` id separately and ignores this one).
+    pub id: String,
+    /// Unix seconds when inference began. Same field threads into
+    /// every wire format's `created` / `created_at` slot.
+    pub created: u64,
+    /// Local model id (no endpoint prefix). Stamped into every
+    /// wire-format frame so consumers can correlate.
+    pub model_id: String,
 }
 
 #[async_trait]
@@ -2234,11 +2300,11 @@ impl CandleHarness {
     /// So we `tokio::spawn` the orchestration task and use plain
     /// `Sender::send`.
     #[cfg(feature = "cuda")]
-    async fn chat_completion_tp_stream(
+    async fn inference_tp_stream(
         &self,
         tp: Arc<TpLoadedModel>,
         request: ChatCompletionRequest,
-    ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
+    ) -> Result<InferenceStream, InferenceError> {
         if tp.poisoned.load(Ordering::Acquire) {
             return Err(poisoned_error(&request.model));
         }
@@ -2542,14 +2608,16 @@ impl CandleHarness {
             .instrument(span),
         );
 
-        // Wrap the InferenceEvent receiver in the OpenAI chat
-        // projection so the HTTP handler keeps consuming
-        // ChatCompletionChunks unchanged. Uses the clones we
-        // stashed before the spawn — the originals were moved
+        // Hand the raw event channel back to the public entry
+        // points; they pick the wire projection. Uses the clones
+        // we stashed before the spawn — the originals were moved
         // into the orchestration task above.
-        let rx =
-            wire_chat::project_chat_stream(event_rx, projector_id, created, projector_model_id);
-        Ok(rx)
+        Ok(InferenceStream {
+            events: event_rx,
+            id: projector_id,
+            created,
+            model_id: projector_model_id,
+        })
     }
 }
 

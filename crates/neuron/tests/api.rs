@@ -322,3 +322,168 @@ async fn test_chat_completions_streaming_model_not_loaded() {
         .unwrap();
     assert_eq!(resp.status(), 404);
 }
+
+// ── /v1/responses ────────────────────────────────────────────────────
+
+/// `/v1/responses` returns 503 when no candle harness is registered —
+/// matches the chat-completions error shape so a client can swap
+/// endpoints without re-handling 503s.
+#[tokio::test]
+async fn test_responses_no_candle_harness() {
+    let registry = HarnessRegistry::new();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle: None,
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/responses"))
+        .json(&json!({"model": "anything", "input": "hi"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 503);
+}
+
+/// `previous_response_id` is rejected at translate time with 400 —
+/// we don't store responses server-side yet, so chained
+/// conversations can't be honoured.
+#[tokio::test]
+async fn test_responses_rejects_previous_response_id() {
+    use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
+
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let candle = registry.candle();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/responses"))
+        .json(&json!({
+            "model": "anything",
+            "input": "hi",
+            "previous_response_id": "resp_prev_42"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["code"], "chained_conversation_not_supported");
+}
+
+/// `/v1/responses` returns 404 when the model isn't loaded — same
+/// surface as chat completions.
+#[tokio::test]
+async fn test_responses_model_not_loaded() {
+    use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
+
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let candle = registry.candle();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/responses"))
+        .json(&json!({"model": "not-loaded", "input": "hi"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
+
+/// Same model-not-loaded surface on the streaming path. The
+/// stream is opened only after model lookup succeeds, so a
+/// missing model fails fast with a non-SSE 404 response.
+#[tokio::test]
+async fn test_responses_streaming_model_not_loaded() {
+    use cortex_core::harness::HarnessConfig;
+    use neuron::config::HarnessSettings;
+
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let candle = registry.candle();
+    let health_cache = Arc::new(HealthCache::new());
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache,
+        registry: RwLock::new(registry),
+        candle,
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let url = format!("http://{addr}");
+
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/responses"))
+        .json(&json!({
+            "model": "not-loaded",
+            "input": "hi",
+            "stream": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
