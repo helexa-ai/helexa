@@ -44,6 +44,7 @@ pub async fn spawn_mock_neuron() -> String {
             post(|Json(_body): Json<Value>| async { Json(json!({"status": "unloaded"})) }),
         )
         .route("/v1/chat/completions", post(mock_chat_completions))
+        .route("/v1/responses", post(mock_responses))
         .route("/v1/models", get(mock_v1_models));
 
     tokio::spawn(async move {
@@ -89,6 +90,39 @@ async fn mock_chat_completions(Json(body): Json<Value>) -> Json<Value> {
             "prompt_tokens": 10,
             "completion_tokens": 5,
             "total_tokens": 15
+        }
+    }))
+}
+
+async fn mock_responses(Json(body): Json<Value>) -> Json<Value> {
+    let model = body
+        .get("model")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    // Echo the model field back and synthesise a tiny ResponsesResponse.
+    // Mirrors the shape neuron's /v1/responses handler emits so the
+    // gateway test only needs to assert the proxy round-tripped it.
+    Json(json!({
+        "id": "resp-test-001",
+        "object": "response",
+        "created_at": 1700000000_u64,
+        "status": "completed",
+        "model": model,
+        "output": [{
+            "type": "message",
+            "id": "msg-test-001",
+            "role": "assistant",
+            "content": [{
+                "type": "output_text",
+                "text": "Hello from mock backend",
+                "annotations": []
+            }],
+            "status": "completed"
+        }],
+        "usage": {
+            "input_tokens": 5,
+            "output_tokens": 5,
+            "total_tokens": 10
         }
     }))
 }

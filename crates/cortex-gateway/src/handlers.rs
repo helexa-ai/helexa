@@ -20,6 +20,7 @@ pub fn api_routes() -> Router<Arc<CortexState>> {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
+        .route("/v1/responses", post(responses))
         .route("/v1/models", get(list_models))
         .route("/v1/messages", post(anthropic_messages))
         .route("/health", get(health))
@@ -67,6 +68,58 @@ async fn chat_completions(
         &fleet,
         &route,
         "/v1/chat/completions",
+        headers,
+        body,
+        &route.resolved_model_id,
+    )
+    .await
+}
+
+/// `POST /v1/responses` — proxy to the appropriate backend node.
+///
+/// Same routing shape as [`chat_completions`]: extract `model` from
+/// the body, resolve to a node, forward verbatim. No translation —
+/// neuron speaks the Responses API natively (see
+/// `crates/neuron/src/wire/openai_responses.rs`), so the gateway is
+/// a pass-through. Streaming and non-streaming are handled
+/// identically; the upstream `Content-Type` (text/event-stream vs.
+/// application/json) propagates through the proxy.
+async fn responses(
+    State(fleet): State<Arc<CortexState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let model_id = match extract_model(&body) {
+        Some(m) => m,
+        None => {
+            tracing::warn!(
+                handler = "responses",
+                "rejected: missing 'model' field in request body"
+            );
+            return error_response(400, "missing 'model' field in request body");
+        }
+    };
+
+    let route = match router::resolve(&fleet, &model_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                handler = "responses",
+                model = %model_id,
+                error = %e,
+                "route resolve failed"
+            );
+            return error_response(404, &e.to_string());
+        }
+    };
+
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
+
+    let body = rewrite_model_in_body(body, &route.resolved_model_id);
+    proxy_with_metrics(
+        &fleet,
+        &route,
+        "/v1/responses",
         headers,
         body,
         &route.resolved_model_id,
