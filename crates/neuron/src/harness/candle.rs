@@ -44,7 +44,13 @@ use tracing::Instrument;
 /// In-process candle harness. Owns the loaded model registry.
 pub struct CandleHarness {
     models: Arc<RwLock<HashMap<String, LoadedHandle>>>,
-    hf_cache: Option<PathBuf>,
+    /// Post-resolution source map: scheme → endpoint/token/cache. Built
+    /// in `new()` from the operator's `CandleHarnessConfig`; auth tokens
+    /// are read from their configured env vars at startup so secrets
+    /// don't leak through the config file.
+    sources: HashMap<String, ResolvedSource>,
+    /// Scheme to substitute for bare `org/name` model ids.
+    default_source: String,
     bind_url: String,
     /// One worker thread per CUDA device index that owns its
     /// `CudaContext` for the daemon's lifetime. Populated lazily by
@@ -968,18 +974,85 @@ async fn chunked_prefill_tp(
     last_logits.ok_or_else(|| anyhow::anyhow!("chunked_prefill_tp: no chunks produced"))
 }
 
+/// Per-scheme source after env-var resolution. The auth token is the
+/// already-read env-var value (or None for anonymous access), and the
+/// cache dir is the post-`resolve_hf_cache` path for the huggingface
+/// scheme and the operator's literal value for everything else.
+#[derive(Debug, Clone)]
+struct ResolvedSource {
+    endpoint: String,
+    auth_token: Option<String>,
+    cache_dir: Option<PathBuf>,
+}
+
 impl CandleHarness {
-    pub fn new(bind_url: String, hf_cache: Option<PathBuf>) -> Self {
-        let hf_cache = resolve_hf_cache(hf_cache);
-        if let Some(p) = &hf_cache {
-            tracing::info!(path = %p.display(), "candle harness using HuggingFace cache");
+    /// Construct a new harness for `bind_url` using `config`. Resolves
+    /// every configured source's auth env var and cache dir up front so
+    /// the hot load path (`hf_api_for`) is a pure HashMap lookup.
+    pub fn new(bind_url: String, config: &crate::config::CandleHarnessConfig) -> Self {
+        let raw_sources = config.effective_sources();
+        let default_source = config.effective_default_source().to_string();
+        let mut sources = HashMap::with_capacity(raw_sources.len());
+        for (scheme, src) in raw_sources.into_iter() {
+            // Only the huggingface source gets the legacy
+            // HF_HUB_CACHE/HF_HOME env-var fallback chain — other
+            // schemes resolve to whatever the operator typed.
+            let cache_dir = if scheme == crate::config::DEFAULT_SOURCE_SCHEME {
+                resolve_hf_cache(src.cache_dir.clone())
+            } else {
+                src.cache_dir.clone()
+            };
+            let auth_token = src
+                .auth_env
+                .as_deref()
+                .and_then(|var| std::env::var(var).ok())
+                .filter(|v| !v.is_empty());
+            if let Some(p) = &cache_dir {
+                tracing::info!(
+                    scheme = %scheme,
+                    endpoint = %src.endpoint,
+                    cache = %p.display(),
+                    auth = auth_token.is_some(),
+                    "candle harness source resolved"
+                );
+            } else {
+                tracing::info!(
+                    scheme = %scheme,
+                    endpoint = %src.endpoint,
+                    auth = auth_token.is_some(),
+                    "candle harness source resolved (no cache dir; using hf-hub default)"
+                );
+            }
+            sources.insert(
+                scheme,
+                ResolvedSource {
+                    endpoint: src.endpoint,
+                    auth_token,
+                    cache_dir,
+                },
+            );
+        }
+        if !sources.contains_key(&default_source) {
+            tracing::warn!(
+                default_source,
+                "configured default_source has no matching [harness.candle.sources.*] entry; \
+                 bare model ids will fail to resolve until this is fixed"
+            );
         }
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
-            hf_cache,
+            sources,
+            default_source,
             bind_url,
             device_workers: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Scheme to substitute for bare `org/name` model ids. Mirrors the
+    /// effective default from the operator's config, exposed for the
+    /// load path's `ModelSourceId::with_default_scheme`.
+    pub(crate) fn default_source_scheme(&self) -> &str {
+        &self.default_source
     }
 
     /// Pick a candle `Device` for the requested indices. Without the
@@ -1033,14 +1106,33 @@ impl CandleHarness {
         Ok(handle)
     }
 
-    /// Build an hf-hub API client pre-configured with the harness's
-    /// `hf_cache` (when one is set).
-    fn hf_api(&self) -> Result<hf_hub::api::tokio::Api> {
-        let mut builder = hf_hub::api::tokio::ApiBuilder::new();
-        if let Some(cache) = &self.hf_cache {
+    /// Build an hf-hub API client for the given scheme. The scheme
+    /// must be present in the operator's configured `sources` table
+    /// (the synth `huggingface` entry counts). Each source carries its
+    /// own endpoint, optional bearer token, and cache directory, so
+    /// the same `org/name` served by two registries cannot collide on
+    /// disk.
+    pub(crate) fn hf_api_for(&self, scheme: &str) -> Result<hf_hub::api::tokio::Api> {
+        let src = self.sources.get(scheme).ok_or_else(|| {
+            let mut configured: Vec<&str> = self.sources.keys().map(String::as_str).collect();
+            configured.sort();
+            anyhow::anyhow!(
+                "no source configured for scheme '{scheme}'; \
+                 configured: {configured:?}. Add a \
+                 [harness.candle.sources.{scheme}] block to neuron.toml \
+                 with endpoint = '...'."
+            )
+        })?;
+        let mut builder = hf_hub::api::tokio::ApiBuilder::new().with_endpoint(src.endpoint.clone());
+        if let Some(cache) = &src.cache_dir {
             builder = builder.with_cache_dir(cache.clone());
         }
-        builder.build().context("build hf-hub API")
+        if let Some(token) = &src.auth_token {
+            builder = builder.with_token(Some(token.clone()));
+        }
+        builder
+            .build()
+            .with_context(|| format!("build hf-hub API for scheme '{scheme}'"))
     }
 
     /// Resolve a dense (bf16/fp16 safetensors) model to its local file
@@ -1053,18 +1145,21 @@ impl CandleHarness {
     async fn resolve_dense_files(
         &self,
         spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
     ) -> Result<(PathBuf, PathBuf, Vec<PathBuf>)> {
-        let api = self.hf_api()?;
-        let repo = api.model(spec.model_id.clone());
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let repo = api.model(source_id.repo_path());
+        let display_id = source_id.to_string();
+        let _ = spec; // reserved for future use (quant-aware filtering)
 
         let config_path = repo
             .get("config.json")
             .await
-            .with_context(|| format!("fetch config.json from {}", spec.model_id))?;
+            .with_context(|| format!("fetch config.json from {display_id}"))?;
         let tokenizer_path = repo
             .get("tokenizer.json")
             .await
-            .with_context(|| format!("fetch tokenizer.json from {}", spec.model_id))?;
+            .with_context(|| format!("fetch tokenizer.json from {display_id}"))?;
 
         // Prefer the sharded layout (most HF dense models > 5B ship it).
         let safetensors_paths = match repo.get("model.safetensors.index.json").await {
@@ -1111,9 +1206,10 @@ impl CandleHarness {
     async fn load_arch_gguf(
         &self,
         spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
         device: &Device,
     ) -> Result<(PathBuf, ModelArch)> {
-        let (gguf_path, tokenizer_path) = self.resolve_files(spec).await?;
+        let (gguf_path, tokenizer_path) = self.resolve_files(spec, source_id).await?;
         let device_for_load = device.clone();
         let gguf_path_for_load = gguf_path.clone();
         let model_id_for_log = spec.model_id.clone();
@@ -1176,10 +1272,11 @@ impl CandleHarness {
     async fn load_arch_dense(
         &self,
         spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
         device: &Device,
     ) -> Result<(PathBuf, ModelArch)> {
         let (config_path, tokenizer_path, safetensors_paths) =
-            self.resolve_dense_files(spec).await?;
+            self.resolve_dense_files(spec, source_id).await?;
         let device_for_load = device.clone();
         let model_id_for_log = spec.model_id.clone();
 
@@ -1290,14 +1387,20 @@ impl CandleHarness {
 
     /// Resolve a model spec to local GGUF and tokenizer file paths via
     /// hf-hub. Downloads on first use; subsequent calls are cached.
-    async fn resolve_files(&self, spec: &ModelSpec) -> Result<(PathBuf, PathBuf)> {
-        let api = self.hf_api()?;
-        let repo = api.model(spec.model_id.clone());
+    async fn resolve_files(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<(PathBuf, PathBuf)> {
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let repo_path = source_id.repo_path();
+        let repo = api.model(repo_path.clone());
+        let display_id = source_id.to_string();
 
         let info = repo
             .info()
             .await
-            .with_context(|| format!("fetch HF repo info for {}", spec.model_id))?;
+            .with_context(|| format!("fetch HF repo info for {display_id}"))?;
 
         let quant = spec.quant.as_deref().unwrap_or("");
         let quant_lc = quant.to_lowercase();
@@ -1309,15 +1412,14 @@ impl CandleHarness {
             .find(|name| quant_lc.is_empty() || name.to_lowercase().contains(&quant_lc))
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "no GGUF file matching quant {:?} in repo {}",
+                    "no GGUF file matching quant {:?} in repo {display_id}",
                     spec.quant,
-                    spec.model_id
                 )
             })?
             .to_string();
 
         tracing::info!(
-            model = %spec.model_id,
+            model = %display_id,
             file = %gguf_filename,
             "resolving GGUF (may be cached)"
         );
@@ -1331,27 +1433,28 @@ impl CandleHarness {
         // tokenizer.json lives in the base non-GGUF repo. Derive the
         // base repo id by stripping a `-GGUF` / `-gguf` suffix; if
         // there's no such suffix the same repo is used (works for
-        // non-GGUF model_ids).
-        let tokenizer_repo_id = spec
-            .model_id
+        // non-GGUF model_ids). Stripping happens on the repo_path
+        // (scheme already accounted for) so this composes cleanly with
+        // helexa-scheme GGUF repos too.
+        let tokenizer_repo_path = repo_path
             .strip_suffix("-GGUF")
-            .or_else(|| spec.model_id.strip_suffix("-gguf"))
-            .unwrap_or(spec.model_id.as_str())
+            .or_else(|| repo_path.strip_suffix("-gguf"))
+            .unwrap_or(&repo_path)
             .to_string();
-        let tokenizer_repo = if tokenizer_repo_id == spec.model_id {
+        let tokenizer_repo = if tokenizer_repo_path == repo_path {
             repo
         } else {
             tracing::debug!(
-                from = %spec.model_id,
-                to = %tokenizer_repo_id,
+                from = %repo_path,
+                to = %tokenizer_repo_path,
                 "tokenizer.json sourced from base repo (GGUF suffix stripped)"
             );
-            api.model(tokenizer_repo_id.clone())
+            api.model(tokenizer_repo_path.clone())
         };
         let tokenizer_path = tokenizer_repo
             .get("tokenizer.json")
             .await
-            .with_context(|| format!("fetch tokenizer.json from {tokenizer_repo_id}"))?;
+            .with_context(|| format!("fetch tokenizer.json from {tokenizer_repo_path}"))?;
         Ok((gguf_path, tokenizer_path))
     }
 
@@ -2002,6 +2105,16 @@ impl Harness for CandleHarness {
             }
         }
 
+        // Parse the model id, substituting the harness's default
+        // source for bare `org/name` entries so existing operator
+        // configs keep working unchanged. Stored on the request-local
+        // path so downstream resolve_* can ask the right registry.
+        let source_id = spec
+            .model_id
+            .parse::<cortex_core::source::ModelSourceId>()
+            .with_context(|| format!("parse model id '{}' as scheme:org/name", spec.model_id))?
+            .with_default_scheme(self.default_source_scheme());
+
         // Preflight: classify the source repo and apply the
         // tp/quant/source feasibility table before any device
         // allocation, NCCL handshake, or weight fetch. Failures bubble
@@ -2011,8 +2124,8 @@ impl Harness for CandleHarness {
         // dispatch — downstream `resolve_files` / `resolve_dense_files`
         // re-run their own substring match — but the structured error
         // surface is the main payoff.
-        let api = self.hf_api()?;
-        super::preflight::preflight(&api, spec)
+        let api = self.hf_api_for(&source_id.scheme)?;
+        super::preflight::preflight(&api, &source_id, spec)
             .await
             .map_err(anyhow::Error::new)?;
 
@@ -2020,7 +2133,7 @@ impl Harness for CandleHarness {
         if tp_size > 1 {
             #[cfg(feature = "cuda")]
             {
-                return self.load_tp(spec, tp_size).await;
+                return self.load_tp(spec, &source_id, tp_size).await;
             }
             #[cfg(not(feature = "cuda"))]
             {
@@ -2048,7 +2161,7 @@ impl Harness for CandleHarness {
         let (tokenizer_path, arch_local, arch_handle) = if let Some(w) = &worker {
             // CUDA path: resolve, then load in the worker.
             if spec.quant.is_some() {
-                let (gguf_path, tokenizer_path) = self.resolve_files(spec).await?;
+                let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
                 let handle = w
                     .load_gguf(gguf_path, spec.model_id.clone())
                     .await
@@ -2056,7 +2169,7 @@ impl Harness for CandleHarness {
                 (tokenizer_path, None, Some(handle))
             } else {
                 let (config_path, tokenizer_path, safetensors_paths) =
-                    self.resolve_dense_files(spec).await?;
+                    self.resolve_dense_files(spec, &source_id).await?;
                 let handle = w
                     .load_dense(config_path, safetensors_paths, spec.model_id.clone())
                     .await
@@ -2066,9 +2179,9 @@ impl Harness for CandleHarness {
         } else {
             // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
             let (tokenizer_path, arch) = if spec.quant.is_some() {
-                self.load_arch_gguf(spec, &device).await?
+                self.load_arch_gguf(spec, &source_id, &device).await?
             } else {
-                self.load_arch_dense(spec, &device).await?
+                self.load_arch_dense(spec, &source_id, &device).await?
             };
             (tokenizer_path, Some(Arc::new(Mutex::new(arch))), None)
         };
@@ -2226,7 +2339,12 @@ impl CandleHarness {
     /// `spec.devices` carries the per-rank CUDA device indices (one
     /// entry per rank, in rank order); defaults to `0..tp_size`.
     #[cfg(feature = "cuda")]
-    async fn load_tp(&self, spec: &ModelSpec, tp_size: u32) -> Result<()> {
+    async fn load_tp(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+        tp_size: u32,
+    ) -> Result<()> {
         use std::sync::Arc as StdArc;
         use tokio::sync::Mutex as TMutex;
 
@@ -2251,7 +2369,7 @@ impl CandleHarness {
 
         // 1. Resolve config + tokenizer + safetensors via hf-hub.
         let (config_path, tokenizer_path, safetensors_paths) =
-            self.resolve_dense_files(spec).await?;
+            self.resolve_dense_files(spec, source_id).await?;
         let config_json = std::fs::read_to_string(&config_path).context("read config.json")?;
         // Reject unsupported architectures *before* spawning the worker
         // pool and fanning out NCCL — otherwise we'd burn the pool
@@ -4022,5 +4140,76 @@ mod tests {
         assert!(is_device_fault(
             "DriverError(CUDA_ERROR_ILLEGAL_ADDRESS, \"an illegal memory access was encountered\")"
         ));
+    }
+
+    /// Phase 1 of plan-source-aware-loader: harness must resolve each
+    /// configured scheme to its own endpoint+cache, and reject schemes
+    /// the operator hasn't configured with a useful error.
+    #[test]
+    fn hf_api_for_routes_per_scheme() {
+        use crate::config::{CandleHarnessConfig, SourceConfig};
+        use std::collections::HashMap;
+
+        let mut sources = HashMap::new();
+        sources.insert(
+            "huggingface".to_string(),
+            SourceConfig {
+                endpoint: "https://huggingface.example.org".into(),
+                auth_env: None,
+                cache_dir: Some(std::path::PathBuf::from("/tmp/hf-cache")),
+            },
+        );
+        sources.insert(
+            "helexa".to_string(),
+            SourceConfig {
+                endpoint: "https://registry.helexa.example.ai".into(),
+                auth_env: None,
+                cache_dir: Some(std::path::PathBuf::from("/tmp/helexa-cache")),
+            },
+        );
+        let cfg = CandleHarnessConfig {
+            sources,
+            default_source: Some("huggingface".into()),
+            ..Default::default()
+        };
+        let harness = CandleHarness::new("http://localhost:13131".into(), &cfg);
+
+        // Both configured schemes build cleanly.
+        harness
+            .hf_api_for("huggingface")
+            .expect("huggingface scheme should build");
+        harness
+            .hf_api_for("helexa")
+            .expect("helexa scheme should build");
+
+        // Unknown scheme errors with a message that names the configured
+        // set so the operator can act on it.
+        let err = harness
+            .hf_api_for("does-not-exist")
+            .expect_err("unknown scheme should error");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("does-not-exist") && msg.contains("huggingface") && msg.contains("helexa"),
+            "error must list configured schemes: {msg}"
+        );
+
+        assert_eq!(harness.default_source_scheme(), "huggingface");
+    }
+
+    /// Operator with only `hf_cache` set (no `sources` table) still
+    /// gets a working `huggingface` source pointed at HF.
+    #[test]
+    fn hf_api_for_synthesises_huggingface_from_legacy_hf_cache() {
+        use crate::config::CandleHarnessConfig;
+
+        let cfg = CandleHarnessConfig {
+            hf_cache: Some(std::path::PathBuf::from("/archive3/llm-cache")),
+            ..Default::default()
+        };
+        let harness = CandleHarness::new("http://localhost:13131".into(), &cfg);
+        harness
+            .hf_api_for("huggingface")
+            .expect("synth huggingface source should build");
+        assert_eq!(harness.default_source_scheme(), "huggingface");
     }
 }

@@ -12,6 +12,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Json};
 use axum::routing::get;
 use cortex_core::harness::ModelSpec;
+use cortex_core::source::ModelSourceId;
 use neuron::harness::preflight::{PreflightError, SourceFormat, preflight};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -89,6 +90,15 @@ fn spec(model_id: &str, tp: Option<u32>, quant: Option<&str>) -> ModelSpec {
     }
 }
 
+/// Build a `ModelSourceId` from a bare `org/name` test input,
+/// substituting the default scheme so the mock route key matches.
+fn sid(model_id: &str) -> ModelSourceId {
+    model_id
+        .parse::<ModelSourceId>()
+        .expect("test model_id parses")
+        .with_default_scheme("huggingface")
+}
+
 #[tokio::test]
 async fn preflight_gguf_tp_rejected_over_http() {
     let cache = tempfile::tempdir().expect("tempdir");
@@ -107,7 +117,7 @@ async fn preflight_gguf_tp_rejected_over_http() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(2), Some("q6k"));
-    let err = preflight(&api, &s).await.unwrap_err();
+    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
     match err {
         PreflightError::TpRequiresSafetensors {
             model_id,
@@ -115,7 +125,9 @@ async fn preflight_gguf_tp_rejected_over_http() {
             gguf_quants,
             ..
         } => {
-            assert_eq!(model_id, "HauhauCS/Qwen3.6");
+            // Scheme prefix surfaces in error display now that
+            // preflight is source-aware.
+            assert_eq!(model_id, "huggingface:HauhauCS/Qwen3.6");
             assert_eq!(tp_size, 2);
             assert_eq!(gguf_quants.len(), 3);
         }
@@ -140,7 +152,7 @@ async fn preflight_gguf_quant_suggestion_over_http() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(1), Some("q6k"));
-    let err = preflight(&api, &s).await.unwrap_err();
+    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
     match err {
         PreflightError::QuantNotFound {
             requested,
@@ -176,7 +188,9 @@ async fn preflight_dense_safetensors_tp_ok() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("Qwen/Q3-30B", Some(2), Some("q5k"));
-    let plan = preflight(&api, &s).await.expect("dense+tp should succeed");
+    let plan = preflight(&api, &sid(&s.model_id), &s)
+        .await
+        .expect("dense+tp should succeed");
     assert_eq!(plan.tp_size, 2);
     assert!(plan.picked_quant_file.is_none());
     assert!(matches!(
@@ -197,7 +211,7 @@ async fn preflight_gguf_single_gpu_good_quant() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(1), Some("q6_k_p"));
-    let plan = preflight(&api, &s)
+    let plan = preflight(&api, &sid(&s.model_id), &s)
         .await
         .expect("good quant should succeed");
     assert_eq!(plan.tp_size, 1);
@@ -219,7 +233,7 @@ async fn preflight_repo_fetch_failed_on_404() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("DoesNot/Exist", Some(1), None);
-    let err = preflight(&api, &s).await.unwrap_err();
+    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
     assert!(
         matches!(err, PreflightError::RepoFetchFailed { .. }),
         "expected RepoFetchFailed, got {err:?}"
@@ -238,7 +252,7 @@ async fn preflight_empty_repo_rejected() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("Empty/Repo", Some(1), None);
-    let err = preflight(&api, &s).await.unwrap_err();
+    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
     assert!(
         matches!(err, PreflightError::EmptyRepo { .. }),
         "expected EmptyRepo, got {err:?}"
@@ -264,6 +278,8 @@ async fn preflight_mixed_repo_prefers_safetensors() {
     // TP=2 + quant should succeed via the dense path even though a
     // GGUF is present — the dense path handles ISQ.
     let s = spec("Mixed/Repo", Some(2), Some("q5k"));
-    let plan = preflight(&api, &s).await.expect("mixed should succeed");
+    let plan = preflight(&api, &sid(&s.model_id), &s)
+        .await
+        .expect("mixed should succeed");
     assert!(matches!(plan.format, SourceFormat::Mixed { .. }));
 }

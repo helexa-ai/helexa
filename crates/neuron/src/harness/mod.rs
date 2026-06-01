@@ -115,7 +115,7 @@ impl HarnessRegistry {
                 "candle" => {
                     let harness = Arc::new(candle::CandleHarness::new(
                         bind_url.to_string(),
-                        settings.candle.hf_cache.clone(),
+                        &settings.candle,
                     ));
                     registry.candle = Some(Arc::clone(&harness));
                     registry.harnesses.insert("candle".into(), harness);

@@ -22,7 +22,9 @@ name = "candle"
 # HuggingFace cache directory for model weights.
 #
 # Resolution order (first hit wins):
-#   1. `hf_cache` here in this file.
+#   1. `hf_cache` here in this file (applies to the synth `huggingface`
+#      source only — see [harness.candle.sources.*] below for explicit
+#      per-source paths).
 #   2. `HF_HUB_CACHE` env var — same convention as the Python
 #      `huggingface_hub` library, so an existing cache directory shared
 #      with other tooling can be reused without per-tool config.
@@ -35,6 +37,32 @@ name = "candle"
 #     [Service]
 #     Environment=HF_HUB_CACHE=/archive/hf-cache
 # hf_cache = "/var/lib/neuron/hf-cache"
+
+# Default scheme applied to bare `org/name` model ids (those without a
+# `scheme:` prefix). Defaults to "huggingface" when unset. Set to
+# "helexa" to make `default_models = [{ model_id = "Helexa/Foo" }]`
+# resolve via the helexa registry without prefixing every entry.
+# default_source = "huggingface"
+
+# Per-scheme source endpoints. Each scheme maps to an HF-compatible
+# registry. The `huggingface` source is auto-synthesised pointing at
+# `https://huggingface.co` when omitted; declare it explicitly here to
+# override the endpoint, auth env, or cache dir.
+#
+# [harness.candle.sources.huggingface]
+# endpoint = "https://huggingface.co"
+# auth_env = "HF_TOKEN"          # optional bearer token via env var
+# cache_dir = "/archive3/llm-cache/huggingface"
+#
+# Add helexa (or any operator-run mirror speaking the HF-compatible
+# wire format) by adding another sources entry. Caches are
+# disambiguated per scheme so a mirror serving the same `org/name` as
+# HF cannot collide on disk.
+#
+# [harness.candle.sources.helexa]
+# endpoint = "https://registry.helexa.ai"
+# auth_env = "HELEXA_TOKEN"
+# cache_dir = "/archive3/llm-cache/helexa"
 
 # -- Default models ----------------------------------------------------------
 # Models listed here are loaded automatically when the neuron service

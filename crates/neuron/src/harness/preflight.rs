@@ -22,6 +22,7 @@
 //! cleanly when Phase 1 lands.
 
 use cortex_core::harness::ModelSpec;
+use cortex_core::source::ModelSourceId;
 use hf_hub::api::tokio::Api;
 use serde::Serialize;
 
@@ -115,13 +116,22 @@ pub enum PreflightError {
 /// One network round-trip (`repo.info()`); no blob fetches. Returns
 /// `Ok(PlacementPlan)` when the requested combination is feasible, or
 /// a structured `PreflightError` describing what's wrong.
-pub async fn preflight(api: &Api, spec: &ModelSpec) -> Result<PlacementPlan, PreflightError> {
-    let repo = api.model(spec.model_id.clone());
+///
+/// `api` must already be configured for the scheme `source_id` belongs
+/// to — caller (typically `CandleHarness::load_model`) builds it via
+/// `hf_api_for(&source_id.scheme)`. Only the `org/name` portion of the
+/// id is sent to the registry.
+pub async fn preflight(
+    api: &Api,
+    source_id: &ModelSourceId,
+    spec: &ModelSpec,
+) -> Result<PlacementPlan, PreflightError> {
+    let repo = api.model(source_id.repo_path());
     let info = repo
         .info()
         .await
         .map_err(|e| PreflightError::RepoFetchFailed {
-            model_id: spec.model_id.clone(),
+            model_id: source_id.to_string(),
             cause: format!("{e}"),
         })?;
 
@@ -132,13 +142,13 @@ pub async fn preflight(api: &Api, spec: &ModelSpec) -> Result<PlacementPlan, Pre
     match (&format, tp_size, spec.quant.as_deref()) {
         // No weights at all — nothing to do.
         (SourceFormat::Empty, _, _) => Err(PreflightError::EmptyRepo {
-            model_id: spec.model_id.clone(),
+            model_id: source_id.to_string(),
         }),
 
         // GGUF-only + TP: not supported. Today's HauhauCS failure.
         (SourceFormat::Gguf { quants }, tp, _) if tp > 1 => {
             Err(PreflightError::TpRequiresSafetensors {
-                model_id: spec.model_id.clone(),
+                model_id: source_id.to_string(),
                 tp_size: tp,
                 gguf_quants: quants.clone(),
                 suggestion: format!(
@@ -154,13 +164,13 @@ pub async fn preflight(api: &Api, spec: &ModelSpec) -> Result<PlacementPlan, Pre
             let picked = pick_gguf_file(&filenames, requested.unwrap_or(""));
             match picked {
                 Some(fname) => Ok(PlacementPlan {
-                    model_id: spec.model_id.clone(),
+                    model_id: source_id.to_string(),
                     format: format.clone(),
                     tp_size,
                     picked_quant_file: Some(fname),
                 }),
                 None => Err(PreflightError::QuantNotFound {
-                    model_id: spec.model_id.clone(),
+                    model_id: source_id.to_string(),
                     requested: requested.unwrap_or("").to_string(),
                     available: quants.clone(),
                     nearest: nearest_quant(requested.unwrap_or(""), quants),
@@ -174,7 +184,7 @@ pub async fn preflight(api: &Api, spec: &ModelSpec) -> Result<PlacementPlan, Pre
         // on disk, since it needs the parsed JSON.
         (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
             Ok(PlacementPlan {
-                model_id: spec.model_id.clone(),
+                model_id: source_id.to_string(),
                 format: format.clone(),
                 tp_size,
                 picked_quant_file: None,
@@ -431,14 +441,20 @@ mod tests {
         format: &SourceFormat,
         filenames: &[&str],
     ) -> Result<PlacementPlan, PreflightError> {
+        // Tests parse spec.model_id with the default scheme so the
+        // assertions can keep comparing against bare "org/name".
+        let source_id: ModelSourceId = spec
+            .model_id
+            .parse::<ModelSourceId>()
+            .expect("test spec.model_id must parse");
         let tp_size = spec.tensor_parallel.unwrap_or(1);
         match (format, tp_size, spec.quant.as_deref()) {
             (SourceFormat::Empty, _, _) => Err(PreflightError::EmptyRepo {
-                model_id: spec.model_id.clone(),
+                model_id: source_id.to_string(),
             }),
             (SourceFormat::Gguf { quants }, tp, _) if tp > 1 => {
                 Err(PreflightError::TpRequiresSafetensors {
-                    model_id: spec.model_id.clone(),
+                    model_id: source_id.to_string(),
                     tp_size: tp,
                     gguf_quants: quants.clone(),
                     suggestion: format!(
@@ -451,13 +467,13 @@ mod tests {
                 let picked = pick_gguf_file(filenames, requested.unwrap_or(""));
                 match picked {
                     Some(fname) => Ok(PlacementPlan {
-                        model_id: spec.model_id.clone(),
+                        model_id: source_id.to_string(),
                         format: format.clone(),
                         tp_size,
                         picked_quant_file: Some(fname),
                     }),
                     None => Err(PreflightError::QuantNotFound {
-                        model_id: spec.model_id.clone(),
+                        model_id: source_id.to_string(),
                         requested: requested.unwrap_or("").to_string(),
                         available: quants.clone(),
                         nearest: nearest_quant(requested.unwrap_or(""), quants),
@@ -466,7 +482,7 @@ mod tests {
             }
             (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
                 Ok(PlacementPlan {
-                    model_id: spec.model_id.clone(),
+                    model_id: source_id.to_string(),
                     format: format.clone(),
                     tp_size,
                     picked_quant_file: None,
