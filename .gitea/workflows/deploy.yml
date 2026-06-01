@@ -1,0 +1,126 @@
+name: deploy
+
+# Roll the freshly-published unstable RPMs onto the helexa fleet:
+# cortex on the gateway, helexa-neuron-<flavour> on each neuron host.
+#
+# Triggered automatically after `build-prerelease` succeeds (by which
+# point the new RPMs are live on rpm.lair.cafe/unstable), and also
+# re-runnable manually from the Gitea UI.
+#
+# Per-host one-time setup (gitea_ci user, authorized_keys, scoped
+# sudoers drop-in) lives in script/infra-setup.sh — run that once per
+# host before this workflow can succeed.
+
+on:
+  workflow_run:
+    workflows: [build-prerelease]
+    types: [completed]
+  workflow_dispatch:
+
+# Serialize deploys. Overlapping runs would race on dnf metadata
+# refresh and service-restart timing; queueing keeps the fleet
+# predictable. Don't cancel an in-flight deploy — a half-applied dnf
+# transaction is worse than a slightly stale deploy.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  DEPLOY_KEY: |
+    ${{ secrets.RSYNC_SSH_KEY }}
+
+jobs:
+  deploy-cortex:
+    runs-on: fedora-43
+    # Two trigger paths: manual dispatch always runs; workflow_run
+    # only runs if the upstream `build-prerelease` actually succeeded.
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              gitea_ci@hanzalova.internal 'hostname -f'
+
+      - name: Stop cortex.service
+        run: |
+          ssh gitea_ci@hanzalova.internal '
+            if systemctl is-active --quiet cortex.service; then
+              sudo /usr/bin/systemctl stop cortex.service
+            fi'
+
+      - name: Install / upgrade cortex from rpm.lair.cafe/unstable
+        run: |
+          ssh gitea_ci@hanzalova.internal '
+            if rpm -q cortex >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y cortex
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
+            fi'
+
+      - name: Start cortex.service
+        run: |
+          ssh gitea_ci@hanzalova.internal '
+            sudo /usr/bin/systemctl daemon-reload
+            sudo /usr/bin/systemctl start cortex.service'
+
+  deploy-neurons:
+    needs: [deploy-cortex]
+    runs-on: fedora-43
+    strategy:
+      # One neuron failing must not cancel the others. Cortex is up
+      # already; a partial neuron deploy is strictly better than
+      # rolling back to zero.
+      fail-fast: false
+      matrix:
+        include:
+          - host: beast.hanzalova.internal
+            flavour: blackwell
+          - host: benjy.hanzalova.internal
+            flavour: ada
+          - host: quadbrat.hanzalova.internal
+            flavour: ampere
+    steps:
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              gitea_ci@${{ matrix.host }} 'hostname -f'
+
+      - name: Stop neuron.service
+        run: |
+          ssh gitea_ci@${{ matrix.host }} '
+            if systemctl is-active --quiet neuron.service; then
+              sudo /usr/bin/systemctl stop neuron.service
+            fi'
+
+      - name: Install / upgrade helexa-neuron-${{ matrix.flavour }}
+        run: |
+          ssh gitea_ci@${{ matrix.host }} "
+            if rpm -q helexa-neuron-${{ matrix.flavour }} >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y helexa-neuron-${{ matrix.flavour }}
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y helexa-neuron-${{ matrix.flavour }}
+            fi"
+
+      - name: Ensure firewalld allows helexa-neuron
+        run: |
+          ssh gitea_ci@${{ matrix.host }} '
+            if ! sudo /usr/bin/firewall-cmd --query-service=helexa-neuron --quiet 2>/dev/null; then
+              sudo /usr/bin/firewall-cmd --add-service=helexa-neuron --permanent
+              sudo /usr/bin/firewall-cmd --reload
+            fi'
+
+      - name: Start neuron.service
+        run: |
+          ssh gitea_ci@${{ matrix.host }} '
+            sudo /usr/bin/systemctl daemon-reload
+            sudo /usr/bin/systemctl start neuron.service'
