@@ -94,6 +94,7 @@ safetensors = "0.7"
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 reqwest.workspace = true
+tempfile = "3"
 
 [build-dependencies]
 # Used by `build.rs` to compile `src/cuda/*.cu` into `libneuroncuda.a`

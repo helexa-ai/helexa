@@ -7,6 +7,7 @@
 
 use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
+use crate::harness::preflight::PreflightError;
 use cortex_core::harness::ModelSpec;
 use std::time::{Duration, Instant};
 use tokio::signal;
@@ -53,16 +54,43 @@ pub async fn load_default_models(
             Err(e) => {
                 let rendered = format!("{e:#}");
                 activation.fail_loading(&spec.model_id, &rendered).await;
-                tracing::warn!(
-                    model = %spec.model_id,
-                    error = %rendered,
-                    elapsed_ms = start.elapsed().as_millis() as u64,
-                    "failed to load default model, continuing"
-                );
+                // When the underlying failure is a preflight rejection,
+                // pull the structured fields out so journalctl shows
+                // `reason=tp_requires_safetensors detail="..."` instead
+                // of an opaque "fetch config.json … 404". The operator
+                // can act on the structured form directly.
+                if let Some(pf) = e.downcast_ref::<PreflightError>() {
+                    tracing::warn!(
+                        model = %spec.model_id,
+                        reason = preflight_kind(pf),
+                        detail = %pf,
+                        elapsed_ms = start.elapsed().as_millis() as u64,
+                        "failed to load default model, continuing"
+                    );
+                } else {
+                    tracing::warn!(
+                        model = %spec.model_id,
+                        error = %rendered,
+                        elapsed_ms = start.elapsed().as_millis() as u64,
+                        "failed to load default model, continuing"
+                    );
+                }
             }
         }
     }
     activation.mark_ready().await;
+}
+
+/// Short kebab-case tag for a preflight failure. Used as a structured
+/// log field so journalctl filtering can match on the failure class
+/// (`reason=tp_requires_safetensors`, `reason=quant_not_found`, etc.).
+fn preflight_kind(err: &PreflightError) -> &'static str {
+    match err {
+        PreflightError::RepoFetchFailed { .. } => "repo_fetch_failed",
+        PreflightError::EmptyRepo { .. } => "empty_repo",
+        PreflightError::TpRequiresSafetensors { .. } => "tp_requires_safetensors",
+        PreflightError::QuantNotFound { .. } => "quant_not_found",
+    }
 }
 
 /// Future that resolves on SIGINT (Ctrl-C) or SIGTERM (systemd stop).

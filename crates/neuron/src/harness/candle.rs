@@ -2002,6 +2002,20 @@ impl Harness for CandleHarness {
             }
         }
 
+        // Preflight: classify the source repo and apply the
+        // tp/quant/source feasibility table before any device
+        // allocation, NCCL handshake, or weight fetch. Failures bubble
+        // up as `super::preflight::PreflightError` wrapped in anyhow;
+        // the api.rs handler downcasts to produce a 422 with structured
+        // JSON. The plan it returns is not yet threaded through the
+        // dispatch — downstream `resolve_files` / `resolve_dense_files`
+        // re-run their own substring match — but the structured error
+        // surface is the main payoff.
+        let api = self.hf_api()?;
+        super::preflight::preflight(&api, spec)
+            .await
+            .map_err(anyhow::Error::new)?;
+
         let tp_size = spec.tensor_parallel.unwrap_or(1);
         if tp_size > 1 {
             #[cfg(feature = "cuda")]

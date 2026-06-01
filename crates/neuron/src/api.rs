@@ -3,6 +3,7 @@
 use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
 use crate::harness::candle::{CandleHarness, InferenceError};
+use crate::harness::preflight::PreflightError;
 use crate::health::HealthCache;
 use crate::wire::{openai_chat, openai_responses};
 use axum::Router;
@@ -84,6 +85,24 @@ async fn load_model(
     match registry.load_model(&spec).await {
         Ok(()) => Json(json!({"status": "loaded"})).into_response(),
         Err(e) => {
+            // If the underlying failure is a structured preflight
+            // rejection, surface it as 422 Unprocessable Entity with
+            // the typed JSON body. The kind/model_id/suggestion/etc.
+            // fields let cortex (and operators reading the response
+            // directly) act on the failure without parsing free text.
+            if let Some(pf) = e.downcast_ref::<PreflightError>() {
+                tracing::warn!(
+                    model = %spec.model_id,
+                    reason = preflight_kind(pf),
+                    detail = %pf,
+                    "load_model rejected by preflight"
+                );
+                return (
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    Json(json!({ "error": pf })),
+                )
+                    .into_response();
+            }
             // Log the full anyhow chain server-side so journalctl shows
             // the underlying failure (hf-hub timeout, permission denied,
             // disk full, etc.) without needing to inspect the HTTP
@@ -99,6 +118,18 @@ async fn load_model(
             )
                 .into_response()
         }
+    }
+}
+
+/// Short kebab-case tag for a preflight failure, used as a structured
+/// log field for journalctl-side filtering. Mirrors the same helper in
+/// `startup.rs`; duplicated to keep the module surfaces independent.
+fn preflight_kind(err: &PreflightError) -> &'static str {
+    match err {
+        PreflightError::RepoFetchFailed { .. } => "repo_fetch_failed",
+        PreflightError::EmptyRepo { .. } => "empty_repo",
+        PreflightError::TpRequiresSafetensors { .. } => "tp_requires_safetensors",
+        PreflightError::QuantNotFound { .. } => "quant_not_found",
     }
 }
 
