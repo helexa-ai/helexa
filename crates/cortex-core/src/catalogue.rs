@@ -24,6 +24,17 @@ pub struct ModelProfile {
     /// Neurons where this model should never be evicted.
     #[serde(default)]
     pub pinned_on: Vec<String>,
+    /// Source scheme this profile's weights come from. When set, the
+    /// router prefixes `id` with `scheme:` before forwarding the load
+    /// request to neuron, ensuring the daemon fetches from the right
+    /// registry regardless of which entry happens to match `id`.
+    ///
+    /// `None` lets neuron substitute its own `default_source` (typically
+    /// `huggingface`). Set to `"helexa"` when the model is hosted in
+    /// the helexa registry — operator-procurement-grade audit relies
+    /// on this being explicit per model rather than implicit.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 fn default_min_devices() -> u32 {
@@ -140,6 +151,7 @@ mod tests {
             min_devices: 2,
             min_device_vram_mb: Some(24_000),
             pinned_on: vec![],
+            source: None,
         }
     }
 
@@ -195,6 +207,29 @@ mod tests {
         cat.aliases
             .insert("helexa/small".into(), "Qwen/Qwen3-1.7B".into());
         assert_eq!(cat.resolve_alias("Qwen/Qwen3-8B"), "Qwen/Qwen3-8B");
+    }
+
+    #[test]
+    fn source_defaults_to_none_when_absent_from_toml() {
+        let src = r#"
+[[models]]
+id = "Qwen/Qwen3-30B"
+harness = "candle"
+"#;
+        let cat: ModelCatalogue = toml::from_str(src).expect("parse models table");
+        assert!(cat.models[0].source.is_none());
+    }
+
+    #[test]
+    fn source_round_trips_through_toml() {
+        let src = r#"
+[[models]]
+id = "Helexa/Qwen3.6-27B-Uncensored"
+harness = "candle"
+source = "helexa"
+"#;
+        let cat: ModelCatalogue = toml::from_str(src).expect("parse models table");
+        assert_eq!(cat.models[0].source.as_deref(), Some("helexa"));
     }
 
     #[test]

@@ -292,11 +292,27 @@ async fn profile_to_spec(
     };
 
     ModelSpec {
-        model_id: profile.id.clone(),
+        model_id: qualified_model_id(profile),
         harness: profile.harness.clone(),
         quant: profile.quant.clone(),
         tensor_parallel,
         devices: Some(devices),
+    }
+}
+
+/// Prefix the catalogue id with the scheme when one is declared, so
+/// neuron resolves the load against the right registry. Without this,
+/// a profile pointing at the helexa registry would resolve via
+/// neuron's `default_source` (typically `huggingface`) and fetch
+/// bytes from the wrong place. Profiles that omit `source` continue
+/// to pass the bare id through, preserving the pre-Phase-3 contract.
+///
+/// Stays at module scope (not nested in `profile_to_spec`) so the unit
+/// tests can exercise it without spinning up CortexState topology.
+fn qualified_model_id(profile: &ModelProfile) -> String {
+    match profile.source.as_deref() {
+        Some(scheme) if !scheme.is_empty() => format!("{scheme}:{}", profile.id),
+        _ => profile.id.clone(),
     }
 }
 
@@ -375,7 +391,43 @@ fn rewrite_loopback_host(inference_url: &str, neuron_endpoint: &str) -> Option<S
 
 #[cfg(test)]
 mod tests {
-    use super::rewrite_loopback_host;
+    use super::{ModelProfile, qualified_model_id, rewrite_loopback_host};
+
+    fn bare_profile(id: &str, source: Option<&str>) -> ModelProfile {
+        ModelProfile {
+            id: id.into(),
+            harness: "candle".into(),
+            quant: None,
+            vram_mb: None,
+            min_devices: 1,
+            min_device_vram_mb: None,
+            pinned_on: vec![],
+            source: source.map(String::from),
+        }
+    }
+
+    #[test]
+    fn qualified_id_passes_through_when_source_absent() {
+        let p = bare_profile("Qwen/Qwen3-30B", None);
+        assert_eq!(qualified_model_id(&p), "Qwen/Qwen3-30B");
+    }
+
+    #[test]
+    fn qualified_id_prefixes_when_source_set() {
+        let p = bare_profile("Helexa/Qwen3.6-27B-Uncensored", Some("helexa"));
+        assert_eq!(
+            qualified_model_id(&p),
+            "helexa:Helexa/Qwen3.6-27B-Uncensored"
+        );
+    }
+
+    #[test]
+    fn qualified_id_passes_through_when_source_is_empty_string() {
+        // An empty scheme is treated as absent — neuron's default_source
+        // substitution kicks in.
+        let p = bare_profile("Qwen/Qwen3-30B", Some(""));
+        assert_eq!(qualified_model_id(&p), "Qwen/Qwen3-30B");
+    }
 
     #[test]
     fn rewrites_localhost_keeps_port_and_path() {

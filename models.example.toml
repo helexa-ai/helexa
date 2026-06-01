@@ -7,7 +7,8 @@
 # returns and what the router can cold-load on demand.
 #
 # Field reference:
-#   id                 - HuggingFace model id, exact match.
+#   id                 - Repo id in the source registry (e.g. "Qwen/Qwen3.6-27B").
+#                        Exact match.
 #   harness            - which engine handles inference (currently "candle").
 #   quant              - GGUF quantisation tag for the file in the HF repo
 #                        (e.g. "Q4_K_M"). Omit/empty for the dense
@@ -20,6 +21,11 @@
 #   pinned_on          - optional whitelist of neuron names. Non-empty
 #                        narrows feasibility to just those neurons and
 #                        protects the model from LRU eviction there.
+#   source             - optional source scheme ("huggingface", "helexa",
+#                        operator mirror tag). When set, cortex forwards
+#                        the load to neuron as `scheme:id` so the daemon
+#                        fetches from the right registry. Omit to let
+#                        neuron substitute its own `default_source`.
 
 # Tensor-parallel target — needs a neuron with at least 2 large GPUs.
 # The example pins to a specific neuron name; adjust or remove the
@@ -48,6 +54,20 @@ quant = "Q4_K_M"
 vram_mb = 500
 min_devices = 1
 min_device_vram_mb = 4000
+
+# Helexa registry model — `source` pins this entry to the helexa
+# scheme so cortex forwards `helexa:Helexa/Qwen3.6-27B-Uncensored` to
+# neuron's /models/load. Requires the neuron config to declare a
+# matching [harness.candle.sources.helexa] entry pointing at the
+# helexa registry endpoint (see neuron.example.toml).
+#
+# [[models]]
+# id = "Helexa/Qwen3.6-27B-Uncensored"
+# harness = "candle"
+# source = "helexa"
+# vram_mb = 54000
+# min_devices = 2
+# min_device_vram_mb = 24000
 
 # -- Tier aliases ------------------------------------------------------------
 # Optional. Clients can request inference against an alias (e.g.
