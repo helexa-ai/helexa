@@ -78,6 +78,7 @@ pub mod linear_attn;
 pub mod mlp;
 pub mod rmsnorm;
 pub mod rope;
+pub mod vision;
 
 use decoder::Qwen3_5DecoderLayer;
 use rmsnorm::Qwen3_5RmsNorm;
@@ -99,6 +100,20 @@ pub struct Config {
     pub model_type: String,
     /// The text-side hyperparameters. Everything we actually need.
     pub text_config: TextConfig,
+    /// Vision tower hyperparameters. Present on multimodal
+    /// checkpoints (e.g. Qwen/Qwen3.6-27B); absent on text-only
+    /// variants. When present, `Qwen3_5ForCausalLM::new` loads the
+    /// vision tower alongside the language model so vision-bearing
+    /// requests can splice image embeddings at `<|image_pad|>` token
+    /// positions.
+    #[serde(default)]
+    pub vision_config: Option<vision::VisionConfig>,
+    /// Token id the chat template emits per image patch group.
+    /// Mirrors the LM tokenizer's `<|image_pad|>` id (248056 for
+    /// Qwen3.6). The runtime locates these in the prompt and splices
+    /// in `VisionTower::forward` output. `None` for text-only models.
+    #[serde(default)]
+    pub image_token_id: Option<u32>,
 }
 
 /// Inner config (the `text_config` block). Mirrors the Qwen3 layout
@@ -309,6 +324,15 @@ impl Qwen3_5Model {
 pub struct Qwen3_5ForCausalLM {
     base: Qwen3_5Model,
     lm_head: Linear,
+    /// Vision tower (Stage A4). `None` for text-only checkpoints or
+    /// when the operator has opted out. When present, the harness's
+    /// `Job::EncodeImage` dispatch path runs `vision.forward(image)`
+    /// and the LM forward (Stage B) splices the result at
+    /// `image_token_id` positions in the input embedding stream.
+    vision: Option<vision::VisionTower>,
+    /// Mirrors `Config::image_token_id`. Cached here so the runtime
+    /// doesn't have to round-trip through the parsed config struct.
+    image_token_id: Option<u32>,
 }
 
 impl Qwen3_5ForCausalLM {
@@ -324,7 +348,52 @@ impl Qwen3_5ForCausalLM {
                 .with_context(|| format!("load '{}/lm_head/weight'", vb.prefix()))?;
             Linear::new(weight, None)
         };
-        Ok(Self { base, lm_head })
+        // Stage A4: load the vision tower when the config carries a
+        // `vision_config` block and the safetensors actually carry
+        // `model.visual.*` weights. The `Option<VisionConfig>` on the
+        // config makes this a single-source-of-truth decision —
+        // text-only checkpoints just leave `vision_config` unset and
+        // get `None` here without any extra plumbing.
+        let vision = if let Some(vcfg) = config.vision_config.clone() {
+            tracing::info!(
+                depth = vcfg.depth,
+                hidden_size = vcfg.hidden_size,
+                "loading qwen3_5 vision tower"
+            );
+            Some(
+                vision::VisionTower::load(vcfg, vb.pp("model.visual"))
+                    .context("load qwen3_5 vision tower (model.visual.*)")?,
+            )
+        } else {
+            None
+        };
+        Ok(Self {
+            base,
+            lm_head,
+            vision,
+            image_token_id: config.image_token_id,
+        })
+    }
+
+    /// True when this checkpoint loaded a vision tower. Used by the
+    /// HTTP layer to advertise vision capability in `/v1/models` and
+    /// to reject image-bearing requests against text-only loads with
+    /// a clean 400.
+    pub fn has_vision(&self) -> bool {
+        self.vision.is_some()
+    }
+
+    /// Vision tower handle, if loaded. The device-worker
+    /// `EncodeImage` job dispatches to `vision.forward(image)`.
+    pub fn vision(&self) -> Option<&vision::VisionTower> {
+        self.vision.as_ref()
+    }
+
+    /// `<|image_pad|>` token id from `config.json`, when known.
+    /// The Stage B prompt-builder uses this to count expansion targets
+    /// and the LM forward uses it to locate splice positions.
+    pub fn image_token_id(&self) -> Option<u32> {
+        self.image_token_id
     }
 
     /// `input`: token-id tensor of shape `(B, L)`. Returns logits at

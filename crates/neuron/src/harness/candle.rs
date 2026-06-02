@@ -332,6 +332,37 @@ impl ModelArch {
             }
         }
     }
+
+    /// Encode a preprocessed image into LM-side token embeddings via
+    /// the loaded vision tower. Stage A5.
+    ///
+    /// `image`: device-resident `(C, H, W)` f32 tensor — caller has
+    /// already preprocessed via `harness::preprocess::preprocess` and
+    /// uploaded to the worker's device. Returns
+    /// `(N_lm_tokens, hidden_size)`.
+    ///
+    /// Errors when the loaded architecture has no vision tower
+    /// (text-only checkpoint, or architecture that doesn't support
+    /// vision at all). The HTTP layer maps this to a 400 with
+    /// `vision_unsupported` so clients see a clean rejection rather
+    /// than a confident text-only hallucination.
+    pub fn encode_image(&self, image: &Tensor) -> Result<Tensor> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => m
+                .vision()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "encode_image: this Qwen3.6 checkpoint was loaded without a vision \
+                         tower (config.json::vision_config absent or weights missing)"
+                    )
+                })?
+                .forward(image),
+            other => anyhow::bail!(
+                "encode_image: architecture {} has no vision tower",
+                std::any::type_name_of_val(other)
+            ),
+        }
+    }
 }
 
 /// Squeeze any leading singleton dims off the logits tensor so the

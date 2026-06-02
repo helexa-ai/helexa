@@ -90,6 +90,13 @@ minijinja = { version = "2", features = ["builtins", "json", "serde"] }
 # tp `fused_load` module to read per-rank slices of fused QKV tensors
 # without materialising the full tensor on device.
 safetensors = "0.7"
+# Vision capability for Qwen3.6 (Stage A of the vision plan in
+# doc/vision-qwen3_6-spec.md). `image` decodes PNG/JPEG/etc from
+# the bytes embedded in `data:image/...;base64,...` content parts;
+# `base64` does the URI decode. Default-features off on `image` to
+# avoid pulling in audio/video formats we don't need.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "gif"] }
+base64 = "0.22"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

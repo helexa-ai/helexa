@@ -158,6 +158,17 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let result = forward_logits(&mut state, handle, &tokens, offset);
                 let _ = reply.send(result);
             }
+            Job::EncodeImage {
+                handle,
+                pixels,
+                c,
+                h,
+                w,
+                reply,
+            } => {
+                let result = encode_image(&mut state, handle, pixels, c, h, w);
+                let _ = reply.send(result);
+            }
             Job::NcclInit {
                 cfg,
                 comm_id_hex,
@@ -740,6 +751,49 @@ fn forward_logits(
     Ok(values)
 }
 
+/// Run the vision tower on a single preprocessed image. Stage A5.
+///
+/// `pixels` is a row-major `(c, h, w)` f32 image that the async-side
+/// `harness::preprocess` produced. We reconstruct the tensor on the
+/// worker's device (the same device the model was loaded against),
+/// call `arch.encode_image`, and copy the resulting
+/// `(N_lm_tokens, hidden_size)` embedding back to CPU f32.
+///
+/// Returns the flattened embedding as a `Vec<f32>` — the caller knows
+/// the LM-side token count from `VisionTower::lm_tokens_for(h, w)`
+/// and reshapes accordingly. Stage B introduces a device-resident
+/// embedding-slab variant that avoids this round-trip when the next
+/// forward call needs the result.
+fn encode_image(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    pixels: Vec<f32>,
+    c: usize,
+    h: usize,
+    w: usize,
+) -> anyhow::Result<Vec<f32>> {
+    use candle_core::{DType, Tensor};
+
+    anyhow::ensure!(
+        pixels.len() == c * h * w,
+        "EncodeImage: pixels length {} does not match shape ({c}, {h}, {w})",
+        pixels.len()
+    );
+    let image = Tensor::from_vec(pixels, (c, h, w), &state.device)?;
+
+    let arch = state
+        .models
+        .get(&handle)
+        .ok_or_else(|| anyhow::anyhow!("EncodeImage: no model for handle {}", handle.0))?;
+
+    let embed = arch.encode_image(&image)?;
+    let values = embed
+        .to_dtype(DType::F32)?
+        .flatten_all()?
+        .to_vec1::<f32>()?;
+    Ok(values)
+}
+
 /// Reply to a job with the poisoned-worker error. Used when the worker
 /// has flipped into drain-only mode after a CUDA driver error.
 ///
@@ -771,6 +825,9 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogits { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::EncodeImage { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::NcclInit { reply, .. } => {

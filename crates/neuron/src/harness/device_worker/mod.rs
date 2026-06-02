@@ -313,6 +313,49 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Encode a preprocessed image through the model's vision tower
+    /// and return the resulting LM-side image embeddings as a
+    /// flattened CPU `Vec<f32>`. Stage A5.
+    ///
+    /// `pixels` is the row-major `(c, h, w)` f32 image —
+    /// `harness::preprocess::preprocess` produces this exact shape.
+    /// The caller knows the expected output length from
+    /// `VisionTower::lm_tokens_for(h, w) * hidden_size` and reshapes
+    /// accordingly.
+    pub async fn encode_image(
+        &self,
+        handle: ArchHandle,
+        pixels: Vec<f32>,
+        c: usize,
+        h: usize,
+        w: usize,
+    ) -> Result<Vec<f32>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::EncodeImage {
+                handle,
+                pixels,
+                c,
+                h,
+                w,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Initialise the leader's NCCL communicator. The reply uses
     /// `WorkerResponse` (same shape subprocess workers use over stdio
     /// RPC) so `WorkerPool::init_nccl`'s aggregation treats leader +
@@ -566,6 +609,37 @@ mod tests {
             other => panic!("expected Poisoned, got {other:?}"),
         }
         // The channel is still alive; shutdown should still succeed.
+        handle.shutdown().expect("shutdown ok");
+    }
+
+    /// Stage A5: confirm the EncodeImage job round-trips through the
+    /// worker channel. We don't have a real loaded model in the slab
+    /// here, so the dispatch handler returns the
+    /// "no model for handle" error — which is exactly what we want to
+    /// see, since it proves the message routed through the channel
+    /// and reached the handler. Real-weights validation lives in the
+    /// Stage A7 / Stage B post-deploy smoke on beast.
+    #[tokio::test]
+    async fn encode_image_routes_to_dispatch_and_errors_on_unknown_handle() {
+        use crate::harness::device_worker::jobs::ArchHandle;
+
+        let handle = DeviceWorkerHandle::spawn(0).expect("spawn ok");
+        let fake_arch = ArchHandle(99_999);
+        // (3, 4, 4) fake image — minimal payload, gets reconstructed
+        // on the worker before the handler errors out on the unknown
+        // ArchHandle lookup.
+        let pixels = vec![0.0_f32; 3 * 4 * 4];
+        let result = handle.encode_image(fake_arch, pixels, 3, 4, 4).await;
+        match result {
+            Err(WorkerError::Job(e)) => {
+                let msg = format!("{e:#}");
+                assert!(
+                    msg.contains("EncodeImage: no model for handle"),
+                    "expected unknown-handle error, got: {msg}"
+                );
+            }
+            other => panic!("expected Job(Err), got {other:?}"),
+        }
         handle.shutdown().expect("shutdown ok");
     }
 

@@ -94,6 +94,31 @@ pub enum Job {
         offset: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
+    /// Encode one image through the model's vision tower. Stage A5 of
+    /// the vision plan (`doc/vision-qwen3_6-spec.md`).
+    ///
+    /// `pixels` is the CPU-side preprocessed image tensor in row-major
+    /// `(C, H, W)` f32 layout — what `harness::preprocess::preprocess`
+    /// produces. `c`, `h`, `w` carry the shape since `Vec<f32>` itself
+    /// is rank-1. The handler reconstructs the tensor on the worker's
+    /// device, runs `VisionTower::forward`, copies the resulting
+    /// `(N_lm_tokens, hidden_size)` embedding back to CPU as a flat
+    /// `Vec<f32>` (the caller knows the expected shape from
+    /// `VisionTower::lm_tokens_for(h, w) * hidden_size`).
+    ///
+    /// Mirrors the `ForwardLogits` "tensors don't escape" invariant —
+    /// device-side image embeddings are dropped at handler return.
+    /// Stage B will introduce a follow-up variant that keeps the
+    /// embeddings device-resident and references them from the next
+    /// `ForwardLogits` call, avoiding the round-trip copy.
+    EncodeImage {
+        handle: ArchHandle,
+        pixels: Vec<f32>,
+        c: usize,
+        h: usize,
+        w: usize,
+        reply: oneshot::Sender<Result<Vec<f32>>>,
+    },
     /// Initialize the leader's NCCL communicator. The worker's
     /// `NcclState` mints the `Comm` here so its underlying
     /// `ncclComm_t` and `CudaContext` live on the same thread as
