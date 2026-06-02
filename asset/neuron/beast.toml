@@ -5,9 +5,9 @@
 # invocation: `validate-neuron.sh beast.hanzalova.internal
 # Qwen/Qwen3.6-27B q5k 2`.
 #
-# Synced by script/deploy.sh from asset/neuron/<short-host>.toml. Edits
-# take effect on the next deploy.sh run (which stops + restarts the
-# service so default_models is re-read at activation).
+# Synced to /etc/neuron/neuron.toml by script/infra-setup.sh. Edits
+# take effect after the next deploy workflow run restarts the service
+# (default_models is read at activation).
 
 port = 13131
 

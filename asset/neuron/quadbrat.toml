@@ -4,7 +4,7 @@
 # (bf16, ~4 GB), leaving ~7 GB for KV cache so long contexts on a small
 # model still have plenty of room.
 #
-# Synced by script/deploy.sh from asset/neuron/<short-host>.toml.
+# Synced to /etc/neuron/neuron.toml by script/infra-setup.sh.
 
 port = 13131
 

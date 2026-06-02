@@ -4,7 +4,7 @@
 # Qwen3-8B (bf16, ~18 GB), leaving ~6 GB for KV cache + activations on
 # moderate-length contexts.
 #
-# Synced by script/deploy.sh from asset/neuron/<short-host>.toml.
+# Synced to /etc/neuron/neuron.toml by script/infra-setup.sh.
 
 port = 13131
 
