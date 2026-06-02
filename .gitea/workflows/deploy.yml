@@ -70,6 +70,16 @@ jobs:
             sudo /usr/bin/systemctl daemon-reload
             sudo /usr/bin/systemctl start cortex.service'
 
+      # Wait for the service to either come up or wedge, then capture
+      # the latest-invocation journal. Runs even on prior failure so a
+      # failed start step still leaves a usable record in the deploy log.
+      - name: Capture cortex.service startup journal
+        if: always()
+        run: |
+          sleep 10
+          ssh gitea_ci@hanzalova.internal \
+              'journalctl --unit cortex.service -I --no-pager'
+
   deploy-neurons:
     needs: [deploy-cortex]
     runs-on: fedora-43
@@ -124,3 +134,13 @@ jobs:
           ssh gitea_ci@${{ matrix.host }} '
             sudo /usr/bin/systemctl daemon-reload
             sudo /usr/bin/systemctl start neuron.service'
+
+      # Wait for the service to either come up or wedge, then capture
+      # the latest-invocation journal. Runs even on prior failure so a
+      # failed start step still leaves a usable record in the deploy log.
+      - name: Capture neuron.service startup journal
+        if: always()
+        run: |
+          sleep 10
+          ssh gitea_ci@${{ matrix.host }} \
+              'journalctl --unit neuron.service -I --no-pager'

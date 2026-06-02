@@ -53,6 +53,11 @@ for host in "${cortex_host}" "${neuron_hosts[@]}"; do
         # own fresh lookup.
         sudo install -d -o gitea_ci -g gitea_ci -m 0700 \
             /var/lib/gitea_ci/.ssh
+        # Grant journal read access so the deploy workflow can capture
+        # `journalctl -u <unit> -I` after a service start without
+        # needing a sudoers entry. Idempotent — usermod -aG on an
+        # already-member is a no-op.
+        sudo usermod -aG systemd-journal gitea_ci
     '; then
         echo "  failed to provision gitea_ci — skipping ${host}"
         continue
