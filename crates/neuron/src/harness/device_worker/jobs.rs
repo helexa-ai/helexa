@@ -32,6 +32,13 @@ pub struct TpHandle(pub u64);
 /// `Job::EncodeImage`. Pixels are row-major `(c, h, w)` f32 — the
 /// shape `harness::preprocess::preprocess` produces. Carries the
 /// shape inline since `Vec<f32>` is rank-1.
+///
+/// `Clone` so the vision-aware dispatch in `chat_completion` can
+/// match `&vision_route` (carrying borrowed images) and still hand
+/// owned `Vec<ImageInput>` to the worker job. The clone cost is one
+/// pixel-buffer memcpy per image — fine at fixed-resolution sizes
+/// (3 × 448 × 448 × 4 bytes = ~2.4 MiB per image).
+#[derive(Clone)]
 pub struct ImageInput {
     pub pixels: Vec<f32>,
     pub c: usize,
