@@ -44,6 +44,16 @@ pub struct ModelInfo {
     pub status: String,
     pub devices: Vec<u32>,
     pub vram_used_mb: Option<u64>,
+    /// Modalities this loaded model supports. Today: `["text"]` for
+    /// text-only checkpoints, `["text", "vision"]` for vision-capable
+    /// ones (Stage B7 of the vision plan). Clients like litellm /
+    /// agent0 can gate `image_url` submission on the advertised set.
+    ///
+    /// Optional in the wire format so older clients that don't read
+    /// it stay compatible. Default-empty for absent/older data, which
+    /// callers can interpret as "text".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
 }
 
 /// What an inference harness must do, from neuron's perspective.

@@ -313,6 +313,47 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Forward with image-aware splicing in one round-trip. Stage B3.
+    ///
+    /// Encodes each image on the worker thread (device-resident), then
+    /// runs the LM forward with the embeddings spliced at
+    /// `image_token_id` positions. Returns CPU `[vocab]` logits, same
+    /// shape as `forward_logits`. Image embeddings never copy back to
+    /// CPU.
+    pub async fn forward_logits_with_images(
+        &self,
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        images: Vec<crate::harness::device_worker::jobs::ImageInput>,
+        image_token_id: u32,
+    ) -> Result<Vec<f32>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ForwardLogitsWithImages {
+                handle,
+                tokens,
+                offset,
+                images,
+                image_token_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Encode a preprocessed image through the model's vision tower
     /// and return the resulting LM-side image embeddings as a
     /// flattened CPU `Vec<f32>`. Stage A5.

@@ -250,6 +250,18 @@ async fn chat_completions(
                 })),
             )
                 .into_response(),
+            Err(InferenceError::VisionUnsupported { model_id }) => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!(
+                        "model '{model_id}' does not support image input"
+                    ),
+                    "code": "vision_unsupported",
+                    "model_id": model_id,
+                    "suggestion": "load a vision-capable model or remove image_url content parts",
+                })),
+            )
+                .into_response(),
             Err(InferenceError::Other(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("{e:#}")})),
@@ -286,6 +298,18 @@ async fn chat_completions(
                     "code": "insufficient_vram",
                     "free_mb": free_mb,
                     "required_mb": required_mb,
+                })),
+            )
+                .into_response(),
+            Err(InferenceError::VisionUnsupported { model_id }) => (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!(
+                        "model '{model_id}' does not support image input"
+                    ),
+                    "code": "vision_unsupported",
+                    "model_id": model_id,
+                    "suggestion": "load a vision-capable model or remove image_url content parts",
                 })),
             )
                 .into_response(),
@@ -449,6 +473,18 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
                 "code": "insufficient_vram",
                 "free_mb": free_mb,
                 "required_mb": required_mb,
+            })),
+        )
+            .into_response(),
+        InferenceError::VisionUnsupported { model_id } => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "model '{model_id}' does not support image input"
+                ),
+                "code": "vision_unsupported",
+                "model_id": model_id,
+                "suggestion": "load a vision-capable model or remove image_url content parts",
             })),
         )
             .into_response(),

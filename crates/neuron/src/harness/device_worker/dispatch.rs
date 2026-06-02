@@ -16,10 +16,11 @@
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
-use crate::harness::device_worker::jobs::{ArchHandle, Job};
+use crate::harness::device_worker::jobs::{ArchHandle, ImageInput, Job};
 #[cfg(feature = "cuda")]
 use crate::harness::tp::TpLeaderModel;
 use crate::harness::tp::nccl_state::NcclState;
+use anyhow::Context as _;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -167,6 +168,24 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 reply,
             } => {
                 let result = encode_image(&mut state, handle, pixels, c, h, w);
+                let _ = reply.send(result);
+            }
+            Job::ForwardLogitsWithImages {
+                handle,
+                tokens,
+                offset,
+                images,
+                image_token_id,
+                reply,
+            } => {
+                let result = forward_logits_with_images(
+                    &mut state,
+                    handle,
+                    &tokens,
+                    offset,
+                    images,
+                    image_token_id,
+                );
                 let _ = reply.send(result);
             }
             Job::NcclInit {
@@ -751,6 +770,67 @@ fn forward_logits(
     Ok(values)
 }
 
+/// Run the LM forward with vision-tower image splicing. Stage B3.
+///
+/// Encodes each image through the vision tower (`VisionTower::forward`,
+/// dispatched via `ModelArch::encode_image`), concatenates the
+/// resulting embeddings into a single `(N_total, hidden)` tensor, and
+/// passes it to `ModelArch::forward_with_vision` along with the
+/// prompt-expanded `tokens`. Image embeddings never leave the device.
+///
+/// Returns CPU `[vocab]` logits — same shape contract as
+/// `ForwardLogits` so the async sampler doesn't have to branch on the
+/// presence of images.
+fn forward_logits_with_images(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    tokens: &[u32],
+    offset: usize,
+    images: Vec<ImageInput>,
+    image_token_id: u32,
+) -> anyhow::Result<Vec<f32>> {
+    use candle_core::{DType, Tensor};
+
+    if images.is_empty() {
+        anyhow::bail!("ForwardLogitsWithImages dispatched with zero images");
+    }
+
+    let arch = state.models.get_mut(&handle).ok_or_else(|| {
+        anyhow::anyhow!("ForwardLogitsWithImages: no model for handle {}", handle.0)
+    })?;
+
+    // Encode every image on the worker's device, collecting per-image
+    // post-merger embeddings as device-resident tensors.
+    let mut per_image: Vec<Tensor> = Vec::with_capacity(images.len());
+    for (idx, img) in images.into_iter().enumerate() {
+        anyhow::ensure!(
+            img.pixels.len() == img.c * img.h * img.w,
+            "ForwardLogitsWithImages: image[{idx}] pixels length {} does not match shape ({}, {}, {})",
+            img.pixels.len(),
+            img.c,
+            img.h,
+            img.w,
+        );
+        let image = Tensor::from_vec(img.pixels, (img.c, img.h, img.w), &state.device)?;
+        let embed = arch
+            .encode_image(&image)
+            .with_context(|| format!("encode image[{idx}]"))?;
+        per_image.push(embed);
+    }
+    // Concatenate per-image embeddings along the patch axis →
+    // (sum_of_patches, hidden). `Tensor::cat` keeps the result
+    // device-resident.
+    let image_embeds = Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)?;
+
+    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
+    let logits = arch.forward_with_vision(&input, offset, &image_embeds, image_token_id)?;
+    let values = logits
+        .to_dtype(DType::F32)?
+        .flatten_all()?
+        .to_vec1::<f32>()?;
+    Ok(values)
+}
+
 /// Run the vision tower on a single preprocessed image. Stage A5.
 ///
 /// `pixels` is a row-major `(c, h, w)` f32 image that the async-side
@@ -828,6 +908,9 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::EncodeImage { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::ForwardLogitsWithImages { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::NcclInit { reply, .. } => {

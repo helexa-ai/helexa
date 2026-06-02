@@ -28,6 +28,17 @@ pub struct ArchHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TpHandle(pub u64);
 
+/// One image payload for `Job::ForwardLogitsWithImages` /
+/// `Job::EncodeImage`. Pixels are row-major `(c, h, w)` f32 — the
+/// shape `harness::preprocess::preprocess` produces. Carries the
+/// shape inline since `Vec<f32>` is rank-1.
+pub struct ImageInput {
+    pub pixels: Vec<f32>,
+    pub c: usize,
+    pub h: usize,
+    pub w: usize,
+}
+
 /// One unit of work for the device worker.
 ///
 /// Phase 1 had only `QueryVram` and `Shutdown`. Phase 2 adds the
@@ -92,6 +103,33 @@ pub enum Job {
         handle: ArchHandle,
         tokens: Vec<u32>,
         offset: usize,
+        reply: oneshot::Sender<Result<Vec<f32>>>,
+    },
+    /// Run the LM forward with vision splicing in one round-trip.
+    /// Stage B3 of the vision plan.
+    ///
+    /// Inputs:
+    /// - `tokens`: prompt-expanded token ids (the caller has already
+    ///   replaced each `<|image_pad|>` with N copies per the
+    ///   per-image patch count, so `tokens` already contains exactly
+    ///   `sum(n_i)` `image_token_id` entries across all images).
+    /// - `offset`: KV-cache position (same contract as `ForwardLogits`).
+    /// - `images`: one entry per image — preprocessed pixels plus the
+    ///   `(c, h, w)` shape. Images are encoded on the worker via the
+    ///   model's vision tower (`VisionTower::forward`), concatenated
+    ///   in order, and spliced into the LM input embeddings at
+    ///   `image_token_id` positions.
+    /// - `image_token_id`: the sentinel token (248056 for Qwen3.6).
+    ///
+    /// Returns flat CPU `[vocab]` logits, same as `ForwardLogits`.
+    /// Image embeddings stay device-resident — they're never copied
+    /// to CPU. The "tensors don't escape the worker" invariant holds.
+    ForwardLogitsWithImages {
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        images: Vec<ImageInput>,
+        image_token_id: u32,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
     /// Encode one image through the model's vision tower. Stage A5 of

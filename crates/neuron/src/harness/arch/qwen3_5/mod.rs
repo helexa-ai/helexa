@@ -221,6 +221,76 @@ fn default_partial_rotary_factor() -> f32 {
     1.0
 }
 
+/// Splice rows from `img` into `h` at `positions`. Stage B helper.
+///
+/// `h`: `(1, L, hidden)` — the LM's input embedding tensor after
+/// `embed_tokens.forward`.
+/// `img`: `(N_img, hidden)` — image embeddings, one row per
+/// `<|image_pad|>` token in the prompt. Must already be in `h.dtype()`.
+/// `positions`: indices into the `L` axis where image rows go;
+/// `positions.len() == N_img`.
+///
+/// Approach: group `positions` into contiguous runs (because the chat
+/// template emits `<|vision_start|><|image_pad|>×N<|vision_end|>` —
+/// the pad tokens for each image land in one contiguous span), then
+/// `slice_assign` per run. For typical Qwen3.6 requests this is one
+/// or two runs per image; `slice_assign` does one tensor copy per
+/// run, which is cheap relative to the decoder forward pass.
+fn splice_runs(h: &Tensor, img: &Tensor, positions: &[u32]) -> candle_core::Result<Tensor> {
+    debug_assert!(
+        !positions.is_empty(),
+        "splice_runs precondition: non-empty positions"
+    );
+    let hidden = h.dim(2)?;
+    let mut out = h.clone();
+    let mut img_offset = 0_usize;
+    let mut run_start = positions[0] as usize;
+    let mut run_end_exclusive = run_start + 1;
+    for &p in &positions[1..] {
+        let p = p as usize;
+        if p == run_end_exclusive {
+            run_end_exclusive = p + 1;
+        } else {
+            apply_run(
+                &mut out,
+                img,
+                &mut img_offset,
+                run_start,
+                run_end_exclusive,
+                hidden,
+            )?;
+            run_start = p;
+            run_end_exclusive = p + 1;
+        }
+    }
+    apply_run(
+        &mut out,
+        img,
+        &mut img_offset,
+        run_start,
+        run_end_exclusive,
+        hidden,
+    )?;
+    Ok(out)
+}
+
+fn apply_run(
+    out: &mut Tensor,
+    img: &Tensor,
+    img_offset: &mut usize,
+    run_start: usize,
+    run_end_exclusive: usize,
+    hidden: usize,
+) -> candle_core::Result<()> {
+    let run_len = run_end_exclusive - run_start;
+    let slice = img
+        .narrow(0, *img_offset, run_len)?
+        .reshape((1, run_len, hidden))?;
+    *out = out.slice_assign(&[0..1, run_start..run_end_exclusive, 0..hidden], &slice)?;
+    *img_offset += run_len;
+    Ok(())
+}
+
 /// Qwen3-Next base transformer (embedding + decoder stack + final
 /// norm). Public so a TP variant in `harness/tp/tp_qwen3_5.rs` can
 /// also build on it later — for now only `Qwen3_5ForCausalLM` is the
@@ -304,8 +374,95 @@ impl Qwen3_5Model {
     }
 
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        self.forward_inner(input, offset, None, None)
+    }
+
+    /// Forward with image-embedding splice. Stage B of the vision plan.
+    ///
+    /// `input_ids`: `(1, L)` token ids — same shape the text-only
+    /// `forward` accepts (single-batch; multi-batch vision is not in
+    /// scope today).
+    /// `image_embeds`: `(N_image_tokens, hidden_size)` — concatenation
+    /// of every image's post-merger embedding (`VisionTower::forward`
+    /// output), in the same order images appear in the input. The
+    /// caller has already done the per-image patch-count expansion of
+    /// `<|image_pad|>` tokens in `input_ids`, so `N_image_tokens`
+    /// equals the number of `image_token_id` positions in `input_ids`.
+    /// `image_token_id`: the sentinel token (e.g. 248056 for Qwen3.6).
+    ///
+    /// The splice replaces the LM's text-side embedding at each
+    /// `image_token_id` position with the corresponding row from
+    /// `image_embeds`. After the splice the decoder runs unchanged.
+    ///
+    /// **MRoPE gap.** Qwen3.6's `rope_parameters` declares MRoPE
+    /// (interleaved text/height/width axes); Stage B applies plain
+    /// text-position RoPE to image tokens. The model still attends
+    /// to image content but loses spatial structure that MRoPE-aware
+    /// position encoding would preserve. Tracked under issue #15
+    /// (numerical validation) — quality benchmark from Stage D should
+    /// surface the impact, and the fix lives in `rope::RotaryEmbedding`.
+    pub fn forward_with_vision(
+        &mut self,
+        input_ids: &Tensor,
+        offset: usize,
+        image_embeds: &Tensor,
+        image_token_id: u32,
+    ) -> candle_core::Result<Tensor> {
+        self.forward_inner(input_ids, offset, Some(image_embeds), Some(image_token_id))
+    }
+
+    fn forward_inner(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+        image_embeds: Option<&Tensor>,
+        image_token_id: Option<u32>,
+    ) -> candle_core::Result<Tensor> {
         let (b, l) = input.dims2()?;
         let mut h = self.embed_tokens.forward(input)?;
+        // Splice image embeddings at `image_token_id` positions. The
+        // caller pre-expanded the prompt so every patch token in the
+        // image_embeds tensor has a matching position in `input`. We
+        // index_put the rows in place.
+        if let (Some(img), Some(tok_id)) = (image_embeds, image_token_id) {
+            // Locate image-token positions in input_ids. Operate on
+            // CPU since the input ids are tiny (max ~10k entries
+            // including the patch expansion) and the comparison is
+            // not in the per-step hot path.
+            let ids: Vec<u32> = input.flatten_all()?.to_vec1()?;
+            let mut positions: Vec<u32> = Vec::with_capacity(img.dim(0)?);
+            for (idx, id) in ids.iter().enumerate() {
+                if *id == tok_id {
+                    positions.push(idx as u32);
+                }
+            }
+            let n_img_tokens = img.dim(0)?;
+            if positions.len() != n_img_tokens {
+                candle_core::bail!(
+                    "forward_with_vision: prompt has {} image-token positions but \
+                     image_embeds carries {} tokens — call build_prompt_for_request to \
+                     ensure the per-image patch-count expansion has been applied",
+                    positions.len(),
+                    n_img_tokens,
+                );
+            }
+            if !positions.is_empty() {
+                // Cast image_embeds to the LM's dtype so the splice
+                // produces a uniform tensor for the decoder stack.
+                let img = img.to_dtype(self.dtype)?;
+                // index_select would return the rows; we want to put.
+                // candle's slice_assign with explicit positions ranges
+                // doesn't exist; use scatter via index_select + an
+                // accumulator: build a `(B, L, hidden)` zero tensor,
+                // scatter the image rows in, then add to a masked
+                // version of `h`. Simpler approach: walk positions
+                // and use `slice_assign` for contiguous runs. Since
+                // image_pad runs are contiguous (template emits
+                // `<|vision_start|><|image_pad|>×N<|vision_end|>`),
+                // we group positions and assign per run.
+                h = splice_runs(&h, &img, &positions)?;
+            }
+        }
         // Causal mask only needed for L > 1 prefill; full-attention
         // layers consume it via broadcast_add. Linear-attention layers
         // ignore the mask.
@@ -406,6 +563,24 @@ impl Qwen3_5ForCausalLM {
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
+    /// Stage B: forward with image-embedding splice. Mirrors `forward`
+    /// but routes through `Qwen3_5Model::forward_with_vision` so the
+    /// LM's input embeddings get the image patches spliced in at
+    /// `image_token_id` positions before the decoder stack runs.
+    pub fn forward_with_vision(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+        image_embeds: &Tensor,
+        image_token_id: u32,
+    ) -> candle_core::Result<Tensor> {
+        let (_, l) = input.dims2()?;
+        let hidden = self
+            .base
+            .forward_with_vision(input, offset, image_embeds, image_token_id)?;
+        hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
     pub fn clear_kv_cache(&mut self) {
         self.base.clear_kv_cache();
     }
@@ -462,5 +637,51 @@ mod tests {
         assert_eq!(cfg.text_config.layer_types.len(), 4);
         assert_eq!(cfg.text_config.rope_parameters.rope_theta, 10_000_000.0);
         assert!((cfg.text_config.rope_parameters.partial_rotary_factor - 0.25).abs() < 1e-6);
+    }
+
+    /// `splice_runs` replaces (1, L, H) embedding rows at the given
+    /// positions with rows from a (N_img, H) image-embedding tensor,
+    /// in the order positions are supplied.
+    #[test]
+    fn splice_runs_replaces_at_contiguous_positions() {
+        use candle_core::{DType, Device};
+
+        let dev = Device::Cpu;
+        // (1, L=5, H=2) text embeddings — encoded as floats so the
+        // assertion can spot the change without dtype conversion.
+        let h_vals: Vec<f32> = vec![
+            10., 11., // pos 0
+            20., 21., // pos 1
+            30., 31., // pos 2
+            40., 41., // pos 3
+            50., 51., // pos 4
+        ];
+        let h = Tensor::from_vec(h_vals, (1, 5, 2), &dev).unwrap();
+
+        // Two image embeddings to splice at positions 1 and 2 (a
+        // contiguous run — single image emitting two patch tokens).
+        let img_vals: Vec<f32> = vec![-1., -2., -3., -4.];
+        let img = Tensor::from_vec(img_vals, (2, 2), &dev).unwrap();
+
+        let out = splice_runs(&h, &img, &[1, 2]).unwrap();
+        let flat: Vec<f32> = out.flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(flat, vec![10., 11., -1., -2., -3., -4., 40., 41., 50., 51.]);
+        let _ = DType::F32;
+    }
+
+    /// Non-contiguous positions: two images at positions [1] and [3]
+    /// each contributing one patch. `splice_runs` should iterate
+    /// runs and place the corresponding image rows.
+    #[test]
+    fn splice_runs_handles_non_contiguous_runs() {
+        use candle_core::Device;
+        let dev = Device::Cpu;
+        let h_vals: Vec<f32> = vec![1., 1., 2., 2., 3., 3., 4., 4., 5., 5.];
+        let h = Tensor::from_vec(h_vals, (1, 5, 2), &dev).unwrap();
+        let img_vals: Vec<f32> = vec![-1., -2., -3., -4.];
+        let img = Tensor::from_vec(img_vals, (2, 2), &dev).unwrap();
+        let out = splice_runs(&h, &img, &[1, 3]).unwrap();
+        let flat: Vec<f32> = out.flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(flat, vec![1., 1., -1., -2., 3., 3., -3., -4., 5., 5.]);
     }
 }
