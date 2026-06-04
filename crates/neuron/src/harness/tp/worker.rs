@@ -494,16 +494,13 @@ impl WorkerState {
         let device = model.device().clone();
 
         // Preprocess each image identically to the leader so the encoded
-        // embeddings — and thus the spliced hidden state — match across
-        // ranks. Fixed 448×448 profile.
+        // embeddings — and thus the spliced hidden state and per-image
+        // grids — match across ranks. Native-aspect `smart_resize` (#14);
+        // deterministic, so each rank derives the same dims.
         let profile = PreprocessProfile::qwen3_6();
-        let (h, w) = (
-            profile.target_height as usize,
-            profile.target_width as usize,
-        );
         let mut pixels: Vec<Tensor> = Vec::with_capacity(image_data_uris.len());
         for (idx, uri) in image_data_uris.iter().enumerate() {
-            let px = match preprocess_data_uri(uri, &profile) {
+            let (px, h, w) = match preprocess_data_uri(uri, &profile) {
                 Ok(p) => p,
                 Err(e) => {
                     return WorkerResponse::Error {
@@ -512,7 +509,7 @@ impl WorkerState {
                     };
                 }
             };
-            match Tensor::from_vec(px, (3, h, w), &device) {
+            match Tensor::from_vec(px, (3, h as usize, w as usize), &device) {
                 Ok(t) => pixels.push(t),
                 Err(e) => {
                     return WorkerResponse::Error {

@@ -36,8 +36,13 @@ pub struct TpHandle(pub u64);
 /// `Clone` so the vision-aware dispatch in `chat_completion` can
 /// match `&vision_route` (carrying borrowed images) and still hand
 /// owned `Vec<ImageInput>` to the worker job. The clone cost is one
-/// pixel-buffer memcpy per image — fine at fixed-resolution sizes
-/// (3 × 448 × 448 × 4 bytes = ~2.4 MiB per image).
+/// pixel-buffer memcpy per image — now variable with dynamic resolution
+/// (#14): `3 × h × w × 4` bytes, up to ~6.3 MiB at the default 1024²
+/// `max_pixels` budget.
+///
+/// `h`/`w` are the **resized** dims (factor-aligned), so the per-image LM
+/// grid is `(h/factor, w/factor)` — derived downstream for the splice
+/// and the interleaved-M-RoPE position ids.
 #[derive(Clone)]
 pub struct ImageInput {
     pub pixels: Vec<f32>,

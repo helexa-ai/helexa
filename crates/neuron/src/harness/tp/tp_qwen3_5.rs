@@ -1288,15 +1288,39 @@ impl TpQwen3_5ForCausalLM {
         let device = self.device().clone();
         let image_embeds = self.encode_images_concat(image_pixels)?;
 
+        // Each image's LM grid (lm_gh, lm_gw) = (h/factor, w/factor),
+        // factor = patch×merge. Recomputed per rank from this rank's own
+        // pixel tensors — deterministic, so every rank's grids (and hence
+        // M-RoPE positions) match without crossing the RPC (#14).
+        let factor = self
+            .vision
+            .as_ref()
+            .map(|v| {
+                let c = v.config();
+                c.patch_size * c.spatial_merge_size
+            })
+            .ok_or_else(|| {
+                candle_core::Error::Msg(
+                    "prefill_with_images_chunked: loaded without a vision tower".into(),
+                )
+            })?;
+        let grids: Vec<(usize, usize)> = image_pixels
+            .iter()
+            .map(|t| {
+                let (_, h, w) = t.dims3()?;
+                Ok::<(usize, usize), candle_core::Error>((h / factor, w / factor))
+            })
+            .collect::<candle_core::Result<Vec<_>>>()?;
+
         // Interleaved-M-RoPE 3D position ids for the whole prompt,
         // computed once and sliced per chunk so every rank assigns image
-        // tokens their 14×14 grid coordinates (and text after the image
-        // resumes from the compressed counter). `rope_delta` is stored on
-        // the base model for the decode that follows this prefill. Every
-        // chunk — text or image — uses the M-RoPE slice, because the image
-        // shifts the positions of the text around it.
+        // tokens their grid coordinates (and text after an image resumes
+        // from the compressed counter). `rope_delta` is stored on the base
+        // model for the decode that follows this prefill. Every chunk —
+        // text or image — uses the M-RoPE slice, because each image shifts
+        // the positions of the text around it.
         let (text, height, width, delta) =
-            crate::harness::arch::qwen3_5::rope::get_rope_index(tokens, image_token_id)
+            crate::harness::arch::qwen3_5::rope::get_rope_index(tokens, image_token_id, &grids)
                 .map_err(|e| candle_core::Error::Msg(format!("get_rope_index: {e}")))?;
         self.base.set_rope_delta(delta);
         let full_pos = crate::harness::arch::qwen3_5::rope::mrope_position_tensor(

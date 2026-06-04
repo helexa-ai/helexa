@@ -260,28 +260,40 @@ pub(crate) fn mrope_enabled() -> bool {
 /// off, returns plain sequential identity positions on all three axes
 /// (`mrope_cos_sin` then reduces exactly to plain RoPE), restoring the
 /// pre-M-RoPE behaviour without touching the rest of the forward.
-pub(crate) fn get_rope_index(input_ids: &[u32], image_token_id: u32) -> Result<MRopeIndex> {
+pub(crate) fn get_rope_index(
+    input_ids: &[u32],
+    image_token_id: u32,
+    grids: &[(usize, usize)],
+) -> Result<MRopeIndex> {
     if !mrope_enabled() {
         let seq: Vec<i64> = (0..input_ids.len() as i64).collect();
         return Ok((seq.clone(), seq.clone(), seq, 0));
     }
-    compute_mrope_index(input_ids, image_token_id)
+    compute_mrope_index(input_ids, image_token_id, grids)
 }
 
 /// The real interleaved-M-RoPE position-id computation (always active in
 /// unit tests; gated behind [`get_rope_index`] at runtime).
 ///
-/// Fixed-resolution assumption (Stage C): each image run is a perfect
-/// square with `grid_t = 1` (still image) and `grid_h = grid_w =
-/// isqrt(run_len)` — 196 → 14×14. Dynamic resolution (#14) would thread
-/// real per-image grids instead.
-pub(crate) fn compute_mrope_index(input_ids: &[u32], image_token_id: u32) -> Result<MRopeIndex> {
+/// `grids` carries the post-merge LM grid `(lm_gh, lm_gw)` for each image
+/// run, in prompt order — a run length alone cannot recover its
+/// factorisation, so the grids must be passed (#14 dynamic resolution).
+/// Each image is a still frame (`grid_t = 1`); its tokens get
+/// `[base, base + hh, base + ww]` row-major and the shared counter
+/// resumes at `base + max(lm_gh, lm_gw)`. Multi-image is correct because
+/// the counter threads across images and interleaved text.
+pub(crate) fn compute_mrope_index(
+    input_ids: &[u32],
+    image_token_id: u32,
+    grids: &[(usize, usize)],
+) -> Result<MRopeIndex> {
     let n = input_ids.len();
     let mut text = Vec::with_capacity(n);
     let mut height = Vec::with_capacity(n);
     let mut width = Vec::with_capacity(n);
     let mut counter: i64 = 0;
     let mut i = 0;
+    let mut k = 0; // index into `grids`, one per image run
     while i < n {
         if input_ids[i] == image_token_id {
             let start = i;
@@ -289,25 +301,30 @@ pub(crate) fn compute_mrope_index(input_ids: &[u32], image_token_id: u32) -> Res
                 i += 1;
             }
             let run = i - start;
-            let g = run.isqrt();
-            if g * g != run {
+            let (grid_h, grid_w) = *grids.get(k).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "get_rope_index: image run #{k} (len {run}) has no matching grid \
+                     ({} grids supplied)",
+                    grids.len()
+                )
+            })?;
+            k += 1;
+            if grid_h * grid_w != run {
                 anyhow::bail!(
-                    "get_rope_index: image run length {run} is not a perfect square \
-                     (fixed-resolution Stage C assumes a square grid; dynamic resolution is #14)"
+                    "get_rope_index: image run #{} length {run} != grid {grid_h}×{grid_w} = {}",
+                    k - 1,
+                    grid_h * grid_w
                 );
             }
-            let (grid_t, grid_h, grid_w) = (1usize, g, g);
             let base = counter;
-            for tt in 0..grid_t {
-                for hh in 0..grid_h {
-                    for ww in 0..grid_w {
-                        text.push(base + tt as i64);
-                        height.push(base + hh as i64);
-                        width.push(base + ww as i64);
-                    }
+            for hh in 0..grid_h {
+                for ww in 0..grid_w {
+                    text.push(base); // grid_t = 1 → temporal axis const
+                    height.push(base + hh as i64);
+                    width.push(base + ww as i64);
                 }
             }
-            counter = base + grid_t.max(grid_h).max(grid_w) as i64;
+            counter = base + grid_h.max(grid_w) as i64;
         } else {
             text.push(counter);
             height.push(counter);
@@ -315,6 +332,12 @@ pub(crate) fn compute_mrope_index(input_ids: &[u32], image_token_id: u32) -> Res
             counter += 1;
             i += 1;
         }
+    }
+    if k != grids.len() {
+        anyhow::bail!(
+            "get_rope_index: prompt has {k} image run(s) but {} grid(s) were supplied",
+            grids.len()
+        );
     }
     let delta = counter - n as i64;
     Ok((text, height, width, delta))
@@ -447,7 +470,7 @@ mod tests {
 
     #[test]
     fn get_rope_index_text_only_is_sequential() {
-        let (t, h, w, delta) = compute_mrope_index(&[1, 2, 3, 4], 99).unwrap();
+        let (t, h, w, delta) = compute_mrope_index(&[1, 2, 3, 4], 99, &[]).unwrap();
         assert_eq!(t, vec![0, 1, 2, 3]);
         assert_eq!(h, vec![0, 1, 2, 3]);
         assert_eq!(w, vec![0, 1, 2, 3]);
@@ -456,12 +479,12 @@ mod tests {
 
     #[test]
     fn get_rope_index_text_image_text() {
-        // [text, image(2x2 run of 4), text]. image_token = 99.
+        // [text, image(2x2 run of 4), text]. image_token = 99, grid (2,2).
         let ids = [1u32, 99, 99, 99, 99, 2];
-        let (t, h, w, delta) = compute_mrope_index(&ids, 99).unwrap();
-        // token 0: text → 0. image base=1, grid 1x2x2:
+        let (t, h, w, delta) = compute_mrope_index(&ids, 99, &[(2, 2)]).unwrap();
+        // token 0: text → 0. image base=1, grid 2x2:
         //   t all = 1; h = base+row = [1,1,2,2]; w = base+col = [1,2,1,2].
-        // resume from base + max(1,2,2) = 3. trailing text → 3.
+        // resume from base + max(2,2) = 3. trailing text → 3.
         assert_eq!(t, vec![0, 1, 1, 1, 1, 3]);
         assert_eq!(h, vec![0, 1, 1, 2, 2, 3]);
         assert_eq!(w, vec![0, 1, 2, 1, 2, 3]);
@@ -473,24 +496,51 @@ mod tests {
     }
 
     #[test]
+    fn get_rope_index_nonsquare_single_image() {
+        // text + image(2 rows × 3 cols = 6 tokens). grid (2,3).
+        let ids = [1u32, 99, 99, 99, 99, 99, 99];
+        let (t, h, w, delta) = compute_mrope_index(&ids, 99, &[(2, 3)]).unwrap();
+        // base = 1; row-major h = [0,0,0,1,1,1]+1, w = [0,1,2,0,1,2]+1.
+        assert_eq!(t, vec![0, 1, 1, 1, 1, 1, 1]);
+        assert_eq!(h, vec![0, 1, 1, 1, 2, 2, 2]);
+        assert_eq!(w, vec![0, 1, 2, 3, 1, 2, 3]);
+        // resume from base + max(2,3) = 4; seq_len 7, counter 4 → delta -3.
+        assert_eq!(delta, 4 - 7);
+    }
+
+    #[test]
+    fn get_rope_index_two_images_different_grids() {
+        // img(2x2)=4, text, img(1x3)=3. grids [(2,2),(1,3)].
+        let ids = [99, 99, 99, 99, 7, 99, 99, 99];
+        let (t, h, w, delta) = compute_mrope_index(&ids, 99, &[(2, 2), (1, 3)]).unwrap();
+        // img1 base=0 → t=0, h=[0,0,1,1], w=[0,1,0,1]; resume max(2,2)=2.
+        // text at counter 2. img2 base=3 → t=3, h=[3,3,3], w=[3,4,5];
+        // resume 3+max(1,3)=6.
+        assert_eq!(t, vec![0, 0, 0, 0, 2, 3, 3, 3]);
+        assert_eq!(h, vec![0, 0, 1, 1, 2, 3, 3, 3]);
+        assert_eq!(w, vec![0, 1, 0, 1, 2, 3, 4, 5]);
+        assert_eq!(delta, 6 - 8);
+    }
+
+    #[test]
     fn get_rope_index_on_by_default() {
         // With NEURON_MROPE unset (default ON), the runtime path returns
-        // the real interleaved-M-RoPE positions, so image tokens carry
-        // their 2D grid coords (height differs from the text counter).
-        // (NEURON_MROPE=0 would fall back to identity; not asserted here
-        // since it depends on env.)
-        let (t, h, w, _delta) = get_rope_index(&[1, 99, 99, 99, 99, 2], 99).unwrap();
-        // Same as compute_mrope_index: 2x2 image after one text token.
+        // the real interleaved-M-RoPE positions. (NEURON_MROPE=0 would fall
+        // back to identity; not asserted here since it depends on env.)
+        let (t, h, w, _delta) = get_rope_index(&[1, 99, 99, 99, 99, 2], 99, &[(2, 2)]).unwrap();
         assert_eq!(t, vec![0, 1, 1, 1, 1, 3]);
         assert_eq!(h, vec![0, 1, 1, 2, 2, 3]);
         assert_eq!(w, vec![0, 1, 2, 1, 2, 3]);
     }
 
     #[test]
-    fn get_rope_index_rejects_non_square_image_run() {
-        // 196 is square (14x14) — ok. 195 is not.
-        assert!(compute_mrope_index(&[99u32; 196], 99).is_ok());
-        assert!(compute_mrope_index(&[99u32; 195], 99).is_err());
+    fn get_rope_index_grid_mismatches_error() {
+        // run length != grid product.
+        assert!(compute_mrope_index(&[99u32; 6], 99, &[(2, 2)]).is_err());
+        // too few grids for the number of image runs.
+        assert!(compute_mrope_index(&[99, 99, 7, 99], 99, &[(1, 2)]).is_err());
+        // too many grids.
+        assert!(compute_mrope_index(&[99, 99], 99, &[(1, 2), (1, 1)]).is_err());
     }
 
     #[test]
@@ -501,7 +551,7 @@ mod tests {
         let dev = Device::Cpu;
         let rope = RotaryEmbedding::new(DType::F32, &qwen36_cfg(), &dev).unwrap();
         let ids = [1u32, 99, 99, 99, 99]; // text + 2x2 image
-        let (t, h, w, _d) = compute_mrope_index(&ids, 99).unwrap();
+        let (t, h, w, _d) = compute_mrope_index(&ids, 99, &[(2, 2)]).unwrap();
         let pos = mrope_position_tensor(&t, &h, &w, &dev).unwrap();
         assert_eq!(pos.dims(), &[3, 5]);
         let (cos, _sin) = rope.mrope_cos_sin(&pos).unwrap();
@@ -518,7 +568,7 @@ mod tests {
     fn get_rope_index_196_is_14x14() {
         let mut ids = vec![1u32]; // one text token
         ids.extend(std::iter::repeat_n(99u32, 196));
-        let (t, h, w, _delta) = compute_mrope_index(&ids, 99).unwrap();
+        let (t, h, w, _delta) = compute_mrope_index(&ids, 99, &[(14, 14)]).unwrap();
         // image base = 1. Last image token (index 196) is grid (h=13,w=13).
         assert_eq!(*t.last().unwrap(), 1, "grid_t=1 → temporal const at base");
         assert_eq!(h[1], 1, "first image row at base");

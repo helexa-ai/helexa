@@ -2,11 +2,11 @@
 //!
 //! Decodes `data:image/...;base64,...` URIs from OpenAI-style
 //! `image_url` content parts into the patch tensors a candle vision
-//! tower expects. Stage A ships **fixed resolution** — every image
-//! is resized to the same target dimensions (default 448×448 for
-//! Qwen3.6, configurable per-call) so the patch count is constant
-//! per image. Variable resolution per [Qwen2VL convention] is tracked
-//! as issue #14.
+//! tower expects. Resolution is **dynamic** (#14): each image is
+//! resized to its native aspect via Qwen `smart_resize` — a
+//! factor-aligned `(h, w)` whose pixel count lands in the profile's
+//! `[min_pixels, max_pixels]` budget — so the LM token count varies per
+//! image (`(h/factor) × (w/factor)`).
 //!
 //! Spec reference: `doc/vision-qwen3_6-spec.md` — preprocessor
 //! section.
@@ -21,7 +21,7 @@
 //! Pipeline (per image):
 //!   1. data: URI → base64 decode → bytes
 //!   2. bytes → image::DynamicImage (PNG/JPEG/WebP/etc)
-//!   3. resize_exact to target H×W (pixel space)
+//!   3. smart_resize to a native-aspect, factor-aligned H×W (pixel space)
 //!   4. RGB→f32, normalise per mean/std
 //!   5. layout to (C, H, W) tensor
 //!
@@ -34,37 +34,91 @@ use base64::Engine;
 use image::DynamicImage;
 use image::imageops::FilterType;
 
-/// Preprocessing target. Captures the resize dimensions and the
-/// channel-wise normalisation constants from the model's
-/// `preprocessor_config.json`. Stage A ships a single `qwen3_6()`
-/// constructor for fixed-resolution Qwen3.6 preprocessing; other
-/// models can ship their own profile when added.
+/// Preprocessing target. Captures the resize policy (Qwen `smart_resize`
+/// factor + pixel budget) and the channel-wise normalisation constants
+/// from the model's `preprocessor_config.json`. Images are resized to
+/// their **native aspect** — a factor-aligned `(h, w)` whose pixel count
+/// lands in `[min_pixels, max_pixels]` — not a fixed square (#14).
 #[derive(Debug, Clone)]
 pub struct PreprocessProfile {
-    pub target_height: u32,
-    pub target_width: u32,
+    /// Both output dims are multiples of this. For Qwen3.6 it is
+    /// `patch_size(16) × spatial_merge_size(2) = 32`, so the post-merge
+    /// LM grid is exactly `(h/factor, w/factor)`.
+    pub factor: u32,
+    /// Lower pixel bound — tiny images are upscaled to at least this.
+    pub min_pixels: u32,
+    /// Upper pixel bound — large images are downscaled to at most this.
+    /// Caps per-image LM tokens (`max_pixels / factor²`) and the
+    /// O(patches²) ViT attention cost.
+    pub max_pixels: u32,
     pub image_mean: [f32; 3],
     pub image_std: [f32; 3],
 }
 
 impl PreprocessProfile {
-    /// Stage A profile for Qwen3.6. Resize to 448×448, normalise to
-    /// `[-1, 1]` via mean=std=0.5. Fits within the model's
-    /// `num_position_embeddings=2304` budget at 28×28 = 784 patches
-    /// before merging.
+    /// Profile for Qwen3.6. Native-aspect `smart_resize` (factor 32),
+    /// normalise to `[-1, 1]` via mean=std=0.5. Pixel budget defaults:
+    /// `min = 256² = 65536` (→ 8×8 = 64 LM tokens) and
+    /// `max = 1024² = 1048576` (→ 32×32 = 1024 LM tokens) — generous for
+    /// documents/OCR, bounded for serving on 2×RTX5090. (Operator
+    /// override lands with the `[harness.candle.vision]` config in #14 C5.)
     pub fn qwen3_6() -> Self {
         Self {
-            target_height: 448,
-            target_width: 448,
+            factor: 32,
+            min_pixels: 65_536,
+            max_pixels: 1_048_576,
             image_mean: [0.5, 0.5, 0.5],
             image_std: [0.5, 0.5, 0.5],
         }
     }
 
-    /// Per-channel CHW tensor length: 3 * H * W.
-    pub fn pixels_chw(&self) -> usize {
-        3 * (self.target_height as usize) * (self.target_width as usize)
+    /// The factor-aligned `(h, w)` this profile would resize a source
+    /// `src_h × src_w` image to. Pure integer policy — no pixel work.
+    pub fn resized_dims(&self, src_h: u32, src_w: u32) -> Result<(u32, u32)> {
+        smart_resize(src_h, src_w, self.factor, self.min_pixels, self.max_pixels)
     }
+}
+
+/// Qwen `smart_resize`: the smallest `factor`-aligned `(h_bar, w_bar)`
+/// that preserves aspect ratio as closely as possible while keeping the
+/// pixel count within `[min_pixels, max_pixels]`. Direct port of the
+/// canonical Qwen2-VL / Qwen3-VL image-processor function (so neuron's
+/// grid matches what the model was trained on).
+///
+/// Returns `(height, width)`. Errors if the aspect ratio exceeds 200:1
+/// (degenerate input — a 1-pixel-tall strip), matching upstream.
+pub fn smart_resize(
+    height: u32,
+    width: u32,
+    factor: u32,
+    min_pixels: u32,
+    max_pixels: u32,
+) -> Result<(u32, u32)> {
+    let h = height.max(1) as f64;
+    let w = width.max(1) as f64;
+    let ratio = h.max(w) / h.min(w);
+    if ratio > 200.0 {
+        anyhow::bail!(
+            "image aspect ratio {ratio:.1}:1 exceeds the 200:1 limit ({height}×{width}); \
+             refusing to resize"
+        );
+    }
+    let f = factor as f64;
+    let (minp, maxp) = (min_pixels as f64, max_pixels as f64);
+    // round-to-nearest-factor (may be 0 for sub-factor inputs; the
+    // min-pixels branch below grows it back up).
+    let mut h_bar = (h / f).round() * f;
+    let mut w_bar = (w / f).round() * f;
+    if h_bar * w_bar > maxp {
+        let beta = (h * w / maxp).sqrt();
+        h_bar = f.max((h / beta / f).floor() * f);
+        w_bar = f.max((w / beta / f).floor() * f);
+    } else if h_bar * w_bar < minp {
+        let beta = (minp / (h * w)).sqrt();
+        h_bar = (h * beta / f).ceil() * f;
+        w_bar = (w * beta / f).ceil() * f;
+    }
+    Ok((h_bar as u32, w_bar as u32))
 }
 
 /// Decode a `data:image/...;base64,...` URI into an in-memory image.
@@ -106,16 +160,13 @@ pub fn decode_data_uri(uri: &str) -> Result<DynamicImage> {
 /// faster on CPU. Quality difference is marginal for downstream
 /// vision-encoder consumption. The numerical-validation issue (#15)
 /// will quantify any discrepancy.
-pub fn preprocess(img: &DynamicImage, profile: &PreprocessProfile) -> Vec<f32> {
+pub fn preprocess(img: &DynamicImage, profile: &PreprocessProfile) -> Result<(Vec<f32>, u32, u32)> {
+    let (h_bar, w_bar) = profile.resized_dims(img.height(), img.width())?;
     let rgb = img
-        .resize_exact(
-            profile.target_width,
-            profile.target_height,
-            FilterType::Triangle,
-        )
+        .resize_exact(w_bar, h_bar, FilterType::Triangle)
         .to_rgb8();
-    let h = profile.target_height as usize;
-    let w = profile.target_width as usize;
+    let h = h_bar as usize;
+    let w = w_bar as usize;
     let mut out = vec![0.0_f32; 3 * h * w];
     // Row-major (C, H, W). Candle's Conv2d expects NCHW, so this is
     // the natural layout — the caller stacks `n` of these along the
@@ -131,16 +182,27 @@ pub fn preprocess(img: &DynamicImage, profile: &PreprocessProfile) -> Vec<f32> {
             }
         }
     }
-    out
+    Ok((out, h_bar, w_bar))
 }
 
-/// Combined helper: decode + preprocess in one call. Most call
-/// sites just want the final tensor; the two-step path exists for
-/// callers (tests, future video preprocessing) that need the
+/// Combined helper: decode + preprocess in one call. Returns the
+/// `(3, h, w)` row-major pixels plus the resized `(h, w)` — the caller
+/// needs the dims to build the tensor and to derive the LM token grid
+/// `(h/factor, w/factor)`. Most call sites use this; the two-step path
+/// exists for callers (tests, future video preprocessing) that need the
 /// intermediate `DynamicImage`.
-pub fn preprocess_data_uri(uri: &str, profile: &PreprocessProfile) -> Result<Vec<f32>> {
+pub fn preprocess_data_uri(uri: &str, profile: &PreprocessProfile) -> Result<(Vec<f32>, u32, u32)> {
     let img = decode_data_uri(uri)?;
-    Ok(preprocess(&img, profile))
+    preprocess(&img, profile)
+}
+
+/// Resized `(h, w)` for a data-URI image **without** running the pixel
+/// normalisation — decode header + `smart_resize` only. Lets a caller
+/// that just needs the LM token count (e.g. the TP leader expanding the
+/// prompt) avoid materialising the full pixel tensor twice.
+pub fn resized_dims_for_uri(uri: &str, profile: &PreprocessProfile) -> Result<(u32, u32)> {
+    let img = decode_data_uri(uri)?;
+    profile.resized_dims(img.height(), img.width())
 }
 
 #[cfg(test)]
@@ -205,13 +267,17 @@ mod tests {
         // decoding so this test isolates the resize+normalise path.
         let img: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_pixel(2, 2, Rgb([255, 0, 0]));
         let dyn_img = DynamicImage::ImageRgb8(img);
-        let out = preprocess(&dyn_img, &profile);
+        let (out, h_bar, w_bar) = preprocess(&dyn_img, &profile).expect("preprocess");
 
-        assert_eq!(out.len(), profile.pixels_chw());
+        let h = h_bar as usize;
+        let w = w_bar as usize;
+        assert_eq!(out.len(), 3 * h * w);
+        // Dims are factor-aligned and at least the min-pixel floor.
+        assert_eq!(h_bar % profile.factor, 0);
+        assert_eq!(w_bar % profile.factor, 0);
+        assert!(h * w >= profile.min_pixels as usize);
         // After mean=0.5, std=0.5: red channel (255/255=1.0) → (1.0 - 0.5)/0.5 = 1.0
         // green/blue (0.0) → (0.0 - 0.5)/0.5 = -1.0
-        let h = profile.target_height as usize;
-        let w = profile.target_width as usize;
         assert!(
             (out[0] - 1.0).abs() < 1e-5,
             "R[0] should be 1.0, got {}",
@@ -229,9 +295,12 @@ mod tests {
     #[test]
     fn preprocess_data_uri_end_to_end() {
         let profile = PreprocessProfile::qwen3_6();
-        let out = preprocess_data_uri(&red_png_uri(), &profile).expect("e2e preprocess");
-        assert_eq!(out.len(), profile.pixels_chw());
+        let (out, h, w) = preprocess_data_uri(&red_png_uri(), &profile).expect("e2e preprocess");
+        assert_eq!(out.len(), 3 * h as usize * w as usize);
         assert!(out.iter().all(|v| v.is_finite()));
+        // resized_dims_for_uri agrees with the full preprocess.
+        let (h2, w2) = resized_dims_for_uri(&red_png_uri(), &profile).expect("dims");
+        assert_eq!((h, w), (h2, w2));
     }
 
     #[test]
@@ -240,10 +309,10 @@ mod tests {
         // 1x1 grayscale = 200 → after conversion to RGB, all three
         // channels equal 200, normalised → (200/255 - 0.5)/0.5 ≈ 0.569
         let gray = DynamicImage::ImageLuma8(ImageBuffer::from_pixel(1, 1, image::Luma([200])));
-        let out = preprocess(&gray, &profile);
+        let (out, h_bar, w_bar) = preprocess(&gray, &profile).expect("preprocess");
         let expected = ((200.0 / 255.0) - 0.5) / 0.5;
-        let h = profile.target_height as usize;
-        let w = profile.target_width as usize;
+        let h = h_bar as usize;
+        let w = w_bar as usize;
         for c in 0..3 {
             let v = out[c * h * w];
             assert!(
@@ -251,5 +320,53 @@ mod tests {
                 "channel {c}: expected {expected}, got {v}"
             );
         }
+    }
+
+    #[test]
+    fn smart_resize_keeps_factor_aligned_square_in_budget() {
+        // 448×448 sits inside [65536, 1048576] and is factor-aligned →
+        // unchanged. (Regression guard for the old fixed-res sweet spot.)
+        let (h, w) = smart_resize(448, 448, 32, 65_536, 1_048_576).unwrap();
+        assert_eq!((h, w), (448, 448));
+    }
+
+    #[test]
+    fn smart_resize_preserves_aspect_and_caps_at_max() {
+        // 3000×4000 (landscape) → downscaled under max_pixels, aspect kept.
+        let (h, w) = smart_resize(3000, 4000, 32, 65_536, 1_048_576).unwrap();
+        assert_eq!(h % 32, 0);
+        assert_eq!(w % 32, 0);
+        assert!(
+            (h as u64) * (w as u64) <= 1_048_576,
+            "must respect max_pixels"
+        );
+        assert!(w > h, "landscape orientation preserved");
+        // aspect ≈ 4000/3000 = 1.333; allow a factor-rounding tolerance.
+        let ar = w as f64 / h as f64;
+        assert!((ar - 4.0 / 3.0).abs() < 0.15, "aspect ~4:3, got {ar:.3}");
+    }
+
+    #[test]
+    fn smart_resize_floors_tiny_image_at_min() {
+        // 16×16 → upscaled to at least min_pixels, factor-aligned.
+        let (h, w) = smart_resize(16, 16, 32, 65_536, 1_048_576).unwrap();
+        assert_eq!(h % 32, 0);
+        assert_eq!(w % 32, 0);
+        assert!((h as u64) * (w as u64) >= 65_536, "must respect min_pixels");
+    }
+
+    #[test]
+    fn smart_resize_tall_nonsquare_stays_nonsquare() {
+        // A tall screenshot keeps portrait orientation.
+        let (h, w) = smart_resize(2000, 500, 32, 65_536, 1_048_576).unwrap();
+        assert!(h > w, "portrait orientation preserved");
+        assert_eq!(h % 32, 0);
+        assert_eq!(w % 32, 0);
+    }
+
+    #[test]
+    fn smart_resize_rejects_extreme_aspect() {
+        let err = smart_resize(1, 500, 32, 65_536, 1_048_576).unwrap_err();
+        assert!(format!("{err:#}").contains("200:1"));
     }
 }

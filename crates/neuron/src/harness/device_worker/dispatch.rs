@@ -779,19 +779,17 @@ fn tp_forward_logits_with_images(
         anyhow::bail!("TpForwardLogitsWithImages dispatched with zero images");
     }
 
-    // Preprocess every image into a device-resident (C, H, W) tensor.
-    // Same fixed-resolution profile + decode path the subprocess workers
-    // run, so the encoded embeddings match across ranks bit-for-bit.
+    // Preprocess every image into a device-resident (C, H, W) tensor at
+    // its native-aspect resized dims (#14). Same `smart_resize` + decode
+    // path the subprocess workers run, so the encoded embeddings — and
+    // the per-image grids derived from these dims — match across ranks
+    // bit-for-bit.
     let profile = PreprocessProfile::qwen3_6();
-    let (h, w) = (
-        profile.target_height as usize,
-        profile.target_width as usize,
-    );
     let mut pixels: Vec<Tensor> = Vec::with_capacity(image_data_uris.len());
     for (idx, uri) in image_data_uris.iter().enumerate() {
-        let px = preprocess_data_uri(uri, &profile)
+        let (px, h, w) = preprocess_data_uri(uri, &profile)
             .with_context(|| format!("preprocess image[{idx}] (TP leader)"))?;
-        let t = Tensor::from_vec(px, (3, h, w), &state.device)?;
+        let t = Tensor::from_vec(px, (3, h as usize, w as usize), &state.device)?;
         pixels.push(t);
     }
 
@@ -877,9 +875,17 @@ fn forward_logits_with_images(
         anyhow::anyhow!("ForwardLogitsWithImages: no model for handle {}", handle.0)
     })?;
 
+    // pixel→LM-grid divisor (patch×merge) for this tower; each image's
+    // LM grid is (h/factor, w/factor) (#14 dynamic resolution).
+    let factor = arch.vision_grid_factor().ok_or_else(|| {
+        anyhow::anyhow!("ForwardLogitsWithImages: loaded model has no vision tower")
+    })?;
+
     // Encode every image on the worker's device, collecting per-image
-    // post-merger embeddings as device-resident tensors.
+    // post-merger embeddings as device-resident tensors plus their LM
+    // grids (for the interleaved-M-RoPE position ids).
     let mut per_image: Vec<Tensor> = Vec::with_capacity(images.len());
+    let mut grids: Vec<(usize, usize)> = Vec::with_capacity(images.len());
     for (idx, img) in images.into_iter().enumerate() {
         anyhow::ensure!(
             img.pixels.len() == img.c * img.h * img.w,
@@ -889,6 +895,7 @@ fn forward_logits_with_images(
             img.h,
             img.w,
         );
+        grids.push((img.h / factor, img.w / factor));
         let image = Tensor::from_vec(img.pixels, (img.c, img.h, img.w), &state.device)?;
         let embed = arch
             .encode_image(&image)
@@ -901,7 +908,7 @@ fn forward_logits_with_images(
     let image_embeds = Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)?;
 
     let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
-    let logits = arch.forward_with_vision(&input, offset, &image_embeds, image_token_id)?;
+    let logits = arch.forward_with_vision(&input, offset, &image_embeds, image_token_id, &grids)?;
     let values = logits
         .to_dtype(DType::F32)?
         .flatten_all()?

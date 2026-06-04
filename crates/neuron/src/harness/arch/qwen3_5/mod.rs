@@ -404,7 +404,7 @@ impl Qwen3_5Model {
     }
 
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
-        self.forward_inner(input, offset, None, None)
+        self.forward_inner(input, offset, None, None, &[])
     }
 
     /// Forward with image-embedding splice. Stage B of the vision plan.
@@ -437,8 +437,15 @@ impl Qwen3_5Model {
         offset: usize,
         image_embeds: &Tensor,
         image_token_id: u32,
+        grids: &[(usize, usize)],
     ) -> candle_core::Result<Tensor> {
-        self.forward_inner(input_ids, offset, Some(image_embeds), Some(image_token_id))
+        self.forward_inner(
+            input_ids,
+            offset,
+            Some(image_embeds),
+            Some(image_token_id),
+            grids,
+        )
     }
 
     fn forward_inner(
@@ -447,6 +454,7 @@ impl Qwen3_5Model {
         offset: usize,
         image_embeds: Option<&Tensor>,
         image_token_id: Option<u32>,
+        grids: &[(usize, usize)],
     ) -> candle_core::Result<Tensor> {
         let (b, l) = input.dims2()?;
         let mut h = self.embed_tokens.forward(input)?;
@@ -483,7 +491,7 @@ impl Qwen3_5Model {
                 h = splice_runs(&h, &img, &positions)?;
             }
 
-            let (text, height, width, delta) = rope::get_rope_index(&ids, tok_id)
+            let (text, height, width, delta) = rope::get_rope_index(&ids, tok_id, grids)
                 .map_err(|e| candle_core::Error::Msg(format!("get_rope_index: {e}")))?;
             self.rope_delta = delta;
             let pos = rope::mrope_position_tensor(&text, &height, &width, &self.device)?;
@@ -603,11 +611,12 @@ impl Qwen3_5ForCausalLM {
         offset: usize,
         image_embeds: &Tensor,
         image_token_id: u32,
+        grids: &[(usize, usize)],
     ) -> candle_core::Result<Tensor> {
         let (_, l) = input.dims2()?;
-        let hidden = self
-            .base
-            .forward_with_vision(input, offset, image_embeds, image_token_id)?;
+        let hidden =
+            self.base
+                .forward_with_vision(input, offset, image_embeds, image_token_id, grids)?;
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
