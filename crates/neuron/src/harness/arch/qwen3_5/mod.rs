@@ -191,11 +191,12 @@ fn default_hidden_act() -> String {
 }
 
 /// Nested `rope_parameters` block from a Qwen3-Next `config.json`.
-/// `mrope_section` and `mrope_interleaved` are accepted via the
-/// `#[serde(default)]` flatten-tolerance below but ignored — we treat
-/// MRoPE as plain RoPE for text-only inference (the three position
-/// grids carry identical ids when there's no vision input, so the
-/// interleaving is a no-op).
+///
+/// For text-only inference the three MRoPE position grids carry
+/// identical ids, so the interleave is a no-op and plain RoPE applies.
+/// For vision inputs `mrope_section` + `mrope_interleaved` drive the
+/// per-axis (text/height/width) rotary used by image tokens — see
+/// `rope.rs`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct RopeParameters {
     /// Base for the inverse-frequency computation. Qwen3.6: 10_000_000.
@@ -211,6 +212,16 @@ pub struct RopeParameters {
     /// implemented here.
     #[serde(default)]
     pub rope_type: Option<String>,
+    /// MRoPE per-axis section sizes `[text, height, width]` — e.g.
+    /// `[11, 11, 10]` for Qwen3.6, summing to the rotary half-dim.
+    /// Empty for models that don't declare MRoPE (→ plain RoPE).
+    #[serde(default)]
+    pub mrope_section: Vec<usize>,
+    /// Whether the three MRoPE axes are interleaved per-frequency
+    /// (Qwen3-VL / Qwen3.6 style, `true`) rather than block-concatenated
+    /// (Qwen2-VL style, `false`).
+    #[serde(default)]
+    pub mrope_interleaved: bool,
 }
 
 fn default_rope_theta() -> f64 {

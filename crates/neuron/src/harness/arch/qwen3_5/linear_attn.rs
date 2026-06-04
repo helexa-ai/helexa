@@ -737,6 +737,8 @@ mod tests {
                 rope_theta: 10000.0,
                 partial_rotary_factor: 1.0,
                 rope_type: None,
+                mrope_section: Vec::new(),
+                mrope_interleaved: false,
             },
             rms_norm_eps: 1e-6,
             tie_word_embeddings: false,
