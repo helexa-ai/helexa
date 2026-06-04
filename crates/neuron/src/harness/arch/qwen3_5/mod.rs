@@ -236,7 +236,11 @@ fn default_partial_rotary_factor() -> f32 {
 /// `slice_assign` per run. For typical Qwen3.6 requests this is one
 /// or two runs per image; `slice_assign` does one tensor copy per
 /// run, which is cheap relative to the decoder forward pass.
-fn splice_runs(h: &Tensor, img: &Tensor, positions: &[u32]) -> candle_core::Result<Tensor> {
+pub(crate) fn splice_runs(
+    h: &Tensor,
+    img: &Tensor,
+    positions: &[u32],
+) -> candle_core::Result<Tensor> {
     debug_assert!(
         !positions.is_empty(),
         "splice_runs precondition: non-empty positions"
