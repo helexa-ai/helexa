@@ -240,21 +240,20 @@ impl RotaryEmbedding {
 /// (position-compressed) image blocks.
 ///
 /// Whether interleaved M-RoPE for image tokens is enabled. Default
-/// **off** — the initial implementation degraded image understanding
-/// (the model misread spatial layout and rambled), so until the
-/// interleave is validated against a numerical reference it is opt-in
-/// via `NEURON_MROPE=1`. When off, image tokens get plain sequential
-/// positions (the pre-M-RoPE behaviour: content recognition works,
-/// spatial layout is approximate).
+/// **on** — Qwen3.6 was trained with interleaved M-RoPE, and this
+/// implementation matches the HF `apply_interleaved_mrope` /
+/// `get_rope_index` reference exactly (verified column-for-column). The
+/// env var is a **kill switch**: `NEURON_MROPE=0` falls back to plain
+/// sequential positions for image tokens (the pre-M-RoPE behaviour).
 pub(crate) fn mrope_enabled() -> bool {
     std::env::var("NEURON_MROPE")
         .map(|v| {
-            matches!(
+            !matches!(
                 v.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
+                "0" | "false" | "no" | "off"
             )
         })
-        .unwrap_or(false)
+        .unwrap_or(true)
 }
 
 /// Position ids for the forward path. Gated by [`mrope_enabled`]: when
@@ -474,16 +473,17 @@ mod tests {
     }
 
     #[test]
-    fn get_rope_index_gated_off_by_default() {
-        // With NEURON_MROPE unset (default), the runtime path returns
-        // plain sequential identity positions → mrope_cos_sin reduces to
-        // plain RoPE. (compute_mrope_index, tested above, is the real
-        // computation used when the flag is on.)
-        let (t, h, w, delta) = get_rope_index(&[1, 99, 99, 99, 99, 2], 99).unwrap();
-        assert_eq!(t, vec![0, 1, 2, 3, 4, 5]);
-        assert_eq!(h, t);
-        assert_eq!(w, t);
-        assert_eq!(delta, 0);
+    fn get_rope_index_on_by_default() {
+        // With NEURON_MROPE unset (default ON), the runtime path returns
+        // the real interleaved-M-RoPE positions, so image tokens carry
+        // their 2D grid coords (height differs from the text counter).
+        // (NEURON_MROPE=0 would fall back to identity; not asserted here
+        // since it depends on env.)
+        let (t, h, w, _delta) = get_rope_index(&[1, 99, 99, 99, 99, 2], 99).unwrap();
+        // Same as compute_mrope_index: 2x2 image after one text token.
+        assert_eq!(t, vec![0, 1, 1, 1, 1, 3]);
+        assert_eq!(h, vec![0, 1, 1, 2, 2, 3]);
+        assert_eq!(w, vec![0, 1, 2, 1, 2, 3]);
     }
 
     #[test]
