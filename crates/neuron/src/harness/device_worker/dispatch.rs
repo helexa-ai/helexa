@@ -1015,6 +1015,10 @@ fn drain_poisoned(job: Job, device_index: u32) {
         Job::TpForwardLogits { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
+        #[cfg(feature = "cuda")]
+        Job::TpForwardLogitsWithImages { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
         Job::Shutdown => {
             // Filtered by the matches!() guard in run(); reaching
             // here would be a logic error.
