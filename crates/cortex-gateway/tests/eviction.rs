@@ -91,6 +91,7 @@ async fn test_evict_lru_model() {
                 status: ModelStatus::Loaded,
                 last_accessed: Some(Utc::now() - chrono::Duration::hours(2)),
                 vram_estimate_mb: Some(8000),
+                capabilities: Vec::new(),
             },
         );
         node.models.insert(
@@ -100,6 +101,7 @@ async fn test_evict_lru_model() {
                 status: ModelStatus::Loaded,
                 last_accessed: Some(Utc::now()),
                 vram_estimate_mb: Some(8000),
+                capabilities: Vec::new(),
             },
         );
     }
@@ -163,6 +165,7 @@ async fn test_eviction_increments_lifecycle_cycles() {
                 status: ModelStatus::Loaded,
                 last_accessed: None,
                 vram_estimate_mb: None,
+                capabilities: Vec::new(),
             },
         );
     }

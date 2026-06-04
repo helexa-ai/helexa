@@ -37,6 +37,12 @@ pub struct ModelEntry {
     pub last_accessed: Option<DateTime<Utc>>,
     /// Estimated VRAM usage in MB when loaded.
     pub vram_estimate_mb: Option<u64>,
+    /// Modalities the loaded model advertises (e.g. `["text", "vision"]`),
+    /// copied verbatim from the neuron's `ModelInfo.capabilities` at poll
+    /// time. Empty when the neuron reports none. `#[serde(default)]` keeps
+    /// older persisted/serialised entries deserialisable.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 /// Model lifecycle status.
@@ -85,6 +91,12 @@ pub struct CortexModelEntry {
     /// disjoint from) `feasible_on` depending on whether the catalogue
     /// covers this model.
     pub locations: Vec<ModelLocation>,
+    /// Union of the modalities advertised by every neuron that has this
+    /// model loaded (e.g. `["text", "vision"]`). Empty for catalogue-only
+    /// entries with no loaded location — the catalogue profile doesn't
+    /// declare capabilities yet (tracked separately from C3).
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

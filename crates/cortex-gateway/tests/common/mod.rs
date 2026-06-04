@@ -305,6 +305,7 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
                 status: ModelStatus::Loaded,
                 last_accessed: None,
                 vram_estimate_mb: Some(8000),
+                capabilities: Vec::new(),
             },
         );
     }

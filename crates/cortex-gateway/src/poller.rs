@@ -107,12 +107,14 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                             .and_modify(|e| {
                                 e.status = status;
                                 e.vram_estimate_mb = upstream.vram_used_mb;
+                                e.capabilities = upstream.capabilities.clone();
                             })
                             .or_insert_with(|| ModelEntry {
                                 id: upstream.id.clone(),
                                 status,
                                 last_accessed: None,
                                 vram_estimate_mb: upstream.vram_used_mb,
+                                capabilities: upstream.capabilities.clone(),
                             });
                     }
 

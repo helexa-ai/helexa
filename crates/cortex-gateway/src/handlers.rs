@@ -414,6 +414,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 loaded: false,
                 feasible_on,
                 locations: Vec::new(),
+                // Catalogue profiles don't declare capabilities yet;
+                // the union is filled in Pass 2 from loaded locations.
+                capabilities: Vec::new(),
             },
         );
     }
@@ -438,6 +441,14 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     if was_loaded {
                         e.loaded = true;
                     }
+                    // Union the per-node capabilities so a model loaded
+                    // on several neurons reports every modality any of
+                    // them advertises.
+                    for cap in &entry.capabilities {
+                        if !e.capabilities.contains(cap) {
+                            e.capabilities.push(cap.clone());
+                        }
+                    }
                 })
                 .or_insert_with(|| CortexModelEntry {
                     id: model_id.clone(),
@@ -449,6 +460,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     // feasibility; leave empty.
                     feasible_on: Vec::new(),
                     locations: vec![location],
+                    capabilities: entry.capabilities.clone(),
                 });
         }
     }
@@ -498,6 +510,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     loaded: false,
                     feasible_on: Vec::new(),
                     locations: vec![location],
+                    // A model that's only mid-prewarm has no loaded
+                    // location to read capabilities from yet.
+                    capabilities: Vec::new(),
                 });
         }
     }
@@ -527,6 +542,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 loaded: target_entry.loaded,
                 feasible_on: target_entry.feasible_on,
                 locations: target_entry.locations,
+                capabilities: target_entry.capabilities,
             },
         );
     }

@@ -244,6 +244,7 @@ async fn cold_load(
                     status: ModelStatus::Loaded,
                     last_accessed: Some(chrono::Utc::now()),
                     vram_estimate_mb: profile.vram_mb,
+                    capabilities: Vec::new(),
                 },
             );
         }

@@ -119,6 +119,87 @@ async fn test_poller_updates_gateway_models_endpoint() {
 }
 
 #[tokio::test]
+async fn test_models_endpoint_unions_capabilities_across_nodes() {
+    // C3: two neurons each have the same model loaded but advertise
+    // different capability sets. The gateway's /v1/models must report
+    // the union — a model loaded text-only on one node and
+    // text+vision on another is vision-capable to the fleet.
+    let node_a = common::spawn_mock_neuron_with_models(json!([
+        {"id": "shared-model", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": null, "capabilities": ["text"]}
+    ]))
+    .await;
+    let node_b = common::spawn_mock_neuron_with_models(json!([
+        {"id": "shared-model", "harness": "candle", "status": "loaded", "devices": [1], "vram_used_mb": null, "capabilities": ["text", "vision"]}
+    ]))
+    .await;
+
+    let config = GatewayConfig {
+        gateway: GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: EvictionSettings {
+            strategy: EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![
+            NeuronEndpoint {
+                name: "node-a".into(),
+                endpoint: node_a,
+            },
+            NeuronEndpoint {
+                name: "node-b".into(),
+                endpoint: node_b,
+            },
+        ],
+        models_config: "/dev/null".into(),
+    };
+
+    let fleet = Arc::new(CortexState::from_config(&config));
+    cortex_gateway::poller::poll_once(&fleet).await;
+
+    let app = cortex_gateway::build_app(Arc::clone(&fleet));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = reqwest::Client::new();
+    let body: serde_json::Value = client
+        .get(format!("http://{addr}/v1/models"))
+        .send()
+        .await
+        .expect("request should succeed")
+        .json()
+        .await
+        .unwrap();
+
+    let model = body["data"]
+        .as_array()
+        .expect("data array")
+        .iter()
+        .find(|m| m["id"] == "shared-model")
+        .expect("shared-model should be present");
+
+    let caps: Vec<&str> = model["capabilities"]
+        .as_array()
+        .expect("capabilities array")
+        .iter()
+        .filter_map(|c| c.as_str())
+        .collect();
+    assert!(caps.contains(&"text"), "union must include text: {caps:?}");
+    assert!(
+        caps.contains(&"vision"),
+        "union must include vision: {caps:?}"
+    );
+    assert_eq!(caps.len(), 2, "union must not duplicate text: {caps:?}");
+
+    // Both nodes hold the model, so two locations regardless of caps.
+    assert_eq!(model["locations"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
 async fn test_poller_marks_unreachable_node_unhealthy() {
     let config = GatewayConfig {
         gateway: GatewaySettings {
@@ -216,6 +297,7 @@ async fn test_poller_removes_stale_models() {
                 status: ModelStatus::Loaded,
                 last_accessed: None,
                 vram_estimate_mb: None,
+                capabilities: Vec::new(),
             },
         );
         node.models.insert(
@@ -225,6 +307,7 @@ async fn test_poller_removes_stale_models() {
                 status: ModelStatus::Loaded,
                 last_accessed: None,
                 vram_estimate_mb: None,
+                capabilities: Vec::new(),
             },
         );
     }
