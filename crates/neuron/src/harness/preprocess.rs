@@ -55,12 +55,23 @@ pub struct PreprocessProfile {
     pub image_std: [f32; 3],
 }
 
-/// Default pixel budget for Qwen3.6 (`256² … 1024²` → 64 … 1024 LM
-/// tokens/image). Generous for documents/OCR, bounded for serving on
-/// 2×RTX5090. Operators tune with `NEURON_VISION_MIN_PIXELS` /
-/// `NEURON_VISION_MAX_PIXELS` (matching the other `NEURON_VISION_*` knobs).
+/// The Qwen3.6 vision tower rejects any image whose **patch** count
+/// exceeds its learned pos-embed budget (`num_position_embeddings =
+/// 2304 = 48²`; see `vision.rs`). At `patch_size = 16` that is
+/// `2304 × 16² = 589_824` source pixels. `max_pixels` is hard-capped to
+/// this so `smart_resize` can never produce an over-budget grid — a
+/// per-rank "patch count exceeds pos_embed budget" error mid-TP-forward
+/// would otherwise poison the device context. The pos-embed grid is the
+/// resolution Qwen3.6 was trained at, so this cap is principled, not just
+/// defensive.
+const QWEN3_6_MAX_PIXELS_CAP: u32 = 2304 * 16 * 16; // 589_824 → ≤ 2304 patches → ≤ 576 LM tokens
+
+/// Default pixel budget for Qwen3.6: `256²` (64 LM tokens) up to the
+/// pos-embed cap (576 LM tokens). Generous for documents/OCR, bounded
+/// for serving. Operators lower it with `NEURON_VISION_MIN_PIXELS` /
+/// `NEURON_VISION_MAX_PIXELS` (the upper bound is still clamped to the
+/// cap above — raising it past the budget would poison the model).
 const QWEN3_6_MIN_PIXELS: u32 = 65_536;
-const QWEN3_6_MAX_PIXELS: u32 = 1_048_576;
 
 fn env_pixels(name: &str, default: u32) -> u32 {
     std::env::var(name)
@@ -72,15 +83,19 @@ fn env_pixels(name: &str, default: u32) -> u32 {
 impl PreprocessProfile {
     /// Profile for Qwen3.6. Native-aspect `smart_resize` (factor 32),
     /// normalise to `[-1, 1]` via mean=std=0.5. Pixel budget defaults to
-    /// [`QWEN3_6_MIN_PIXELS`]…[`QWEN3_6_MAX_PIXELS`], overridable via the
-    /// `NEURON_VISION_MIN_PIXELS` / `NEURON_VISION_MAX_PIXELS` env vars.
-    /// The budget is clamped sane: `min ≥ factor²` (at least one LM token)
-    /// and `max ≥ min`.
+    /// [`QWEN3_6_MIN_PIXELS`]…[`QWEN3_6_MAX_PIXELS_CAP`], overridable via
+    /// `NEURON_VISION_MIN_PIXELS` / `NEURON_VISION_MAX_PIXELS`. Clamped
+    /// sane: `factor² ≤ min ≤ max`, and `max ≤` the pos-embed cap (so the
+    /// vision tower never rejects a resized image and poisons the context).
     pub fn qwen3_6() -> Self {
         let factor = 32u32;
         let f2 = factor * factor;
-        let min_pixels = env_pixels("NEURON_VISION_MIN_PIXELS", QWEN3_6_MIN_PIXELS).max(f2);
-        let max_pixels = env_pixels("NEURON_VISION_MAX_PIXELS", QWEN3_6_MAX_PIXELS).max(min_pixels);
+        let min_pixels = env_pixels("NEURON_VISION_MIN_PIXELS", QWEN3_6_MIN_PIXELS)
+            .max(f2)
+            .min(QWEN3_6_MAX_PIXELS_CAP);
+        let max_pixels = env_pixels("NEURON_VISION_MAX_PIXELS", QWEN3_6_MAX_PIXELS_CAP)
+            .min(QWEN3_6_MAX_PIXELS_CAP)
+            .max(min_pixels);
         Self {
             factor,
             min_pixels,
@@ -386,6 +401,28 @@ mod tests {
     fn smart_resize_rejects_extreme_aspect() {
         let err = smart_resize(1, 500, 32, 65_536, 1_048_576).unwrap_err();
         assert!(format!("{err:#}").contains("200:1"));
+    }
+
+    #[test]
+    fn qwen3_6_never_exceeds_pos_embed_patch_budget() {
+        // The pos-embed cap must hold for huge, tall, wide, and extreme
+        // images — exceeding 2304 patches errors mid-tower and poisons
+        // the device context, so this invariant is load-bearing.
+        let p = PreprocessProfile::qwen3_6();
+        for (sh, sw) in [
+            (8000u32, 6000u32),
+            (808, 1600),
+            (4000, 400),
+            (1, 199),
+            (16, 16),
+        ] {
+            let (h, w) = p.resized_dims(sh, sw).unwrap();
+            let patches = (h / 16) * (w / 16);
+            assert!(
+                patches <= 2304,
+                "{sh}x{sw} → {h}x{w} = {patches} patches exceeds the 2304 budget"
+            );
+        }
     }
 
     #[test]
