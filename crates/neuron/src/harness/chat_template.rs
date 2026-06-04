@@ -65,12 +65,55 @@ pub fn chat_templates_enabled() -> bool {
     }
 }
 
-/// Convenience: probe for `tokenizer_config.json` in the same
-/// directory the tokenizer was loaded from. Both files come from
-/// the same HuggingFace snapshot in the hf-hub cache, so the
-/// sibling path is reliable.
+/// Probe for the model's chat template in the same directory the
+/// tokenizer was loaded from, following HuggingFace `transformers`
+/// precedence: a standalone `chat_template.jinja` (then
+/// `chat_template.json`) wins over the `chat_template` field in
+/// `tokenizer_config.json`.
+///
+/// This matters for multimodal models: Qwen3-VL / Qwen3.6 ship their
+/// vision-aware template (the one that emits
+/// `<|vision_start|><|image_pad|><|vision_end|>` per image) **only** in
+/// `chat_template.jinja`, and may not ship a `tokenizer_config.json` at
+/// all. Reading `tokenizer_config.json` alone returned `None`, which
+/// dropped image content into the text-only `format_qwen3_prompt`
+/// fallback — so image requests rendered zero `<|image_pad|>` tokens
+/// and the vision path bailed on the count mismatch.
 pub fn load_chat_template_alongside(tokenizer_json_path: &Path) -> Option<String> {
     let parent = tokenizer_json_path.parent()?;
+
+    // 1. Standalone Jinja file — raw template text, highest priority.
+    let jinja_path = parent.join("chat_template.jinja");
+    match std::fs::read_to_string(&jinja_path) {
+        Ok(text) if !text.trim().is_empty() => {
+            tracing::info!(
+                path = %jinja_path.display(),
+                "chat_template: loaded standalone chat_template.jinja"
+            );
+            return Some(text);
+        }
+        Ok(_) => {
+            tracing::warn!(
+                path = %jinja_path.display(),
+                "chat_template: chat_template.jinja present but empty; trying other sources"
+            );
+        }
+        Err(_) => {} // absent — fall through, common case
+    }
+
+    // 2. Standalone JSON file — `{"chat_template": "..."}` form.
+    let json_path = parent.join("chat_template.json");
+    if json_path.exists()
+        && let Some(t) = load_chat_template_from(&json_path)
+    {
+        tracing::info!(
+            path = %json_path.display(),
+            "chat_template: loaded standalone chat_template.json"
+        );
+        return Some(t);
+    }
+
+    // 3. The `chat_template` field inside tokenizer_config.json.
     let config_path = parent.join("tokenizer_config.json");
     load_chat_template_from(&config_path)
 }
@@ -209,6 +252,87 @@ pub fn render_chat_template(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Reproduces the Qwen3.6 vision template's image-insertion
+    /// condition against the OpenAI `image_url` content-part shape our
+    /// renderer forwards. Confirms minijinja's `'image_url' in item`
+    /// matches a serde_json object that carries that key — i.e. the
+    /// template *can* emit `<|image_pad|>` for our parts.
+    #[test]
+    fn image_url_part_renders_image_pad() {
+        // Condition copied from doc/vision-qwen3_6-spec.md (lines 8-18
+        // of the real chat_template.jinja).
+        let template = "{%- for message in messages -%}\
+{%- if message.content is string -%}\
+{{ message.content }}\
+{%- else -%}\
+{%- for item in message.content -%}\
+{%- if 'image' in item or 'image_url' in item or item.type == 'image' -%}\
+<|vision_start|><|image_pad|><|vision_end|>\
+{%- elif item.type == 'text' -%}\
+{{ item.text }}\
+{%- endif -%}\
+{%- endfor -%}\
+{%- endif -%}\
+{%- endfor -%}";
+        let messages = vec![ChatMessage {
+            role: "user".into(),
+            content: MessageContent::Parts(vec![
+                json!({"type": "text", "text": "what is this?"}),
+                json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA="}}),
+            ]),
+            extra: Value::Object(Default::default()),
+        }];
+        let out = render_chat_template(template, &messages, &Value::Null, &Value::Null)
+            .expect("render should succeed");
+        assert!(
+            out.contains("<|image_pad|>"),
+            "expected the image_url part to emit <|image_pad|>; rendered: {out:?}"
+        );
+    }
+
+    /// `chat_template.jinja` must win over `tokenizer_config.json`'s
+    /// `chat_template` field — the transformers precedence Qwen3.6
+    /// relies on (its vision template ships only in the `.jinja` file).
+    #[test]
+    fn standalone_jinja_template_takes_precedence() {
+        let dir = std::env::temp_dir().join(format!(
+            "neuron_ct_precedence_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("chat_template.jinja"), "FROM_JINJA").unwrap();
+        std::fs::write(
+            dir.join("tokenizer_config.json"),
+            r#"{"chat_template": "FROM_CONFIG"}"#,
+        )
+        .unwrap();
+        // tokenizer_json_path is the sibling the loader takes a parent of.
+        let got = load_chat_template_alongside(&dir.join("tokenizer.json"));
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(got.as_deref(), Some("FROM_JINJA"));
+    }
+
+    /// With no standalone file, fall back to the tokenizer_config.json
+    /// field — the text-only path stays unchanged.
+    #[test]
+    fn falls_back_to_tokenizer_config_when_no_standalone() {
+        let dir = std::env::temp_dir().join(format!(
+            "neuron_ct_fallback_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("tokenizer_config.json"),
+            r#"{"chat_template": "FROM_CONFIG"}"#,
+        )
+        .unwrap();
+        let got = load_chat_template_alongside(&dir.join("tokenizer.json"));
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(got.as_deref(), Some("FROM_CONFIG"));
+    }
 
     fn user_msg(text: &str) -> ChatMessage {
         ChatMessage {
