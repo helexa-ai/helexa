@@ -2739,6 +2739,18 @@ impl CandleHarness {
             return Err(poisoned_error(&model_id));
         }
 
+        // Stage 0 (TP-vision): the TP path has no vision tower yet, so
+        // an image-bearing request can't be honoured. Reject it cleanly
+        // with `vision_unsupported` instead of silently dropping the
+        // image and answering from text alone (the issue-#3 confident-
+        // hallucination pattern). Made conditional on the TP model's
+        // `has_vision` once Stage 3 wires real TP-vision.
+        if request_has_images(&request) {
+            let _g = span.enter();
+            tracing::warn!("TP chat_completion: rejecting image request, TP vision unsupported");
+            return Err(InferenceError::VisionUnsupported { model_id });
+        }
+
         let tp_for_marker = Arc::clone(&tp);
         let handle = tokio::spawn(chat_completion_tp_inner(tp, request).instrument(span.clone()));
         match handle.await {
@@ -2814,6 +2826,20 @@ impl CandleHarness {
     ) -> Result<InferenceStream, InferenceError> {
         if tp.poisoned.load(Ordering::Acquire) {
             return Err(poisoned_error(&request.model));
+        }
+
+        // Stage 0 (TP-vision): reject image requests on the TP streaming
+        // path before opening the SSE stream — the TP path has no vision
+        // tower yet, so honouring the image is impossible and silently
+        // dropping it would hallucinate. Returns a clean 400; made
+        // conditional on `has_vision` in Stage 3.
+        if request_has_images(&request) {
+            tracing::warn!(
+                "TP chat_completion (stream): rejecting image request, TP vision unsupported"
+            );
+            return Err(InferenceError::VisionUnsupported {
+                model_id: request.model.clone(),
+            });
         }
 
         let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request);
