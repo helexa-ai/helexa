@@ -1200,19 +1200,10 @@ impl TpQwen3_5ForCausalLM {
     /// identical encode → splice → forward and keeps the replicated
     /// hidden state in lockstep. Returns last-position logits
     /// `(B, 1, vocab)`, same contract as `forward`.
-    pub fn forward_with_images(
-        &mut self,
-        input: &Tensor,
-        offset: usize,
-        image_pixels: &[Tensor],
-        image_token_id: u32,
-    ) -> candle_core::Result<Tensor> {
-        if image_pixels.is_empty() {
-            candle_core::bail!("forward_with_images: called with zero images");
-        }
-        // Encode each image (immutable borrows of the tower) before the
-        // mutable forward below; the borrows end as each owned embedding
-        // is pushed.
+    /// Encode every preprocessed `(C,H,W)` image once through this
+    /// rank's replicated tower and concatenate along the patch axis →
+    /// `(sum_patches, hidden)`. Done once per prefill, not per chunk.
+    fn encode_images_concat(&self, image_pixels: &[Tensor]) -> candle_core::Result<Tensor> {
         let mut per_image = Vec::with_capacity(image_pixels.len());
         for (idx, img) in image_pixels.iter().enumerate() {
             let embed = self
@@ -1220,8 +1211,66 @@ impl TpQwen3_5ForCausalLM {
                 .map_err(|e| candle_core::Error::Msg(format!("encode image[{idx}]: {e:#}")))?;
             per_image.push(embed);
         }
-        let image_embeds = Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)?;
-        self.forward_with_vision(input, offset, &image_embeds, image_token_id)
+        Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)
+    }
+
+    /// Chunked image prefill on one rank. Encodes the image(s) once,
+    /// then walks the (pre-expanded) prompt in `chunk_size`-token
+    /// windows — exactly like the text `chunked_prefill_tp` — splicing
+    /// the patch embeddings into whichever chunk(s) carry `<|image_pad|>`
+    /// positions. Activation memory is bounded by the chunk, not the
+    /// full prompt, so a long vision context no longer single-shot-OOMs.
+    ///
+    /// Every rank runs the identical chunk sequence (same `tokens.len()`
+    /// and `chunk_size`), so the row-parallel `AllReduce`s pair up
+    /// chunk-by-chunk across ranks with no extra synchronisation. The KV
+    /// cache accumulates across chunks via the growing offset; only the
+    /// final chunk's last-position logits are returned (intermediate
+    /// chunks just populate the cache, same as the text path).
+    pub fn prefill_with_images_chunked(
+        &mut self,
+        tokens: &[u32],
+        base_offset: usize,
+        image_pixels: &[Tensor],
+        image_token_id: u32,
+        chunk_size: usize,
+    ) -> candle_core::Result<Tensor> {
+        if image_pixels.is_empty() {
+            candle_core::bail!("prefill_with_images_chunked: called with zero images");
+        }
+        if tokens.is_empty() {
+            candle_core::bail!("prefill_with_images_chunked: empty prompt");
+        }
+        let chunk_size = chunk_size.max(1);
+        let device = self.device().clone();
+        let image_embeds = self.encode_images_concat(image_pixels)?;
+
+        let mut last_logits: Option<Tensor> = None;
+        // Rows of `image_embeds` already spliced by earlier chunks. The
+        // `<|image_pad|>` run is contiguous, so chunks consume embedding
+        // rows in order.
+        let mut img_off = 0usize;
+        let mut start = 0usize;
+        while start < tokens.len() {
+            let end = (start + chunk_size).min(tokens.len());
+            let chunk = &tokens[start..end];
+            let input = Tensor::new(chunk, &device)?.unsqueeze(0)?;
+            let n_here = chunk.iter().filter(|&&t| t == image_token_id).count();
+            let logits = if n_here == 0 {
+                // Pure-text chunk — same forward the text prefill runs.
+                self.forward(&input, base_offset + start)?
+            } else {
+                // Splice the next `n_here` patch rows at this chunk's
+                // local image-pad positions.
+                let rows = image_embeds.narrow(0, img_off, n_here)?;
+                img_off += n_here;
+                self.forward_with_vision(&input, base_offset + start, &rows, image_token_id)?
+            };
+            last_logits = Some(logits);
+            start = end;
+        }
+        last_logits
+            .ok_or_else(|| candle_core::Error::Msg("prefill_with_images_chunked: no chunks".into()))
     }
 
     pub fn clear_kv_cache(&mut self) {

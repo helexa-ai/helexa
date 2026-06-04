@@ -246,6 +246,7 @@ pub enum Job {
         offset: usize,
         image_token_id: u32,
         image_data_uris: Vec<String>,
+        chunk_size: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
     /// Tell the worker to break its dispatch loop and exit. Any jobs

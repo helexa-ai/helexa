@@ -269,6 +269,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 offset,
                 image_token_id,
                 image_data_uris,
+                chunk_size,
                 reply,
             } => {
                 let result = tp_forward_logits_with_images(
@@ -278,6 +279,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     offset,
                     image_token_id,
                     &image_data_uris,
+                    chunk_size,
                 );
                 let _ = reply.send(result);
             }
@@ -768,6 +770,7 @@ fn tp_forward_logits_with_images(
     offset: usize,
     image_token_id: u32,
     image_data_uris: &[String],
+    chunk_size: usize,
 ) -> anyhow::Result<Vec<f32>> {
     use crate::harness::preprocess::{PreprocessProfile, preprocess_data_uri};
     use candle_core::{DType, Tensor};
@@ -792,8 +795,6 @@ fn tp_forward_logits_with_images(
         pixels.push(t);
     }
 
-    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
-
     let model = state.tp_models.get_mut(&handle).ok_or_else(|| {
         anyhow::anyhow!(
             "TpForwardLogitsWithImages: no model for handle {}",
@@ -801,7 +802,10 @@ fn tp_forward_logits_with_images(
         )
     })?;
 
-    let logits = model.forward_with_images(&input, offset, &pixels, image_token_id)?;
+    // Chunked prefill (encode once, splice per chunk) — bounded
+    // activation, in lockstep with the subprocess ranks.
+    let logits =
+        model.prefill_with_images_chunked(tokens, offset, &pixels, image_token_id, chunk_size)?;
     let logits = logits.squeeze(0)?.squeeze(0)?;
     let logits = logits.to_dtype(DType::F32)?.flatten_all()?;
     let values = logits.to_vec1::<f32>()?;

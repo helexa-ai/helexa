@@ -109,6 +109,10 @@ pub enum WorkerRequest {
         /// image in prompt order. Each rank decodes + preprocesses these
         /// identically; tens of KB each, so cheap over the stdin pipe.
         image_data_uris: Vec<String>,
+        /// Prefill chunk size (tokens). Sent explicitly so every rank
+        /// walks the prompt in identical windows and the per-chunk
+        /// row-parallel collectives stay paired across ranks.
+        chunk_size: usize,
     },
 
     /// Reset the KV cache for this model on this rank. Sent at the
@@ -222,6 +226,7 @@ mod tests {
             offset: 0,
             image_token_id: 248056,
             image_data_uris: vec!["data:image/png;base64,AAA=".into()],
+            chunk_size: 512,
         };
         let wire = serde_json::to_string(&req).unwrap();
         assert!(wire.contains(r#""op":"generate_step_with_images""#));

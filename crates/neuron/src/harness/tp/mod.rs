@@ -62,21 +62,26 @@ impl TpLeaderModel {
         }
     }
 
-    /// Image-bearing forward on rank 0. Only the vision-capable
+    /// Chunked image prefill on rank 0. Only the vision-capable
     /// `qwen3_5` arch supports it; the dense `qwen3` arch has no tower.
-    pub fn forward_with_images(
+    pub fn prefill_with_images_chunked(
         &mut self,
-        input: &candle_core::Tensor,
-        offset: usize,
+        tokens: &[u32],
+        base_offset: usize,
         image_pixels: &[candle_core::Tensor],
         image_token_id: u32,
+        chunk_size: usize,
     ) -> candle_core::Result<candle_core::Tensor> {
         match self {
-            TpLeaderModel::Qwen3_5(m) => {
-                m.forward_with_images(input, offset, image_pixels, image_token_id)
-            }
+            TpLeaderModel::Qwen3_5(m) => m.prefill_with_images_chunked(
+                tokens,
+                base_offset,
+                image_pixels,
+                image_token_id,
+                chunk_size,
+            ),
             TpLeaderModel::Qwen3(_) => {
-                candle_core::bail!("forward_with_images: qwen3 (dense) has no vision tower")
+                candle_core::bail!("prefill_with_images_chunked: qwen3 (dense) has no vision tower")
             }
         }
     }
@@ -722,6 +727,7 @@ impl WorkerPool {
     /// embedding broadcast. Only used for prefill; decode reuses
     /// `generate_step`.
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub async fn generate_step_with_images(
         &mut self,
         model_id: &str,
@@ -730,6 +736,7 @@ impl WorkerPool {
         offset: usize,
         image_token_id: u32,
         image_data_uris: Vec<String>,
+        chunk_size: usize,
     ) -> Result<Vec<f32>> {
         let step_start = std::time::Instant::now();
         let tokens_len = tokens.len();
@@ -738,6 +745,7 @@ impl WorkerPool {
             tokens = tokens_len,
             offset,
             images = image_data_uris.len(),
+            chunk_size,
             "WorkerPool::generate_step_with_images: fan-out"
         );
 
@@ -749,6 +757,7 @@ impl WorkerPool {
                 offset,
                 image_token_id,
                 image_data_uris: image_data_uris.clone(),
+                chunk_size,
             })
             .await?;
         }
@@ -766,6 +775,7 @@ impl WorkerPool {
                 offset,
                 image_token_id,
                 image_data_uris,
+                chunk_size,
             )
             .await;
         let leader_ok = leader_result.is_ok();

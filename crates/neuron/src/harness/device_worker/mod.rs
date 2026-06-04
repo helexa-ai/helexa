@@ -579,6 +579,7 @@ impl DeviceWorkerHandle {
     /// matching `GenerateStepWithImages` out to subprocess ranks so the
     /// row-parallel collectives complete.
     #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
     pub async fn tp_forward_logits_with_images(
         &self,
         handle: TpHandle,
@@ -586,6 +587,7 @@ impl DeviceWorkerHandle {
         offset: usize,
         image_token_id: u32,
         image_data_uris: Vec<String>,
+        chunk_size: usize,
     ) -> Result<Vec<f32>, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -600,6 +602,7 @@ impl DeviceWorkerHandle {
                 offset,
                 image_token_id,
                 image_data_uris,
+                chunk_size,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {

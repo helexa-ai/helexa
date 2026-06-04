@@ -47,24 +47,30 @@ impl WorkerModel {
         }
     }
 
-    /// Image-bearing forward on this rank. Only the vision-capable
+    /// Chunked image prefill on this rank. Only the vision-capable
     /// `qwen3_5` arch has a replicated tower; the dense `qwen3` arch
     /// errors. The returned logits are discarded by the caller (the
     /// leader samples from its own rank-0 copy) — the value is the NCCL
-    /// collectives the forward issues.
-    fn forward_with_images(
+    /// collectives the forward issues, chunk by chunk in lockstep with
+    /// the leader.
+    fn prefill_with_images_chunked(
         &mut self,
-        input: &candle_core::Tensor,
-        offset: usize,
+        tokens: &[u32],
+        base_offset: usize,
         image_pixels: &[candle_core::Tensor],
         image_token_id: u32,
+        chunk_size: usize,
     ) -> candle_core::Result<candle_core::Tensor> {
         match self {
-            WorkerModel::Qwen3_5(m) => {
-                m.forward_with_images(input, offset, image_pixels, image_token_id)
-            }
+            WorkerModel::Qwen3_5(m) => m.prefill_with_images_chunked(
+                tokens,
+                base_offset,
+                image_pixels,
+                image_token_id,
+                chunk_size,
+            ),
             WorkerModel::Qwen3(_) => {
-                candle_core::bail!("forward_with_images: qwen3 (dense) has no vision tower")
+                candle_core::bail!("prefill_with_images_chunked: qwen3 (dense) has no vision tower")
             }
         }
     }
@@ -195,12 +201,14 @@ impl WorkerState {
                 offset,
                 image_token_id,
                 image_data_uris,
+                chunk_size,
             } => self.handle_generate_step_with_images(
                 &model_id,
                 tokens,
                 offset,
                 image_token_id,
                 image_data_uris,
+                chunk_size,
             ),
             WorkerRequest::ClearKvCache { model_id } => self.handle_clear_kv_cache(&model_id),
             WorkerRequest::UnloadModel { model_id } => self.handle_unload_model(&model_id),
@@ -466,6 +474,7 @@ impl WorkerState {
         offset: usize,
         image_token_id: u32,
         image_data_uris: Vec<String>,
+        chunk_size: usize,
     ) -> WorkerResponse {
         use crate::harness::preprocess::{PreprocessProfile, preprocess_data_uri};
         use candle_core::Tensor;
@@ -514,16 +523,6 @@ impl WorkerState {
             }
         }
 
-        let input = match Tensor::new(tokens.as_slice(), &device).and_then(|t| t.unsqueeze(0)) {
-            Ok(t) => t,
-            Err(e) => {
-                return WorkerResponse::Error {
-                    kind: "forward_failed".into(),
-                    message: format!("build input tensor: {e}"),
-                };
-            }
-        };
-
         let start = std::time::Instant::now();
         tracing::debug!(
             rank = self.config.rank,
@@ -531,10 +530,14 @@ impl WorkerState {
             tokens = tokens.len(),
             offset,
             images = pixels.len(),
-            "worker GenerateStepWithImages: forward starting"
+            chunk_size,
+            "worker GenerateStepWithImages: chunked prefill starting"
         );
         // Drop the logits — the leader samples from its own rank-0 copy.
-        if let Err(e) = model.forward_with_images(&input, offset, &pixels, image_token_id) {
+        // The chunked prefill builds its own per-chunk input tensors.
+        if let Err(e) =
+            model.prefill_with_images_chunked(&tokens, offset, &pixels, image_token_id, chunk_size)
+        {
             tracing::warn!(
                 rank = self.config.rank,
                 model = %model_id,
@@ -564,6 +567,7 @@ impl WorkerState {
         _offset: usize,
         _image_token_id: u32,
         _image_data_uris: Vec<String>,
+        _chunk_size: usize,
     ) -> WorkerResponse {
         WorkerResponse::Error {
             kind: "cuda_feature_not_enabled".into(),
