@@ -43,7 +43,7 @@
 
 use anyhow::{Context, Result};
 use cortex_core::openai::{ChatMessage, MessageContent};
-use minijinja::Environment;
+use minijinja::{Environment, Error as MjError, ErrorKind as MjErrorKind, Value as MjValue};
 use serde_json::Value;
 use std::path::Path;
 
@@ -191,6 +191,25 @@ pub fn render_chat_template(
     kwargs: &Value,
 ) -> Result<String> {
     let mut env = Environment::new();
+
+    // HF chat templates are authored against Python's Jinja2 with its
+    // string semantics. Bridge the two so real model templates render:
+    //
+    // - `pycompat::unknown_method_callback` supplies Python str/list/dict
+    //   methods minijinja lacks natively (`startswith`, `endswith`,
+    //   `split`, `rstrip`, `lstrip`, …) — the Qwen3.6 template uses
+    //   several in its think-block and tool-response handling.
+    // - `raise_exception` is the global HF templates call to reject
+    //   malformed inputs (e.g. an image in a system message). Map it to
+    //   a render error so the caller falls back / surfaces it.
+    env.set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
+    env.add_function(
+        "raise_exception",
+        |msg: String| -> Result<MjValue, MjError> {
+            Err(MjError::new(MjErrorKind::InvalidOperation, msg))
+        },
+    );
+
     // Compile the template against a fixed name so error messages
     // surface "chat_template" rather than `<template>`.
     env.add_template("chat_template", template)
@@ -332,6 +351,33 @@ mod tests {
         let got = load_chat_template_alongside(&dir.join("tokenizer.json"));
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(got.as_deref(), Some("FROM_CONFIG"));
+    }
+
+    /// The *actual* Qwen3.6-27B `chat_template.jinja` (verbatim from
+    /// beast's HF cache) must render in minijinja and emit exactly one
+    /// `<|image_pad|>` for a text+image user turn. This is the real
+    /// end-to-end check the unit tests above only approximate — it
+    /// catches any minijinja incompatibility (namespace, macros,
+    /// reverse slice, string methods) before it reaches production.
+    #[test]
+    fn real_qwen3_6_template_renders_one_image_pad() {
+        let template = include_str!("testdata/qwen3_6_chat_template.jinja");
+        let messages = vec![ChatMessage {
+            role: "user".into(),
+            content: MessageContent::Parts(vec![
+                json!({"type": "text", "text": "what is this?"}),
+                json!({"type": "image_url", "image_url": {"url": "data:image/png;base64,AAA="}}),
+            ]),
+            extra: Value::Object(Default::default()),
+        }];
+        let out = render_chat_template(template, &messages, &Value::Null, &Value::Null)
+            .expect("real Qwen3.6 template should render in minijinja");
+        let pads = out.matches("<|image_pad|>").count();
+        assert_eq!(
+            pads, 1,
+            "expected exactly one <|image_pad|>; rendered:\n{out}"
+        );
+        assert!(out.contains("<|vision_start|>") && out.contains("<|vision_end|>"));
     }
 
     fn user_msg(text: &str) -> ChatMessage {
