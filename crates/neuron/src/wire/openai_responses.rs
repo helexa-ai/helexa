@@ -647,6 +647,54 @@ mod tests {
     }
 
     #[test]
+    fn multiple_images_translate_in_order_and_tolerate_detail() {
+        // C2: a Responses request carrying several InputImage parts
+        // (with `detail` set) must translate to a chat Parts array that
+        // preserves image order and the `image_url.url` shape the chat
+        // vision path (`extract_images_from_request`) walks. The
+        // `detail` hint has no chat-completions analogue we forward, so
+        // it's dropped — but it must not break translation.
+        let req = ResponsesRequest {
+            model: "m".into(),
+            input: ResponsesInput::Items(vec![ResponsesInputItem::Message {
+                role: "user".into(),
+                content: ResponsesMessageContent::Parts(vec![
+                    ResponsesContentPart::InputText {
+                        text: "compare these".into(),
+                    },
+                    ResponsesContentPart::InputImage {
+                        image_url: "data:image/png;base64,FIRST".into(),
+                        detail: Some("high".into()),
+                    },
+                    ResponsesContentPart::InputImage {
+                        image_url: "data:image/png;base64,SECOND".into(),
+                        detail: None,
+                    },
+                ]),
+            }]),
+            instructions: None,
+            stream: false,
+            max_output_tokens: None,
+            temperature: None,
+            top_p: None,
+            previous_response_id: None,
+            extra: Value::Object(Default::default()),
+        };
+        let chat = request_to_chat(req).unwrap();
+        let parts = match &chat.messages[0].content {
+            MessageContent::Parts(p) => p.clone(),
+            other => panic!("expected Parts, got {other:?}"),
+        };
+        // text + two images, in input order.
+        assert_eq!(parts.len(), 3);
+        assert_eq!(parts[0]["type"], "text");
+        assert_eq!(parts[1]["image_url"]["url"], "data:image/png;base64,FIRST");
+        assert_eq!(parts[2]["image_url"]["url"], "data:image/png;base64,SECOND");
+        // `detail` is not forwarded into the chat image_url object.
+        assert!(parts[1]["image_url"].get("detail").is_none());
+    }
+
+    #[test]
     fn text_only_parts_collapse_to_string() {
         let req = ResponsesRequest {
             model: "m".into(),
