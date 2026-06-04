@@ -93,12 +93,13 @@ impl Qwen3_5DecoderLayer {
         &mut self,
         x: &Tensor,
         attn_mask: Option<&Tensor>,
-        offset: usize,
+        cos: &Tensor,
+        sin: &Tensor,
     ) -> candle_core::Result<Tensor> {
         let h = self.input_layernorm.forward(x)?;
         let attn_out = match &mut self.attention {
-            AttentionKind::Full(attn) => attn.forward(&h, attn_mask, offset)?,
-            // Linear attention ignores attn_mask + offset; its causal
+            AttentionKind::Full(attn) => attn.forward(&h, attn_mask, cos, sin)?,
+            // Linear attention ignores attn_mask + rope; its causal
             // structure is baked into the recurrent state lifecycle.
             AttentionKind::Linear(net) => net.forward(&h)?,
         };

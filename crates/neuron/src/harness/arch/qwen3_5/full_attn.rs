@@ -96,7 +96,8 @@ impl Qwen3_5Attention {
         &mut self,
         x: &Tensor,
         attn_mask: Option<&Tensor>,
-        offset: usize,
+        cos: &Tensor,
+        sin: &Tensor,
     ) -> candle_core::Result<Tensor> {
         let (b, l, _) = x.dims3()?;
 
@@ -131,8 +132,9 @@ impl Qwen3_5Attention {
             .transpose(1, 2)?
             .contiguous()?;
 
-        // 3. RoPE on q, k.
-        let (q, k) = self.rotary.apply(&q, &k, offset)?;
+        // 3. RoPE on q, k (cos/sin built once per forward by the model —
+        //    interleaved M-RoPE for image tokens, plain for text).
+        let (q, k) = self.rotary.apply_cos_sin(&q, &k, cos, sin)?;
 
         // 4. KV cache.
         let (k, v) = self.kv_cache.append(&k, &v)?;

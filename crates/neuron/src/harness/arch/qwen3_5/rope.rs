@@ -258,9 +258,6 @@ impl RotaryEmbedding {
 /// square with `grid_t = 1` (still image) and `grid_h = grid_w =
 /// isqrt(run_len)` — 196 → 14×14. Dynamic resolution (#14) would thread
 /// real per-image grids instead.
-// Wired into the forward path in Stage 3 (single-GPU) / Stage 4 (TP);
-// exercised by unit tests until then.
-#[allow(dead_code)]
 pub(crate) fn get_rope_index(input_ids: &[u32], image_token_id: u32) -> Result<MRopeIndex> {
     let n = input_ids.len();
     let mut text = Vec::with_capacity(n);
@@ -313,7 +310,6 @@ pub(crate) type MRopeIndex = (Vec<i64>, Vec<i64>, Vec<i64>, i64);
 
 /// Build the `(3, seq)` position-id tensor consumed by
 /// [`RotaryEmbedding::mrope_cos_sin`] from the three axis vectors.
-#[allow(dead_code)] // wired in Stage 3/4
 pub(crate) fn mrope_position_tensor(
     text: &[i64],
     height: &[i64],
