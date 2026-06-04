@@ -62,6 +62,25 @@ impl TpLeaderModel {
         }
     }
 
+    /// Image-bearing forward on rank 0. Only the vision-capable
+    /// `qwen3_5` arch supports it; the dense `qwen3` arch has no tower.
+    pub fn forward_with_images(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+        image_pixels: &[candle_core::Tensor],
+        image_token_id: u32,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            TpLeaderModel::Qwen3_5(m) => {
+                m.forward_with_images(input, offset, image_pixels, image_token_id)
+            }
+            TpLeaderModel::Qwen3(_) => {
+                candle_core::bail!("forward_with_images: qwen3 (dense) has no vision tower")
+            }
+        }
+    }
+
     pub fn clear_kv_cache(&mut self) {
         match self {
             TpLeaderModel::Qwen3(m) => m.clear_kv_cache(),
@@ -680,6 +699,129 @@ impl WorkerPool {
                 } else {
                     Err(anyhow::Error::new(e).context(format!(
                         "GenerateStep: leader forward failed and workers also failed: {}",
+                        worker_errors.join("; ")
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Image-bearing variant of [`Self::generate_step`] for the
+    /// single-shot vision prefill. Identical fan-out / leader-forward /
+    /// drain shape, but every rank runs the encode + splice path:
+    ///
+    /// - subprocess workers get `GenerateStepWithImages` (carrying the
+    ///   source `image_data_uris`); each preprocesses + encodes through
+    ///   its replicated tower and splices locally;
+    /// - the leader runs the same encode + splice + forward on its
+    ///   device worker thread via `tp_forward_logits_with_images`.
+    ///
+    /// The row-parallel `AllReduce`s synchronise the ranks exactly as in
+    /// the text path. Because the tower is replicated and the preprocess
+    /// is deterministic, every rank's spliced hidden state matches — no
+    /// embedding broadcast. Only used for prefill; decode reuses
+    /// `generate_step`.
+    #[cfg(feature = "cuda")]
+    pub async fn generate_step_with_images(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        image_token_id: u32,
+        image_data_uris: Vec<String>,
+    ) -> Result<Vec<f32>> {
+        let step_start = std::time::Instant::now();
+        let tokens_len = tokens.len();
+        tracing::debug!(
+            model = %model_id,
+            tokens = tokens_len,
+            offset,
+            images = image_data_uris.len(),
+            "WorkerPool::generate_step_with_images: fan-out"
+        );
+
+        // 1. Fan-out the image-bearing prefill to subprocess workers.
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::GenerateStepWithImages {
+                model_id: model_id.to_string(),
+                tokens: tokens.clone(),
+                offset,
+                image_token_id,
+                image_data_uris: image_data_uris.clone(),
+            })
+            .await?;
+        }
+
+        // 2. Leader's image forward on its device worker thread. The
+        //    AllReduce CustomOps block until every worker issues the
+        //    matching collective; CPU-side logits keep the device tensor
+        //    from escaping the worker thread.
+        let leader_start = std::time::Instant::now();
+        let leader_result = self
+            .leader_worker
+            .tp_forward_logits_with_images(
+                leader_handle,
+                tokens,
+                offset,
+                image_token_id,
+                image_data_uris,
+            )
+            .await;
+        let leader_ok = leader_result.is_ok();
+        let leader_ms = leader_start.elapsed().as_millis();
+        if !leader_ok {
+            let detail = leader_result
+                .as_ref()
+                .err()
+                .map(|e| format!("{e:#}"))
+                .unwrap_or_default();
+            tracing::warn!(
+                model = %model_id,
+                tokens = tokens_len,
+                offset,
+                leader_ms,
+                error = %detail,
+                "WorkerPool::generate_step_with_images: leader forward failed"
+            );
+        }
+
+        // 3. ALWAYS drain worker responses, regardless of the leader's
+        //    outcome, so stale GenerateStepOk replies don't poison the
+        //    next request's recv (same invariant as generate_step).
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::GenerateStepOk => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected GenerateStepOk, got {other:?}")),
+        })
+        .await;
+        tracing::debug!(
+            model = %model_id,
+            leader_ms,
+            leader_ok,
+            errors = worker_errors.len(),
+            total_ms = step_start.elapsed().as_millis(),
+            "WorkerPool::generate_step_with_images: workers drained"
+        );
+
+        match leader_result {
+            Ok(values) => {
+                if worker_errors.is_empty() {
+                    Ok(values)
+                } else {
+                    anyhow::bail!(
+                        "GenerateStepWithImages: leader succeeded but workers failed: {}",
+                        worker_errors.join("; ")
+                    )
+                }
+            }
+            Err(e) => {
+                if worker_errors.is_empty() {
+                    Err(anyhow::Error::new(e)
+                        .context("GenerateStepWithImages: leader forward failed"))
+                } else {
+                    Err(anyhow::Error::new(e).context(format!(
+                        "GenerateStepWithImages: leader forward failed and workers also failed: {}",
                         worker_errors.join("; ")
                     )))
                 }

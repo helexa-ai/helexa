@@ -1192,6 +1192,38 @@ impl TpQwen3_5ForCausalLM {
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
+    /// End-to-end image prefill on one rank: encode each preprocessed
+    /// `(C, H, W)` pixel tensor through this rank's replicated tower,
+    /// concatenate the per-image embeddings along the patch axis, and
+    /// forward with the splice. Shared by the leader (`TpLeaderModel`)
+    /// and the subprocess worker (`WorkerModel`) so every rank runs the
+    /// identical encode → splice → forward and keeps the replicated
+    /// hidden state in lockstep. Returns last-position logits
+    /// `(B, 1, vocab)`, same contract as `forward`.
+    pub fn forward_with_images(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+        image_pixels: &[Tensor],
+        image_token_id: u32,
+    ) -> candle_core::Result<Tensor> {
+        if image_pixels.is_empty() {
+            candle_core::bail!("forward_with_images: called with zero images");
+        }
+        // Encode each image (immutable borrows of the tower) before the
+        // mutable forward below; the borrows end as each owned embedding
+        // is pushed.
+        let mut per_image = Vec::with_capacity(image_pixels.len());
+        for (idx, img) in image_pixels.iter().enumerate() {
+            let embed = self
+                .encode_image(img)
+                .map_err(|e| candle_core::Error::Msg(format!("encode image[{idx}]: {e:#}")))?;
+            per_image.push(embed);
+        }
+        let image_embeds = Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)?;
+        self.forward_with_vision(input, offset, &image_embeds, image_token_id)
+    }
+
     pub fn clear_kv_cache(&mut self) {
         self.base.clear_kv_cache();
     }

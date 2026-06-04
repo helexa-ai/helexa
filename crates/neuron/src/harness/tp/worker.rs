@@ -47,6 +47,28 @@ impl WorkerModel {
         }
     }
 
+    /// Image-bearing forward on this rank. Only the vision-capable
+    /// `qwen3_5` arch has a replicated tower; the dense `qwen3` arch
+    /// errors. The returned logits are discarded by the caller (the
+    /// leader samples from its own rank-0 copy) — the value is the NCCL
+    /// collectives the forward issues.
+    fn forward_with_images(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+        image_pixels: &[candle_core::Tensor],
+        image_token_id: u32,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            WorkerModel::Qwen3_5(m) => {
+                m.forward_with_images(input, offset, image_pixels, image_token_id)
+            }
+            WorkerModel::Qwen3(_) => {
+                candle_core::bail!("forward_with_images: qwen3 (dense) has no vision tower")
+            }
+        }
+    }
+
     fn clear_kv_cache(&mut self) {
         match self {
             WorkerModel::Qwen3(m) => m.clear_kv_cache(),
@@ -167,6 +189,19 @@ impl WorkerState {
                 tokens,
                 offset,
             } => self.handle_generate_step(&model_id, tokens, offset),
+            WorkerRequest::GenerateStepWithImages {
+                model_id,
+                tokens,
+                offset,
+                image_token_id,
+                image_data_uris,
+            } => self.handle_generate_step_with_images(
+                &model_id,
+                tokens,
+                offset,
+                image_token_id,
+                image_data_uris,
+            ),
             WorkerRequest::ClearKvCache { model_id } => self.handle_clear_kv_cache(&model_id),
             WorkerRequest::UnloadModel { model_id } => self.handle_unload_model(&model_id),
             WorkerRequest::Shutdown => WorkerResponse::Bye,
@@ -415,6 +450,124 @@ impl WorkerState {
         WorkerResponse::Error {
             kind: "cuda_feature_not_enabled".into(),
             message: "GenerateStep requires --features cuda".into(),
+        }
+    }
+
+    /// Image-bearing prefill on this rank. Preprocesses each source data
+    /// URI through the same deterministic `preprocess_data_uri` the
+    /// leader runs, encodes through this rank's replicated tower, and
+    /// splices + forwards. The logits are discarded (the leader samples
+    /// from rank 0); the row-parallel `AllReduce`s are the point.
+    #[cfg(feature = "cuda")]
+    fn handle_generate_step_with_images(
+        &mut self,
+        model_id: &str,
+        tokens: Vec<u32>,
+        offset: usize,
+        image_token_id: u32,
+        image_data_uris: Vec<String>,
+    ) -> WorkerResponse {
+        use crate::harness::preprocess::{PreprocessProfile, preprocess_data_uri};
+        use candle_core::Tensor;
+
+        if image_data_uris.is_empty() {
+            return WorkerResponse::Error {
+                kind: "bad_request".into(),
+                message: "GenerateStepWithImages with zero images".into(),
+            };
+        }
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let device = model.device().clone();
+
+        // Preprocess each image identically to the leader so the encoded
+        // embeddings — and thus the spliced hidden state — match across
+        // ranks. Fixed 448×448 profile.
+        let profile = PreprocessProfile::qwen3_6();
+        let (h, w) = (
+            profile.target_height as usize,
+            profile.target_width as usize,
+        );
+        let mut pixels: Vec<Tensor> = Vec::with_capacity(image_data_uris.len());
+        for (idx, uri) in image_data_uris.iter().enumerate() {
+            let px = match preprocess_data_uri(uri, &profile) {
+                Ok(p) => p,
+                Err(e) => {
+                    return WorkerResponse::Error {
+                        kind: "bad_request".into(),
+                        message: format!("preprocess image[{idx}]: {e:#}"),
+                    };
+                }
+            };
+            match Tensor::from_vec(px, (3, h, w), &device) {
+                Ok(t) => pixels.push(t),
+                Err(e) => {
+                    return WorkerResponse::Error {
+                        kind: "forward_failed".into(),
+                        message: format!("build image[{idx}] tensor: {e}"),
+                    };
+                }
+            }
+        }
+
+        let input = match Tensor::new(tokens.as_slice(), &device).and_then(|t| t.unsqueeze(0)) {
+            Ok(t) => t,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "forward_failed".into(),
+                    message: format!("build input tensor: {e}"),
+                };
+            }
+        };
+
+        let start = std::time::Instant::now();
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            tokens = tokens.len(),
+            offset,
+            images = pixels.len(),
+            "worker GenerateStepWithImages: forward starting"
+        );
+        // Drop the logits — the leader samples from its own rank-0 copy.
+        if let Err(e) = model.forward_with_images(&input, offset, &pixels, image_token_id) {
+            tracing::warn!(
+                rank = self.config.rank,
+                model = %model_id,
+                elapsed_ms = start.elapsed().as_millis(),
+                error = %e,
+                "worker GenerateStepWithImages: forward failed"
+            );
+            return WorkerResponse::Error {
+                kind: "forward_failed".into(),
+                message: format!("TP image forward: {e}"),
+            };
+        }
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            elapsed_ms = start.elapsed().as_millis(),
+            "worker GenerateStepWithImages: forward done"
+        );
+        WorkerResponse::GenerateStepOk
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_generate_step_with_images(
+        &mut self,
+        _model_id: &str,
+        _tokens: Vec<u32>,
+        _offset: usize,
+        _image_token_id: u32,
+        _image_data_uris: Vec<String>,
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "GenerateStepWithImages requires --features cuda".into(),
         }
     }
 

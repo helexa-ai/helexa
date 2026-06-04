@@ -262,6 +262,25 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let result = tp_forward_logits(&mut state, handle, &tokens, offset);
                 let _ = reply.send(result);
             }
+            #[cfg(feature = "cuda")]
+            Job::TpForwardLogitsWithImages {
+                handle,
+                tokens,
+                offset,
+                image_token_id,
+                image_data_uris,
+                reply,
+            } => {
+                let result = tp_forward_logits_with_images(
+                    &mut state,
+                    handle,
+                    &tokens,
+                    offset,
+                    image_token_id,
+                    &image_data_uris,
+                );
+                let _ = reply.send(result);
+            }
             // Handled by the matches!() check above; reaching here
             // means a Shutdown slipped past which is a bug.
             Job::Shutdown => unreachable!("Shutdown should break above"),
@@ -728,6 +747,61 @@ fn tp_forward_logits(
     // ForCausalLM forward returns [B, 1, V] after the trailing
     // .i((.., l - 1.., ..))?.apply(lm_head); squeeze both leading
     // singleton dims to a rank-1 [V] tensor for sampling.
+    let logits = logits.squeeze(0)?.squeeze(0)?;
+    let logits = logits.to_dtype(DType::F32)?.flatten_all()?;
+    let values = logits.to_vec1::<f32>()?;
+    Ok(values)
+}
+
+/// Image-bearing leader forward (rank 0). Preprocesses each source
+/// `image_data_uris` entry through the same deterministic
+/// `preprocess_data_uri` every rank runs, uploads to the leader's
+/// device, encodes + splices + forwards via
+/// `TpLeaderModel::forward_with_images`, and copies the `[vocab]`
+/// logits to CPU. Mirrors the single-GPU `forward_logits_with_images`
+/// but on the TP leader's replicated tower.
+#[cfg(feature = "cuda")]
+fn tp_forward_logits_with_images(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    tokens: &[u32],
+    offset: usize,
+    image_token_id: u32,
+    image_data_uris: &[String],
+) -> anyhow::Result<Vec<f32>> {
+    use crate::harness::preprocess::{PreprocessProfile, preprocess_data_uri};
+    use candle_core::{DType, Tensor};
+
+    if image_data_uris.is_empty() {
+        anyhow::bail!("TpForwardLogitsWithImages dispatched with zero images");
+    }
+
+    // Preprocess every image into a device-resident (C, H, W) tensor.
+    // Same fixed-resolution profile + decode path the subprocess workers
+    // run, so the encoded embeddings match across ranks bit-for-bit.
+    let profile = PreprocessProfile::qwen3_6();
+    let (h, w) = (
+        profile.target_height as usize,
+        profile.target_width as usize,
+    );
+    let mut pixels: Vec<Tensor> = Vec::with_capacity(image_data_uris.len());
+    for (idx, uri) in image_data_uris.iter().enumerate() {
+        let px = preprocess_data_uri(uri, &profile)
+            .with_context(|| format!("preprocess image[{idx}] (TP leader)"))?;
+        let t = Tensor::from_vec(px, (3, h, w), &state.device)?;
+        pixels.push(t);
+    }
+
+    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
+
+    let model = state.tp_models.get_mut(&handle).ok_or_else(|| {
+        anyhow::anyhow!(
+            "TpForwardLogitsWithImages: no model for handle {}",
+            handle.0
+        )
+    })?;
+
+    let logits = model.forward_with_images(&input, offset, &pixels, image_token_id)?;
     let logits = logits.squeeze(0)?.squeeze(0)?;
     let logits = logits.to_dtype(DType::F32)?.flatten_all()?;
     let values = logits.to_vec1::<f32>()?;

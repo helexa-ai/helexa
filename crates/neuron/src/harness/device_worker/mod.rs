@@ -572,6 +572,47 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Image-bearing TP leader forward (single-shot vision prefill).
+    /// Routes `Job::TpForwardLogitsWithImages` onto the worker thread;
+    /// the handler preprocesses + encodes + splices + forwards and
+    /// returns CPU-side `[vocab]` logits. The `WorkerPool` fans the
+    /// matching `GenerateStepWithImages` out to subprocess ranks so the
+    /// row-parallel collectives complete.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_forward_logits_with_images(
+        &self,
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        image_token_id: u32,
+        image_data_uris: Vec<String>,
+    ) -> Result<Vec<f32>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpForwardLogitsWithImages {
+                handle,
+                tokens,
+                offset,
+                image_token_id,
+                image_data_uris,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Send `Job::Shutdown` and join the thread. Idempotent — calling
     /// twice is a no-op the second time.
     pub fn shutdown(&self) -> anyhow::Result<()> {

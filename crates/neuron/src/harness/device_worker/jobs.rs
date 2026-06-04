@@ -231,6 +231,23 @@ pub enum Job {
         offset: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
+    /// Image-bearing leader (rank 0) forward for the single-shot vision
+    /// prefill. The handler preprocesses each `image_data_uris` entry
+    /// (the same deterministic path every rank runs), encodes through
+    /// the leader's replicated tower, splices at `image_token_id`, and
+    /// returns CPU-side `[vocab]` logits. Image tensors never escape the
+    /// worker thread. Caller fans out `GenerateStepWithImages` to the
+    /// subprocess ranks and drains them; only the leader forward moves
+    /// here.
+    #[cfg(feature = "cuda")]
+    TpForwardLogitsWithImages {
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        image_token_id: u32,
+        image_data_uris: Vec<String>,
+        reply: oneshot::Sender<Result<Vec<f32>>>,
+    },
     /// Tell the worker to break its dispatch loop and exit. Any jobs
     /// queued after this in the channel reply `Err` to their oneshot
     /// senders (the senders are dropped on the worker's exit, which

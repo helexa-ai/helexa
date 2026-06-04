@@ -88,6 +88,29 @@ pub enum WorkerRequest {
         offset: usize,
     },
 
+    /// Like `GenerateStep` but the prefill carries image content. Every
+    /// rank preprocesses the same `image_data_uris` through its
+    /// *replicated* vision tower, splices the resulting patch embeddings
+    /// at `image_token_id` positions, and runs the forward — the
+    /// row-parallel `AllReduce`s still synchronise every rank. Because
+    /// the tower is replicated and `preprocess_data_uri` is
+    /// deterministic, the spliced hidden state is identical on every
+    /// rank, so no embedding broadcast is needed. Sent only for the
+    /// (single-shot) image-bearing prefill; decode steps use plain
+    /// `GenerateStep`. Worker replies with the same `GenerateStepOk`.
+    GenerateStepWithImages {
+        model_id: String,
+        tokens: Vec<u32>,
+        offset: usize,
+        /// `<|image_pad|>` sentinel id (248056 for Qwen3.6); splice
+        /// target in the expanded token stream.
+        image_token_id: u32,
+        /// Source image data URIs (`data:image/...;base64,...`), one per
+        /// image in prompt order. Each rank decodes + preprocesses these
+        /// identically; tens of KB each, so cheap over the stdin pipe.
+        image_data_uris: Vec<String>,
+    },
+
     /// Reset the KV cache for this model on this rank. Sent at the
     /// start of every inference so a fresh request doesn't accidentally
     /// attend over the previous one's tokens.
@@ -189,6 +212,32 @@ mod tests {
         };
         let wire = serde_json::to_string(&req).unwrap();
         assert_eq!(wire, r#"{"op":"init","comm_id":"deadbeef"}"#);
+    }
+
+    #[test]
+    fn request_generate_step_with_images_round_trip() {
+        let req = WorkerRequest::GenerateStepWithImages {
+            model_id: "Qwen/Qwen3.6-27B".into(),
+            tokens: vec![1, 2, 248056, 3],
+            offset: 0,
+            image_token_id: 248056,
+            image_data_uris: vec!["data:image/png;base64,AAA=".into()],
+        };
+        let wire = serde_json::to_string(&req).unwrap();
+        assert!(wire.contains(r#""op":"generate_step_with_images""#));
+        match roundtrip(&req) {
+            WorkerRequest::GenerateStepWithImages {
+                tokens,
+                image_token_id,
+                image_data_uris,
+                ..
+            } => {
+                assert_eq!(tokens, vec![1, 2, 248056, 3]);
+                assert_eq!(image_token_id, 248056);
+                assert_eq!(image_data_uris.len(), 1);
+            }
+            other => panic!("expected GenerateStepWithImages, got {other:?}"),
+        }
     }
 
     #[test]
