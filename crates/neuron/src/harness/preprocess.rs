@@ -55,18 +55,36 @@ pub struct PreprocessProfile {
     pub image_std: [f32; 3],
 }
 
+/// Default pixel budget for Qwen3.6 (`256² … 1024²` → 64 … 1024 LM
+/// tokens/image). Generous for documents/OCR, bounded for serving on
+/// 2×RTX5090. Operators tune with `NEURON_VISION_MIN_PIXELS` /
+/// `NEURON_VISION_MAX_PIXELS` (matching the other `NEURON_VISION_*` knobs).
+const QWEN3_6_MIN_PIXELS: u32 = 65_536;
+const QWEN3_6_MAX_PIXELS: u32 = 1_048_576;
+
+fn env_pixels(name: &str, default: u32) -> u32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(default)
+}
+
 impl PreprocessProfile {
     /// Profile for Qwen3.6. Native-aspect `smart_resize` (factor 32),
-    /// normalise to `[-1, 1]` via mean=std=0.5. Pixel budget defaults:
-    /// `min = 256² = 65536` (→ 8×8 = 64 LM tokens) and
-    /// `max = 1024² = 1048576` (→ 32×32 = 1024 LM tokens) — generous for
-    /// documents/OCR, bounded for serving on 2×RTX5090. (Operator
-    /// override lands with the `[harness.candle.vision]` config in #14 C5.)
+    /// normalise to `[-1, 1]` via mean=std=0.5. Pixel budget defaults to
+    /// [`QWEN3_6_MIN_PIXELS`]…[`QWEN3_6_MAX_PIXELS`], overridable via the
+    /// `NEURON_VISION_MIN_PIXELS` / `NEURON_VISION_MAX_PIXELS` env vars.
+    /// The budget is clamped sane: `min ≥ factor²` (at least one LM token)
+    /// and `max ≥ min`.
     pub fn qwen3_6() -> Self {
+        let factor = 32u32;
+        let f2 = factor * factor;
+        let min_pixels = env_pixels("NEURON_VISION_MIN_PIXELS", QWEN3_6_MIN_PIXELS).max(f2);
+        let max_pixels = env_pixels("NEURON_VISION_MAX_PIXELS", QWEN3_6_MAX_PIXELS).max(min_pixels);
         Self {
-            factor: 32,
-            min_pixels: 65_536,
-            max_pixels: 1_048_576,
+            factor,
+            min_pixels,
+            max_pixels,
             image_mean: [0.5, 0.5, 0.5],
             image_std: [0.5, 0.5, 0.5],
         }
@@ -368,5 +386,19 @@ mod tests {
     fn smart_resize_rejects_extreme_aspect() {
         let err = smart_resize(1, 500, 32, 65_536, 1_048_576).unwrap_err();
         assert!(format!("{err:#}").contains("200:1"));
+    }
+
+    #[test]
+    fn qwen3_6_default_budget_bounds_lm_tokens() {
+        // A huge source image caps at max_pixels → the per-image LM token
+        // count stays within budget (so it can't blow NEURON_MAX_PROMPT_TOKENS).
+        let p = PreprocessProfile::qwen3_6();
+        let (h, w) = p.resized_dims(8000, 6000).unwrap();
+        let lm_tokens = (h / p.factor) * (w / p.factor);
+        let budget = p.max_pixels / (p.factor * p.factor);
+        assert!(
+            lm_tokens <= budget,
+            "max-res image LM tokens {lm_tokens} must stay within budget {budget}"
+        );
     }
 }

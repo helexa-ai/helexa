@@ -422,15 +422,10 @@ impl Qwen3_5Model {
     ///
     /// The splice replaces the LM's text-side embedding at each
     /// `image_token_id` position with the corresponding row from
-    /// `image_embeds`. After the splice the decoder runs unchanged.
-    ///
-    /// **MRoPE gap.** Qwen3.6's `rope_parameters` declares MRoPE
-    /// (interleaved text/height/width axes); Stage B applies plain
-    /// text-position RoPE to image tokens. The model still attends
-    /// to image content but loses spatial structure that MRoPE-aware
-    /// position encoding would preserve. Tracked under issue #15
-    /// (numerical validation) — quality benchmark from Stage D should
-    /// surface the impact, and the fix lives in `rope::RotaryEmbedding`.
+    /// `image_embeds`. After the splice the decoder runs the interleaved
+    /// M-RoPE path: `grids` carries each image's post-merge LM grid
+    /// `(lm_gh, lm_gw)` so `get_rope_index` assigns image tokens their 2D
+    /// coordinates (dynamic resolution, #14).
     pub fn forward_with_vision(
         &mut self,
         input_ids: &Tensor,
@@ -461,7 +456,7 @@ impl Qwen3_5Model {
 
         // Vision path: splice image embeddings at `image_token_id`
         // positions and build interleaved M-RoPE cos/sin so image tokens
-        // carry their 14×14 grid coordinates. Text / decode skip the
+        // carry their 2D (lm_gh × lm_gw) grid coordinates. Text / decode skip the
         // device→host id copy entirely and take the plain-RoPE fast path
         // — bit-for-bit the pre-M-RoPE behaviour when `rope_delta == 0`.
         let (cos, sin) = if let (Some(img), Some(tok_id)) = (image_embeds, image_token_id) {
