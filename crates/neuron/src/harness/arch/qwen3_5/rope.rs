@@ -221,21 +221,6 @@ impl RotaryEmbedding {
             Ok((q_embed, k_embed))
         }
     }
-
-    /// Text/decode convenience: build plain cos/sin for a scalar offset
-    /// and apply in one call. The current call sites use this; Stages 3–4
-    /// move cos/sin construction up into the model forward (computed once
-    /// per forward) and call [`Self::apply_cos_sin`] directly.
-    pub fn apply(
-        &self,
-        q: &Tensor,
-        k: &Tensor,
-        offset: usize,
-    ) -> candle_core::Result<(Tensor, Tensor)> {
-        let (_, _, seq_len, _) = q.dims4()?;
-        let (cos, sin) = self.plain_cos_sin(offset, seq_len)?;
-        self.apply_cos_sin(q, k, &cos, &sin)
-    }
 }
 
 /// Compute interleaved-M-RoPE 3D position ids for a full prompt that may
@@ -310,6 +295,10 @@ pub(crate) type MRopeIndex = (Vec<i64>, Vec<i64>, Vec<i64>, i64);
 
 /// Build the `(3, seq)` position-id tensor consumed by
 /// [`RotaryEmbedding::mrope_cos_sin`] from the three axis vectors.
+///
+/// Built directly as **f32** (positions are small integers, exact in
+/// f32 well past any context length): the freqs matmul needs float
+/// anyway, and this avoids an i64 tensor / i64→f32 cast on the GPU.
 pub(crate) fn mrope_position_tensor(
     text: &[i64],
     height: &[i64],
@@ -318,9 +307,9 @@ pub(crate) fn mrope_position_tensor(
 ) -> candle_core::Result<Tensor> {
     let seq = text.len();
     let mut flat = Vec::with_capacity(3 * seq);
-    flat.extend_from_slice(text);
-    flat.extend_from_slice(height);
-    flat.extend_from_slice(width);
+    flat.extend(text.iter().map(|&x| x as f32));
+    flat.extend(height.iter().map(|&x| x as f32));
+    flat.extend(width.iter().map(|&x| x as f32));
     Tensor::from_vec(flat, (3, seq), dev)
 }
 
