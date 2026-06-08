@@ -905,7 +905,7 @@ dependencies = [
 [[package]]
 name = "cudarc"
 version = "0.19.7"
-source = "git+https://github.com/grenade/cudarc?rev=dbc425aa865c178f38a3ec838f1f7a4da3146358#dbc425aa865c178f38a3ec838f1f7a4da3146358"
+source = "git+https://github.com/grenade/cudarc?rev=63327a256059f8252641ae46c6bb9eefe707f382#63327a256059f8252641ae46c6bb9eefe707f382"
 dependencies = [
  "float8",
  "half",

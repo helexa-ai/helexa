@@ -69,4 +69,4 @@ cortex-gateway = { path = "crates/cortex-gateway" }
 # rebuild the comm). Pinned to a fork revision pending upstream review
 # (grenade/cudarc @ nccl-comm-abort).
 [patch.crates-io]
-cudarc = { git = "https://github.com/grenade/cudarc", rev = "dbc425aa865c178f38a3ec838f1f7a4da3146358" }
+cudarc = { git = "https://github.com/grenade/cudarc", rev = "63327a256059f8252641ae46c6bb9eefe707f382" }
