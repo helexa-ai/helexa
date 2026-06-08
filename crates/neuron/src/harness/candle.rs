@@ -830,6 +830,18 @@ fn recovering_error(model_id: &str) -> InferenceError {
     ))
 }
 
+/// Verification hook for #17 auto-recovery. When `NEURON_DEBUG_POISON`
+/// names a model, the **first** request for it (process-wide) returns
+/// true, so the request path can trigger recovery as if a device fault
+/// had occurred — exercising the unload→reload→healthy cycle without
+/// corrupting the GPU. One-shot (a `swap` latch) so it can't loop the
+/// model through endless recoveries. No-op unless the env var is set.
+fn debug_poison_armed(model_id: &str) -> bool {
+    static FIRED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    let armed = std::env::var("NEURON_DEBUG_POISON").ok().as_deref() == Some(model_id);
+    armed && !FIRED.swap(true, Ordering::Relaxed)
+}
+
 /// Background auto-recovery task (#17). Drains poisoned model ids and
 /// rebuilds each via [`CandleHarness::recover_one`]. Holds a `Weak` so a
 /// shutting-down harness lets the task exit; processes one id at a time,
@@ -1734,6 +1746,11 @@ impl CandleHarness {
         if loaded.poisoned.load(Ordering::Acquire) {
             let _g = span.enter();
             tracing::warn!("chat_completion: refusing request, model poisoned");
+            return Err(self.trigger_recovery(&model_id).await);
+        }
+        if debug_poison_armed(&model_id) {
+            let _g = span.enter();
+            tracing::warn!("NEURON_DEBUG_POISON: forcing auto-recovery (#17 verification)");
             return Err(self.trigger_recovery(&model_id).await);
         }
 
@@ -2986,6 +3003,11 @@ impl CandleHarness {
         if tp.poisoned.load(Ordering::Acquire) {
             let _g = span.enter();
             tracing::warn!("TP chat_completion: refusing request, model poisoned");
+            return Err(self.trigger_recovery(&model_id).await);
+        }
+        if debug_poison_armed(&model_id) {
+            let _g = span.enter();
+            tracing::warn!("NEURON_DEBUG_POISON: forcing auto-recovery (#17 verification)");
             return Err(self.trigger_recovery(&model_id).await);
         }
 
