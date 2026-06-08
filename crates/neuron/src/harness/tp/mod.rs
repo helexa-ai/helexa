@@ -253,7 +253,7 @@ pub struct WorkerPool {
     /// recovery's `unload` doesn't itself hang (#17 Stage 2). `None` if
     /// init couldn't cache it; the watchdog then logs that it can't abort.
     #[cfg(feature = "cuda")]
-    leader_comm: Option<super::nccl_state::SendComm>,
+    leader_comm: Option<nccl_state::SendComm>,
 }
 
 /// Per-step deadline for a TP forward (#17 Stage 2). A healthy decode
