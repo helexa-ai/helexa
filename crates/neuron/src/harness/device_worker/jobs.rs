@@ -192,6 +192,17 @@ pub enum Job {
     NcclSanity {
         reply: oneshot::Sender<crate::harness::tp::rpc::WorkerResponse>,
     },
+    /// Hand a clonable handle to the leader's NCCL `Comm` back to the
+    /// async side, so the TP step watchdog can call `ncclCommAbort` on
+    /// it from a *different* thread to unblock a wedged collective
+    /// (#17 Stage 2). Fetched once at init while the worker thread is
+    /// still responsive — a thread already wedged in a collective can't
+    /// service this job, which is exactly why the handle is cached
+    /// up front. Replies `None` before `NcclInit` has run.
+    #[cfg(feature = "cuda")]
+    GetLeaderComm {
+        reply: oneshot::Sender<Option<crate::harness::tp::nccl_state::SendComm>>,
+    },
     /// Load the leader's TP shard on the worker thread. The dispatch
     /// handler reads `state.nccl.comm()` directly (no cross-thread
     /// `Arc<Comm>` transfer, no `SendComm` wrapper) and builds the

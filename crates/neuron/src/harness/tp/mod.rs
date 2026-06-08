@@ -245,9 +245,67 @@ pub struct WorkerPool {
     /// Phase 4 the load itself moves onto the worker and that bridge
     /// goes away.
     pub(crate) leader_worker: std::sync::Arc<super::device_worker::DeviceWorkerHandle>,
+    /// Cached handle to the leader's NCCL `Comm`, fetched at `init_nccl`
+    /// while the worker thread is responsive. The TP step watchdog uses
+    /// it to `ncclCommAbort` a wedged collective from the async thread —
+    /// the one NCCL op allowed concurrently with an in-flight collective,
+    /// and the only way to unblock the in-process leader thread so
+    /// recovery's `unload` doesn't itself hang (#17 Stage 2). `None` if
+    /// init couldn't cache it; the watchdog then logs that it can't abort.
+    #[cfg(feature = "cuda")]
+    leader_comm: Option<super::nccl_state::SendComm>,
+}
+
+/// Per-step deadline for a TP forward (#17 Stage 2). A healthy decode
+/// step or chunked prefill completes in well under a second; a wedged
+/// NCCL collective never returns. Generous default so no legitimate step
+/// trips it; overridable via `NEURON_TP_STEP_TIMEOUT_S` (seconds).
+#[cfg(feature = "cuda")]
+fn tp_step_timeout() -> std::time::Duration {
+    let secs = std::env::var("NEURON_TP_STEP_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .filter(|&s| s > 0)
+        .unwrap_or(120);
+    std::time::Duration::from_secs(secs)
 }
 
 impl WorkerPool {
+    /// Abort the leader's NCCL comm to unblock a collective the watchdog
+    /// found wedged (#17 Stage 2). Logs the whole sequence loudly so a
+    /// real-world hang leaves a greppable forensic trail
+    /// (`tp watchdog:` / `ncclCommAbort`). Calling abort from this async
+    /// thread while the worker thread is blocked inside the collective is
+    /// the one concurrent NCCL op the library sanctions — it is how a
+    /// stuck/failed collective is unblocked.
+    #[cfg(feature = "cuda")]
+    fn watchdog_abort_leader_comm(&self, model_id: &str, secs: u64) {
+        tracing::error!(
+            model = %model_id,
+            timeout_s = secs,
+            "tp watchdog: leader forward exceeded deadline — NCCL collective wedged; \
+             aborting comm to unblock the leader thread for auto-recovery"
+        );
+        match &self.leader_comm {
+            Some(c) => match c.0.abort() {
+                Ok(()) => tracing::error!(
+                    model = %model_id,
+                    "tp watchdog: ncclCommAbort succeeded — wedged collective unblocked; \
+                     failing the step so the model auto-recovers (unload+reload)"
+                ),
+                Err(e) => tracing::error!(
+                    model = %model_id, error = ?e,
+                    "tp watchdog: ncclCommAbort failed — recovery may stall until a process restart"
+                ),
+            },
+            None => tracing::error!(
+                model = %model_id,
+                "tp watchdog: no cached leader comm handle — cannot abort; recovery will rely \
+                 on a process restart"
+            ),
+        }
+    }
+
     /// Spawn `world_size - 1` worker subprocesses. Rank 0 is the
     /// leader (in-process) and is *not* spawned here — the leader
     /// holds rank 0's NCCL Comm and shard in its own address space.
@@ -324,6 +382,8 @@ impl WorkerPool {
             workers,
             exe,
             leader_worker,
+            #[cfg(feature = "cuda")]
+            leader_comm: None,
         })
     }
 
@@ -404,6 +464,23 @@ impl WorkerPool {
             world_size = self.world_size,
             "NCCL communicator established across all ranks"
         );
+
+        // Cache the leader's Comm handle now, while the worker thread is
+        // responsive, so the TP step watchdog can abort a wedged
+        // collective later (it can't fetch it then — the thread is stuck).
+        // (#17 Stage 2.)
+        #[cfg(feature = "cuda")]
+        {
+            self.leader_comm = self.leader_worker.get_leader_comm().await;
+            if self.leader_comm.is_some() {
+                tracing::debug!("cached leader NCCL comm handle for the TP step watchdog");
+            } else {
+                tracing::warn!(
+                    "could not cache leader NCCL comm handle; the TP step watchdog will be \
+                     unable to abort a wedged collective (a hang would need a process restart)"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -628,10 +705,27 @@ impl WorkerPool {
         //    that's the invariant the whole refactor exists to
         //    preserve.
         let leader_start = std::time::Instant::now();
-        let leader_result = self
+        let timeout = tp_step_timeout();
+        let leader_fut = self
             .leader_worker
-            .tp_forward_logits(leader_handle, tokens, offset)
-            .await;
+            .tp_forward_logits(leader_handle, tokens, offset);
+        let leader_result = match tokio::time::timeout(timeout, leader_fut).await {
+            Ok(r) => r,
+            Err(_elapsed) => {
+                // Watchdog (#17 Stage 2): the NCCL collective is wedged.
+                // Abort the leader comm to unblock its thread, then fail
+                // the step WITHOUT draining (the subprocess workers are
+                // wedged too; recovery's unload kills them). The error
+                // poisons the model → auto-recovery, which no longer hangs
+                // because the leader thread is now responsive.
+                self.watchdog_abort_leader_comm(model_id, timeout.as_secs());
+                anyhow::bail!(
+                    "tp watchdog: leader forward exceeded {}s deadline; aborted wedged NCCL \
+                     comm — model will auto-recover",
+                    timeout.as_secs()
+                );
+            }
+        };
         let leader_ok = leader_result.is_ok();
         let leader_ms = leader_start.elapsed().as_millis();
         // Surface the leader's own error at WARN before draining
@@ -767,17 +861,29 @@ impl WorkerPool {
         //    matching collective; CPU-side logits keep the device tensor
         //    from escaping the worker thread.
         let leader_start = std::time::Instant::now();
-        let leader_result = self
-            .leader_worker
-            .tp_forward_logits_with_images(
-                leader_handle,
-                tokens,
-                offset,
-                image_token_id,
-                image_data_uris,
-                chunk_size,
-            )
-            .await;
+        let timeout = tp_step_timeout();
+        let leader_fut = self.leader_worker.tp_forward_logits_with_images(
+            leader_handle,
+            tokens,
+            offset,
+            image_token_id,
+            image_data_uris,
+            chunk_size,
+        );
+        let leader_result = match tokio::time::timeout(timeout, leader_fut).await {
+            Ok(r) => r,
+            Err(_elapsed) => {
+                // Watchdog (#17 Stage 2) — see generate_step. Vision
+                // prefill is still well under the deadline on healthy
+                // hardware; a timeout means a wedged collective.
+                self.watchdog_abort_leader_comm(model_id, timeout.as_secs());
+                anyhow::bail!(
+                    "tp watchdog: leader image forward exceeded {}s deadline; aborted wedged \
+                     NCCL comm — model will auto-recover",
+                    timeout.as_secs()
+                );
+            }
+        };
         let leader_ok = leader_result.is_ok();
         let leader_ms = leader_start.elapsed().as_millis();
         if !leader_ok {

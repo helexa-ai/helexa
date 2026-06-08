@@ -161,6 +161,27 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Fetch a clonable handle to the leader's NCCL `Comm` (#17 Stage 2).
+    /// The TP step watchdog caches this at init so it can call
+    /// `ncclCommAbort` from the async thread to unblock a wedged
+    /// collective. Returns `None` if uninitialised, poisoned, or gone —
+    /// the caller treats a missing handle as "can't abort" and logs it.
+    #[cfg(feature = "cuda")]
+    pub async fn get_leader_comm(&self) -> Option<crate::harness::tp::nccl_state::SendComm> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return None;
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        if self
+            .tx
+            .send(Job::GetLeaderComm { reply: reply_tx })
+            .is_err()
+        {
+            return None;
+        }
+        reply_rx.await.ok().flatten()
+    }
+
     /// Load a GGUF (pre-quantized) single-GPU model on the worker
     /// thread. The hf-hub resolution happens on the async caller; the
     /// resolved local `gguf_path` plus the spec's model_id are sent

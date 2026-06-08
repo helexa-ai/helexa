@@ -201,6 +201,16 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let _ = reply.send(resp);
             }
             #[cfg(feature = "cuda")]
+            Job::GetLeaderComm { reply } => {
+                // Clone the leader's Arc<Comm> out for the async-side
+                // watchdog. `None` before NcclInit. (#17 Stage 2)
+                let comm = state
+                    .nccl
+                    .comm()
+                    .map(crate::harness::tp::nccl_state::SendComm);
+                let _ = reply.send(comm);
+            }
+            #[cfg(feature = "cuda")]
             Job::TpLoadShard {
                 model_id,
                 config_json,
@@ -1003,6 +1013,10 @@ fn drain_poisoned(job: Job, device_index: u32) {
                 kind: "device_worker_poisoned".into(),
                 message: format!("device worker {device_index} poisoned"),
             });
+        }
+        #[cfg(feature = "cuda")]
+        Job::GetLeaderComm { reply } => {
+            let _ = reply.send(None);
         }
         Job::NcclSanity { reply } => {
             let _ = reply.send(crate::harness::tp::rpc::WorkerResponse::Error {
