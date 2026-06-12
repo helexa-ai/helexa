@@ -57,7 +57,7 @@ async fn chat_completions(
             // ("model 'X' not found...", "no healthy nodes available")
             // — fine to surface to the caller. The warn above carries
             // any extra context for operators.
-            return error_response(404, &e.to_string());
+            return error_response(e.http_status(), &e.to_string());
         }
     };
 
@@ -109,7 +109,7 @@ async fn responses(
                 error = %e,
                 "route resolve failed"
             );
-            return error_response(404, &e.to_string());
+            return error_response(e.http_status(), &e.to_string());
         }
     };
 
@@ -157,7 +157,7 @@ async fn completions(
             // ("model 'X' not found...", "no healthy nodes available")
             // — fine to surface to the caller. The warn above carries
             // any extra context for operators.
-            return error_response(404, &e.to_string());
+            return error_response(e.http_status(), &e.to_string());
         }
     };
 
@@ -225,7 +225,7 @@ async fn anthropic_messages(
             // ("model 'X' not found...", "no healthy nodes available")
             // — fine to surface to the caller. The warn above carries
             // any extra context for operators.
-            return error_response(404, &e.to_string());
+            return error_response(e.http_status(), &e.to_string());
         }
     };
 

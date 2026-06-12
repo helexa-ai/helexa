@@ -56,6 +56,22 @@ pub enum RouteError {
         node: String,
         message: String,
     },
+    #[error(
+        "model '{model_id}' is recovering on node '{node}' (device context rebuild in progress) — retry shortly"
+    )]
+    ModelRecovering { model_id: String, node: String },
+}
+
+impl RouteError {
+    /// HTTP status the gateway should answer with. `ModelRecovering`
+    /// is the one transient case (503, retry the same request);
+    /// everything else keeps the long-standing 404 behaviour.
+    pub fn http_status(&self) -> u16 {
+        match self {
+            RouteError::ModelRecovering { .. } => 503,
+            _ => 404,
+        }
+    }
 }
 
 /// Resolve which node should serve a request for the given model.
@@ -76,11 +92,12 @@ pub async fn resolve(
             "alias resolved"
         );
     }
-    // Snapshot loaded / unloaded state from the poller cache.
-    let (loaded_route, unloaded_route, any_healthy) = {
+    // Snapshot loaded / unloaded / recovering state from the poller cache.
+    let (loaded_route, unloaded_route, recovering_node, any_healthy) = {
         let nodes = fleet.nodes.read().await;
         let mut loaded_route = None;
         let mut unloaded_route = None;
+        let mut recovering_node = None;
         let mut any_healthy = false;
         for node in nodes.values() {
             if !node.healthy {
@@ -98,6 +115,17 @@ pub async fn resolve(
                             unloaded_route = Some((node.name.clone(), node.endpoint.clone(), true));
                         }
                     }
+                    // Auto-recovering (#17/#20): the model is rebuilding
+                    // its device context on this node. Hold the route —
+                    // answer "retry shortly" rather than 404, and do NOT
+                    // fall through to the catalogue cold-load, which
+                    // would race a second placement (and a second copy's
+                    // worth of VRAM) against the in-flight recovery.
+                    ModelStatus::Recovering => {
+                        if recovering_node.is_none() {
+                            recovering_node = Some(node.name.clone());
+                        }
+                    }
                     // Loading is gateway-synthesised from neuron's
                     // activation snapshot; it never appears on the
                     // wire from neuron's `/models`. Skip — the model
@@ -110,7 +138,7 @@ pub async fn resolve(
                 }
             }
         }
-        (loaded_route, unloaded_route, any_healthy)
+        (loaded_route, unloaded_route, recovering_node, any_healthy)
     };
 
     if !any_healthy {
@@ -122,12 +150,20 @@ pub async fn resolve(
         return finish(fleet, &node_name, &neuron_endpoint, model_id, cold_start).await;
     }
 
-    // Priority 2: known to neuron but unloaded (neuron's lazy load).
+    // Priority 2: recovering somewhere — transient hold, not a reroute.
+    if let Some(node) = recovering_node {
+        return Err(RouteError::ModelRecovering {
+            model_id: model_id.to_string(),
+            node,
+        });
+    }
+
+    // Priority 3: known to neuron but unloaded (neuron's lazy load).
     if let Some((node_name, neuron_endpoint, cold_start)) = unloaded_route {
         return finish(fleet, &node_name, &neuron_endpoint, model_id, cold_start).await;
     }
 
-    // Priority 3: catalogue × topology cold-load.
+    // Priority 4: catalogue × topology cold-load.
     if let Some(profile) = fleet.catalogue.get(model_id) {
         let (node_name, neuron_endpoint) = pick_feasible_neuron(fleet, profile).await?;
         cold_load(fleet, &node_name, &neuron_endpoint, profile).await?;

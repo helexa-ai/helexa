@@ -171,3 +171,64 @@ async fn test_missing_model_field() {
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(body["error"]["message"].as_str().unwrap().contains("model"));
 }
+
+#[tokio::test]
+async fn test_recovering_model_returns_503_and_stays_listed() {
+    // #20: while a model auto-recovers on a neuron, the gateway must
+    // hold the route — transient 503 ("retry shortly"), not the 404
+    // "not found on any node" that makes a recovering model look
+    // evicted — and keep listing it on /v1/models.
+    let mock_url = common::spawn_mock_neuron().await;
+    let (fleet, gw_url) = common::spawn_gateway_with_state(&mock_url).await;
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("mock-node").expect("node must exist");
+        node.models.insert(
+            "recovering-model".into(),
+            cortex_core::node::ModelEntry {
+                id: "recovering-model".into(),
+                status: cortex_core::node::ModelStatus::Recovering,
+                last_accessed: None,
+                vram_estimate_mb: Some(8000),
+                capabilities: Vec::new(),
+            },
+        );
+    }
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{gw_url}/v1/chat/completions"))
+        .header("content-type", "application/json")
+        .json(&json!({
+            "model": "recovering-model",
+            "messages": [{"role": "user", "content": "Hi"}]
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.status(), 503);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let message = body["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("recovering") && message.contains("retry"),
+        "503 body must say recovering/retry, got: {message}"
+    );
+
+    // The model must still be visible on the unified models endpoint.
+    let models: serde_json::Value = client
+        .get(format!("{gw_url}/v1/models"))
+        .send()
+        .await
+        .expect("models request should succeed")
+        .json()
+        .await
+        .unwrap();
+    let listed = models["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|m| m["id"] == "recovering-model");
+    assert!(listed, "recovering model must stay listed on /v1/models");
+}
