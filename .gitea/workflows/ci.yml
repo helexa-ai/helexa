@@ -1,21 +1,25 @@
 name: CI
 
+# Pushes to main are deliberately excluded: build-prerelease.yml runs
+# its own lint/test jobs there (gating publish), and running both
+# workflows on the same push made them queue against each other on the
+# same runner labels — ~12 minutes of added latency per deploy. Feature
+# branches, PRs to main, and release tags keep the full gate here.
 on:
   push:
-    branches: ["**"]
+    branches-ignore: [main]
     tags: ["v*"]
   pull_request:
     branches: [main]
 
-# Share a concurrency group with build-prerelease.yml so the two
-# workflows don't race on the same `rust` runner workspace (act's
-# /root/.cache/act/<hash>/hostexecutor/ is shared across concurrent
-# jobs and one job's checkout step nukes another's in-flight build
-# files). cancel-in-progress=false → they queue; same-ref pushes
-# coalesce per workflow via cancel-in-progress on each.
+# Coalesce same-ref pushes; a newer push supersedes the in-flight run.
+# (The old shared `cortex-runner-pool` group with build-prerelease.yml
+# is gone — the workflows no longer trigger on the same refs, and
+# ephemeral one-VM-per-job runners removed the shared-workspace race
+# that group existed to serialize.)
 concurrency:
-  group: cortex-runner-pool-${{ github.ref }}
-  cancel-in-progress: false
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_INCREMENTAL: "0"

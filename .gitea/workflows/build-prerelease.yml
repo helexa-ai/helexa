@@ -1,11 +1,20 @@
 name: build-prerelease
 
-# Manually-dispatched workflow that builds CUDA-flavoured neuron binaries
-# (and a single cortex binary), packages each as a Fedora RPM, signs
-# them, and publishes to the `unstable` channel at rpm.lair.cafe.
+# Builds CUDA-flavoured neuron binaries (and a single cortex binary),
+# packages each as a Fedora RPM, signs them, and publishes to the
+# `unstable` channel at rpm.lair.cafe.
 #
-# Trigger from the Gitea UI: Actions → build-prerelease → Run workflow.
-# Optionally provide a `ref` to build from a non-default branch.
+# Change-aware: the `prepare` job diffs HEAD against the git sha
+# embedded in the most recently *published* unstable RPM (per package)
+# and skips builds whose inputs didn't change. Docs-only commits build
+# nothing; gateway-only commits skip the 3 CUDA builds (and, via
+# deploy.yml's own check-update gate, the neuron restarts + model
+# cold-loads). Diffing against the published sha — not the previous
+# push — means a failed run can never cause a change to be missed.
+#
+# Lint (fmt+clippy) and test run here as parallel jobs and gate
+# `publish`; ci.yml no longer runs on pushes to main (see its trigger
+# comment), so the two workflows stop competing for the same runners.
 #
 # The published packages are versioned as e.g.
 #   helexa-neuron-blackwell-0.1.16-0.1.20260518T140530.gitabcdef0.fc43.x86_64
@@ -22,6 +31,7 @@ on:
   push:
     branches: [main]
   # Manual dispatch still available to build from a non-main ref.
+  # Dispatched runs skip change detection and build everything.
   workflow_dispatch:
     inputs:
       ref:
@@ -29,15 +39,15 @@ on:
         required: false
         default: ""
 
+# Coalesce same-ref pushes: a newer push cancels the older in-flight
+# run — the newest commit is the one we want on the fleet. The publish
+# job keeps its own `rpm-publish` group (cancel=false) so an in-flight
+# repo update is never interrupted. Runners are ephemeral (one VM per
+# job) so concurrent runs no longer race on a shared workspace; the
+# old shared `cortex-runner-pool` group with ci.yml is gone.
 concurrency:
-  # Share the group with ci.yml so the two workflows can't run
-  # concurrently on the same `rust` runner (act reuses the workspace
-  # cache and races destroy each other's build files mid-compile).
-  # cancel-in-progress=false → workflows queue; if a newer push lands,
-  # the older run is still picked up by ci.yml's own ref-keyed
-  # concurrency (same group, queued).
-  group: cortex-runner-pool-${{ github.ref }}
-  cancel-in-progress: false
+  group: build-prerelease-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_INCREMENTAL: "0"
@@ -45,13 +55,16 @@ env:
 
 jobs:
   prepare:
-    name: Resolve version stamps
+    name: Resolve version stamps + change detection
     runs-on: rust
     outputs:
       version: ${{ steps.info.outputs.version }}
       release: ${{ steps.info.outputs.release }}
       short_sha: ${{ steps.info.outputs.short_sha }}
       commit_timestamp: ${{ steps.info.outputs.commit_timestamp }}
+      build_cortex: ${{ steps.changes.outputs.build_cortex }}
+      build_neuron: ${{ steps.changes.outputs.build_neuron }}
+      check_rust: ${{ steps.changes.outputs.check_rust }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,9 +91,165 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "commit_timestamp=${COMMIT_TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
+      - id: changes
+        run: |
+          set -ux
+          # Default: build everything. Detection only ever narrows
+          # this, and any failure along the way (manifest unreachable,
+          # unparsable, sha not in history after a force-push) leaves
+          # the full build in place. Manual dispatches always build
+          # everything — predictable when building odd refs.
+          BUILD_CORTEX=true
+          BUILD_NEURON=true
+          CHECK_RUST=true
+
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            MANIFEST_URL="https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json"
+            if curl -fsS --max-time 20 -o /tmp/packages.json "$MANIFEST_URL"; then
+              # Latest published sha per package, by buildTime.
+              base_for() {
+                python3 - "$1" <<'PY'
+          import json, re, sys
+          name = sys.argv[1]
+          try:
+              with open("/tmp/packages.json") as f:
+                  pkgs = json.load(f)["packages"]
+              cands = [p for p in pkgs if p.get("name") == name]
+              if cands:
+                  latest = max(cands, key=lambda p: p.get("buildTime", 0))
+                  m = re.search(r"git\.?([0-9a-f]{7,40})", latest.get("release", ""))
+                  if m:
+                      print(m.group(1))
+          except Exception:
+              pass
+          PY
+              }
+
+              # true if no usable base, else true iff the diff since
+              # the published sha touches the given path pattern.
+              decide() {
+                local base="$1" pattern="$2"
+                if [ -z "$base" ] \
+                   || ! git cat-file -e "${base}^{commit}" 2>/dev/null \
+                   || ! git merge-base --is-ancestor "$base" HEAD 2>/dev/null; then
+                  echo true; return
+                fi
+                if git diff --name-only "${base}..HEAD" | grep -qE "$pattern"; then
+                  echo true
+                else
+                  echo false
+                fi
+              }
+
+              # cortex-core is shared by both binaries; Cargo.{toml,lock}
+              # affect both; this workflow file affects both.
+              NEURON_RE='^crates/neuron/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-neuron-prerelease\.spec$|^data/neuron|^neuron\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
+              CORTEX_RE='^crates/cortex-gateway/|^crates/cortex-cli/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/cortex-prerelease\.spec$|^data/cortex|^cortex\.example\.toml$|^models\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
+              # Any Rust change (incl. crates not packaged here, e.g.
+              # helexa-acp) still needs lint+test on main.
+              RUST_RE='\.rs$|^crates/|Cargo\.toml$|^Cargo\.lock$'
+
+              CORTEX_BASE=$(base_for cortex)
+              NEURON_BASE=$(base_for helexa-neuron-blackwell)
+              BUILD_CORTEX=$(decide "$CORTEX_BASE" "$CORTEX_RE")
+              BUILD_NEURON=$(decide "$NEURON_BASE" "$NEURON_RE")
+              if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ]; then
+                CHECK_RUST=true
+              else
+                CHECK_RUST=$(decide "$CORTEX_BASE" "$RUST_RE")
+              fi
+            fi
+          fi
+
+          echo "build_cortex=${BUILD_CORTEX}" >> "$GITHUB_OUTPUT"
+          echo "build_neuron=${BUILD_NEURON}" >> "$GITHUB_OUTPUT"
+          echo "check_rust=${CHECK_RUST}" >> "$GITHUB_OUTPUT"
+          echo "### change detection: build_cortex=${BUILD_CORTEX} build_neuron=${BUILD_NEURON} check_rust=${CHECK_RUST}"
+
+  # fmt + clippy + test moved here from ci.yml for main pushes so the
+  # two workflows stop queueing against each other (ci.yml's checks
+  # used to delay build-cortex by ~12 minutes on the shared runner
+  # pool). They run in parallel with the builds and gate `publish`,
+  # not the builds themselves — a clippy warning still can't reach the
+  # fleet, but it also doesn't serialize the pipeline.
+  lint:
+    name: Lint (fmt + clippy)
+    needs: prepare
+    if: needs.prepare.outputs.check_rust == 'true'
+    runs-on: rust
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - run: cargo fmt --check --all
+      # sccache occasionally fails with spurious race-condition errors;
+      # retrying the same invocation succeeds without code changes.
+      - name: Clippy (with retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::clippy attempt ${attempt}"
+            if cargo clippy --workspace -- -D warnings; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "clippy failed on attempt ${attempt}"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "clippy failed after 3 attempts"
+          exit 1
+      - run: sccache --show-stats
+
+  test:
+    name: Test
+    needs: prepare
+    if: needs.prepare.outputs.check_rust == 'true'
+    runs-on: rust
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      # See the lint job for why this is retried.
+      - name: Test (with retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::test attempt ${attempt}"
+            if cargo test --workspace; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "test failed on attempt ${attempt}"
+            if [ "${attempt}" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+          echo "test failed after 3 attempts"
+          exit 1
+      - run: sccache --show-stats
+
   build-cortex:
     name: Build cortex binary
     needs: prepare
+    if: needs.prepare.outputs.build_cortex == 'true'
     # runner-rust image already provides rust/cargo/clippy/rustfmt via
     # dnf — no rustup install step needed.
     runs-on: rust
@@ -107,6 +276,7 @@ jobs:
   build-neuron:
     name: Build neuron-${{ matrix.flavour }}
     needs: prepare
+    if: needs.prepare.outputs.build_neuron == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -247,7 +417,20 @@ jobs:
 
   publish:
     name: Publish to rpm.lair.cafe (unstable)
-    needs: [package-cortex, package-neuron]
+    needs: [lint, test, package-cortex, package-neuron]
+    # Runs when at least one package was built and nothing failed.
+    # lint/test may be skipped (docs-only refs never get here because
+    # no packages build), but a real failure in either blocks the
+    # fleet from receiving the RPMs.
+    if: >-
+      ${{
+        !cancelled()
+        && (needs.lint.result == 'success' || needs.lint.result == 'skipped')
+        && (needs.test.result == 'success' || needs.test.result == 'skipped')
+        && (needs.package-cortex.result == 'success' || needs.package-neuron.result == 'success')
+        && needs.package-cortex.result != 'failure'
+        && needs.package-neuron.result != 'failure'
+      }}
     runs-on: rpm
     concurrency:
       group: rpm-publish

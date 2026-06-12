@@ -1,0 +1,134 @@
+name: deploy-dev
+
+# Fast-path iteration deploy for a SINGLE neuron host: build one CUDA
+# flavour, copy the raw binary to the host, restart neuron.service.
+# Skips the other two flavours, all RPM packaging, signing, repo
+# publish, and dnf — push-to-testable drops from ~20 min to roughly
+# one CUDA build plus a service restart.
+#
+# This is a DEV convenience, not a release path:
+#   - the binary lands at /usr/bin/neuron *outside* RPM ownership;
+#     the next regular deploy.yml run reconciles the host back to the
+#     packaged binary (dnf sees the newer RPM and reinstalls). `rpm -V
+#     helexa-neuron-<flavour>` flagging a modified /usr/bin/neuron in
+#     the interim is expected.
+#   - nothing is published; other hosts are untouched.
+#   - requires the `install` sudoers rule from
+#     asset/sudoers.d/neuron-host.conf (re-run script/infra-setup.sh
+#     after updating it).
+#
+# Trigger from the Gitea UI: Actions → deploy-dev → Run workflow,
+# pick the target host. Defaults to the ref you dispatch from, so it
+# works from feature branches without touching main.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "neuron host to deploy to"
+        required: true
+        type: choice
+        options: [beast, benjy, quadbrat]
+        default: beast
+
+# One dev deploy at a time; a newer dispatch for the same host wins.
+concurrency:
+  group: deploy-dev-${{ inputs.target }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: "always"
+
+jobs:
+  build:
+    name: Build neuron (${{ inputs.target }})
+    runs-on: cuda-13.0
+    outputs:
+      flavour: ${{ steps.map.outputs.flavour }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # host → flavour → compute cap. Keep in sync with the
+      # build-neuron matrix in build-prerelease.yml and the
+      # deploy-neurons matrix in deploy.yml.
+      - id: map
+        run: |
+          case "${{ inputs.target }}" in
+            beast)    flavour=blackwell cap=120 ;;
+            benjy)    flavour=ada       cap=89  ;;
+            quadbrat) flavour=ampere    cap=86  ;;
+            *) echo "unknown target ${{ inputs.target }}"; exit 1 ;;
+          esac
+          echo "flavour=${flavour}" >> "$GITHUB_OUTPUT"
+          echo "cap=${cap}" >> "$GITHUB_OUTPUT"
+
+      - name: Build neuron with CUDA
+        run: |
+          set -eux
+          export PATH="/usr/local/cuda-13.0/bin:${PATH}"
+          export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
+          export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
+          cargo build --release -p neuron --features "cuda cudnn flash-attn"
+        env:
+          CUDA_COMPUTE_CAP: ${{ steps.map.outputs.cap }}
+          CARGO_BUILD_JOBS: "8"
+          NVCC_THREADS: "4"
+
+      - name: Stage binary
+        run: |
+          mkdir --parents artifacts
+          cp target/release/neuron artifacts/neuron-dev
+          file artifacts/neuron-dev
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: neuron-dev-${{ inputs.target }}
+          path: artifacts/neuron-dev
+          retention-days: 1
+
+  deploy:
+    name: Deploy to ${{ inputs.target }}
+    needs: build
+    runs-on: fedora-43
+    env:
+      DEPLOY_KEY: |
+        ${{ secrets.RSYNC_SSH_KEY }}
+      TARGET_HOST: ${{ inputs.target }}.hanzalova.internal
+    steps:
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              "gitea_ci@${TARGET_HOST}" 'hostname -f'
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: neuron-dev-${{ inputs.target }}
+          path: artifacts/
+
+      - name: Copy binary to host
+        run: |
+          scp artifacts/neuron-dev "gitea_ci@${TARGET_HOST}:/var/lib/gitea_ci/neuron-dev"
+
+      - name: Install binary and restart neuron.service
+        run: |
+          ssh "gitea_ci@${TARGET_HOST}" '
+            set -eu
+            if systemctl is-active --quiet neuron.service; then
+              sudo /usr/bin/systemctl stop neuron.service
+            fi
+            # Exact command form required by the sudoers rule in
+            # asset/sudoers.d/neuron-host.conf — change both together.
+            sudo /usr/bin/install -o root -g root -m 0755 /var/lib/gitea_ci/neuron-dev /usr/bin/neuron
+            sudo /usr/bin/systemctl start neuron.service
+            rm -f /var/lib/gitea_ci/neuron-dev'
+
+      - name: Capture neuron.service startup journal
+        if: always()
+        run: |
+          sleep 10
+          ssh "gitea_ci@${TARGET_HOST}" \
+              'journalctl --unit neuron.service -I --no-pager'
