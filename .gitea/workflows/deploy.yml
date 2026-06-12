@@ -54,36 +54,42 @@ jobs:
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@hanzalova.internal 'hostname -f'
 
+      # Gating compares `rpm -q` against the packages.json manifest the
+      # publish job maintains — NOT unprivileged `dnf check-update`,
+      # which proved unreliable as the gitea_ci user (hung on metadata
+      # locks on one host, silently reported "no updates" on others).
+      # An unreadable/unparsable manifest fails open: deploy proceeds.
       - name: Deploy cortex (skips when already current)
         run: |
-          ssh gitea_ci@hanzalova.internal '
-            set -eu
-            need=install
-            if rpm -q cortex >/dev/null 2>&1; then
-              # check-update: rc 0 = up to date, 100 = update available,
-              # anything else = metadata trouble — fall through to the
-              # dnf transaction so failures stay loud instead of being
-              # silently classified as "current".
-              set +e
-              dnf -q check-update --refresh cortex >/dev/null 2>&1
-              rc=$?
-              set -e
-              if [ "${rc}" -eq 0 ]; then
-                echo "cortex $(rpm -q cortex) already current — leaving service untouched"
-                exit 0
-              fi
-              need=upgrade
-            fi
-            if systemctl is-active --quiet cortex.service; then
-              sudo /usr/bin/systemctl stop cortex.service
-            fi
-            if [ "${need}" = "upgrade" ]; then
-              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y cortex
-            else
-              sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
-            fi
-            sudo /usr/bin/systemctl daemon-reload
-            sudo /usr/bin/systemctl start cortex.service'
+          ssh gitea_ci@hanzalova.internal 'bash -s' <<'DEPLOY'
+          set -eu
+          pkg=cortex
+          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
+            | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          cands = [p for p in json.load(sys.stdin)["packages"] if p.get("name") == name]
+          if cands:
+              p = max(cands, key=lambda p: p.get("buildTime", 0))
+              print(p["version"] + "-" + p["release"])
+          ' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+            echo "${pkg}-${installed} already current — leaving service untouched"
+            exit 0
+          fi
+          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          if systemctl is-active --quiet cortex.service; then
+            sudo /usr/bin/systemctl stop cortex.service
+          fi
+          if rpm -q "${pkg}" >/dev/null 2>&1; then
+            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y cortex
+          else
+            sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
+          fi
+          sudo /usr/bin/systemctl daemon-reload
+          sudo /usr/bin/systemctl start cortex.service
+          DEPLOY
 
       # Wait for the service to either come up or wedge, then capture
       # the latest-invocation journal. Runs even on prior failure so a
@@ -120,35 +126,39 @@ jobs:
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@${{ matrix.host }} 'hostname -f'
 
+      # See deploy-cortex for why gating uses the publish manifest and
+      # not unprivileged `dnf check-update`.
       - name: Deploy helexa-neuron-${{ matrix.flavour }} (skips when already current)
         run: |
-          ssh gitea_ci@${{ matrix.host }} "
-            set -eu
-            pkg=helexa-neuron-${{ matrix.flavour }}
-            need=install
-            if rpm -q \"\${pkg}\" >/dev/null 2>&1; then
-              # rc 0 = up to date, 100 = update available; anything
-              # else falls through so dnf can fail loudly.
-              set +e
-              dnf -q check-update --refresh \"\${pkg}\" >/dev/null 2>&1
-              rc=\$?
-              set -e
-              if [ \"\${rc}\" -eq 0 ]; then
-                echo \"\$(rpm -q \"\${pkg}\") already current — leaving service untouched\"
-                exit 0
-              fi
-              need=upgrade
-            fi
-            if systemctl is-active --quiet neuron.service; then
-              sudo /usr/bin/systemctl stop neuron.service
-            fi
-            if [ \"\${need}\" = \"upgrade\" ]; then
-              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y \"\${pkg}\"
-            else
-              sudo /usr/bin/dnf install --refresh --allowerasing -y \"\${pkg}\"
-            fi
-            sudo /usr/bin/systemctl daemon-reload
-            sudo /usr/bin/systemctl start neuron.service"
+          ssh gitea_ci@${{ matrix.host }} 'bash -s' <<'DEPLOY'
+          set -eu
+          pkg=helexa-neuron-${{ matrix.flavour }}
+          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
+            | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          cands = [p for p in json.load(sys.stdin)["packages"] if p.get("name") == name]
+          if cands:
+              p = max(cands, key=lambda p: p.get("buildTime", 0))
+              print(p["version"] + "-" + p["release"])
+          ' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+            echo "${pkg}-${installed} already current — leaving service untouched"
+            exit 0
+          fi
+          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          if systemctl is-active --quiet neuron.service; then
+            sudo /usr/bin/systemctl stop neuron.service
+          fi
+          if rpm -q "${pkg}" >/dev/null 2>&1; then
+            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y "${pkg}"
+          else
+            sudo /usr/bin/dnf install --refresh --allowerasing -y "${pkg}"
+          fi
+          sudo /usr/bin/systemctl daemon-reload
+          sudo /usr/bin/systemctl start neuron.service
+          DEPLOY
 
       - name: Ensure firewalld allows helexa-neuron
         run: |
