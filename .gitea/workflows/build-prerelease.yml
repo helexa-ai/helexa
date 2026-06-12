@@ -190,25 +190,35 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
       - run: cargo fmt --check --all
-      # sccache occasionally fails with spurious race-condition errors;
-      # retrying the same invocation succeeds without code changes.
-      - name: Clippy (with retry)
+      # sccache failures come in two modes: transient races (a plain
+      # retry clears them) and a wedged/dead server, where every
+      # same-VM retry fails identically (sccache fatal error, ENOENT
+      # on its own tmp files). Escalate accordingly: retry → restart
+      # the server → final attempt uncached. A sick cache costs build
+      # time, never the run.
+      - name: Clippy (with sccache escalation)
         run: |
           for attempt in 1 2 3; do
             echo "::group::clippy attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
             if cargo clippy --workspace -- -D warnings; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
             echo "clippy failed on attempt ${attempt}"
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 5
+            if [ "${attempt}" -eq 1 ]; then
+              sccache --stop-server || true
+              sccache --start-server || true
             fi
+            sleep 5
           done
           echo "clippy failed after 3 attempts"
           exit 1
-      - run: sccache --show-stats
+      - run: sccache --show-stats || true
 
   test:
     name: Test
@@ -227,24 +237,30 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-      # See the lint job for why this is retried.
-      - name: Test (with retry)
+      # See the lint job for the escalation rationale.
+      - name: Test (with sccache escalation)
         run: |
           for attempt in 1 2 3; do
             echo "::group::test attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
             if cargo test --workspace; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
             echo "test failed on attempt ${attempt}"
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 5
+            if [ "${attempt}" -eq 1 ]; then
+              sccache --stop-server || true
+              sccache --start-server || true
             fi
+            sleep 5
           done
           echo "test failed after 3 attempts"
           exit 1
-      - run: sccache --show-stats
+      - run: sccache --show-stats || true
 
   build-cortex:
     name: Build cortex binary
