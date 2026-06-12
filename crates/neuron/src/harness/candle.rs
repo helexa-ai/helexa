@@ -163,11 +163,14 @@ impl LoadedHandle {
 /// Reference to one stored prefix snapshot (#11). CUDA loads keep the
 /// snapshot tensors in the device worker and hold only the opaque id
 /// here; CPU loads hold the snapshot itself (no context-affinity
-/// constraint on CPU tensors).
+/// constraint on CPU tensors). TP loads hold the pool-minted id every
+/// rank stored its shard snapshot under.
 #[derive(Clone)]
 pub enum KvSnapshotRef {
     Worker(super::device_worker::KvSnapshotId),
     Local(Arc<super::arch::qwen3_5::snapshot::KvCacheSnapshot>),
+    #[cfg(feature = "cuda")]
+    Tp(u64),
 }
 
 /// Per-model prefix-cache registry: matching/eviction bookkeeping in
@@ -356,6 +359,14 @@ pub struct TpLoadedModel {
     /// Loading spec, retained for auto-recovery (#17) — see
     /// [`LoadedModel::spec`].
     pub spec: ModelSpec,
+    /// Prefix-cache registry (#11) — see [`LoadedModel::prefix_cache`].
+    /// Entries hold [`KvSnapshotRef::Tp`] ids; the per-rank snapshot
+    /// tensors live on the leader's device worker and in each
+    /// subprocess rank, all keyed by the same pool-minted id.
+    pub prefix_cache: Option<ModelPrefixCache>,
+    /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
+    /// needs to hold per model lifetime (snapshots die with the model).
+    pub next_snapshot_id: std::sync::atomic::AtomicU64,
 }
 
 #[cfg(feature = "cuda")]
@@ -1238,21 +1249,26 @@ async fn chunked_prefill_via_worker(
 /// [`chunked_prefill_via_worker`] but the forward fans out to every
 /// rank via `pool.generate_step`. Returns the leader's CPU-side
 /// `Vec<f32>` of logits at the final chunk's last position.
+/// `start_offset` skips a restored cached prefix, as in
+/// [`chunked_prefill_local`].
 #[cfg(feature = "cuda")]
 async fn chunked_prefill_tp(
     pool: &mut super::tp::WorkerPool,
     model_id: &str,
     leader_handle: super::device_worker::TpHandle,
     prompt_tokens: &[u32],
+    start_offset: usize,
 ) -> Result<Vec<f32>> {
     let prompt_len = prompt_tokens.len();
-    if prompt_len == 0 {
-        anyhow::bail!("chunked_prefill_tp: empty prompt");
+    if start_offset >= prompt_len {
+        anyhow::bail!(
+            "chunked_prefill_tp: start_offset {start_offset} leaves no tokens of {prompt_len} to prefill"
+        );
     }
     let chunk_size = prefill_chunk_tokens();
-    let mut offset = 0;
+    let mut offset = start_offset;
     let mut last_logits: Option<Vec<f32>> = None;
-    let total_chunks = prompt_len.div_ceil(chunk_size);
+    let total_chunks = (prompt_len - start_offset).div_ceil(chunk_size);
     let mut chunk_idx = 0_usize;
     while offset < prompt_len {
         let end = (offset + chunk_size).min(prompt_len);
@@ -3123,7 +3139,20 @@ impl CandleHarness {
             image_token_id: vision_meta.image_token_id,
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
+            prefix_cache: self.new_prefix_cache(
+                config_model_type(&config_path).as_deref()
+                    == Some(super::arch::qwen3_5::MODEL_TYPE),
+            ),
+            next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
         });
+        if tp_loaded.prefix_cache.is_some() {
+            tracing::info!(
+                model = %spec.model_id,
+                budget_mb = self.prefix_cache_cfg.budget_mb,
+                max_entries = self.prefix_cache_cfg.max_entries,
+                "prefix cache enabled for this TP model"
+            );
+        }
 
         let mut models = self.models.write().await;
         models.insert(spec.model_id.clone(), LoadedHandle::Tp(tp_loaded));
@@ -3429,11 +3458,31 @@ impl CandleHarness {
                 let mut tool_call_buf = String::new();
                 let mut tool_call_idx: usize = 0;
 
+                // Forwarded-token tracking for the post-generation
+                // prefix snapshot — see `run_inference_via_worker`.
+                let mut forwarded: Vec<u32> = prompt_tokens.clone();
+
                 'work: {
-                    if let Err(e) = pool.clear_kv_cache(&model_id, leader_handle).await {
-                        failure = Some(format!("clear_kv_cache: {e:#}"));
-                        break 'work;
-                    }
+                    // Prefix-cache decision (#11): vision requests
+                    // clear as before; text requests restore the
+                    // longest matching snapshot on every rank.
+                    let reused = if vision_route.is_some() {
+                        match pool.clear_kv_cache(&model_id, leader_handle).await {
+                            Ok(()) => 0,
+                            Err(e) => {
+                                failure = Some(format!("clear_kv_cache: {e:#}"));
+                                break 'work;
+                            }
+                        }
+                    } else {
+                        match restore_or_clear_tp(&mut pool, &tp_for_task, &prompt_tokens).await {
+                            Ok(reused) => reused,
+                            Err(e) => {
+                                failure = Some(format!("restore_or_clear: {e:#}"));
+                                break 'work;
+                            }
+                        }
+                    };
 
                     let mut logits_processor = {
                         let sampling = if temperature <= 0.0 {
@@ -3469,8 +3518,14 @@ impl CandleHarness {
                             .await
                         }
                         None => {
-                            chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens)
-                                .await
+                            chunked_prefill_tp(
+                                &mut pool,
+                                &model_id,
+                                leader_handle,
+                                &prompt_tokens,
+                                reused,
+                            )
+                            .await
                         }
                     };
                     let logits_vec = match prefill_result {
@@ -3605,6 +3660,7 @@ impl CandleHarness {
                                     break 'work;
                                 }
                             };
+                            forwarded.push(next_token);
                             let logits = match Tensor::new(logits_vec.as_slice(), &Device::Cpu) {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -3729,6 +3785,13 @@ impl CandleHarness {
                             }
                         }
                     }
+                }
+
+                // Post-generation prefix snapshot (#11) — only after a
+                // clean text-only run; failed requests leave the cache
+                // state untrusted, and vision requests never snapshot.
+                if failure.is_none() && vision_route.is_none() {
+                    store_prefix_snapshot_tp(&mut pool, &tp_for_task, forwarded).await;
                 }
 
                 // One terminal line per request, success or failure. The
@@ -3904,16 +3967,26 @@ async fn chat_completion_tp_inner(
     let mut pool = acquire_pool_lock(&tp.pool, &model_id).await;
     let leader_handle = tp.leader_handle;
 
-    // Reset every rank's KV cache so this request doesn't attend
-    // over the previous request's tokens.
+    // Prefix-cache decision (#11): restore the longest matching
+    // snapshot on every rank, or reset every rank's KV cache as
+    // before. Vision requests bypass the cache (image content is not
+    // in the token sequence).
     let clear_start = std::time::Instant::now();
-    pool.clear_kv_cache(&model_id, leader_handle)
-        .await
-        .map_err(InferenceError::Other)?;
+    let reused = if vision_route.is_some() {
+        pool.clear_kv_cache(&model_id, leader_handle)
+            .await
+            .map_err(InferenceError::Other)?;
+        0
+    } else {
+        restore_or_clear_tp(&mut pool, &tp, &prompt_tokens)
+            .await
+            .map_err(InferenceError::Other)?
+    };
     tracing::debug!(
         model = %model_id,
+        reused,
         elapsed_ms = clear_start.elapsed().as_millis(),
-        "TP chat_completion: kv cache cleared"
+        "TP chat_completion: kv cache ready"
     );
 
     let mut logits_processor = {
@@ -3953,7 +4026,7 @@ async fn chat_completion_tp_inner(
             )
             .await
             .map_err(InferenceError::Other)?,
-        None => chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens)
+        None => chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens, reused)
             .await
             .map_err(InferenceError::Other)?,
     };
@@ -3961,6 +4034,7 @@ async fn chat_completion_tp_inner(
     tracing::info!(
         model = %model_id,
         prompt_len,
+        reused,
         elapsed_ms = prefill_start.elapsed().as_millis(),
         vram_free_mb = post_prefill_vram_free_mb,
         "TP chat_completion: prefill complete"
@@ -3988,6 +4062,12 @@ async fn chat_completion_tp_inner(
         }
     };
 
+    // Forwarded-token tracking for the post-generation prefix
+    // snapshot — see `run_inference_via_worker`. Vision requests
+    // never snapshot (gated inside `store_prefix_snapshot_tp` via
+    // the `prefix_cache` gate below).
+    let mut forwarded: Vec<u32> = prompt_tokens.clone();
+
     if Some(next_token) == eos_id {
         finish_reason = "stop".into();
     } else {
@@ -4004,6 +4084,7 @@ async fn chat_completion_tp_inner(
                 )
                 .await
                 .map_err(InferenceError::Other)?;
+            forwarded.push(next_token);
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu).map_err(|e| {
                 InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e}"))
             })?;
@@ -4041,6 +4122,9 @@ async fn chat_completion_tp_inner(
             elapsed_ms = decode_start.elapsed().as_millis(),
             "TP chat_completion: decode complete"
         );
+    }
+    if vision_route.is_none() {
+        store_prefix_snapshot_tp(&mut pool, &tp, forwarded).await;
     }
     drop(pool);
 
@@ -4768,6 +4852,116 @@ fn restore_or_clear_local(
     }
     arch.clear_kv_cache()?;
     Ok(0)
+}
+
+/// TP counterpart of [`restore_or_clear_via_worker`]: restore the
+/// matched snapshot on **every rank** (pool fan-out + leader), or
+/// clear everywhere. A failed restore can leave ranks inconsistent
+/// (some restored, some not) — the clear fallback resets every rank,
+/// restoring consistency.
+#[cfg(feature = "cuda")]
+async fn restore_or_clear_tp(
+    pool: &mut super::tp::WorkerPool,
+    tp: &TpLoadedModel,
+    prompt_tokens: &[u32],
+) -> Result<usize> {
+    let hit = tp
+        .prefix_cache
+        .as_ref()
+        .and_then(|cache| lock_prefix_cache(cache).longest_match(prompt_tokens));
+    if let (Some(cache), Some(m)) = (tp.prefix_cache.as_ref(), hit) {
+        let KvSnapshotRef::Tp(id) = m.snapshot else {
+            anyhow::bail!("prefix cache: non-TP snapshot ref on a TP model — load-path bug");
+        };
+        match pool
+            .restore_kv_cache(&tp.model_id, tp.leader_handle, id)
+            .await
+        {
+            Ok(()) => {
+                tracing::info!(
+                    reused_tokens = m.tokens,
+                    prompt_tokens = prompt_tokens.len(),
+                    "prefix cache (TP): hit — skipping prefill of cached prefix"
+                );
+                return Ok(m.tokens);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %format!("{e:#}"),
+                    "prefix cache (TP): restore failed; dropping entry, full prefill"
+                );
+                // Bind the removed ref before awaiting — the registry
+                // guard must not live across a suspension point.
+                let removed = lock_prefix_cache(cache).remove_covering(prompt_tokens, m.tokens);
+                if let Some(KvSnapshotRef::Tp(id)) = removed
+                    && let Err(e2) = pool
+                        .drop_kv_snapshot(&tp.model_id, tp.leader_handle, id)
+                        .await
+                {
+                    tracing::debug!(
+                        error = %format!("{e2:#}"),
+                        "prefix cache (TP): cleanup of failed-restore snapshot failed"
+                    );
+                }
+            }
+        }
+    }
+    pool.clear_kv_cache(&tp.model_id, tp.leader_handle)
+        .await
+        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e:#}"))?;
+    Ok(0)
+}
+
+/// TP counterpart of [`store_prefix_snapshot_via_worker`]. Mints a
+/// pool-wide snapshot id, snapshots every rank under it, registers it.
+/// On any rank failing, drops the id everywhere (idempotent) so no
+/// rank leaks a half-stored snapshot.
+#[cfg(feature = "cuda")]
+async fn store_prefix_snapshot_tp(
+    pool: &mut super::tp::WorkerPool,
+    tp: &TpLoadedModel,
+    forwarded_tokens: Vec<u32>,
+) {
+    let Some(cache) = tp.prefix_cache.as_ref() else {
+        return;
+    };
+    let id = tp.next_snapshot_id.fetch_add(1, Ordering::Relaxed);
+    match pool
+        .snapshot_kv_cache(&tp.model_id, tp.leader_handle, id)
+        .await
+    {
+        Ok(bytes) => {
+            let evicted =
+                lock_prefix_cache(cache).insert(forwarded_tokens, KvSnapshotRef::Tp(id), bytes);
+            for r in evicted {
+                if let KvSnapshotRef::Tp(evicted_id) = r
+                    && let Err(e) = pool
+                        .drop_kv_snapshot(&tp.model_id, tp.leader_handle, evicted_id)
+                        .await
+                {
+                    tracing::debug!(
+                        error = %format!("{e:#}"),
+                        "prefix cache (TP): drop of evicted snapshot failed"
+                    );
+                }
+            }
+        }
+        Err(e) => {
+            tracing::debug!(
+                error = %format!("{e:#}"),
+                "prefix cache (TP): snapshot failed; cleaning up partial snapshot"
+            );
+            if let Err(e2) = pool
+                .drop_kv_snapshot(&tp.model_id, tp.leader_handle, id)
+                .await
+            {
+                tracing::debug!(
+                    error = %format!("{e2:#}"),
+                    "prefix cache (TP): partial-snapshot cleanup failed"
+                );
+            }
+        }
+    }
 }
 
 /// CPU-path counterpart of [`store_prefix_snapshot_via_worker`].

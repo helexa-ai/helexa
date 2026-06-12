@@ -267,6 +267,31 @@ pub enum Job {
         handle: TpHandle,
         reply: oneshot::Sender<Result<()>>,
     },
+    /// Capture the leader's TP cache state as a prefix snapshot (#11),
+    /// stored worker-side under the pool-minted `snapshot_id` (shared
+    /// with the subprocess ranks, so all ranks key the same snapshot
+    /// identically). Replies with the leader shard's snapshot bytes.
+    #[cfg(feature = "cuda")]
+    TpSnapshotKv {
+        handle: TpHandle,
+        snapshot_id: u64,
+        reply: oneshot::Sender<Result<u64>>,
+    },
+    /// Replace the leader's live TP cache state with a stored
+    /// snapshot. Mirrors `RestoreKv` for single-GPU.
+    #[cfg(feature = "cuda")]
+    TpRestoreKv {
+        handle: TpHandle,
+        snapshot_id: u64,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// Drop one stored leader TP snapshot (eviction). Idempotent.
+    #[cfg(feature = "cuda")]
+    TpDropKvSnapshot {
+        handle: TpHandle,
+        snapshot_id: u64,
+        reply: oneshot::Sender<()>,
+    },
     /// Run one TP forward step on the leader's shard. Returns CPU-
     /// side logits as a `Vec<f32>` so the async caller can sample
     /// without holding a device tensor. The caller is also

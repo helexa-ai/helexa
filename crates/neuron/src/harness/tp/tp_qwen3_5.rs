@@ -46,6 +46,7 @@ use super::tp_linear::{ColumnParallelLinear, RowParallelLinear};
 use crate::harness::arch::qwen3_5::linear_attn::repeat_interleave;
 use crate::harness::arch::qwen3_5::rmsnorm::{Qwen3_5RmsNorm, Qwen3_5RmsNormGated, l2norm};
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
+use crate::harness::arch::qwen3_5::snapshot::{KvCacheSnapshot, LayerKvSnapshot};
 use crate::harness::arch::qwen3_5::splice_runs;
 use crate::harness::arch::qwen3_5::vision::VisionTower;
 pub use crate::harness::arch::qwen3_5::{Config, TextConfig};
@@ -256,6 +257,39 @@ impl TpQwen3_5GatedDeltaNet {
 
     pub fn clear_kv_cache(&mut self) {
         self.state = TpGatedDeltaNetState::default();
+    }
+
+    /// Deep-copy this rank's recurrent state for a prefix snapshot.
+    /// Same in-place-kernel rationale as the single-GPU
+    /// `GatedDeltaNet::snapshot_state`.
+    pub fn snapshot_state(&self) -> candle_core::Result<(Option<Tensor>, Option<Tensor>)> {
+        let conv = self
+            .state
+            .conv_state
+            .as_ref()
+            .map(Tensor::copy)
+            .transpose()?;
+        let rec = self
+            .state
+            .recurrent_state
+            .as_ref()
+            .map(Tensor::copy)
+            .transpose()?;
+        Ok((conv, rec))
+    }
+
+    /// Replace this rank's live recurrent state with a deep copy of a
+    /// snapshot. See the single-GPU `GatedDeltaNet::restore_state`.
+    pub fn restore_state(
+        &mut self,
+        conv_state: Option<&Tensor>,
+        recurrent_state: Option<&Tensor>,
+    ) -> candle_core::Result<()> {
+        self.state = TpGatedDeltaNetState {
+            conv_state: conv_state.map(Tensor::copy).transpose()?,
+            recurrent_state: recurrent_state.map(Tensor::copy).transpose()?,
+        };
+        Ok(())
     }
 
     /// `x` shape: `(B, L, hidden_size)`. Returns `(B, L, hidden_size)`
@@ -585,6 +619,25 @@ impl TpQwen3_5Attention {
     pub fn clear_kv_cache(&mut self) {
         self.kv_cache.reset();
     }
+
+    /// Capture this rank's KV cache for a prefix snapshot. Shallow
+    /// clones are safe — see the single-GPU
+    /// `Qwen3_5Attention::snapshot_kv`.
+    pub fn snapshot_kv(&self) -> Option<(Tensor, Tensor)> {
+        match (self.kv_cache.k(), self.kv_cache.v()) {
+            (Some(k), Some(v)) => Some((k.clone(), v.clone())),
+            _ => None,
+        }
+    }
+
+    /// Replace this rank's live KV cache with a snapshot.
+    pub fn restore_kv(&mut self, snap: Option<&(Tensor, Tensor)>) -> candle_core::Result<()> {
+        self.kv_cache.reset();
+        if let Some((k, v)) = snap {
+            self.kv_cache.append(k, v)?;
+        }
+        Ok(())
+    }
 }
 
 // ─── MLP ────────────────────────────────────────────────────────────
@@ -828,6 +881,39 @@ impl TpQwen3_5DecoderLayer {
             TpAttentionKind::Linear(n) => n.clear_kv_cache(),
         }
     }
+
+    /// Capture this layer's per-rank cache state for a prefix
+    /// snapshot. Reuses the single-GPU snapshot types — the shard
+    /// state has the same shape, just sharded head dims.
+    pub fn snapshot_kv(&self) -> candle_core::Result<LayerKvSnapshot> {
+        Ok(match &self.attention {
+            TpAttentionKind::Full(a) => LayerKvSnapshot::Full(a.snapshot_kv()),
+            TpAttentionKind::Linear(n) => {
+                let (conv_state, recurrent_state) = n.snapshot_state()?;
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                }
+            }
+        })
+    }
+
+    /// Replace this layer's per-rank cache state from a snapshot.
+    pub fn restore_kv(&mut self, snap: &LayerKvSnapshot) -> candle_core::Result<()> {
+        match (&mut self.attention, snap) {
+            (TpAttentionKind::Full(a), LayerKvSnapshot::Full(kv)) => a.restore_kv(kv.as_ref()),
+            (
+                TpAttentionKind::Linear(n),
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                },
+            ) => n.restore_state(conv_state.as_ref(), recurrent_state.as_ref()),
+            _ => candle_core::bail!(
+                "restore_kv: snapshot layer kind does not match this layer's attention kind"
+            ),
+        }
+    }
 }
 
 // ─── base Model ─────────────────────────────────────────────────────
@@ -985,6 +1071,38 @@ impl TpQwen3_5Model {
             l.clear_kv_cache();
         }
         self.rope_delta = 0;
+    }
+
+    /// Capture this rank's per-layer cache state plus the rope
+    /// position counter as one consistent prefix snapshot (#11).
+    /// Mirrors `Qwen3_5Model::snapshot_kv_cache`.
+    pub fn snapshot_kv_cache(&self) -> candle_core::Result<KvCacheSnapshot> {
+        let layers = self
+            .layers
+            .iter()
+            .map(|l| l.snapshot_kv())
+            .collect::<candle_core::Result<Vec<_>>>()?;
+        Ok(KvCacheSnapshot {
+            layers,
+            rope_delta: self.rope_delta,
+        })
+    }
+
+    /// Replace this rank's live cache state with a snapshot. The
+    /// snapshot stays valid for further restores.
+    pub fn restore_kv_cache(&mut self, snap: &KvCacheSnapshot) -> candle_core::Result<()> {
+        if snap.layers.len() != self.layers.len() {
+            candle_core::bail!(
+                "restore_kv_cache: snapshot has {} layers, model has {}",
+                snap.layers.len(),
+                self.layers.len()
+            );
+        }
+        for (layer, layer_snap) in self.layers.iter_mut().zip(snap.layers.iter()) {
+            layer.restore_kv(layer_snap)?;
+        }
+        self.rope_delta = snap.rope_delta;
+        Ok(())
     }
 
     /// Set the decode `rope_delta` computed by `get_rope_index` during a
@@ -1363,6 +1481,16 @@ impl TpQwen3_5ForCausalLM {
 
     pub fn clear_kv_cache(&mut self) {
         self.base.clear_kv_cache();
+    }
+
+    /// See [`TpQwen3_5Model::snapshot_kv_cache`].
+    pub fn snapshot_kv_cache(&self) -> candle_core::Result<KvCacheSnapshot> {
+        self.base.snapshot_kv_cache()
+    }
+
+    /// See [`TpQwen3_5Model::restore_kv_cache`].
+    pub fn restore_kv_cache(&mut self, snap: &KvCacheSnapshot) -> candle_core::Result<()> {
+        self.base.restore_kv_cache(snap)
     }
 
     pub fn device(&self) -> &Device {
