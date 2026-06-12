@@ -196,6 +196,90 @@ pub async fn spawn_streaming_mock_neuron(chunk_count: usize, chunk_delay: Durati
     base_url
 }
 
+/// Like `spawn_streaming_mock_neuron`, but the stream ends with an
+/// OpenAI `stream_options.include_usage`-style final chunk (empty
+/// choices + usage object) before `[DONE]` — the shape the gateway's
+/// token metrics (#21) extract counts from.
+pub async fn spawn_streaming_mock_neuron_with_usage(
+    chunk_count: usize,
+    chunk_delay: Duration,
+    prompt_tokens: u64,
+    completion_tokens: u64,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
+
+    let app = Router::new()
+        .route("/models", get(mock_neuron_list_models))
+        .route(
+            "/models/{model_id}/endpoint",
+            get(move |Path(_model_id): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
+            }),
+        )
+        .route(
+            "/v1/chat/completions",
+            post(move |Json(body): Json<Value>| async move {
+                let model = body
+                    .get("model")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+
+                let mut chunks: Vec<String> = (0..chunk_count)
+                    .map(|i| {
+                        let chunk = json!({
+                            "id": "chatcmpl-stream-002",
+                            "object": "chat.completion.chunk",
+                            "created": 1700000000_u64,
+                            "model": model,
+                            "choices": [{
+                                "index": 0,
+                                "delta": { "content": format!("token{i}") },
+                                "finish_reason": null
+                            }]
+                        });
+                        format!("data: {chunk}\n\n")
+                    })
+                    .collect();
+                let usage_chunk = json!({
+                    "id": "chatcmpl-stream-002",
+                    "object": "chat.completion.chunk",
+                    "created": 1700000000_u64,
+                    "choices": [],
+                    "usage": {
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "total_tokens": prompt_tokens + completion_tokens
+                    }
+                });
+                chunks.push(format!("data: {usage_chunk}\n\n"));
+                chunks.push("data: [DONE]\n\n".to_string());
+
+                let delay = chunk_delay;
+                let stream = stream::iter(chunks).then(move |chunk| async move {
+                    tokio::time::sleep(delay).await;
+                    Ok::<_, std::convert::Infallible>(chunk)
+                });
+
+                Response::builder()
+                    .header(header::CONTENT_TYPE, "text/event-stream")
+                    .header(header::CACHE_CONTROL, "no-cache")
+                    .body(Body::from_stream(stream))
+                    .unwrap()
+            }),
+        );
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    base_url
+}
+
 /// Spawns a mock neuron with a custom models list.
 pub async fn spawn_mock_neuron_with_models(models_response: Value) -> String {
     spawn_mock_neuron_with_models_and_health(models_response, default_health_response()).await

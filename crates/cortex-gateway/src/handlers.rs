@@ -256,6 +256,7 @@ async fn anthropic_messages(
             "/v1/chat/completions",
             headers,
             openai_body,
+            &model_id,
         )
         .await;
         metrics::histogram!("cortex_request_duration_seconds", &labels)
@@ -591,7 +592,8 @@ async fn proxy_with_metrics(
     }
 
     let start = Instant::now();
-    let result = proxy::forward_request(&fleet.http_client, route, path, headers, body).await;
+    let result =
+        proxy::forward_request(&fleet.http_client, route, path, headers, body, model_id).await;
     let duration = start.elapsed();
 
     match result {
