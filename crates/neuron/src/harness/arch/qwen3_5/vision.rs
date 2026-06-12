@@ -457,19 +457,27 @@ impl VisionTower {
             }
         }
 
+        // Blend in f32 and cast once at the end — the reference keeps
+        // the bilinear weights f32 against bf16 table rows; rounding
+        // the weights to bf16 first costs a visible slice of fixture
+        // parity (#15).
         let mut acc: Option<Tensor> = None;
         for corner in 0..4 {
             let idx_t = Tensor::from_vec(std::mem::take(&mut idx[corner]), (n,), &self.device)?;
-            let emb = self.pos_embed.forward(&idx_t)?; // (n, hidden), pos_embed dtype
-            let wt = Tensor::from_vec(std::mem::take(&mut wts[corner]), (n, 1), &self.device)?
-                .to_dtype(self.dtype)?;
+            let emb = self
+                .pos_embed
+                .forward(&idx_t)?
+                .to_dtype(candle_core::DType::F32)?; // (n, hidden)
+            let wt = Tensor::from_vec(std::mem::take(&mut wts[corner]), (n, 1), &self.device)?;
             let term = emb.broadcast_mul(&wt)?;
             acc = Some(match acc {
                 Some(a) => a.add(&term)?,
                 None => term,
             });
         }
-        Ok(acc.expect("4 corners accumulated"))
+        acc.expect("4 corners accumulated")
+            .to_dtype(self.dtype)
+            .map_err(Into::into)
     }
 
     /// Encode one image.
