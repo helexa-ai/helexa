@@ -67,6 +67,37 @@ Reading the table:
   delta-rule prefill — issue #23 tracks the fix, and this row is its
   before number.
 
+## Results — 2026-06-12, post prefix-KV-cache (#11, `a1952a4`)
+
+| engine | model | prompt tok | TTFT (s) | decode tok/s | total (s) |
+|---|---|---:|---:|---:|---:|
+| helexa | Qwen/Qwen3-1.7B | ~128 | 0.702 | 104.8 | 1.895 |
+| helexa | Qwen/Qwen3-1.7B | ~4096 | 2.749 | 44.9 | 5.534 |
+| helexa | Qwen/Qwen3-8B | ~128 | 0.886 | 78.6 | 2.478 |
+| helexa | Qwen/Qwen3-8B | ~4096 | 1.824 | 58.3 | 3.969 |
+| helexa | Qwen/Qwen3.6-27B | ~128 | 1.355 | 45.8 | 4.147 |
+| helexa | Qwen/Qwen3.6-27B | ~4096 | 1.431 | 43.3 | 4.387 |
+
+Reading the table:
+
+- **Methodology note since #11**: neuron now caches cache-state
+  snapshots per prompt prefix (qwen3_5-arch models only). The bench
+  repeats one prompt per cell after a warmup, and the snapshot
+  boundary sits just before the prompt's volatile tail, so the
+  measured runs hit the cache — qwen3_5 TTFT rows are **warm** TTFT.
+  The cold number is the warmup run (unchanged from the baseline
+  table above). For repeated-prefix workloads — agents, chat — warm
+  is what the operator feels.
+- The 27B @4k warm TTFT collapsed 7.07 s → 1.43 s. The controlled
+  multi-turn measurement (turn N+1 = turn N + a new question, ~5k
+  context, journal-verified) shows the prefill itself at 8.07 s cold
+  → 0.22 s warm with ~98% of the prompt reused — see the closing
+  numbers on #11.
+- The Qwen3 rows (1.7B, 8B) are candle-transformers archs with no
+  snapshot support — their unchanged TTFT vs the baseline is the
+  no-regression control. Their decode tok/s moved with the 27B's, so
+  the decode drift is environmental, not a #11 effect.
+
 ## Reproducing
 
 ```sh
