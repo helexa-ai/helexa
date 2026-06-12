@@ -42,12 +42,14 @@ pub enum LayerKvSnapshot {
     },
 }
 
-/// One consistent cache snapshot of a `Qwen3_5Model` at a token
-/// boundary. Opaque outside the qwen3_5 module — holders only ever
-/// pass it back to `restore_kv_cache`.
+/// One consistent cache snapshot of a `Qwen3_5Model` (or its TP
+/// mirror `tp_qwen3_5::TpQwen3_5Model`, whose per-rank shard state
+/// has the same shape) at a token boundary. Fields are `pub(crate)`
+/// so the TP module can construct/consume the same type; holders
+/// outside the harness only ever pass it back to `restore_kv_cache`.
 pub struct KvCacheSnapshot {
-    pub(super) layers: Vec<LayerKvSnapshot>,
-    pub(super) rope_delta: i64,
+    pub(crate) layers: Vec<LayerKvSnapshot>,
+    pub(crate) rope_delta: i64,
 }
 
 impl KvCacheSnapshot {

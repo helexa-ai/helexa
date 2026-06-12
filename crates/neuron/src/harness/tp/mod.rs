@@ -93,6 +93,37 @@ impl TpLeaderModel {
         }
     }
 
+    /// Whether this arch supports prefix snapshots (#11). Gates the
+    /// pool fan-out so unsupported archs never even ask the ranks.
+    pub fn supports_kv_snapshot(&self) -> bool {
+        matches!(self, TpLeaderModel::Qwen3_5(_))
+    }
+
+    /// Capture rank 0's cache state for a prefix snapshot (#11).
+    pub fn snapshot_kv_cache(
+        &self,
+    ) -> candle_core::Result<crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+        match self {
+            TpLeaderModel::Qwen3(_) => {
+                candle_core::bail!("snapshot_kv_cache: qwen3 (dense) has no snapshot support")
+            }
+            TpLeaderModel::Qwen3_5(m) => m.snapshot_kv_cache(),
+        }
+    }
+
+    /// Replace rank 0's live cache state with a stored snapshot.
+    pub fn restore_kv_cache(
+        &mut self,
+        snap: &crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot,
+    ) -> candle_core::Result<()> {
+        match self {
+            TpLeaderModel::Qwen3(_) => {
+                candle_core::bail!("restore_kv_cache: qwen3 (dense) has no snapshot support")
+            }
+            TpLeaderModel::Qwen3_5(m) => m.restore_kv_cache(snap),
+        }
+    }
+
     pub fn device(&self) -> &candle_core::Device {
         match self {
             TpLeaderModel::Qwen3(m) => m.device(),
@@ -989,6 +1020,123 @@ impl WorkerPool {
         );
         if !worker_errors.is_empty() {
             anyhow::bail!("ClearKvCache: {}", worker_errors.join("; "));
+        }
+        Ok(())
+    }
+
+    /// Capture every rank's cache state as one prefix snapshot (#11)
+    /// stored under `snapshot_id` (minted by the caller). All ranks
+    /// are at the same token boundary — step fan-out is synchronous —
+    /// so the per-rank snapshots are mutually consistent. Returns the
+    /// total snapshot bytes across all ranks (for budget accounting).
+    /// On any rank failing, the caller must `drop_kv_snapshot` the id
+    /// to clean up the ranks that did store.
+    #[cfg(feature = "cuda")]
+    pub async fn snapshot_kv_cache(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        snapshot_id: u64,
+    ) -> Result<u64> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::SnapshotKvCache {
+                model_id: model_id.to_string(),
+                snapshot_id,
+            })
+            .await?;
+        }
+        let leader_result = self
+            .leader_worker
+            .tp_snapshot_kv(leader_handle, snapshot_id)
+            .await;
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::KvSnapshotStored { .. } => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected KvSnapshotStored, got {other:?}")),
+        })
+        .await;
+        let leader_bytes = match leader_result {
+            Ok(b) => b,
+            Err(e) => anyhow::bail!("leader TP snapshot via device worker: {e}"),
+        };
+        if !worker_errors.is_empty() {
+            anyhow::bail!("SnapshotKvCache: {}", worker_errors.join("; "));
+        }
+        // Shards are equal-sized by construction, so the fleet total
+        // is the leader's bytes times the rank count.
+        Ok(leader_bytes.saturating_mul(self.workers.len() as u64 + 1))
+    }
+
+    /// Restore the snapshot `snapshot_id` on every rank, instead of
+    /// `clear_kv_cache`, so prefill resumes at the snapshot's token
+    /// boundary. On failure the caller must fall back to
+    /// `clear_kv_cache` + full prefill (and drop the snapshot).
+    #[cfg(feature = "cuda")]
+    pub async fn restore_kv_cache(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        snapshot_id: u64,
+    ) -> Result<()> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::RestoreKvCache {
+                model_id: model_id.to_string(),
+                snapshot_id,
+            })
+            .await?;
+        }
+        let leader_result = self
+            .leader_worker
+            .tp_restore_kv(leader_handle, snapshot_id)
+            .await;
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::KvCacheRestored => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected KvCacheRestored, got {other:?}")),
+        })
+        .await;
+        if let Err(e) = leader_result {
+            anyhow::bail!("leader TP restore via device worker: {e}");
+        }
+        if !worker_errors.is_empty() {
+            anyhow::bail!("RestoreKvCache: {}", worker_errors.join("; "));
+        }
+        Ok(())
+    }
+
+    /// Drop the snapshot `snapshot_id` on every rank (prefix-cache
+    /// eviction / failed-snapshot cleanup). Best-effort and
+    /// idempotent — errors are collected, not fatal to the caller's
+    /// request path, but surfaced for logging.
+    #[cfg(feature = "cuda")]
+    pub async fn drop_kv_snapshot(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        snapshot_id: u64,
+    ) -> Result<()> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::DropKvSnapshot {
+                model_id: model_id.to_string(),
+                snapshot_id,
+            })
+            .await?;
+        }
+        let leader_result = self
+            .leader_worker
+            .tp_drop_kv_snapshot(leader_handle, snapshot_id)
+            .await;
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::KvSnapshotDropped => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected KvSnapshotDropped, got {other:?}")),
+        })
+        .await;
+        if let Err(e) = leader_result {
+            anyhow::bail!("leader TP drop snapshot via device worker: {e}");
+        }
+        if !worker_errors.is_empty() {
+            anyhow::bail!("DropKvSnapshot: {}", worker_errors.join("; "));
         }
         Ok(())
     }

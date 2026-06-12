@@ -120,6 +120,24 @@ pub enum WorkerRequest {
     /// attend over the previous one's tokens.
     ClearKvCache { model_id: String },
 
+    /// Capture this rank's live cache state as a prefix snapshot
+    /// (#11), stored in-process under `snapshot_id`. The id is minted
+    /// by the leader's pool and broadcast so every rank keys the same
+    /// snapshot identically; all ranks are at the same token boundary
+    /// because step fan-out is synchronous. Worker replies
+    /// `KvSnapshotStored { bytes }` with this rank's snapshot size.
+    SnapshotKvCache { model_id: String, snapshot_id: u64 },
+
+    /// Replace this rank's live cache state with the stored snapshot,
+    /// instead of `ClearKvCache`, so prefill resumes at the snapshot's
+    /// token boundary. The snapshot remains stored.
+    RestoreKvCache { model_id: String, snapshot_id: u64 },
+
+    /// Drop one stored snapshot on this rank (prefix-cache eviction).
+    /// Idempotent — replies `KvSnapshotDropped` whether or not the id
+    /// was present.
+    DropKvSnapshot { model_id: String, snapshot_id: u64 },
+
     /// Drop this rank's shard for the given model. Releases the VRAM
     /// the shard's weights occupied; subsequent `GenerateStep` calls
     /// against the same `model_id` return an `Error`.
@@ -167,6 +185,18 @@ pub enum WorkerResponse {
 
     /// Reply to `ClearKvCache`. Empty payload.
     KvCacheCleared,
+
+    /// Reply to `SnapshotKvCache`. Carries this rank's snapshot size
+    /// in bytes so the leader can budget-account the whole fleet's
+    /// footprint (shards are symmetric, so leader bytes × world_size
+    /// is also a fine estimate; the explicit number keeps it honest).
+    KvSnapshotStored { bytes: u64 },
+
+    /// Reply to `RestoreKvCache`. Empty payload.
+    KvCacheRestored,
+
+    /// Reply to `DropKvSnapshot`. Empty payload.
+    KvSnapshotDropped,
 
     /// Reply to `UnloadModel`. Empty payload. The named model is no
     /// longer present on this rank.

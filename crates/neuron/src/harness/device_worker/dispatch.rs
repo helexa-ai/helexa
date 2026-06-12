@@ -69,6 +69,12 @@ struct DeviceWorkerState {
     /// Counter for minting fresh `TpHandle`s.
     #[cfg(feature = "cuda")]
     next_tp_handle: u64,
+    /// Leader-side TP prefix snapshots (#11), keyed by the owning TP
+    /// handle plus the **pool-minted** snapshot id (no local counter —
+    /// the id must match what the subprocess ranks stored). `DropTp`
+    /// retains this map down with the model.
+    #[cfg(feature = "cuda")]
+    tp_kv_snapshots: HashMap<(TpHandle, u64), KvCacheSnapshot>,
     #[cfg(feature = "cuda")]
     #[allow(dead_code)]
     /// `None` only if `CudaContext::new()` failed — in that case the
@@ -319,6 +325,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let removed = state.tp_models.remove(&handle);
                 let was_present = removed.is_some();
                 drop(removed);
+                state.tp_kv_snapshots.retain(|(h, _), _| *h != handle);
                 tracing::debug!(
                     device_index,
                     tp_handle = handle.0,
@@ -344,6 +351,84 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     trim_device_pool(&state);
                 }
                 let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpSnapshotKv {
+                handle,
+                snapshot_id,
+                reply,
+            } => {
+                let result = match state.tp_models.get(&handle) {
+                    Some(model) => model.snapshot_kv_cache().map(|snap| {
+                        let bytes = snap.size_bytes();
+                        state.tp_kv_snapshots.insert((handle, snapshot_id), snap);
+                        tracing::debug!(
+                            device_index,
+                            tp_handle = handle.0,
+                            snapshot_id,
+                            bytes,
+                            stored = state.tp_kv_snapshots.len(),
+                            "device worker: TP kv snapshot captured"
+                        );
+                        bytes
+                    }),
+                    None => Err(anyhow::anyhow!(
+                        "TpSnapshotKv: no TP model for handle {}",
+                        handle.0
+                    )),
+                };
+                let _ = reply.send(result.map_err(anyhow::Error::from));
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpRestoreKv {
+                handle,
+                snapshot_id,
+                reply,
+            } => {
+                let result = match (
+                    state.tp_models.get_mut(&handle),
+                    state.tp_kv_snapshots.get(&(handle, snapshot_id)),
+                ) {
+                    (Some(model), Some(snap)) => {
+                        model.restore_kv_cache(snap).map_err(anyhow::Error::from)
+                    }
+                    (None, _) => Err(anyhow::anyhow!(
+                        "TpRestoreKv: no TP model for handle {}",
+                        handle.0
+                    )),
+                    (_, None) => Err(anyhow::anyhow!(
+                        "TpRestoreKv: no snapshot {} for handle {}",
+                        snapshot_id,
+                        handle.0
+                    )),
+                };
+                if result.is_ok() {
+                    trim_device_pool(&state);
+                }
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpDropKvSnapshot {
+                handle,
+                snapshot_id,
+                reply,
+            } => {
+                let was_present = state
+                    .tp_kv_snapshots
+                    .remove(&(handle, snapshot_id))
+                    .is_some();
+                if was_present {
+                    trim_device_pool(&state);
+                }
+                tracing::debug!(
+                    device_index,
+                    tp_handle = handle.0,
+                    snapshot_id,
+                    was_present,
+                    stored = state.tp_kv_snapshots.len(),
+                    "device worker: TP kv snapshot dropped"
+                );
+                let _ = reply.send(());
             }
             #[cfg(feature = "cuda")]
             Job::TpForwardLogits {
@@ -451,6 +536,7 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             nccl: NcclState::new(),
             tp_models: HashMap::new(),
             next_tp_handle: 1,
+            tp_kv_snapshots: HashMap::new(),
             ctx,
         }
     }
@@ -1134,6 +1220,20 @@ fn drain_poisoned(job: Job, device_index: u32) {
         #[cfg(feature = "cuda")]
         Job::TpClearKv { reply, .. } => {
             let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpSnapshotKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpRestoreKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpDropKvSnapshot { reply, .. } => {
+            // Bookkeeping-only — unit reply so eviction never wedges
+            // on a poisoned worker (same shape as DropKvSnapshot).
+            let _ = reply.send(());
         }
         #[cfg(feature = "cuda")]
         Job::TpForwardLogits { reply, .. } => {

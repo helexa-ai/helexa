@@ -644,6 +644,96 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Capture the leader's TP cache state as a prefix snapshot (#11)
+    /// stored under the pool-minted `snapshot_id`. Returns the leader
+    /// shard's snapshot bytes.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_snapshot_kv(
+        &self,
+        handle: TpHandle,
+        snapshot_id: u64,
+    ) -> Result<u64, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpSnapshotKv {
+                handle,
+                snapshot_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Replace the leader's live TP cache state with a stored
+    /// snapshot — called instead of [`Self::tp_clear_kv`] on a
+    /// prefix-cache hit.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_restore_kv(
+        &self,
+        handle: TpHandle,
+        snapshot_id: u64,
+    ) -> Result<(), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpRestoreKv {
+                handle,
+                snapshot_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop one stored leader TP snapshot (eviction). Poison-tolerant
+    /// unit reply, same shape as [`Self::drop_kv_snapshot`].
+    #[cfg(feature = "cuda")]
+    pub async fn tp_drop_kv_snapshot(
+        &self,
+        handle: TpHandle,
+        snapshot_id: u64,
+    ) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpDropKvSnapshot {
+                handle,
+                snapshot_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(()) => Ok(()),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Run one TP forward step on the leader's shard. Returns CPU-side
     /// logits as `Vec<f32>` ready for sampling. The caller is
     /// responsible for fan-out / drain of the subprocess workers

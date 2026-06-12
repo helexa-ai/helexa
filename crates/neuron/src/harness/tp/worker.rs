@@ -82,6 +82,33 @@ impl WorkerModel {
         }
     }
 
+    /// Capture this rank's cache state for a prefix snapshot (#11).
+    /// Only qwen3_5 exposes its state; the dense qwen3 arch errors —
+    /// the leader never asks, because it gates on its own
+    /// `TpLeaderModel` support first.
+    fn snapshot_kv_cache(
+        &self,
+    ) -> candle_core::Result<crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+        match self {
+            WorkerModel::Qwen3(_) => {
+                candle_core::bail!("snapshot_kv_cache: qwen3 (dense) has no snapshot support")
+            }
+            WorkerModel::Qwen3_5(m) => m.snapshot_kv_cache(),
+        }
+    }
+
+    fn restore_kv_cache(
+        &mut self,
+        snap: &crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot,
+    ) -> candle_core::Result<()> {
+        match self {
+            WorkerModel::Qwen3(_) => {
+                candle_core::bail!("restore_kv_cache: qwen3 (dense) has no snapshot support")
+            }
+            WorkerModel::Qwen3_5(m) => m.restore_kv_cache(snap),
+        }
+    }
+
     fn device(&self) -> &candle_core::Device {
         match self {
             WorkerModel::Qwen3(m) => m.device(),
@@ -164,6 +191,16 @@ struct WorkerState {
     #[cfg(not(feature = "cuda"))]
     #[allow(dead_code)]
     models: HashMap<String, ()>,
+    /// Prefix-cache snapshots (#11) for this rank's shards, keyed by
+    /// `(model_id, snapshot_id)` — the id is minted by the leader's
+    /// pool and shared across all ranks. Dropped with the shard on
+    /// `UnloadModel`.
+    #[cfg(feature = "cuda")]
+    kv_snapshots: HashMap<(String, u64), crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot>,
+    /// Placeholder mirroring `models` on the non-cuda build.
+    #[cfg(not(feature = "cuda"))]
+    #[allow(dead_code)]
+    kv_snapshots: HashMap<(String, u64), ()>,
 }
 
 impl WorkerState {
@@ -172,6 +209,7 @@ impl WorkerState {
             config,
             nccl: NcclState::new(),
             models: HashMap::new(),
+            kv_snapshots: HashMap::new(),
         }
     }
 
@@ -211,6 +249,18 @@ impl WorkerState {
                 chunk_size,
             ),
             WorkerRequest::ClearKvCache { model_id } => self.handle_clear_kv_cache(&model_id),
+            WorkerRequest::SnapshotKvCache {
+                model_id,
+                snapshot_id,
+            } => self.handle_snapshot_kv_cache(&model_id, snapshot_id),
+            WorkerRequest::RestoreKvCache {
+                model_id,
+                snapshot_id,
+            } => self.handle_restore_kv_cache(&model_id, snapshot_id),
+            WorkerRequest::DropKvSnapshot {
+                model_id,
+                snapshot_id,
+            } => self.handle_drop_kv_snapshot(&model_id, snapshot_id),
             WorkerRequest::UnloadModel { model_id } => self.handle_unload_model(&model_id),
             WorkerRequest::Shutdown => WorkerResponse::Bye,
         }
@@ -593,6 +643,99 @@ impl WorkerState {
     }
 
     #[cfg(feature = "cuda")]
+    fn handle_snapshot_kv_cache(&mut self, model_id: &str, snapshot_id: u64) -> WorkerResponse {
+        let Some(model) = self.models.get(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        match model.snapshot_kv_cache() {
+            Ok(snap) => {
+                let bytes = snap.size_bytes();
+                self.kv_snapshots
+                    .insert((model_id.to_string(), snapshot_id), snap);
+                tracing::debug!(
+                    rank = self.config.rank,
+                    model = %model_id,
+                    snapshot_id,
+                    bytes,
+                    stored = self.kv_snapshots.len(),
+                    "kv snapshot captured"
+                );
+                WorkerResponse::KvSnapshotStored { bytes }
+            }
+            Err(e) => WorkerResponse::Error {
+                kind: "snapshot_failed".into(),
+                message: format!("snapshot_kv_cache: {e}"),
+            },
+        }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_snapshot_kv_cache(&mut self, _model_id: &str, _snapshot_id: u64) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "SnapshotKvCache requires --features cuda".into(),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_restore_kv_cache(&mut self, model_id: &str, snapshot_id: u64) -> WorkerResponse {
+        let key = (model_id.to_string(), snapshot_id);
+        let (Some(model), Some(snap)) =
+            (self.models.get_mut(model_id), self.kv_snapshots.get(&key))
+        else {
+            return WorkerResponse::Error {
+                kind: "snapshot_not_found".into(),
+                message: format!(
+                    "model '{model_id}' / snapshot {snapshot_id} not present on rank {}",
+                    self.config.rank
+                ),
+            };
+        };
+        match model.restore_kv_cache(snap) {
+            Ok(()) => WorkerResponse::KvCacheRestored,
+            Err(e) => WorkerResponse::Error {
+                kind: "restore_failed".into(),
+                message: format!("restore_kv_cache: {e}"),
+            },
+        }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_restore_kv_cache(&mut self, _model_id: &str, _snapshot_id: u64) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "RestoreKvCache requires --features cuda".into(),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn handle_drop_kv_snapshot(&mut self, model_id: &str, snapshot_id: u64) -> WorkerResponse {
+        let was_present = self
+            .kv_snapshots
+            .remove(&(model_id.to_string(), snapshot_id))
+            .is_some();
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            snapshot_id,
+            was_present,
+            stored = self.kv_snapshots.len(),
+            "kv snapshot dropped"
+        );
+        WorkerResponse::KvSnapshotDropped
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_drop_kv_snapshot(&mut self, _model_id: &str, _snapshot_id: u64) -> WorkerResponse {
+        // Dropping is bookkeeping-only; reply success so leader-side
+        // eviction never wedges on a no-cuda build.
+        WorkerResponse::KvSnapshotDropped
+    }
+
+    #[cfg(feature = "cuda")]
     fn handle_unload_model(&mut self, model_id: &str) -> WorkerResponse {
         if self.models.remove(model_id).is_none() {
             return WorkerResponse::Error {
@@ -600,6 +743,9 @@ impl WorkerState {
                 message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
             };
         }
+        // Snapshots are scoped to the shard — a reloaded model gets a
+        // fresh prefix cache, so stale ids must not resurrect tensors.
+        self.kv_snapshots.retain(|(m, _), _| m != model_id);
         tracing::info!(rank = self.config.rank, model = %model_id, "unloaded TP shard");
         WorkerResponse::Unloaded
     }
