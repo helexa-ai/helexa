@@ -4890,8 +4890,10 @@ async fn restore_or_clear_tp(
                     error = %format!("{e:#}"),
                     "prefix cache (TP): restore failed; dropping entry, full prefill"
                 );
-                if let Some(KvSnapshotRef::Tp(id)) =
-                    lock_prefix_cache(cache).remove_covering(prompt_tokens, m.tokens)
+                // Bind the removed ref before awaiting — the registry
+                // guard must not live across a suspension point.
+                let removed = lock_prefix_cache(cache).remove_covering(prompt_tokens, m.tokens);
+                if let Some(KvSnapshotRef::Tp(id)) = removed
                     && let Err(e2) = pool
                         .drop_kv_snapshot(&tp.model_id, tp.leader_handle, id)
                         .await

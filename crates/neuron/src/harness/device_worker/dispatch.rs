@@ -359,25 +359,30 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 reply,
             } => {
                 let result = match state.tp_models.get(&handle) {
-                    Some(model) => model.snapshot_kv_cache().map(|snap| {
-                        let bytes = snap.size_bytes();
-                        state.tp_kv_snapshots.insert((handle, snapshot_id), snap);
-                        tracing::debug!(
-                            device_index,
-                            tp_handle = handle.0,
-                            snapshot_id,
-                            bytes,
-                            stored = state.tp_kv_snapshots.len(),
-                            "device worker: TP kv snapshot captured"
-                        );
-                        bytes
-                    }),
+                    Some(model) => {
+                        model
+                            .snapshot_kv_cache()
+                            .map_err(anyhow::Error::from)
+                            .map(|snap| {
+                                let bytes = snap.size_bytes();
+                                state.tp_kv_snapshots.insert((handle, snapshot_id), snap);
+                                tracing::debug!(
+                                    device_index,
+                                    tp_handle = handle.0,
+                                    snapshot_id,
+                                    bytes,
+                                    stored = state.tp_kv_snapshots.len(),
+                                    "device worker: TP kv snapshot captured"
+                                );
+                                bytes
+                            })
+                    }
                     None => Err(anyhow::anyhow!(
                         "TpSnapshotKv: no TP model for handle {}",
                         handle.0
                     )),
                 };
-                let _ = reply.send(result.map_err(anyhow::Error::from));
+                let _ = reply.send(result);
             }
             #[cfg(feature = "cuda")]
             Job::TpRestoreKv {
