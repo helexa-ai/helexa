@@ -47,6 +47,14 @@ fn describe_metrics() {
     );
     metrics::describe_counter!("cortex_requests_total", "Total number of proxied requests");
     metrics::describe_counter!(
+        "cortex_prompt_tokens_total",
+        "Total prompt tokens reported by upstream usage objects"
+    );
+    metrics::describe_counter!(
+        "cortex_completion_tokens_total",
+        "Total completion tokens reported by upstream usage objects"
+    );
+    metrics::describe_counter!(
         "cortex_request_errors_total",
         "Total number of failed proxy requests"
     );
