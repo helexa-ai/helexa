@@ -49,11 +49,15 @@
 //!
 //! ## Performance note
 //!
-//! This impl is the **recurrent** delta-rule for both prefill and
-//! decode — i.e. the algorithm in `torch_recurrent_gated_delta_rule`.
-//! Correctness-first. The chunked algorithm (chunk_size=64) in
-//! `torch_chunk_gated_delta_rule` is a perf optimisation for long
-//! prefill; can be added later without changing the surface.
+//! Prefill (seq_len ≥ 64) runs the **chunked** delta rule (#23) — the
+//! algorithm in `torch_chunk_gated_delta_rule`, reorganised into
+//! per-chunk batched matmuls; see [`run_chunk_gated_delta_rule`].
+//! Decode steps and short prompts keep the **recurrent** per-token
+//! rule (`torch_recurrent_gated_delta_rule`): a CUDA kernel on
+//! device, a pure-Rust loop on CPU. Both produce identical results
+//! (pinned by the `chunked_matches_recurrent_*` parity tests);
+//! `NEURON_GDN_CHUNKED=0` forces the recurrent paths for A/B
+//! measurement.
 
 use anyhow::{Context, Result};
 use candle_core::{Module, Tensor};
@@ -393,6 +397,16 @@ pub(crate) fn run_delta_rule(
     head_k_dim: usize,
     head_v_dim: usize,
 ) -> candle_core::Result<(Tensor, Tensor)> {
+    // Prefill takes the chunk-parallel algorithm (#23): identical
+    // delta-rule math reorganised into per-chunk matmuls (cuBLAS /
+    // tensor cores on CUDA, gemm on CPU) instead of an O(L)-sequential
+    // per-token recurrence. Decode steps (seq_len 1) and short
+    // prompts stay on the recurrent paths below. The env kill switch
+    // exists for A/B measurement on the fleet.
+    const CHUNK_ALGO_THRESHOLD: usize = 64;
+    if seq_len >= CHUNK_ALGO_THRESHOLD && chunked_prefill_enabled() {
+        return run_chunk_gated_delta_rule(q, k, v, g, beta, state);
+    }
     #[cfg(feature = "cuda")]
     {
         // Only dispatch to the kernel if the inputs are on a CUDA
@@ -405,6 +419,198 @@ pub(crate) fn run_delta_rule(
     }
     let _ = (batch_size, num_heads, head_k_dim, head_v_dim);
     run_delta_rule_rust(q, k, v, g, beta, state, seq_len)
+}
+
+/// `NEURON_GDN_CHUNKED=0` falls back to the per-token recurrent
+/// paths for prefill — kept for A/B measurement on live hosts.
+fn chunked_prefill_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("NEURON_GDN_CHUNKED")
+            .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+            .unwrap_or(true)
+    })
+}
+
+/// Chunk-parallel gated delta rule — a faithful port of the HF
+/// reference `torch_chunk_gated_delta_rule` (chunk_size = 64) in
+/// `transformers/models/qwen3_5/modeling_qwen3_5.py`, minus the steps
+/// our caller has already done (q/k L2-norm, q pre-scaled by
+/// `1/sqrt(D_k)`, inputs already `(B, H, L, D)` f32).
+///
+/// Same inputs/outputs as [`run_delta_rule`]'s recurrent paths:
+/// `q`/`k`: `(B, H, L, D_k)`, `v`: `(B, H, L, D_v)`, `g`/`beta`:
+/// `(B, H, L)`, `state`: `(B, H, D_k, D_v)` (zeros or a restored
+/// prefix snapshot's recurrent state). Returns
+/// `(out: (B, H, L, D_v), state: (B, H, D_k, D_v))`, all f32.
+///
+/// The reference's in-place UT-transform row loop is kept as-is
+/// (with rows accumulating into a fresh tensor — candle tensors are
+/// immutable); see the numerical-caution note at the loop for why the
+/// tempting nilpotent-squaring shortcut is wrong. The parity tests
+/// pin this against the recurrent path.
+pub(crate) fn run_chunk_gated_delta_rule(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    g: &Tensor,
+    beta: &Tensor,
+    state: Tensor,
+) -> candle_core::Result<(Tensor, Tensor)> {
+    const C: usize = 64;
+    let (b, h, l, dk) = q.dims4()?;
+    let dv = v.dim(3)?;
+    let device = q.device().clone();
+
+    // Pad L up to a multiple of the chunk size. Padded positions
+    // carry beta = 0 (no state update) and g = 0 (no decay), so they
+    // are inert in the recurrence; their outputs are sliced off at
+    // the end.
+    let pad = (C - l % C) % C;
+    let (q, k, v, g, beta) = if pad > 0 {
+        (
+            q.pad_with_zeros(2, 0, pad)?,
+            k.pad_with_zeros(2, 0, pad)?,
+            v.pad_with_zeros(2, 0, pad)?,
+            g.pad_with_zeros(2, 0, pad)?,
+            beta.pad_with_zeros(2, 0, pad)?,
+        )
+    } else {
+        (q.clone(), k.clone(), v.clone(), g.clone(), beta.clone())
+    };
+    let lt = l + pad;
+    let n = lt / C;
+
+    let beta_e = beta.unsqueeze(3)?; // (B, H, Lt, 1)
+    let v_beta = v.broadcast_mul(&beta_e)?;
+    let k_beta = k.broadcast_mul(&beta_e)?;
+
+    // Chunk reshape, flattening (B, H, N) into one batch dim — candle's
+    // matmul supports at most two batch dims, so the chunk-local math
+    // runs rank-3 over B·H·N and reshapes back to rank-5 for the
+    // inter-chunk loop's per-chunk narrows.
+    let bhn = b * h * n;
+    let q3 = q.reshape((bhn, C, dk))?;
+    let k3 = k.reshape((bhn, C, dk))?;
+    let k_beta3 = k_beta.reshape((bhn, C, dk))?;
+    let v_beta3 = v_beta.reshape((bhn, C, dv))?;
+
+    // Within-chunk cumulative log-decay.
+    let g3 = g.reshape((bhn, C))?.cumsum(1)?;
+
+    // Lower-triangular masks, broadcast over the batch dim.
+    let tril_incl = {
+        let mut m = vec![0f32; C * C];
+        for i in 0..C {
+            for j in 0..=i {
+                m[i * C + j] = 1.0;
+            }
+        }
+        Tensor::from_vec(m, (C, C), &device)?
+    };
+    let tril_strict = {
+        let mut m = vec![0f32; C * C];
+        for i in 0..C {
+            for j in 0..i {
+                m[i * C + j] = 1.0;
+            }
+        }
+        Tensor::from_vec(m, (C, C), &device)?
+    };
+
+    // decay_mask[i][j] = exp(g_i - g_j) on the lower triangle
+    // (diagonal = 1), zero above. Mask-multiply replaces the
+    // reference's tril/exp/tril dance: upper entries become
+    // exp(0) = 1 mid-way and are re-zeroed.
+    let g_col = g3.unsqueeze(2)?; // (BHN, C, 1)
+    let g_row = g3.unsqueeze(1)?; // (BHN, 1, C)
+    let decay_mask3 = g_col
+        .broadcast_sub(&g_row)?
+        .broadcast_mul(&tril_incl)?
+        .exp()?
+        .broadcast_mul(&tril_incl)?
+        .contiguous()?;
+
+    // T = strict lower of -((k_beta k^T) ⊙ decay), then
+    // M = (I - T)^{-1} by forward substitution over rows — the
+    // reference's in-place UT-transform loop, with processed rows
+    // accumulating in `done` instead of mutating in place.
+    //
+    // Numerical caution: T is nilpotent (T^64 = 0), so the inverse
+    // also equals Π (I + T^(2^j)) — six matmuls — but that form is
+    // numerically unsafe: raw powers of T grow combinatorially
+    // (path counts up to C(62,31) ≈ 4.6e17) before nilpotency
+    // collapses them, destroying f32 precision on real prompts with
+    // correlated keys. The forward substitution's intermediates are
+    // the convergent M entries themselves, matching the reference's
+    // behaviour exactly. Pinned by `chunked_ut_transform_survives_
+    // correlated_keys`.
+    let kkt = k_beta3.matmul(&k3.transpose(1, 2)?.contiguous()?)?;
+    let t = kkt
+        .broadcast_mul(&decay_mask3)?
+        .broadcast_mul(&tril_strict)?
+        .neg()?
+        .contiguous()?;
+    let eye = Tensor::eye(C, candle_core::DType::F32, &device)?;
+    // Row 0 of the strict-lower T is all zeros and passes through
+    // unchanged, seeding the processed-rows accumulator.
+    let mut done = t.narrow(1, 0, 1)?.contiguous()?;
+    for i in 1..C {
+        let row = t.narrow(1, i, 1)?; // (BHN, 1, C)
+        let coeffs = row.narrow(2, 0, i)?.contiguous()?; // (BHN, 1, i)
+        let updated = (&row + coeffs.matmul(&done)?)?; // (BHN, 1, C)
+        done = Tensor::cat(&[&done, &updated], 1)?;
+    }
+    let m = done.broadcast_add(&eye)?.contiguous()?;
+
+    // value' = M v_beta ; k_cumdecay = M (k_beta ⊙ exp(g)).
+    let value_c3 = m.matmul(&v_beta3.contiguous()?)?;
+    let g_exp3 = g3.exp()?.unsqueeze(2)?; // (BHN, C, 1)
+    let k_cumdecay3 = m.matmul(&k_beta3.broadcast_mul(&g_exp3)?.contiguous()?)?;
+
+    // Rank-5 views for the per-chunk narrows below.
+    let q = q3.reshape((b, h, n, C, dk))?;
+    let k = k3.reshape((b, h, n, C, dk))?;
+    let value_c = value_c3.reshape((b, h, n, C, dv))?;
+    let k_cumdecay = k_cumdecay3.reshape((b, h, n, C, dk))?;
+    let decay_mask = decay_mask3.reshape((b, h, n, C, C))?;
+    let g = g3.reshape((b, h, n, C))?;
+
+    // Inter-chunk recurrence: a handful of matmuls per 64 tokens.
+    let mut state = state.to_dtype(candle_core::DType::F32)?;
+    let mut outs: Vec<Tensor> = Vec::with_capacity(n);
+    for i in 0..n {
+        let q_i = q.narrow(2, i, 1)?.squeeze(2)?.contiguous()?; // (B, H, C, Dk)
+        let k_i = k.narrow(2, i, 1)?.squeeze(2)?.contiguous()?;
+        let v_i = value_c.narrow(2, i, 1)?.squeeze(2)?.contiguous()?; // (B, H, C, Dv)
+        let dm_i = decay_mask.narrow(2, i, 1)?.squeeze(2)?; // (B, H, C, C)
+        let g_i = g.narrow(2, i, 1)?.squeeze(2)?; // (B, H, C)
+        let kcd_i = k_cumdecay.narrow(2, i, 1)?.squeeze(2)?.contiguous()?;
+
+        let attn = q_i
+            .matmul(&k_i.transpose(2, 3)?.contiguous()?)?
+            .broadcast_mul(&dm_i)?
+            .contiguous()?;
+        let v_prime = kcd_i.matmul(&state)?;
+        let v_new = (v_i - v_prime)?.contiguous()?;
+        let g_i_exp = g_i.exp()?.unsqueeze(3)?; // (B, H, C, 1)
+        let attn_inter = q_i.broadcast_mul(&g_i_exp)?.contiguous()?.matmul(&state)?;
+        let out_i = (attn_inter + attn.matmul(&v_new)?)?;
+        outs.push(out_i.unsqueeze(2)?);
+
+        // state ← state · exp(g_last) + (k_i ⊙ exp(g_last - g_i))^T v_new
+        let g_last = g_i.narrow(2, C - 1, 1)?; // (B, H, 1)
+        let carry = g_last.exp()?.unsqueeze(3)?; // (B, H, 1, 1)
+        let w = k_i.broadcast_mul(&g_last.broadcast_sub(&g_i)?.exp()?.unsqueeze(3)?)?;
+        state =
+            (state.broadcast_mul(&carry)? + w.transpose(2, 3)?.contiguous()?.matmul(&v_new)?)?;
+    }
+
+    let out = Tensor::cat(&outs, 2)?
+        .reshape((b, h, lt, dv))?
+        .narrow(2, 0, l)?
+        .contiguous()?;
+    Ok((out, state))
 }
 
 /// CUDA path. Flattens (B, H, ...) → (BH, ...) at the kernel boundary
@@ -722,6 +928,151 @@ pub(crate) fn repeat_interleave(
 mod tests {
     use super::*;
     use candle_core::{DType, Device};
+
+    /// Plausible delta-rule inputs matching `run_delta_rule`'s
+    /// contract: q/k L2-normed (q pre-scaled by 1/sqrt(D_k)), g a
+    /// negative log-decay, beta in (0, 1). All f32 on CPU.
+    fn delta_rule_inputs(
+        b: usize,
+        h: usize,
+        l: usize,
+        dk: usize,
+        dv: usize,
+    ) -> (Tensor, Tensor, Tensor, Tensor, Tensor) {
+        let dev = Device::Cpu;
+        let scale = 1.0 / (dk as f64).sqrt();
+        let q = Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap();
+        let q = (l2norm(&q, 1e-6).unwrap() * scale).unwrap();
+        let k = Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap();
+        let k = l2norm(&k, 1e-6).unwrap();
+        let v = (Tensor::randn(0f32, 1.0, (b, h, l, dv), &dev).unwrap() * 0.5).unwrap();
+        // g in (-1, 0): a realistic per-token log-decay.
+        let g = (Tensor::rand(0f32, 1f32, (b, h, l), &dev).unwrap() * -1.0).unwrap();
+        let beta = Tensor::rand(0.05f32, 0.95f32, (b, h, l), &dev).unwrap();
+        (q, k, v, g, beta)
+    }
+
+    fn max_abs_diff(a: &Tensor, b: &Tensor) -> f32 {
+        (a - b)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .max(0)
+            .unwrap()
+            .to_scalar::<f32>()
+            .unwrap()
+    }
+
+    /// The #23 parity gate: the chunk-parallel algorithm must produce
+    /// the same outputs and final state as the per-token recurrence.
+    /// L = 130 exercises the pad-to-chunk-multiple path (130 = 2×64 + 2).
+    #[test]
+    fn chunked_matches_recurrent_with_padding() {
+        let (b, h, l, dk, dv) = (1, 2, 130, 16, 16);
+        let (q, k, v, g, beta) = delta_rule_inputs(b, h, l, dk, dv);
+        let zeros = || Tensor::zeros((b, h, dk, dv), DType::F32, &Device::Cpu).unwrap();
+
+        let (out_rec, state_rec) = run_delta_rule_rust(&q, &k, &v, &g, &beta, zeros(), l).unwrap();
+        let (out_chk, state_chk) =
+            run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, zeros()).unwrap();
+
+        assert_eq!(out_chk.dims(), out_rec.dims());
+        let d_out = max_abs_diff(&out_rec, &out_chk);
+        let d_state = max_abs_diff(&state_rec, &state_chk);
+        assert!(d_out < 2e-4, "output diverged: {d_out}");
+        assert!(d_state < 2e-4, "final state diverged: {d_state}");
+    }
+
+    /// Exact chunk multiple (no padding) continuing from a non-zero
+    /// initial state — the prefix-cache-restore (#11) interaction.
+    #[test]
+    fn chunked_matches_recurrent_with_initial_state() {
+        let (b, h, dk, dv) = (1, 2, 16, 16);
+        let dev = Device::Cpu;
+        // Build a non-trivial initial state by running the recurrent
+        // path over a 50-token "restored prefix".
+        let (pq, pk, pv, pg, pbeta) = delta_rule_inputs(b, h, 50, dk, dv);
+        let zeros = Tensor::zeros((b, h, dk, dv), DType::F32, &dev).unwrap();
+        let (_, state0) = run_delta_rule_rust(&pq, &pk, &pv, &pg, &pbeta, zeros, 50).unwrap();
+
+        let l = 128;
+        let (q, k, v, g, beta) = delta_rule_inputs(b, h, l, dk, dv);
+        let (out_rec, state_rec) =
+            run_delta_rule_rust(&q, &k, &v, &g, &beta, state0.clone(), l).unwrap();
+        let (out_chk, state_chk) =
+            run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, state0).unwrap();
+
+        let d_out = max_abs_diff(&out_rec, &out_chk);
+        let d_state = max_abs_diff(&state_rec, &state_chk);
+        assert!(d_out < 2e-4, "output diverged: {d_out}");
+        assert!(d_state < 2e-4, "final state diverged: {d_state}");
+    }
+
+    /// Adversarially correlated inputs: near-identical keys with
+    /// beta ≈ 1 and negligible decay make the UT-transform matrix T
+    /// maximally coherent — raw powers of T grow combinatorially
+    /// (≈ C(62,31) paths), which destroyed f32 precision in the
+    /// nilpotent-squaring formulation this test exists to forbid.
+    /// Real prompts hit this through repetitive text (observed live
+    /// on beast: NaN logits → "!!!" replies). Forward substitution
+    /// must stay finite and match the recurrent path.
+    #[test]
+    fn chunked_ut_transform_survives_correlated_keys() {
+        let (b, h, l, dk, dv) = (1, 1, 192, 16, 16);
+        let dev = Device::Cpu;
+        let scale = 1.0 / (dk as f64).sqrt();
+        // One base direction plus a whisper of noise: every key is
+        // nearly the same unit vector.
+        let base = Tensor::randn(0f32, 1.0, (1, 1, 1, dk), &dev).unwrap();
+        let noise = (Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap() * 0.01).unwrap();
+        let k = l2norm(&base.broadcast_add(&noise).unwrap(), 1e-6).unwrap();
+        let q = (l2norm(&base.broadcast_add(&noise).unwrap(), 1e-6).unwrap() * scale).unwrap();
+        let v = (Tensor::randn(0f32, 1.0, (b, h, l, dv), &dev).unwrap() * 0.5).unwrap();
+        // Almost no decay, near-unit update rate — worst case for T.
+        let g = (Tensor::rand(0f32, 1f32, (b, h, l), &dev).unwrap() * -1e-3).unwrap();
+        let beta = Tensor::rand(0.98f32, 0.999f32, (b, h, l), &dev).unwrap();
+        let zeros = || Tensor::zeros((b, h, dk, dv), DType::F32, &dev).unwrap();
+
+        let (out_rec, state_rec) = run_delta_rule_rust(&q, &k, &v, &g, &beta, zeros(), l).unwrap();
+        let (out_chk, state_chk) =
+            run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, zeros()).unwrap();
+
+        let finite: Vec<f32> = out_chk.flatten_all().unwrap().to_vec1().unwrap();
+        assert!(
+            finite.iter().all(|x| x.is_finite()),
+            "chunked output not finite on correlated inputs"
+        );
+        let d_out = max_abs_diff(&out_rec, &out_chk);
+        let d_state = max_abs_diff(&state_rec, &state_chk);
+        assert!(
+            d_out < 5e-3,
+            "output diverged on correlated inputs: {d_out}"
+        );
+        assert!(
+            d_state < 5e-3,
+            "final state diverged on correlated inputs: {d_state}"
+        );
+    }
+
+    /// A single exact chunk — the smallest input the dispatch sends to
+    /// the chunked path.
+    #[test]
+    fn chunked_matches_recurrent_single_chunk() {
+        let (b, h, l, dk, dv) = (2, 3, 64, 8, 8);
+        let (q, k, v, g, beta) = delta_rule_inputs(b, h, l, dk, dv);
+        let zeros = || Tensor::zeros((b, h, dk, dv), DType::F32, &Device::Cpu).unwrap();
+
+        let (out_rec, state_rec) = run_delta_rule_rust(&q, &k, &v, &g, &beta, zeros(), l).unwrap();
+        let (out_chk, state_chk) =
+            run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, zeros()).unwrap();
+
+        let d_out = max_abs_diff(&out_rec, &out_chk);
+        let d_state = max_abs_diff(&state_rec, &state_chk);
+        assert!(d_out < 2e-4, "output diverged: {d_out}");
+        assert!(d_state < 2e-4, "final state diverged: {d_state}");
+    }
 
     #[test]
     fn softplus_small_x() {
