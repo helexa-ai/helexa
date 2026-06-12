@@ -123,26 +123,32 @@ jobs:
   cuda-check:
     name: CUDA type-check
     runs-on: cuda-13.0
-    # The workflow-level env sets `RUSTC_WRAPPER: sccache` for the
-    # `rust` runner (where fmt/clippy/test live and sccache is
-    # installed). The `cuda-13.0` runner doesn't have sccache on
-    # PATH, so inheriting the wrapper makes cargo bail with
-    # `could not execute process `sccache rustc -vV` (never executed)`
-    # before borrow-check even starts. Clear it locally. Also clear
-    # SCCACHE_* so cargo doesn't try to contact the cache (the
-    # remote auth headers come from secrets that aren't present on
-    # this runner either). Lose the cache, keep the gate.
+    # The workflow-level env sets `RUSTC_WRAPPER: sccache`
+    # unconditionally, which hard-fails cargo if the CUDA image
+    # doesn't ship sccache. Clear it at job level; the "Enable
+    # sccache when available" step opts back in only after probing
+    # for the binary. SCCACHE_*/AWS creds stay set — harmless when
+    # the wrapper is off, required when it's on.
     env:
       RUSTC_WRAPPER: ""
-      SCCACHE_BUCKET: ""
-      SCCACHE_ENDPOINT: ""
-      SCCACHE_REGION: ""
-      SCCACHE_S3_USE_SSL: ""
-      AWS_ACCESS_KEY_ID: ""
-      AWS_SECRET_ACCESS_KEY: ""
+      # candle-kernels' build script falls back to `nvidia-smi` for
+      # compute-cap detection when this is unset — and the GPU-less
+      # builder image doesn't ship nvidia-smi. Any valid cap works for
+      # a borrow-check; the real per-flavour caps live in
+      # build-prerelease.yml's matrix.
+      CUDA_COMPUTE_CAP: "86"
     steps:
       - uses: actions/checkout@v4
-      - name: cargo check --features cuda (with retry)
+      - name: Enable sccache when available
+        run: |
+          if command -v sccache >/dev/null 2>&1; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            sccache --start-server 2>/dev/null || true
+            echo "sccache enabled"
+          else
+            echo "sccache not on PATH — building uncached"
+          fi
+      - name: cargo check --features cuda (with sccache escalation)
         run: |
           # act launches the step shell without /etc/profile, so the
           # gitea_runner user's inherited PATH lacks /usr/local/cuda-13.0/bin.
@@ -153,17 +159,25 @@ jobs:
           export PATH="/usr/local/cuda-13.0/bin:${PATH}"
           export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
+          # Escalation mirrors the lint/test jobs: plain retry →
+          # sccache server restart → final attempt uncached.
           for attempt in 1 2 3; do
             echo "::group::cuda-check attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
             if cargo check -p neuron --features cuda --all-targets; then
               echo "::endgroup::"
               exit 0
             fi
             echo "::endgroup::"
             echo "cuda-check failed on attempt ${attempt}"
-            if [ "${attempt}" -lt 3 ]; then
-              sleep 5
+            if [ "${attempt}" -eq 1 ] && command -v sccache >/dev/null 2>&1; then
+              sccache --stop-server || true
+              sccache --start-server || true
             fi
+            sleep 5
           done
           echo "cuda-check failed after 3 attempts"
           exit 1

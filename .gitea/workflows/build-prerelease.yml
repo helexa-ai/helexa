@@ -269,13 +269,45 @@ jobs:
     # runner-rust image already provides rust/cargo/clippy/rustfmt via
     # dnf — no rustup install step needed.
     runs-on: rust
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Build cortex (release)
-        run: cargo build --release -p cortex-cli
+      # Escalation mirrors the lint/test jobs: retry → restart the
+      # sccache server → final attempt uncached. A sick cache costs
+      # build time, never the run.
+      - name: Build cortex (release, with sccache escalation)
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::build attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
+            if cargo build --release -p cortex-cli; then
+              echo "::endgroup::"
+              sccache --show-stats || true
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "build failed on attempt ${attempt}"
+            if [ "${attempt}" -eq 1 ]; then
+              sccache --stop-server || true
+              sccache --start-server || true
+            fi
+            sleep 5
+          done
+          echo "build failed after 3 attempts"
+          exit 1
 
       - name: Stage binary
         run: |
@@ -319,18 +351,64 @@ jobs:
             nvcc_threads: 4
             cargo_features: "cuda cudnn flash-attn"
     runs-on: ${{ matrix.runner }}
+    env:
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
 
+      # The CUDA image may or may not ship sccache — probe instead of
+      # assuming, so a missing binary degrades to an uncached build
+      # rather than failing cargo at `sccache rustc -vV`. The cache
+      # covers the ~600-crate host-side dep tree (the bulk of the
+      # 10-14 min build); candle-kernels' nvcc output is a build-script
+      # artifact sccache can't cache, but rustc compilations are shared
+      # across all three flavours.
+      - name: Enable sccache when available
+        run: |
+          if command -v sccache >/dev/null 2>&1; then
+            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            sccache --start-server 2>/dev/null || true
+            echo "sccache enabled"
+          else
+            echo "sccache not on PATH — building uncached"
+          fi
+
+      # Escalation mirrors the lint/test jobs: retry → restart the
+      # sccache server → final attempt uncached.
       - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
-          set -eux
+          set -ux
           export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
           export LD_LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LIBRARY_PATH:-}"
-          cargo build --release -p neuron --features "${{ matrix.cargo_features }}"
+          for attempt in 1 2 3; do
+            echo "::group::build attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
+            if cargo build --release -p neuron --features "${{ matrix.cargo_features }}"; then
+              echo "::endgroup::"
+              command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "build failed on attempt ${attempt}"
+            if [ "${attempt}" -eq 1 ] && command -v sccache >/dev/null 2>&1; then
+              sccache --stop-server || true
+              sccache --start-server || true
+            fi
+            sleep 5
+          done
+          echo "build failed after 3 attempts"
+          exit 1
         env:
           CUDA_COMPUTE_CAP: ${{ matrix.compute_cap }}
           CARGO_BUILD_JOBS: ${{ matrix.build_jobs }}
