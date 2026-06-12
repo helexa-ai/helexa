@@ -24,6 +24,7 @@ use super::linear_attn::GatedDeltaNet;
 use super::mlp::Qwen3_5MLP;
 use super::rmsnorm::Qwen3_5RmsNorm;
 use super::rope::RotaryEmbedding;
+use super::snapshot::LayerKvSnapshot;
 
 /// One of the two attention flavours sitting in a decoder layer's
 /// attention slot. Full-attention layers need the rotary table and
@@ -113,6 +114,39 @@ impl Qwen3_5DecoderLayer {
         match &mut self.attention {
             AttentionKind::Full(attn) => attn.clear_kv_cache(),
             AttentionKind::Linear(net) => net.clear_kv_cache(),
+        }
+    }
+
+    /// Capture this layer's cache state for a prefix snapshot.
+    pub fn snapshot_kv(&self) -> candle_core::Result<LayerKvSnapshot> {
+        Ok(match &self.attention {
+            AttentionKind::Full(attn) => LayerKvSnapshot::Full(attn.snapshot_kv()),
+            AttentionKind::Linear(net) => {
+                let (conv_state, recurrent_state) = net.snapshot_state()?;
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                }
+            }
+        })
+    }
+
+    /// Replace this layer's cache state from a snapshot. The snapshot
+    /// variant must match the layer's attention kind — a mismatch
+    /// means the snapshot came from a different model.
+    pub fn restore_kv(&mut self, snap: &LayerKvSnapshot) -> candle_core::Result<()> {
+        match (&mut self.attention, snap) {
+            (AttentionKind::Full(attn), LayerKvSnapshot::Full(kv)) => attn.restore_kv(kv.as_ref()),
+            (
+                AttentionKind::Linear(net),
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                },
+            ) => net.restore_state(conv_state.as_ref(), recurrent_state.as_ref()),
+            _ => candle_core::bail!(
+                "restore_kv: snapshot layer kind does not match this layer's attention kind"
+            ),
         }
     }
 }

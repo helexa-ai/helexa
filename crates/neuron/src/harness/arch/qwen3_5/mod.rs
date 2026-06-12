@@ -78,6 +78,7 @@ pub mod linear_attn;
 pub mod mlp;
 pub mod rmsnorm;
 pub mod rope;
+pub mod snapshot;
 pub mod vision;
 
 use decoder::Qwen3_5DecoderLayer;
@@ -395,6 +396,42 @@ impl Qwen3_5Model {
         self.rope_delta = 0;
     }
 
+    /// Capture every layer's cache state plus the rope position
+    /// counter as one consistent prefix snapshot (#11). Only valid at
+    /// a token boundary — i.e. between forward calls, which is the
+    /// only time the caller can reach this anyway.
+    pub fn snapshot_kv_cache(&self) -> candle_core::Result<snapshot::KvCacheSnapshot> {
+        let layers = self
+            .layers
+            .iter()
+            .map(|l| l.snapshot_kv())
+            .collect::<candle_core::Result<Vec<_>>>()?;
+        Ok(snapshot::KvCacheSnapshot {
+            layers,
+            rope_delta: self.rope_delta,
+        })
+    }
+
+    /// Replace the live cache state with a previously captured
+    /// snapshot. The snapshot stays valid for further restores.
+    pub fn restore_kv_cache(
+        &mut self,
+        snap: &snapshot::KvCacheSnapshot,
+    ) -> candle_core::Result<()> {
+        if snap.layers.len() != self.layers.len() {
+            candle_core::bail!(
+                "restore_kv_cache: snapshot has {} layers, model has {}",
+                snap.layers.len(),
+                self.layers.len()
+            );
+        }
+        for (layer, layer_snap) in self.layers.iter_mut().zip(snap.layers.iter()) {
+            layer.restore_kv(layer_snap)?;
+        }
+        self.rope_delta = snap.rope_delta;
+        Ok(())
+    }
+
     fn causal_mask(&self, b: usize, tgt: usize, offset: usize) -> candle_core::Result<Tensor> {
         let minf = f32::NEG_INFINITY;
         let mask: Vec<_> = (0..tgt)
@@ -617,6 +654,19 @@ impl Qwen3_5ForCausalLM {
 
     pub fn clear_kv_cache(&mut self) {
         self.base.clear_kv_cache();
+    }
+
+    /// See [`Qwen3_5Model::snapshot_kv_cache`].
+    pub fn snapshot_kv_cache(&self) -> candle_core::Result<snapshot::KvCacheSnapshot> {
+        self.base.snapshot_kv_cache()
+    }
+
+    /// See [`Qwen3_5Model::restore_kv_cache`].
+    pub fn restore_kv_cache(
+        &mut self,
+        snap: &snapshot::KvCacheSnapshot,
+    ) -> candle_core::Result<()> {
+        self.base.restore_kv_cache(snap)
     }
 }
 

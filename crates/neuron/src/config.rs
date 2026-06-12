@@ -72,6 +72,51 @@ pub struct CandleHarnessConfig {
     /// cache_dir. This keeps single-source configs ergonomic.
     #[serde(default)]
     pub sources: HashMap<String, SourceConfig>,
+
+    /// Prefix KV cache across requests (#11). Applies per loaded
+    /// model, on architectures that support cache snapshots (qwen3_5).
+    #[serde(default)]
+    pub prefix_cache: PrefixCacheConfig,
+}
+
+/// `[harness.candle.prefix_cache]` settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrefixCacheConfig {
+    /// Master switch. On by default — set `false` to restore the
+    /// clear-every-request behaviour.
+    #[serde(default = "default_prefix_cache_enabled")]
+    pub enabled: bool,
+    /// Snapshot byte budget per loaded model, in MiB. Snapshots live
+    /// on the model's device, so this comes out of the same VRAM that
+    /// serves inference — size it against the device's headroom after
+    /// the model weights.
+    #[serde(default = "default_prefix_cache_budget_mb")]
+    pub budget_mb: u64,
+    /// Maximum live snapshots per loaded model, regardless of budget.
+    #[serde(default = "default_prefix_cache_max_entries")]
+    pub max_entries: usize,
+}
+
+impl Default for PrefixCacheConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_prefix_cache_enabled(),
+            budget_mb: default_prefix_cache_budget_mb(),
+            max_entries: default_prefix_cache_max_entries(),
+        }
+    }
+}
+
+fn default_prefix_cache_enabled() -> bool {
+    true
+}
+
+fn default_prefix_cache_budget_mb() -> u64 {
+    1024
+}
+
+fn default_prefix_cache_max_entries() -> usize {
+    8
 }
 
 /// Per-scheme source configuration. Mirrors the shape `hf_hub::ApiBuilder`

@@ -64,6 +64,19 @@ name = "candle"
 # auth_env = "HELEXA_TOKEN"
 # cache_dir = "/archive3/llm-cache/helexa"
 
+# -- Prefix KV cache ----------------------------------------------------------
+# Reuse cache state across requests when a new prompt starts with the
+# exact token sequence of a previous one (chat/agent workloads), so
+# prefill only runs on the new suffix. Applies per loaded model, on
+# architectures that expose their cache state (qwen3_5). Snapshots
+# live in device memory: budget_mb is per loaded model and comes out
+# of the same VRAM that serves inference.
+#
+# [harness.candle.prefix_cache]
+# enabled = true
+# budget_mb = 1024
+# max_entries = 8
+
 # -- Default models ----------------------------------------------------------
 # Models listed here are loaded automatically when the neuron service
 # activates. Loading is sequential — a slow or failing entry doesn't

@@ -165,6 +165,26 @@ impl Qwen3_5Attention {
     pub fn clear_kv_cache(&mut self) {
         self.kv_cache.reset();
     }
+
+    /// Capture the KV cache contents for a prefix snapshot. Shallow
+    /// clones: `ConcatKvCache::append` cats into fresh allocations and
+    /// never mutates stored tensors in place, so the captured tensors
+    /// stay valid after the live cache moves on.
+    pub fn snapshot_kv(&self) -> Option<(Tensor, Tensor)> {
+        match (self.kv_cache.k(), self.kv_cache.v()) {
+            (Some(k), Some(v)) => Some((k.clone(), v.clone())),
+            _ => None,
+        }
+    }
+
+    /// Replace the live KV cache with a previously captured snapshot.
+    pub fn restore_kv(&mut self, snap: Option<&(Tensor, Tensor)>) -> candle_core::Result<()> {
+        self.kv_cache.reset();
+        if let Some((k, v)) = snap {
+            self.kv_cache.append(k, v)?;
+        }
+        Ok(())
+    }
 }
 
 fn load_linear_no_bias(
