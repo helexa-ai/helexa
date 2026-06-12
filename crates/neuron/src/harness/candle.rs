@@ -3458,10 +3458,6 @@ impl CandleHarness {
                 let mut tool_call_buf = String::new();
                 let mut tool_call_idx: usize = 0;
 
-                // Forwarded-token tracking for the post-generation
-                // prefix snapshot — see `run_inference_via_worker`.
-                let mut forwarded: Vec<u32> = prompt_tokens.clone();
-
                 'work: {
                     // Prefix-cache decision (#11): vision requests
                     // clear as before; text requests restore the
@@ -3564,6 +3560,15 @@ impl CandleHarness {
                             }
                         };
 
+                    // Snapshot at the prefill boundary, after the
+                    // first healthy sample — see
+                    // `run_inference_via_worker` for why prompt-only
+                    // (and not post-generation) is the reusable state.
+                    if vision_route.is_none() {
+                        store_prefix_snapshot_tp(&mut pool, &tp_for_task, prompt_tokens.clone())
+                            .await;
+                    }
+
                     if Some(next_token) == eos_id {
                         finish_reason = FinishReason::Stop;
                     } else {
@@ -3660,7 +3665,6 @@ impl CandleHarness {
                                     break 'work;
                                 }
                             };
-                            forwarded.push(next_token);
                             let logits = match Tensor::new(logits_vec.as_slice(), &Device::Cpu) {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -3785,13 +3789,6 @@ impl CandleHarness {
                             }
                         }
                     }
-                }
-
-                // Post-generation prefix snapshot (#11) — only after a
-                // clean text-only run; failed requests leave the cache
-                // state untrusted, and vision requests never snapshot.
-                if failure.is_none() && vision_route.is_none() {
-                    store_prefix_snapshot_tp(&mut pool, &tp_for_task, forwarded).await;
                 }
 
                 // One terminal line per request, success or failure. The
@@ -4062,11 +4059,13 @@ async fn chat_completion_tp_inner(
         }
     };
 
-    // Forwarded-token tracking for the post-generation prefix
-    // snapshot — see `run_inference_via_worker`. Vision requests
-    // never snapshot (gated inside `store_prefix_snapshot_tp` via
-    // the `prefix_cache` gate below).
-    let mut forwarded: Vec<u32> = prompt_tokens.clone();
+    // Snapshot at the prefill boundary, after the first healthy
+    // sample — see `run_inference_via_worker` for why prompt-only
+    // (and not post-generation) is the reusable state. Vision
+    // requests bypass (image content is not in the token sequence).
+    if vision_route.is_none() {
+        store_prefix_snapshot_tp(&mut pool, &tp, prompt_tokens.clone()).await;
+    }
 
     if Some(next_token) == eos_id {
         finish_reason = "stop".into();
@@ -4084,7 +4083,6 @@ async fn chat_completion_tp_inner(
                 )
                 .await
                 .map_err(InferenceError::Other)?;
-            forwarded.push(next_token);
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu).map_err(|e| {
                 InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e}"))
             })?;
@@ -4122,9 +4120,6 @@ async fn chat_completion_tp_inner(
             elapsed_ms = decode_start.elapsed().as_millis(),
             "TP chat_completion: decode complete"
         );
-    }
-    if vision_route.is_none() {
-        store_prefix_snapshot_tp(&mut pool, &tp, forwarded).await;
     }
     drop(pool);
 
@@ -4791,23 +4786,23 @@ async fn restore_or_clear_via_worker(
     Ok(0)
 }
 
-/// Post-generation half of prefix caching: snapshot the live cache
-/// state (which now covers exactly `forwarded_tokens`) and register
-/// it. Eviction decided by the registry; evicted worker snapshots are
-/// dropped here. Best-effort — a failed snapshot only costs the next
-/// request its prefill saving.
+/// Capture-and-register half of prefix caching: snapshot the live
+/// cache state at the prefill boundary (covering exactly
+/// `prompt_tokens`) and register it. Eviction decided by the
+/// registry; evicted worker snapshots are dropped here. Best-effort —
+/// a failed snapshot only costs the next request its prefill saving.
 #[cfg(feature = "cuda")]
 async fn store_prefix_snapshot_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prefix_cache: Option<&ModelPrefixCache>,
-    forwarded_tokens: Vec<u32>,
+    prompt_tokens: Vec<u32>,
 ) {
     let Some(cache) = prefix_cache else { return };
     match worker.snapshot_kv(handle).await {
         Ok((id, bytes)) => {
             let evicted =
-                lock_prefix_cache(cache).insert(forwarded_tokens, KvSnapshotRef::Worker(id), bytes);
+                lock_prefix_cache(cache).insert(prompt_tokens, KvSnapshotRef::Worker(id), bytes);
             for r in evicted {
                 if let KvSnapshotRef::Worker(evicted_id) = r {
                     let _ = worker.drop_kv_snapshot(handle, evicted_id).await;
@@ -4920,7 +4915,7 @@ async fn restore_or_clear_tp(
 async fn store_prefix_snapshot_tp(
     pool: &mut super::tp::WorkerPool,
     tp: &TpLoadedModel,
-    forwarded_tokens: Vec<u32>,
+    prompt_tokens: Vec<u32>,
 ) {
     let Some(cache) = tp.prefix_cache.as_ref() else {
         return;
@@ -4932,7 +4927,7 @@ async fn store_prefix_snapshot_tp(
     {
         Ok(bytes) => {
             let evicted =
-                lock_prefix_cache(cache).insert(forwarded_tokens, KvSnapshotRef::Tp(id), bytes);
+                lock_prefix_cache(cache).insert(prompt_tokens, KvSnapshotRef::Tp(id), bytes);
             for r in evicted {
                 if let KvSnapshotRef::Tp(evicted_id) = r
                     && let Err(e) = pool
@@ -4969,14 +4964,14 @@ async fn store_prefix_snapshot_tp(
 fn store_prefix_snapshot_local(
     arch: &ModelArch,
     prefix_cache: Option<&ModelPrefixCache>,
-    forwarded_tokens: Vec<u32>,
+    prompt_tokens: Vec<u32>,
 ) {
     let Some(cache) = prefix_cache else { return };
     match arch.snapshot_kv_cache() {
         Ok(snap) => {
             let bytes = snap.size_bytes();
             drop(lock_prefix_cache(cache).insert(
-                forwarded_tokens,
+                prompt_tokens,
                 KvSnapshotRef::Local(Arc::new(snap)),
                 bytes,
             ));
@@ -5034,11 +5029,16 @@ async fn run_inference_via_worker(
         }
     };
 
-    // Tokens actually forwarded through the model — exactly what the
-    // live cache state covers, and therefore what a post-generation
-    // snapshot is keyed by. Sampled-but-never-forwarded tokens (EOS,
-    // the final token of a length-capped generation) stay out.
-    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
+    // Snapshot at the prefill boundary — the state covers exactly
+    // `prompt_tokens`, which is what the next turn's prompt extends
+    // under a stable chat template. Post-generation state is NOT a
+    // reliable prefix of the next prompt: reasoning/tool-call tokens
+    // get stripped or restructured when the client echoes the
+    // assistant message back, so a snapshot containing them never
+    // matches again (observed on Qwen3.6-27B `<think>` output).
+    // Placed after the first sample so unhealthy-logits requests
+    // never cache their state.
+    store_prefix_snapshot_via_worker(worker, handle, prefix_cache, prompt_tokens.to_vec()).await;
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -5050,7 +5050,6 @@ async fn run_inference_via_worker(
                 .forward_logits(handle, vec![next_token], prompt_len + index)
                 .await
                 .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
-            forwarded.push(next_token);
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
             next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
                 Ok(t) => t,
@@ -5072,7 +5071,6 @@ async fn run_inference_via_worker(
         }
     }
 
-    store_prefix_snapshot_via_worker(worker, handle, prefix_cache, forwarded).await;
     Ok((generated, finish_reason.into()))
 }
 
@@ -5183,10 +5181,10 @@ async fn stream_inference_via_worker(
         }
     };
 
-    // Tokens actually forwarded through the model — what the live
-    // cache covers, and the key a post-generation prefix snapshot is
-    // stored under. See `run_inference_via_worker`.
-    let mut forwarded: Vec<u32> = prompt_tokens.clone();
+    // Snapshot at the prefill boundary, after the first healthy
+    // sample — see `run_inference_via_worker` for why prompt-only
+    // (and not post-generation) is the reusable state.
+    store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, prompt_tokens.clone()).await;
 
     // Per-token routing. `tokenizers::DecodeStream` carries five
     // generic parameters (`M, N, PT, PP, D`) which makes naming
@@ -5285,7 +5283,6 @@ async fn stream_inference_via_worker(
     if Some(next_token) == eos_id {
         finish_reason = FinishReason::Stop;
     } else if !route_token!(next_token) {
-        store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
         return Ok(finish_reason.as_openai_str().to_string());
     }
 
@@ -5294,7 +5291,6 @@ async fn stream_inference_via_worker(
             .forward_logits(handle, vec![next_token], prompt_len + index)
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
-        forwarded.push(next_token);
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
         next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
             Ok(t) => t,
@@ -5313,12 +5309,9 @@ async fn stream_inference_via_worker(
             break;
         }
         if !route_token!(next_token) {
-            store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
             return Ok(finish_reason.as_openai_str().to_string());
         }
     }
-
-    store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
 
     // Terminal Finish event. The wire projector turns this into a
     // format-specific final chunk (`finish_reason: "stop"` on
@@ -5362,9 +5355,10 @@ fn run_inference(
     let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
     let mut next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
 
-    // Forwarded-token tracking for the post-generation prefix
-    // snapshot — see `run_inference_via_worker`.
-    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
+    // Snapshot at the prefill boundary, after the first healthy
+    // sample — see `run_inference_via_worker` for why prompt-only
+    // (and not post-generation) is the reusable state.
+    store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens.to_vec());
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -5374,7 +5368,6 @@ fn run_inference(
         for index in 0..max_new.saturating_sub(1) {
             let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
             let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-            forwarded.push(next_token);
             next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
             if Some(next_token) == eos_id {
                 finish_reason = "stop";
@@ -5384,7 +5377,6 @@ fn run_inference(
         }
     }
 
-    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
     Ok((generated, finish_reason.into()))
 }
 
@@ -5448,9 +5440,10 @@ fn run_inference_streaming(
     let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
     let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
 
-    // Forwarded-token tracking for the post-generation prefix
-    // snapshot — see `run_inference_via_worker`.
-    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
+    // Snapshot at the prefill boundary, after the first healthy
+    // sample — see `run_inference_via_worker` for why prompt-only
+    // (and not post-generation) is the reusable state.
+    store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens.to_vec());
 
     // Per-token routing block, used at both the prefill-sample
     // tail and the decode loop. Macros are ugly but Rust's
@@ -5478,7 +5471,6 @@ fn run_inference_streaming(
                                 })
                                 .is_err()
                             {
-                                store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                 return Ok(());
                             }
                         }
@@ -5494,7 +5486,6 @@ fn run_inference_streaming(
                                 .unwrap_or("</tool_call>");
                             let raw = format!("{open}{buffer}{close}");
                             if !emit_delta_blocking(&raw, tx, in_reasoning) {
-                                store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                 return Ok(());
                             }
                         }
@@ -5517,7 +5508,6 @@ fn run_inference_streaming(
                         match decode_stream.step(nt) {
                             Ok(Some(delta)) => {
                                 if !emit_delta_blocking(&delta, tx, in_reasoning) {
-                                    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                     return Ok(());
                                 }
                             }
@@ -5542,7 +5532,6 @@ fn run_inference_streaming(
     for index in 0..max_new.saturating_sub(1) {
         let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
         let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-        forwarded.push(next_token);
         next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
@@ -5550,8 +5539,6 @@ fn run_inference_streaming(
         }
         route_token!(next_token);
     }
-
-    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
 
     let _ = tx.blocking_send(InferenceEvent::Finish {
         reason: finish_reason,
