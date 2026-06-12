@@ -444,14 +444,11 @@ fn chunked_prefill_enabled() -> bool {
 /// prefix snapshot's recurrent state). Returns
 /// `(out: (B, H, L, D_v), state: (B, H, D_k, D_v))`, all f32.
 ///
-/// One deliberate deviation from the reference: the in-place
-/// row-by-row UT-transform loop computes `(I - T)^{-1} - I` for the
-/// strictly-lower-triangular `T` by forward substitution. `T` is
-/// nilpotent (`T^64 = 0` at chunk size 64), so the same inverse is
-/// `Π_{j=0..5} (I + T^(2^j))` — six batched matmuls instead of 63
-/// sequential row updates, which suits candle's immutable tensors and
-/// parallelises over every chunk at once. The parity tests pin this
-/// against the recurrent path.
+/// The reference's in-place UT-transform row loop is kept as-is
+/// (with rows accumulating into a fresh tensor — candle tensors are
+/// immutable); see the numerical-caution note at the loop for why the
+/// tempting nilpotent-squaring shortcut is wrong. The parity tests
+/// pin this against the recurrent path.
 pub(crate) fn run_chunk_gated_delta_rule(
     q: &Tensor,
     k: &Tensor,
@@ -535,7 +532,19 @@ pub(crate) fn run_chunk_gated_delta_rule(
         .contiguous()?;
 
     // T = strict lower of -((k_beta k^T) ⊙ decay), then
-    // M = (I - T)^{-1} via the nilpotent squaring product.
+    // M = (I - T)^{-1} by forward substitution over rows — the
+    // reference's in-place UT-transform loop, with processed rows
+    // accumulating in `done` instead of mutating in place.
+    //
+    // Numerical caution: T is nilpotent (T^64 = 0), so the inverse
+    // also equals Π (I + T^(2^j)) — six matmuls — but that form is
+    // numerically unsafe: raw powers of T grow combinatorially
+    // (path counts up to C(62,31) ≈ 4.6e17) before nilpotency
+    // collapses them, destroying f32 precision on real prompts with
+    // correlated keys. The forward substitution's intermediates are
+    // the convergent M entries themselves, matching the reference's
+    // behaviour exactly. Pinned by `chunked_ut_transform_survives_
+    // correlated_keys`.
     let kkt = k_beta3.matmul(&k3.transpose(1, 2)?.contiguous()?)?;
     let t = kkt
         .broadcast_mul(&decay_mask3)?
@@ -543,13 +552,16 @@ pub(crate) fn run_chunk_gated_delta_rule(
         .neg()?
         .contiguous()?;
     let eye = Tensor::eye(C, candle_core::DType::F32, &device)?;
-    let mut m = t.broadcast_add(&eye)?.contiguous()?; // I + T
-    let mut t_pow = t;
-    for _ in 0..5 {
-        t_pow = t_pow.matmul(&t_pow)?; // T^(2^j)
-        // m ← m (I + T^(2^j)) = m + m T^(2^j)
-        m = (&m + m.matmul(&t_pow)?)?;
+    // Row 0 of the strict-lower T is all zeros and passes through
+    // unchanged, seeding the processed-rows accumulator.
+    let mut done = t.narrow(1, 0, 1)?.contiguous()?;
+    for i in 1..C {
+        let row = t.narrow(1, i, 1)?; // (BHN, 1, C)
+        let coeffs = row.narrow(2, 0, i)?.contiguous()?; // (BHN, 1, i)
+        let updated = (&row + coeffs.matmul(&done)?)?; // (BHN, 1, C)
+        done = Tensor::cat(&[&done, &updated], 1)?;
     }
+    let m = done.broadcast_add(&eye)?.contiguous()?;
 
     // value' = M v_beta ; k_cumdecay = M (k_beta ⊙ exp(g)).
     let value_c3 = m.matmul(&v_beta3.contiguous()?)?;
@@ -996,6 +1008,52 @@ mod tests {
         let d_state = max_abs_diff(&state_rec, &state_chk);
         assert!(d_out < 2e-4, "output diverged: {d_out}");
         assert!(d_state < 2e-4, "final state diverged: {d_state}");
+    }
+
+    /// Adversarially correlated inputs: near-identical keys with
+    /// beta ≈ 1 and negligible decay make the UT-transform matrix T
+    /// maximally coherent — raw powers of T grow combinatorially
+    /// (≈ C(62,31) paths), which destroyed f32 precision in the
+    /// nilpotent-squaring formulation this test exists to forbid.
+    /// Real prompts hit this through repetitive text (observed live
+    /// on beast: NaN logits → "!!!" replies). Forward substitution
+    /// must stay finite and match the recurrent path.
+    #[test]
+    fn chunked_ut_transform_survives_correlated_keys() {
+        let (b, h, l, dk, dv) = (1, 1, 192, 16, 16);
+        let dev = Device::Cpu;
+        let scale = 1.0 / (dk as f64).sqrt();
+        // One base direction plus a whisper of noise: every key is
+        // nearly the same unit vector.
+        let base = Tensor::randn(0f32, 1.0, (1, 1, 1, dk), &dev).unwrap();
+        let noise = (Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap() * 0.01).unwrap();
+        let k = l2norm(&base.broadcast_add(&noise).unwrap(), 1e-6).unwrap();
+        let q = (l2norm(&base.broadcast_add(&noise).unwrap(), 1e-6).unwrap() * scale).unwrap();
+        let v = (Tensor::randn(0f32, 1.0, (b, h, l, dv), &dev).unwrap() * 0.5).unwrap();
+        // Almost no decay, near-unit update rate — worst case for T.
+        let g = (Tensor::rand(0f32, 1f32, (b, h, l), &dev).unwrap() * -1e-3).unwrap();
+        let beta = Tensor::rand(0.98f32, 0.999f32, (b, h, l), &dev).unwrap();
+        let zeros = || Tensor::zeros((b, h, dk, dv), DType::F32, &dev).unwrap();
+
+        let (out_rec, state_rec) = run_delta_rule_rust(&q, &k, &v, &g, &beta, zeros(), l).unwrap();
+        let (out_chk, state_chk) =
+            run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, zeros()).unwrap();
+
+        let finite: Vec<f32> = out_chk.flatten_all().unwrap().to_vec1().unwrap();
+        assert!(
+            finite.iter().all(|x| x.is_finite()),
+            "chunked output not finite on correlated inputs"
+        );
+        let d_out = max_abs_diff(&out_rec, &out_chk);
+        let d_state = max_abs_diff(&state_rec, &state_chk);
+        assert!(
+            d_out < 5e-3,
+            "output diverged on correlated inputs: {d_out}"
+        );
+        assert!(
+            d_state < 5e-3,
+            "final state diverged on correlated inputs: {d_state}"
+        );
     }
 
     /// A single exact chunk — the smallest input the dispatch sends to
