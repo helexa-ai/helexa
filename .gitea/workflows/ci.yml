@@ -140,6 +140,12 @@ jobs:
       SCCACHE_S3_USE_SSL: ""
       AWS_ACCESS_KEY_ID: ""
       AWS_SECRET_ACCESS_KEY: ""
+      # candle-kernels' build script falls back to `nvidia-smi` for
+      # compute-cap detection when this is unset — and the GPU-less
+      # builder image doesn't ship nvidia-smi. Any valid cap works for
+      # a borrow-check; the real per-flavour caps live in
+      # build-prerelease.yml's matrix.
+      CUDA_COMPUTE_CAP: "86"
     steps:
       - uses: actions/checkout@v4
       - name: cargo check --features cuda (with retry)
