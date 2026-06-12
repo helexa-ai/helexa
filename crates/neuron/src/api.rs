@@ -81,6 +81,21 @@ async fn load_model(
     State(state): State<Arc<NeuronState>>,
     Json(spec): Json<ModelSpec>,
 ) -> impl IntoResponse {
+    // Driver/library mismatch preflight (#19): every CUDA load is
+    // guaranteed to fail until the host reboots. Reject up front with
+    // the operator-actionable reason instead of letting the load die
+    // minutes later inside cuInit/NCCL with a cryptic error.
+    if let Some(reason) = &state.discovery.cuda_unavailable_reason {
+        tracing::warn!(model = %spec.model_id, reason = %reason, "load_model rejected: CUDA unavailable");
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": reason,
+                "code": "cuda_unavailable",
+            })),
+        )
+            .into_response();
+    }
     let registry = state.registry.read().await;
     match registry.load_model(&spec).await {
         Ok(()) => Json(json!({"status": "loaded"})).into_response(),

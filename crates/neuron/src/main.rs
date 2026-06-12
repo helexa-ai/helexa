@@ -170,6 +170,14 @@ async fn daemon(args: Args) -> Result<()> {
         devices = discovery_result.devices.len(),
         "discovery complete"
     );
+    // Driver/library mismatch preflight (#19): make the un-rebooted
+    // driver-update failure mode instantly legible at startup instead
+    // of a cryptic nccl_init_failed minutes later inside the first
+    // model load. One loud line; the reason also rides on /discovery
+    // so cortex can route around this node.
+    if let Some(reason) = &discovery_result.cuda_unavailable_reason {
+        tracing::error!(reason = %reason, "CUDA UNAVAILABLE on this host");
+    }
 
     // Build harness registry from config. In-process harnesses (candle)
     // need to know neuron's own bind URL so they can return it from
@@ -223,8 +231,16 @@ async fn daemon(args: Args) -> Result<()> {
             // mutex, so concurrent on-demand loads and pre-warm loads
             // do not race on the same model.
             let registry = state_for_prewarm.registry.read().await;
-            startup::load_default_models(&registry, &default_models, &state_for_prewarm.activation)
-                .await;
+            startup::load_default_models(
+                &registry,
+                &default_models,
+                &state_for_prewarm.activation,
+                state_for_prewarm
+                    .discovery
+                    .cuda_unavailable_reason
+                    .as_deref(),
+            )
+            .await;
         });
     }
 

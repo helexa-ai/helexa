@@ -33,8 +33,28 @@ pub async fn load_default_models(
     registry: &HarnessRegistry,
     specs: &[ModelSpec],
     activation: &ActivationTracker,
+    cuda_unavailable_reason: Option<&str>,
 ) {
     if specs.is_empty() {
+        activation.mark_ready().await;
+        return;
+    }
+    // Driver/library mismatch preflight (#19): every CUDA load on this
+    // host is guaranteed to fail (cuInit → CUDA_ERROR_SYSTEM_DRIVER
+    // MISMATCH, surfacing as a cryptic NCCL/driver error). Don't
+    // attempt them — mark each default model failed with the
+    // operator-actionable reason so `/health` activation shows the
+    // real cause, and let the host run API-only until it's rebooted.
+    if let Some(reason) = cuda_unavailable_reason {
+        tracing::error!(
+            count = specs.len(),
+            reason = %reason,
+            "skipping default model loads: CUDA unavailable"
+        );
+        for spec in specs {
+            activation.start_loading(&spec.model_id).await;
+            activation.fail_loading(&spec.model_id, reason).await;
+        }
         activation.mark_ready().await;
         return;
     }

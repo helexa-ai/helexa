@@ -40,7 +40,7 @@ async fn test_load_default_models_skips_unknown_harness() {
     ];
 
     let activation = ActivationTracker::new(&specs);
-    startup::load_default_models(&registry, &specs, &activation).await;
+    startup::load_default_models(&registry, &specs, &activation, None).await;
 
     let listed = registry
         .list_all_models()
@@ -71,7 +71,52 @@ async fn test_load_default_models_skips_unknown_harness() {
 async fn test_load_default_models_empty_is_noop() {
     let registry = HarnessRegistry::new();
     let activation = ActivationTracker::new(&[]);
-    startup::load_default_models(&registry, &[], &activation).await;
+    startup::load_default_models(&registry, &[], &activation, None).await;
     let snapshot = activation.snapshot().await;
     assert_eq!(snapshot.state, ActivationState::Ready);
+}
+
+#[tokio::test]
+async fn test_load_default_models_skipped_on_driver_mismatch() {
+    // #19: when the host has a driver/library mismatch, no load is
+    // attempted (it would die in cuInit/NCCL with a cryptic error);
+    // every default model lands in `failed` carrying the actionable
+    // reason, and the tracker still flips to ready so /health serves.
+    let registry = HarnessRegistry::from_configs(
+        &[HarnessConfig {
+            name: "candle".into(),
+        }],
+        "http://localhost:0",
+        &HarnessSettings::default(),
+    );
+    let specs = vec![ModelSpec {
+        model_id: "Qwen/Qwen3.6-27B".into(),
+        harness: "candle".into(),
+        quant: Some("q6k".into()),
+        tensor_parallel: Some(2),
+        devices: None,
+    }];
+    let activation = ActivationTracker::new(&specs);
+    let reason = "host NVIDIA driver/library mismatch (userspace NVML 580.159 vs loaded \
+                  kernel module 580.159.03) — reboot the host to reload the kernel module; \
+                  all CUDA inference is unavailable until then";
+    startup::load_default_models(&registry, &specs, &activation, Some(reason)).await;
+
+    let listed = registry
+        .list_all_models()
+        .await
+        .expect("list_all_models should succeed");
+    assert!(
+        listed.is_empty(),
+        "no load may be attempted on a mismatch host"
+    );
+
+    let snapshot = activation.snapshot().await;
+    assert_eq!(snapshot.state, ActivationState::Ready);
+    assert_eq!(snapshot.failed.len(), 1);
+    assert!(
+        snapshot.failed[0].error.contains("driver/library mismatch"),
+        "failure must carry the actionable reason, got: {}",
+        snapshot.failed[0].error
+    );
 }
