@@ -111,12 +111,19 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # load_timeout: how long to wait for default_models to finish
+          # loading after a restart. beast cold-loads Qwen3.6-27B Q6K
+          # TP=2 (~5-6 min typical, see #1); benjy/quadbrat load small
+          # single-GPU models in well under a minute.
           - host: beast.hanzalova.internal
             flavour: blackwell
+            load_timeout: 900
           - host: benjy.hanzalova.internal
             flavour: ada
+            load_timeout: 300
           - host: quadbrat.hanzalova.internal
             flavour: ampere
+            load_timeout: 300
     steps:
       - name: SSH init
         run: |
@@ -158,6 +165,72 @@ jobs:
           fi
           sudo /usr/bin/systemctl daemon-reload
           sudo /usr/bin/systemctl start neuron.service
+
+          # ── Post-deploy validation ────────────────────────────────
+          # A deploy only goes green if the neuron (a) finishes loading
+          # its default models and (b) answers a trivial prompt like an
+          # LLM should. Catches the class of bug where the binary
+          # starts fine but model load or inference is broken — which
+          # previously surfaced only when a human noticed. The wait
+          # polls /health activation (the structured source of the
+          # "loaded default model" journal line, plus per-model failure
+          # detail); the journal-capture step below still runs for
+          # forensics either way.
+          load_timeout=${{ matrix.load_timeout }}
+          echo "waiting for default models (timeout ${load_timeout}s)"
+          deadline=$(( $(date +%s) + load_timeout ))
+          health=""
+          while :; do
+            health=$(curl -fsS --max-time 5 http://localhost:13131/health 2>/dev/null || true)
+            state=$(printf %s "${health}" | python3 -c '
+          import json, sys
+          try:
+              print(json.load(sys.stdin).get("activation", {}).get("state", ""))
+          except Exception:
+              print("")
+          ')
+            if [ "${state}" = "ready" ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "FAIL: activation not ready within ${load_timeout}s (last state: ${state:-unreachable})"
+              exit 1
+            fi
+            sleep 10
+          done
+
+          model=$(printf %s "${health}" | python3 -c '
+          import json, sys
+          a = json.load(sys.stdin).get("activation", {})
+          failed = a.get("failed", [])
+          if failed:
+              for f in failed:
+                  msg = "FAILED " + str(f.get("model_id")) + ": " + str(f.get("error", ""))[:400]
+                  sys.stderr.write(msg + chr(10))
+              sys.exit(1)
+          completed = a.get("completed", [])
+          print(completed[0] if completed else "")
+          ')
+          if [ -z "${model}" ]; then
+            echo "no default models configured — skipping LLM probe"
+            exit 0
+          fi
+
+          echo "LLM probe against ${model}"
+          probe_body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply with exactly one word: pineapple"}],"max_tokens":512,"temperature":0}' "${model}")
+          resp=$(curl -fsS --max-time 180 -H "content-type: application/json" \
+            -d "${probe_body}" http://localhost:13131/v1/chat/completions) || {
+            echo "FAIL: probe request errored"
+            exit 1
+          }
+          if printf %s "${resp}" | grep -qi pineapple; then
+            echo "LLM probe passed"
+          else
+            echo "FAIL: probe response missing expected token"
+            printf %s "${resp}" | head -c 2000
+            echo
+            exit 1
+          fi
           DEPLOY
 
       - name: Ensure firewalld allows helexa-neuron
