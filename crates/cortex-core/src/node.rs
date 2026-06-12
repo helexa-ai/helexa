@@ -61,6 +61,12 @@ pub enum ModelStatus {
     Unloaded,
     Reloading,
     Loading,
+    /// Reported by neuron while a poisoned model auto-recovers via
+    /// unload→reload (#17/#20). Temporarily unservable but NOT
+    /// evicted: the gateway holds the route, answers with a transient
+    /// retry error instead of 404, and must not race a second
+    /// placement elsewhere.
+    Recovering,
 }
 
 /// Unified model entry as exposed by the gateway's `/v1/models` endpoint.

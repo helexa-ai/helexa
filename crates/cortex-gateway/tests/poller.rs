@@ -375,3 +375,39 @@ async fn test_poller_captures_activation_from_health() {
     assert_eq!(activation.in_progress.as_deref(), Some("Qwen/model-x"));
     assert_eq!(activation.pending, vec!["Qwen/model-y".to_string()]);
 }
+
+#[tokio::test]
+async fn test_poller_parses_recovering_status() {
+    // #20: a model auto-recovering on a neuron (poisoned → unload →
+    // reload, #17) is reported with status "recovering" and must land
+    // in gateway state as the dedicated Recovering status — not fall
+    // through the parser's catch-all to Loaded.
+    let mock_url = common::spawn_mock_neuron_with_models(json!([
+        {"id": "model-r", "harness": "candle", "status": "recovering", "devices": [0, 1], "vram_used_mb": null}
+    ]))
+    .await;
+
+    let config = GatewayConfig {
+        gateway: GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: EvictionSettings {
+            strategy: EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![NeuronEndpoint {
+            name: "test-node".into(),
+            endpoint: mock_url,
+        }],
+        models_config: "/dev/null".into(),
+    };
+
+    let fleet = Arc::new(CortexState::from_config(&config));
+    cortex_gateway::poller::poll_once(&fleet).await;
+
+    let nodes = fleet.nodes.read().await;
+    let node = nodes.get("test-node").unwrap();
+    let model_r = node.models.get("model-r").expect("model-r should exist");
+    assert_eq!(model_r.status, ModelStatus::Recovering);
+}

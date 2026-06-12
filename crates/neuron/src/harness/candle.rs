@@ -61,16 +61,30 @@ pub struct CandleHarness {
     #[allow(dead_code)]
     device_workers: Arc<RwLock<HashMap<u32, Arc<super::device_worker::DeviceWorkerHandle>>>>,
     /// Auto-recovery (#17): model ids whose poisoned context is being
-    /// rebuilt via unload+reload. Insert is the single-flight gate (one
-    /// recovery per model in flight); membership also lets the request
+    /// rebuilt via unload+reload, mapped to a devices/capabilities
+    /// snapshot taken at trigger time. Insert is the single-flight gate
+    /// (one recovery per model in flight); membership lets the request
     /// path answer "recovering, retry shortly" during the reload gap
-    /// rather than a bare "not loaded".
-    recovering: Arc<RwLock<std::collections::HashSet<String>>>,
+    /// rather than a bare "not loaded", and the snapshot keeps the
+    /// model listed (status `recovering`) in `list_models` while its
+    /// registry slot is briefly absent — so cortex holds the route
+    /// instead of treating the model as evicted/unknown (#20).
+    recovering: Arc<RwLock<HashMap<String, RecoveringSnapshot>>>,
     /// Sender to the background recovery task. The request path enqueues
     /// a poisoned model id here; the task (holding a `Weak<Self>`) runs
     /// the unload→reload→health-gate. Unbounded + tiny (model ids), and
     /// the `recovering` set dedupes, so it can't back up.
     recovery_tx: tokio::sync::mpsc::UnboundedSender<String>,
+}
+
+/// Devices/capabilities snapshot of a model entering auto-recovery
+/// (#20). Captured while the registry slot still exists; `list_models`
+/// uses it to keep advertising the model during the unload→reload
+/// window, when the slot itself is gone.
+#[derive(Debug, Clone, Default)]
+struct RecoveringSnapshot {
+    devices: Vec<u32>,
+    capabilities: Vec<String>,
 }
 
 /// One entry in the harness's loaded-model registry. Single-GPU loads
@@ -1270,7 +1284,7 @@ impl CandleHarness {
             default_source,
             bind_url,
             device_workers: Arc::new(RwLock::new(HashMap::new())),
-            recovering: Arc::new(RwLock::new(std::collections::HashSet::new())),
+            recovering: Arc::new(RwLock::new(HashMap::new())),
             recovery_tx,
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
@@ -2457,14 +2471,32 @@ impl CandleHarness {
     /// True while `model_id` is being auto-recovered (its slot is briefly
     /// absent from the registry during the reload).
     pub async fn is_recovering(&self, model_id: &str) -> bool {
-        self.recovering.read().await.contains(model_id)
+        self.recovering.read().await.contains_key(model_id)
     }
 
     /// Single-flight trigger from the request path: enqueue a rebuild for a
     /// poisoned model (only the first caller per model enqueues) and return
     /// the transient "recovering" error to hand back to the client.
     async fn trigger_recovery(&self, model_id: &str) -> InferenceError {
-        let newly = self.recovering.write().await.insert(model_id.to_string());
+        // Snapshot the model's shape while its registry slot still
+        // exists — it disappears during the unload→reload window, and
+        // list_models needs it to keep advertising the model (#20).
+        let snapshot = {
+            let models = self.models.read().await;
+            models
+                .get(model_id)
+                .map(|h| RecoveringSnapshot {
+                    devices: h.devices(),
+                    capabilities: h.capabilities(),
+                })
+                .unwrap_or_default()
+        };
+        let newly = self
+            .recovering
+            .write()
+            .await
+            .insert(model_id.to_string(), snapshot)
+            .is_none();
         if newly {
             tracing::warn!(model = %model_id, "auto-recovery: poisoned, enqueueing rebuild");
             if self.recovery_tx.send(model_id.to_string()).is_err() {
@@ -2530,12 +2562,18 @@ impl Harness for CandleHarness {
 
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         let models = self.models.read().await;
-        Ok(models
+        let recovering = self.recovering.read().await;
+        let mut out: Vec<ModelInfo> = models
             .values()
             .map(|h| ModelInfo {
                 id: h.model_id().into(),
                 harness: "candle".into(),
-                status: if h.is_poisoned() {
+                // A poisoned model with recovery in flight reports
+                // `recovering` (the operator-actionable state); bare
+                // `poisoned` only appears if the recovery task is gone.
+                status: if recovering.contains_key(h.model_id()) {
+                    "recovering".into()
+                } else if h.is_poisoned() {
                     "poisoned".into()
                 } else {
                     "loaded".into()
@@ -2544,7 +2582,24 @@ impl Harness for CandleHarness {
                 vram_used_mb: None,
                 capabilities: h.capabilities(),
             })
-            .collect())
+            .collect();
+        // Models mid-recovery whose registry slot is absent (the
+        // unload→reload window, ~minutes for a large TP model) stay
+        // listed from their trigger-time snapshot so cortex holds the
+        // route instead of reporting them evicted/unknown (#20).
+        for (id, snap) in recovering.iter() {
+            if !models.contains_key(id) {
+                out.push(ModelInfo {
+                    id: id.clone(),
+                    harness: "candle".into(),
+                    status: "recovering".into(),
+                    devices: snap.devices.clone(),
+                    vram_used_mb: None,
+                    capabilities: snap.capabilities.clone(),
+                });
+            }
+        }
+        Ok(out)
     }
 
     async fn load_model(&self, spec: &ModelSpec) -> Result<()> {
@@ -5168,6 +5223,37 @@ mod tests {
         );
 
         assert_eq!(harness.default_source_scheme(), "huggingface");
+    }
+
+    /// #20: a model mid-auto-recovery — registry slot absent during
+    /// the unload→reload window — must stay listed in `list_models`
+    /// as `recovering`, carrying its trigger-time snapshot, so cortex
+    /// holds the route instead of reporting it evicted/unknown.
+    #[tokio::test]
+    async fn list_models_includes_recovering_models() {
+        use crate::config::CandleHarnessConfig;
+
+        let cfg = CandleHarnessConfig::default();
+        let harness = CandleHarness::new("http://localhost:13131".into(), &cfg);
+        harness.recovering.write().await.insert(
+            "Qwen/Qwen3.6-27B".to_string(),
+            RecoveringSnapshot {
+                devices: vec![0, 1],
+                capabilities: vec!["text".into(), "vision".into()],
+            },
+        );
+
+        let models = harness.list_models().await.expect("list_models");
+        let entry = models
+            .iter()
+            .find(|m| m.id == "Qwen/Qwen3.6-27B")
+            .expect("recovering model must remain listed");
+        assert_eq!(entry.status, "recovering");
+        assert_eq!(entry.devices, vec![0, 1]);
+        assert_eq!(
+            entry.capabilities,
+            vec!["text".to_string(), "vision".to_string()]
+        );
     }
 
     /// Operator with only `hf_cache` set (no `sources` table) still

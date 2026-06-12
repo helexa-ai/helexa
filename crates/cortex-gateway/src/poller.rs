@@ -197,6 +197,7 @@ fn parse_status(s: &str) -> ModelStatus {
         "unloaded" => ModelStatus::Unloaded,
         "reloading" => ModelStatus::Reloading,
         "loading" => ModelStatus::Loading,
+        "recovering" => ModelStatus::Recovering,
         _ => ModelStatus::Loaded,
     }
 }
