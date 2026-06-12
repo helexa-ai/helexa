@@ -1998,6 +1998,7 @@ impl CandleHarness {
                                 handle,
                                 &prompt_tokens,
                                 loaded.prefix_cache.as_ref(),
+                                loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
                                 temperature,
                                 top_p,
@@ -2040,6 +2041,7 @@ impl CandleHarness {
                 // Arc<Mutex<ModelArch>>.
                 let device = loaded.device.clone();
                 let loaded_for_cache = Arc::clone(&loaded);
+                let im_start_id = loaded.tokenizer.token_to_id("<|im_start|>");
                 let inference_result =
                     tokio::task::spawn_blocking(move || -> Result<(Vec<u32>, String)> {
                         let mut guard = arch_arc.blocking_lock();
@@ -2048,6 +2050,7 @@ impl CandleHarness {
                             &device,
                             &prompt_tokens,
                             loaded_for_cache.prefix_cache.as_ref(),
+                            im_start_id,
                             max_new,
                             temperature,
                             top_p,
@@ -3514,14 +3517,59 @@ impl CandleHarness {
                             .await
                         }
                         None => {
-                            chunked_prefill_tp(
-                                &mut pool,
-                                &model_id,
-                                leader_handle,
-                                &prompt_tokens,
-                                reused,
-                            )
-                            .await
+                            // Two-stage prefill around the
+                            // retokenization-stable snapshot boundary
+                            // — see `run_inference_via_worker`.
+                            let cut = if tp_for_task.prefix_cache.is_some() {
+                                stable_snapshot_cut(
+                                    &prompt_tokens,
+                                    tokenizer.token_to_id("<|im_start|>"),
+                                )
+                                .filter(|&c| c > reused)
+                            } else {
+                                None
+                            };
+                            match cut {
+                                Some(c) => {
+                                    match chunked_prefill_tp(
+                                        &mut pool,
+                                        &model_id,
+                                        leader_handle,
+                                        &prompt_tokens[..c],
+                                        reused,
+                                    )
+                                    .await
+                                    {
+                                        Ok(_) => {
+                                            store_prefix_snapshot_tp(
+                                                &mut pool,
+                                                &tp_for_task,
+                                                prompt_tokens[..c].to_vec(),
+                                            )
+                                            .await;
+                                            chunked_prefill_tp(
+                                                &mut pool,
+                                                &model_id,
+                                                leader_handle,
+                                                &prompt_tokens,
+                                                c,
+                                            )
+                                            .await
+                                        }
+                                        Err(e) => Err(e),
+                                    }
+                                }
+                                None => {
+                                    chunked_prefill_tp(
+                                        &mut pool,
+                                        &model_id,
+                                        leader_handle,
+                                        &prompt_tokens,
+                                        reused,
+                                    )
+                                    .await
+                                }
+                            }
                         }
                     };
                     let logits_vec = match prefill_result {
@@ -3559,15 +3607,6 @@ impl CandleHarness {
                                 break 'work;
                             }
                         };
-
-                    // Snapshot at the prefill boundary, after the
-                    // first healthy sample — see
-                    // `run_inference_via_worker` for why prompt-only
-                    // (and not post-generation) is the reusable state.
-                    if vision_route.is_none() {
-                        store_prefix_snapshot_tp(&mut pool, &tp_for_task, prompt_tokens.clone())
-                            .await;
-                    }
 
                     if Some(next_token) == eos_id {
                         finish_reason = FinishReason::Stop;
@@ -4023,9 +4062,38 @@ async fn chat_completion_tp_inner(
             )
             .await
             .map_err(InferenceError::Other)?,
-        None => chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens, reused)
-            .await
-            .map_err(InferenceError::Other)?,
+        None => {
+            // Two-stage prefill around the retokenization-stable
+            // snapshot boundary — see `run_inference_via_worker`.
+            let cut = if tp.prefix_cache.is_some() {
+                stable_snapshot_cut(&prompt_tokens, tp.tokenizer.token_to_id("<|im_start|>"))
+                    .filter(|&c| c > reused)
+            } else {
+                None
+            };
+            match cut {
+                Some(c) => {
+                    chunked_prefill_tp(
+                        &mut pool,
+                        &model_id,
+                        leader_handle,
+                        &prompt_tokens[..c],
+                        reused,
+                    )
+                    .await
+                    .map_err(InferenceError::Other)?;
+                    store_prefix_snapshot_tp(&mut pool, &tp, prompt_tokens[..c].to_vec()).await;
+                    chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens, c)
+                        .await
+                        .map_err(InferenceError::Other)?
+                }
+                None => {
+                    chunked_prefill_tp(&mut pool, &model_id, leader_handle, &prompt_tokens, reused)
+                        .await
+                        .map_err(InferenceError::Other)?
+                }
+            }
+        }
     };
     let (post_prefill_vram_free_mb, _) = tp.query_vram().await;
     tracing::info!(
@@ -4058,14 +4126,6 @@ async fn chat_completion_tp_inner(
             return Err(InferenceError::Other(e));
         }
     };
-
-    // Snapshot at the prefill boundary, after the first healthy
-    // sample — see `run_inference_via_worker` for why prompt-only
-    // (and not post-generation) is the reusable state. Vision
-    // requests bypass (image content is not in the token sequence).
-    if vision_route.is_none() {
-        store_prefix_snapshot_tp(&mut pool, &tp, prompt_tokens.clone()).await;
-    }
 
     if Some(next_token) == eos_id {
         finish_reason = "stop".into();
@@ -4723,6 +4783,30 @@ async fn run_inference_with_images_via_worker(
     Ok((generated, "length".into()))
 }
 
+/// The retokenization-stable snapshot boundary for a prompt: one past
+/// the last `<|im_start|>` token.
+///
+/// A snapshot covering the *whole* prompt is unreliable: the prompt
+/// ends with `…<|im_start|>assistant\n`, and when the next turn
+/// re-tokenizes that same text followed by the assistant's reply, BPE
+/// merges the trailing `\n` with the reply's first characters — the
+/// final token(s) differ and the exact-prefix match never fires
+/// (observed on Qwen3.6-27B; a reply starting with an atomic special
+/// token like `<think>` masks the problem, which is why the 0.8B
+/// validation initially passed). Special tokens are hard segmentation
+/// points for the tokenizer, so ids up to and including the last
+/// `<|im_start|>` are provably identical between the two renders —
+/// snapshotting there leaves only the ~2-token `assistant\n` tail to
+/// re-prefill on a hit.
+///
+/// Returns `None` (run the request without storing a snapshot) when
+/// the marker id is unknown or the prompt has no usable boundary.
+fn stable_snapshot_cut(prompt_tokens: &[u32], im_start_id: Option<u32>) -> Option<usize> {
+    let id = im_start_id?;
+    let cut = prompt_tokens.iter().rposition(|&t| t == id)? + 1;
+    (cut < prompt_tokens.len()).then_some(cut)
+}
+
 /// Lock a per-model prefix-cache registry, recovering from a poisoned
 /// mutex (a panic mid-bookkeeping leaves the registry consistent
 /// enough — worst case a stale entry that a failed restore later
@@ -4986,6 +5070,7 @@ async fn run_inference_via_worker(
     handle: super::device_worker::ArchHandle,
     prompt_tokens: &[u32],
     prefix_cache: Option<&ModelPrefixCache>,
+    im_start_id: Option<u32>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -5015,7 +5100,31 @@ async fn run_inference_via_worker(
     // only the final chunk's logits for sampling the first generated
     // token. A restored prefix snapshot skips the first `reused`
     // tokens entirely.
-    let logits_vec = chunked_prefill_via_worker(worker, handle, prompt_tokens, reused).await?;
+    //
+    // When caching is active, prefill pauses at the retokenization-
+    // stable boundary (see `stable_snapshot_cut`) to capture the
+    // snapshot the next turn can actually match, then finishes the
+    // volatile tail. A `reused >= cut` hit means an entry already
+    // covers the boundary — no new snapshot needed.
+    let cut = if prefix_cache.is_some() {
+        stable_snapshot_cut(prompt_tokens, im_start_id).filter(|&c| c > reused)
+    } else {
+        None
+    };
+    let logits_vec = match cut {
+        Some(c) => {
+            chunked_prefill_via_worker(worker, handle, &prompt_tokens[..c], reused).await?;
+            store_prefix_snapshot_via_worker(
+                worker,
+                handle,
+                prefix_cache,
+                prompt_tokens[..c].to_vec(),
+            )
+            .await;
+            chunked_prefill_via_worker(worker, handle, prompt_tokens, c).await?
+        }
+        None => chunked_prefill_via_worker(worker, handle, prompt_tokens, reused).await?,
+    };
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
         Ok(t) => t,
@@ -5028,17 +5137,6 @@ async fn run_inference_via_worker(
             return Err(e);
         }
     };
-
-    // Snapshot at the prefill boundary — the state covers exactly
-    // `prompt_tokens`, which is what the next turn's prompt extends
-    // under a stable chat template. Post-generation state is NOT a
-    // reliable prefix of the next prompt: reasoning/tool-call tokens
-    // get stripped or restructured when the client echoes the
-    // assistant message back, so a snapshot containing them never
-    // matches again (observed on Qwen3.6-27B `<think>` output).
-    // Placed after the first sample so unhealthy-logits requests
-    // never cache their state.
-    store_prefix_snapshot_via_worker(worker, handle, prefix_cache, prompt_tokens.to_vec()).await;
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -5165,7 +5263,31 @@ async fn stream_inference_via_worker(
         None => {
             let reused =
                 restore_or_clear_via_worker(&worker, handle, prefix_cache, &prompt_tokens).await?;
-            chunked_prefill_via_worker(&*worker, handle, &prompt_tokens, reused).await?
+            // Two-stage prefill around the retokenization-stable
+            // snapshot boundary — see `run_inference_via_worker`.
+            let cut = if prefix_cache.is_some() {
+                stable_snapshot_cut(&prompt_tokens, tokenizer.token_to_id("<|im_start|>"))
+                    .filter(|&c| c > reused)
+            } else {
+                None
+            };
+            match cut {
+                Some(c) => {
+                    chunked_prefill_via_worker(&*worker, handle, &prompt_tokens[..c], reused)
+                        .await?;
+                    store_prefix_snapshot_via_worker(
+                        &worker,
+                        handle,
+                        prefix_cache,
+                        prompt_tokens[..c].to_vec(),
+                    )
+                    .await;
+                    chunked_prefill_via_worker(&*worker, handle, &prompt_tokens, c).await?
+                }
+                None => {
+                    chunked_prefill_via_worker(&*worker, handle, &prompt_tokens, reused).await?
+                }
+            }
         }
     };
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
@@ -5180,11 +5302,6 @@ async fn stream_inference_via_worker(
             return Err(e);
         }
     };
-
-    // Snapshot at the prefill boundary, after the first healthy
-    // sample — see `run_inference_via_worker` for why prompt-only
-    // (and not post-generation) is the reusable state.
-    store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, prompt_tokens.clone()).await;
 
     // Per-token routing. `tokenizers::DecodeStream` carries five
     // generic parameters (`M, N, PT, PP, D`) which makes naming
@@ -5331,6 +5448,7 @@ fn run_inference(
     device: &Device,
     prompt_tokens: &[u32],
     prefix_cache: Option<&ModelPrefixCache>,
+    im_start_id: Option<u32>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -5352,13 +5470,22 @@ fn run_inference(
     let mut generated: Vec<u32> = Vec::new();
 
     let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
-    let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
+    // Two-stage prefill around the retokenization-stable snapshot
+    // boundary — see `run_inference_via_worker`.
+    let cut = if prefix_cache.is_some() {
+        stable_snapshot_cut(prompt_tokens, im_start_id).filter(|&c| c > reused)
+    } else {
+        None
+    };
+    let logits = match cut {
+        Some(c) => {
+            chunked_prefill_local(arch, device, &prompt_tokens[..c], reused)?;
+            store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens[..c].to_vec());
+            chunked_prefill_local(arch, device, prompt_tokens, c)?
+        }
+        None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
+    };
     let mut next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
-
-    // Snapshot at the prefill boundary, after the first healthy
-    // sample — see `run_inference_via_worker` for why prompt-only
-    // (and not post-generation) is the reusable state.
-    store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens.to_vec());
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -5437,13 +5564,23 @@ fn run_inference_streaming(
     let mut tool_call_idx: usize = 0;
 
     let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
-    let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
+    // Two-stage prefill around the retokenization-stable snapshot
+    // boundary — see `run_inference_via_worker`.
+    let cut = if prefix_cache.is_some() {
+        stable_snapshot_cut(prompt_tokens, tokenizer.token_to_id("<|im_start|>"))
+            .filter(|&c| c > reused)
+    } else {
+        None
+    };
+    let logits = match cut {
+        Some(c) => {
+            chunked_prefill_local(arch, device, &prompt_tokens[..c], reused)?;
+            store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens[..c].to_vec());
+            chunked_prefill_local(arch, device, prompt_tokens, c)?
+        }
+        None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
+    };
     let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
-
-    // Snapshot at the prefill boundary, after the first healthy
-    // sample — see `run_inference_via_worker` for why prompt-only
-    // (and not post-generation) is the reusable state.
-    store_prefix_snapshot_local(arch, prefix_cache, prompt_tokens.to_vec());
 
     // Per-token routing block, used at both the prefill-sample
     // tail and the decode loop. Macros are ugly but Rust's
@@ -5563,6 +5700,31 @@ fn unix_subsec_nanos() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const IM_START: u32 = 999;
+
+    #[test]
+    fn stable_snapshot_cut_lands_after_last_im_start() {
+        // ChatML shape: [im_start, "system", ..., im_start, "user",
+        // ..., im_start, "assistant", "\n"] — the cut must be one past
+        // the final im_start, leaving the volatile "assistant\n" tail
+        // outside the snapshot.
+        let prompt = [IM_START, 1, 2, 3, IM_START, 4, 5, IM_START, 6, 7];
+        assert_eq!(stable_snapshot_cut(&prompt, Some(IM_START)), Some(8));
+    }
+
+    #[test]
+    fn stable_snapshot_cut_rejects_degenerate_boundaries() {
+        // Marker id unknown → no snapshot.
+        assert_eq!(stable_snapshot_cut(&[1, 2, 3], None), None);
+        // No marker in the prompt → no snapshot.
+        assert_eq!(stable_snapshot_cut(&[1, 2, 3], Some(IM_START)), None);
+        // Marker is the final token → cut == len leaves nothing to
+        // prefill after the snapshot → no snapshot.
+        assert_eq!(stable_snapshot_cut(&[1, IM_START], Some(IM_START)), None);
+        // Empty prompt.
+        assert_eq!(stable_snapshot_cut(&[], Some(IM_START)), None);
+    }
 
     #[test]
     fn check_dense_config_accepts_qwen3() {
