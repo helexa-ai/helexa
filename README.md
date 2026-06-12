@@ -1,31 +1,68 @@
 # helexa
 
-A self-hosted LLM serving stack for multi-node GPU inference clusters,
-written in Rust. It has two components:
+**Near-frontier AI for mortals.**
+
+helexa is a self-hosted LLM serving stack, written in Rust, for people
+who run open-weight models on their own consumer GPUs. It has two
+components:
 
 - **cortex** — the per-operator control plane and LLM proxy. It sits in
-  front of the fleet and presents a unified OpenAI + Anthropic compatible
-  API surface, handling model routing, lifecycle management, request
-  translation, and metrics collection.
+  front of your GPU fleet and presents a unified OpenAI + Anthropic
+  compatible API surface, handling model routing, lifecycle management
+  (load / unload / evict), request translation, and metrics.
 - **neuron** — the per-host LLM harness. One instance runs on every GPU
   host, serving candle-based in-process inference and managing local
   hardware discovery and model lifecycle.
 
-## Problem
+## Why
 
-Running local LLMs across multiple GPU nodes (different VRAM tiers, different
-model affinities) requires a unified API surface that:
+Two principles constrain everything in this repository:
 
-- Presents a **single `/v1/models` catalogue** merging every model that can be
-  served by any neuron in the fleet.
-- **Routes requests** to the correct node based on where a model is loaded
-  (or can be loaded), handling cold-load and eviction transparently.
-- Manages **model lifecycle** — load on demand, unload cold models, pin
-  critical ones — by calling each neuron's `/models/{load,unload}` API.
-- Translates between **OpenAI and Anthropic** request/response envelopes so
-  every client speaks whichever dialect it prefers.
-- Captures **per-request metrics** (tokens, tok/s, TTFT, latency) and exposes
-  them as Prometheus counters/histograms.
+1. **Frontier or close to it.** helexa serves the open-weight models
+   that get nearest to frontier capability — not every architecture
+   ever published.
+2. **Consumer hardware.** Everything must run on the cards mortals can
+   actually buy: a 3060 here, a 4090 there, a 5090 if you got lucky.
+   Mixed VRAM tiers across mismatched boxes are the expected topology,
+   not a degraded case.
+
+GPU acquisition is harder than it was a year ago, and the gap between
+what cloud providers charge and what your own silicon costs keeps
+widening. The intersection of those two principles — near-frontier
+models, squeezed onto hardware you own — is helexa's entire niche.
+
+The secondary objective is **predictable consumption**. If you own the
+hardware, your tooling shouldn't break because a cloud provider changed
+billing, deprecated a model, or reshaped an API. cortex's OpenAI and
+Anthropic surfaces are a stability contract: point your editor, agent,
+or CLI at it once, and it keeps working.
+
+## What helexa is not
+
+This is an intentionally different path from vLLM, SGLang, and peers —
+not a smaller version of them. Out of scope, permanently:
+
+- Any-model breadth. Architectures are ported because they're at or
+  near the frontier, not to complete a compatibility matrix.
+- Datacenter-class scheduling. No sophisticated continuous-batching /
+  paged-attention machinery — the workload is a handful of operators
+  and their agents, not 200 QPS.
+- Wrapping external inference engines. neuron builds directly on
+  [candle](https://github.com/huggingface/candle); every model
+  architecture it serves is implemented in this repository, ported
+  against the HuggingFace reference.
+
+One thing that is *not* a principle: CUDA exclusivity. All high-end
+consumer hardware is in scope. helexa is CUDA-only today because
+that's the hardware on the bench — nothing ships untested — and ROCm
+or other consumer accelerators join as soon as there's real hardware
+to build against.
+
+In scope, and where the engineering effort goes: aggressive
+quantization (GGUF Q4_K_M / Q6_K / Q8_0), NCCL tensor parallelism
+across heterogeneous consumer GPUs, careful CUDA failure handling, and
+single-request latency — the performance that one operator at a
+keyboard actually feels.
 
 ## Architecture
 
@@ -35,7 +72,7 @@ model affinities) requires a unified API surface that:
 └──────┬───────┘  └─────┬────┘  └──────┬─────┘  └──────┬─────┘
        │                │              │               │
        └────────────────┴──────┬───────┴───────────────┘
-                               │
+                               │  OpenAI + Anthropic APIs
                     ┌──────────▼──────────┐
                     │      cortex         │
                     │  (cortex-gateway)   │
@@ -52,40 +89,59 @@ model affinities) requires a unified API surface that:
                   private network (.internal)
 ```
 
+cortex discovers each neuron's hardware (devices, VRAM, compute
+capability) at runtime and matches it against a model catalogue
+(`models.toml`) to decide placement: which models fit where, what to
+evict when VRAM is tight, where to route a request right now. Adding a
+GPU host to the fleet is one `[[neurons]]` entry — no device specs in
+config.
+
 ### Crates
 
 | Crate | Purpose |
 |---|---|
 | `cortex-core` | Shared types: config, node/model state, metrics, OpenAI/Anthropic envelopes, harness trait, discovery types |
 | `cortex-gateway` | Axum HTTP server: proxy, router, evictor, poller, metrics exporter |
-| `neuron` | Per-node daemon: GPU discovery, in-process candle inference, model lifecycle API |
+| `neuron` | Per-host daemon: GPU discovery, in-process candle inference, NCCL tensor parallelism, model lifecycle API |
 | `cortex-cli` | CLI entrypoint (`cortex serve`, `cortex status`, etc.) |
+| `helexa-acp` | Agent Client Protocol bridge — connects ACP editors (Zed, etc.) to any OpenAI-compatible endpoint, cortex by default |
 
-## Node setup
+## The engine
 
-Each GPU node runs `neuron` (listening on `:13131`). Neuron uses
-huggingface/candle for in-process inference — there is no external
-inference subprocess to manage.
+neuron runs inference in-process on candle — there is no external
+inference server to babysit. The parts that earn their keep:
 
-Inside the daemon, every CUDA device gets one dedicated OS thread
-(named `cuda-dev-N`) that owns the device's CUDA context for the
-daemon's lifetime. Model loads, forward passes, KV-cache resets,
-NCCL collectives, VRAM queries, and unloads all route through that
-thread via a job channel; tensors never escape it alive. This pins
-context binding to a known thread, makes the CUDA Drop contract
-structurally safe, and isolates driver-error poisoning to one worker
-rather than the whole process. See `CLAUDE.md` for the design
-rationale and `crates/neuron/src/harness/device_worker/` for the code.
+- **Per-device worker threads.** Every CUDA device gets one dedicated
+  OS thread that owns its CUDA context for the daemon's lifetime. All
+  loads, forward passes, KV-cache resets, NCCL collectives, VRAM
+  queries, and unloads route through it; tensors never escape it
+  alive. Context binding is pinned to a known thread, the CUDA `Drop`
+  contract is structurally safe, and a driver error poisons one worker
+  — visibly — instead of hanging the whole process.
+- **Tensor parallelism on consumer cards.** Megatron-style row/column
+  parallel layers with NCCL all-reduce, spanning the mismatched GPUs
+  you actually have. A step watchdog aborts wedged collectives instead
+  of letting a request hang forever.
+- **Current model focus: the Qwen3 family** — dense and GGUF-quantized,
+  including the hybrid linear-attention (Gated DeltaNet) generation.
+  Vision support is in progress. Each architecture is ported against
+  its HuggingFace reference implementation.
 
-The neuron RPM (`helexa-neuron`) ships a systemd unit:
+See `CLAUDE.md` for design rationale and
+`crates/neuron/src/harness/device_worker/` for the worker narrative.
+
+## Install
+
+Pre-built RPMs for Fedora:
 
 ```sh
 dnf copr enable helexa/helexa
-dnf install helexa-neuron
-systemctl enable --now neuron
+dnf install cortex            # on the gateway host
+dnf install helexa-neuron     # on each GPU host
+systemctl enable --now cortex   # or neuron, respectively
 ```
 
-## Gateway config
+## Configure
 
 ```toml
 # /etc/cortex/cortex.toml
@@ -106,29 +162,10 @@ name = "benjy"
 endpoint = "http://benjy.internal:13131"
 ```
 
-Model placement profiles live in `models.toml` — see `models.example.toml`.
+Model placement profiles (VRAM requirements, quant, device minimums,
+pinning) live in `models.toml` — see `models.example.toml`.
 
-## Building
-
-```sh
-cargo build --release
-```
-
-## CI
-
-Every push triggers format, lint, and test checks. Ensure these pass
-locally before pushing:
-
-```sh
-cargo fmt --check --all                    # must be clean
-cargo clippy --workspace -- -D warnings   # warnings are errors
-cargo test --workspace                     # all tests must pass
-```
-
-Tagged releases (`v*`) additionally build SRPMs for both `cortex` and
-`helexa-neuron` and publish to COPR.
-
-## Running
+## Run
 
 ```sh
 # start the gateway
@@ -137,9 +174,36 @@ cortex serve --config /etc/cortex/cortex.toml
 # check fleet status
 cortex status
 
-# list all models across nodes
+# one catalogue across every node
 curl http://localhost:31313/v1/models
 ```
+
+## Build from source
+
+```sh
+cargo build --release
+```
+
+CI runs on every push; keep it green locally:
+
+```sh
+cargo fmt --check --all                    # must be clean
+cargo clippy --workspace -- -D warnings   # warnings are errors
+cargo test --workspace                     # all tests must pass
+```
+
+Tagged releases (`v*`) build SRPMs for `cortex` and `helexa-neuron`
+and publish to COPR.
+
+## Status
+
+Pre-1.0 and moving fast. The gateway path (routing, eviction,
+translation, metrics) is stable and tested; the candle-native engine
+is under active development — expect the supported-model list to track
+the open-weight frontier, deliberately narrowly.
+
+Development happens at <https://git.lair.cafe/helexa/helexa>;
+<https://github.com/helexa-ai/helexa> is a read-only mirror.
 
 ## License
 
