@@ -1,3 +1,4 @@
+pub mod anthropic_sse;
 pub mod evictor;
 pub mod handlers;
 pub mod metrics;
