@@ -5,7 +5,7 @@ Sourced from beast's local cache on 2026-06-01:
 
 Single source of truth for Stages A–D of the vision plan in
 `~/.claude/plans/foamy-twirling-catmull.md`. Umbrella issue:
-[#3](https://git.lair.cafe/helexa/cortex/issues/3).
+[#3](https://git.lair.cafe/helexa/helexa/issues/3).
 
 ---
 
@@ -92,7 +92,7 @@ Reading:
 
 - `image_mean = image_std = 0.5` → normalisation is simply `(x/255 - 0.5) / 0.5 = 2*x/255 - 1`, mapping `[0,255]` → `[-1, 1]`. No imagenet-style mean/std.
 - `size.{shortest_edge, longest_edge}` are **pixel counts**, not edge lengths. The `Qwen2VLImageProcessorFast` recipe picks a resolution within `[65,536 = 256², 16,777,216 = 4096²]` total pixels, snapping `h` and `w` to multiples of `patch_size × spatial_merge_size = 32` pixels.
-- Stage A ships **fixed resolution**: pick a target pixel count (e.g. 448×448 = 200,704 px → 28×28 patches → 14×14 LM tokens after merger). Variable resolution deferred to issue [#14](https://git.lair.cafe/helexa/cortex/issues/14).
+- Stage A ships **fixed resolution**: pick a target pixel count (e.g. 448×448 = 200,704 px → 28×28 patches → 14×14 LM tokens after merger). Variable resolution deferred to issue [#14](https://git.lair.cafe/helexa/helexa/issues/14).
 
 ## Chat template (`chat_template.jinja`)
 
@@ -140,7 +140,7 @@ rope_parameters: {
 }
 ```
 
-MRoPE encodes spatial position alongside text position so the LM attention layers can reason about image-token spatial structure. The LM's existing forward path *may or may not* already implement this — the qwen3_5 module's doc-comment notes "numerical correctness vs the reference Python is not yet validated." Verifying MRoPE behaviour in the language model is out of Stage A scope (vision tower only) but will be required in Stage B (LM splice) and is tracked under the numerical-validation issue [#15](https://git.lair.cafe/helexa/cortex/issues/15).
+MRoPE encodes spatial position alongside text position so the LM attention layers can reason about image-token spatial structure. The LM's existing forward path *may or may not* already implement this — the qwen3_5 module's doc-comment notes "numerical correctness vs the reference Python is not yet validated." Verifying MRoPE behaviour in the language model is out of Stage A scope (vision tower only) but will be required in Stage B (LM splice) and is tracked under the numerical-validation issue [#15](https://git.lair.cafe/helexa/helexa/issues/15).
 
 `max_position_embeddings = 262144` (256 K context), so context-length limits are not a constraint for vision.
 
@@ -152,7 +152,7 @@ The vision tower has its own self-contained weight tree and is small (~333 tenso
 - Run unit tests with random tensor weights matching the exact shapes → assert forward produces correct output shape with finite values.
 - Optionally: a CUDA-integration test that loads just the 2 vision shards from beast's cache (or on a smaller GPU like quadbrat's Ampere) and runs encode on a real image. Doesn't require loading the 27B LM at all.
 
-This sidesteps the "develop against a smaller VL model" question for Stage A. Stage B (LM splice → end-to-end chat with vision) is where iteration speed becomes pressing; revisit there. The default scope pick 2a (smaller iteration model) is therefore deferred to Stage B planning — issue [#13](https://git.lair.cafe/helexa/cortex/issues/13) covers deployment validation regardless.
+This sidesteps the "develop against a smaller VL model" question for Stage A. Stage B (LM splice → end-to-end chat with vision) is where iteration speed becomes pressing; revisit there. The default scope pick 2a (smaller iteration model) is therefore deferred to Stage B planning — issue [#13](https://git.lair.cafe/helexa/helexa/issues/13) covers deployment validation regardless.
 
 ## Concrete Stage A1+ inputs
 
@@ -167,10 +167,10 @@ This sidesteps the "develop against a smaller VL model" question for Stage A. St
 ## What this doc does NOT settle (deferred to issues)
 
 - Numerical correctness of `VisionTower` output vs Python transformers
-  → issue [#15](https://git.lair.cafe/helexa/cortex/issues/15).
+  → issue [#15](https://git.lair.cafe/helexa/helexa/issues/15).
 - Variable image resolution
-  → issue [#14](https://git.lair.cafe/helexa/cortex/issues/14).
+  → issue [#14](https://git.lair.cafe/helexa/helexa/issues/14).
 - TP-vision (multi-rank vision tower)
-  → issue [#12](https://git.lair.cafe/helexa/cortex/issues/12).
+  → issue [#12](https://git.lair.cafe/helexa/helexa/issues/12).
 - 27B production deployment
-  → issue [#13](https://git.lair.cafe/helexa/cortex/issues/13).
+  → issue [#13](https://git.lair.cafe/helexa/helexa/issues/13).

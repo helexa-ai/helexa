@@ -7,7 +7,7 @@ Summary:        Per-node GPU discovery and harness management daemon for cortex
 # unit, and system user are still called "neuron" for brevity.
 
 License:        GPL-3.0-or-later
-URL:            https://git.lair.cafe/helexa/cortex
+URL:            https://git.lair.cafe/helexa/helexa
 Source0:        %{name}-%{version}.tar.gz
 Source1:        %{name}-%{version}-vendor.tar.gz
 

@@ -1,9 +1,15 @@
-# cortex
+# helexa
 
-A Rust reverse-proxy and fleet management layer for multi-node GPU inference
-clusters. Cortex sits in front of one or more `neuron` daemons (each running
-candle-based inference on a local GPU host) and presents a unified OpenAI +
-Anthropic compatible API surface.
+A self-hosted LLM serving stack for multi-node GPU inference clusters,
+written in Rust. It has two components:
+
+- **cortex** — the per-operator control plane and LLM proxy. It sits in
+  front of the fleet and presents a unified OpenAI + Anthropic compatible
+  API surface, handling model routing, lifecycle management, request
+  translation, and metrics collection.
+- **neuron** — the per-host LLM harness. One instance runs on every GPU
+  host, serving candle-based in-process inference and managing local
+  hardware discovery and model lifecycle.
 
 ## Problem
 

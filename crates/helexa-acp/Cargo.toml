@@ -3,7 +3,7 @@ name = "helexa-acp"
 version = "0.1.16"
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://git.lair.cafe/helexa/cortex"
+repository = "https://git.lair.cafe/helexa/helexa"
 description = """
 Agent Client Protocol bridge for the helexa self-hosted LLM stack.
 Speaks ACP to ACP-compatible editor clients (Zed, etc.) and forwards

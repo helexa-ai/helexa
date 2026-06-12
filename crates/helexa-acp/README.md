@@ -58,8 +58,8 @@ one vendor's agent client.
 ### From source
 
 ```sh
-git clone https://git.lair.cafe/helexa/cortex.git
-cd cortex
+git clone https://git.lair.cafe/helexa/helexa.git
+cd helexa
 cargo install --path crates/helexa-acp
 # Binary lands at ~/.cargo/bin/helexa-acp
 ```
@@ -536,7 +536,7 @@ Cargo.toml-only.
 
 ## Contributing
 
-Repository: https://git.lair.cafe/helexa/cortex (`crates/helexa-acp/`).
+Repository: https://git.lair.cafe/helexa/helexa (`crates/helexa-acp/`).
 Issues / PRs welcome. The canonical staged plan is in
 `~/.claude/plans/plan-the-per-device-worker-abstract-micali.md` on
 the maintainer's machine; the substages 3a–3e and 6a/6b that the

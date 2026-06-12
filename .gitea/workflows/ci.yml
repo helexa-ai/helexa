@@ -349,6 +349,6 @@ jobs:
             echo "Nothing to commit for ${VERSION}"
           else
             git commit -m "chore: bump version to ${VERSION}"
-            git remote set-url origin "https://gitea-actions:${GITEA_TOKEN}@git.lair.cafe/helexa/cortex.git"
+            git remote set-url origin "https://gitea-actions:${GITEA_TOKEN}@git.lair.cafe/${{ github.repository }}.git"
             git push origin HEAD:main
           fi

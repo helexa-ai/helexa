@@ -1,16 +1,26 @@
-# CLAUDE.md — cortex
+# CLAUDE.md — helexa
 
 ## Project overview
 
-cortex is a Rust reverse-proxy that sits in front of multiple
-mistral.rs inference nodes and presents a unified OpenAI + Anthropic
-compatible API surface. It handles model routing, lifecycle management
-(load/unload/evict), request translation, and metrics collection.
+helexa is a self-hosted LLM serving stack for multi-node GPU inference
+clusters. It has two components:
+
+- **cortex** — the per-operator control plane and LLM proxy. A Rust
+  reverse-proxy that sits in front of the fleet and presents a unified
+  OpenAI + Anthropic compatible API surface. It handles model routing,
+  lifecycle management (load/unload/evict), request translation, and
+  metrics collection.
+- **neuron** — the per-host LLM harness. One instance runs on every GPU
+  host, serving candle-based in-process inference and managing local
+  hardware discovery and model lifecycle.
+
+(Historical note: cortex originally proxied to mistral.rs nodes; neuron
+replaced that — see the 2026-05-18 candle-native addendum below.)
 
 ## Repository layout
 
 ```
-cortex/
+helexa/
 ├── Cargo.toml              # workspace root
 ├── cortex.toml      # example gateway config
 ├── README.md
@@ -548,7 +558,7 @@ and the hardcoded `vram_mb` per node.
 ## Revised repository layout
 
 ```
-cortex/
+helexa/
 ├── Cargo.toml
 ├── cortex.toml                 # gateway config (neurons only)
 ├── models.toml                 # model catalogue

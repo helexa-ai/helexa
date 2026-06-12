@@ -36,7 +36,7 @@ Release:        %{neuron_release}%{?dist}
 Summary:        Per-node GPU inference daemon (candle, %{neuron_flavour} flavour)
 
 License:        GPL-3.0-or-later
-URL:            https://git.lair.cafe/helexa/cortex
+URL:            https://git.lair.cafe/helexa/helexa
 
 Source0:        neuron-%{neuron_flavour}
 Source1:        neuron.service

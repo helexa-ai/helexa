@@ -29,7 +29,7 @@ Release:        %{cortex_release}%{?dist}
 Summary:        Inference gateway for multi-node GPU clusters (prebuilt)
 
 License:        GPL-3.0-or-later
-URL:            https://git.lair.cafe/helexa/cortex
+URL:            https://git.lair.cafe/helexa/helexa
 
 Source0:        cortex
 Source1:        cortex.service
