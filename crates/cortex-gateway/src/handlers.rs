@@ -178,7 +178,7 @@ async fn completions(
 /// `POST /v1/messages` — accept Anthropic format, translate, proxy, translate back.
 async fn anthropic_messages(
     State(fleet): State<Arc<CortexState>>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
     body: Bytes,
 ) -> Response {
     // Parse as Anthropic request.
@@ -247,29 +247,23 @@ async fn anthropic_messages(
     let start = Instant::now();
 
     if is_streaming {
-        // TODO: streaming Anthropic translation requires converting SSE format.
-        // For now, proxy the OpenAI SSE stream directly (clients that can handle
-        // OpenAI SSE will work; full Anthropic SSE translation is a follow-up).
-        let result = proxy::forward_request(
+        // Anthropic SSE translation (#24): upstream speaks OpenAI SSE;
+        // re-frame it event-by-event into Anthropic's message_start /
+        // content_block_* / message_delta / message_stop sequence.
+        let resp = crate::anthropic_sse::stream_translated(
             &fleet.http_client,
-            &route,
-            "/v1/chat/completions",
-            headers,
+            &route.endpoint,
             openai_body,
             &model_id,
+            &route.node_name,
         )
         .await;
         metrics::histogram!("cortex_request_duration_seconds", &labels)
             .record(start.elapsed().as_secs_f64());
-        match result {
-            Ok(resp) => resp,
-            Err(e) => {
-                metrics::counter!("cortex_request_errors_total", &labels).increment(1);
-                // forward_request already warn'd with the wire-level
-                // detail; no need to log again here.
-                e.into_response()
-            }
+        if !resp.status().is_success() {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
         }
+        resp
     } else {
         // Non-streaming: proxy, buffer full response, translate back to Anthropic.
         let target_url = format!("{}/v1/chat/completions", route.endpoint);

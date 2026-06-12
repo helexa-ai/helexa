@@ -71,10 +71,18 @@ pub struct ChatCompletionChoice {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatCompletionChunk {
+    #[serde(default)]
     pub id: String,
+    #[serde(default)]
     pub object: String,
+    #[serde(default)]
     pub created: u64,
+    // Lenient deserialization throughout: the gateway parses chunks
+    // from arbitrary OpenAI-compatible upstreams, and some engines
+    // omit fields on special frames (e.g. usage-only final chunks).
+    #[serde(default)]
     pub model: String,
+    #[serde(default)]
     pub choices: Vec<ChunkChoice>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<Usage>,

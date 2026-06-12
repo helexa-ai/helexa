@@ -249,6 +249,7 @@ pub async fn spawn_streaming_mock_neuron_with_usage(
                     "id": "chatcmpl-stream-002",
                     "object": "chat.completion.chunk",
                     "created": 1700000000_u64,
+                    "model": model,
                     "choices": [],
                     "usage": {
                         "prompt_tokens": prompt_tokens,
