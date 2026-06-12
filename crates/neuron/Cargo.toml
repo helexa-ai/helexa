@@ -60,6 +60,11 @@ tokio-stream.workspace = true
 figment.workspace = true
 toml.workspace = true
 
+# Parallel in-situ quantization (#1): fans candle's per-block k-quant
+# math across the CPU pool at model-load time. Already in the tree
+# transitively via candle-core.
+rayon = "1"
+
 # candle for in-process inference. CUDA support is gated behind the
 # crate's `cuda` feature (default off) so the workspace builds on
 # non-CUDA hosts and CI runners.
