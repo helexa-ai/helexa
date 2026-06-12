@@ -2615,6 +2615,7 @@ dependencies = [
  "image",
  "minijinja",
  "minijinja-contrib",
+ "rayon",
  "reqwest",
  "safetensors 0.7.0",
  "serde",

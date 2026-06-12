@@ -971,7 +971,12 @@ impl TpQwen3_5Model {
         let vb_l = text_vb.pp("layers");
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         log_vram(&device, rank, "before layer 0");
+        // Per-phase timing (#1): the layer loop is where ISQ cost
+        // concentrates; the per-layer line is debug, the loop total
+        // info, so journalctl always shows where a cold load went.
+        let layers_start = std::time::Instant::now();
         for i in 0..cfg.num_hidden_layers {
+            let layer_start = std::time::Instant::now();
             let layer = TpQwen3_5DecoderLayer::load(
                 cfg,
                 rotary.clone(),
@@ -988,8 +993,20 @@ impl TpQwen3_5Model {
                 format!("load layer {i} (rank {rank}): free={free_mb}MB / total={total_mb}MB")
             })?;
             layers.push(layer);
+            tracing::debug!(
+                rank,
+                layer = i,
+                elapsed_ms = layer_start.elapsed().as_millis() as u64,
+                "TP layer loaded"
+            );
             log_vram(&device, rank, &format!("after layer {i}"));
         }
+        tracing::info!(
+            rank,
+            layers = cfg.num_hidden_layers,
+            elapsed_ms = layers_start.elapsed().as_millis() as u64,
+            "TP layer loop complete"
+        );
 
         let norm = Qwen3_5RmsNorm::load(&text_vb.pp("norm"), cfg.hidden_size, cfg.rms_norm_eps)?;
 
@@ -1036,6 +1053,7 @@ impl TpQwen3_5Model {
 
         let vb_l = text_vb.pp("layers");
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
+        let layers_start = std::time::Instant::now();
         for i in 0..cfg.num_hidden_layers {
             layers.push(TpQwen3_5DecoderLayer::load(
                 cfg,
@@ -1048,6 +1066,12 @@ impl TpQwen3_5Model {
                 quant,
             )?);
         }
+        tracing::info!(
+            rank,
+            layers = cfg.num_hidden_layers,
+            elapsed_ms = layers_start.elapsed().as_millis() as u64,
+            "TP layer loop complete"
+        );
 
         let norm = Qwen3_5RmsNorm::load(&text_vb.pp("norm"), cfg.hidden_size, cfg.rms_norm_eps)?;
 
@@ -1515,12 +1539,20 @@ fn build_lm_head(
     } else {
         // lm_head sits at the top level (sibling of `model.*`), NOT
         // under `model.language_model`.
+        let lm_head_start = std::time::Instant::now();
         let weight = load_replicated(
             &vb.pp("lm_head"),
             (cfg.vocab_size, cfg.hidden_size),
             "weight",
         )?;
-        super::tp_linear::MaybeQuantLinear::from_weight(weight, quant).context("wrap lm_head")
+        let head = super::tp_linear::MaybeQuantLinear::from_weight(weight, quant)
+            .context("wrap lm_head")?;
+        tracing::info!(
+            elapsed_ms = lm_head_start.elapsed().as_millis() as u64,
+            quantized = quant.is_some(),
+            "lm_head loaded"
+        );
+        Ok(head)
     }
 }
 

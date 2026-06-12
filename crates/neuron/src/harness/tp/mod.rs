@@ -19,6 +19,7 @@
 
 pub mod all_reduce;
 pub mod fused_load;
+pub mod isq;
 pub mod nccl_state;
 pub mod rpc;
 pub mod tp_linear;

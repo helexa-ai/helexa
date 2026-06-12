@@ -24,7 +24,7 @@
 //! sum carries it exactly once.
 
 use anyhow::{Context, Result};
-use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
+use candle_core::quantized::{GgmlDType, QMatMul};
 use candle_core::{Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::{Shard, ShardedVarBuilder};
@@ -56,9 +56,11 @@ impl MaybeQuantLinear {
     pub fn from_weight(weight: Tensor, quant: Option<GgmlDType>) -> Result<Self> {
         match quant {
             Some(dtype) => {
-                let qt = QTensor::quantize(&weight, dtype).with_context(|| {
+                // Parallel ISQ (#1): same bytes as QTensor::quantize,
+                // blocks fanned across the rayon pool.
+                let qt = super::isq::quantize_parallel(&weight, dtype).with_context(|| {
                     format!(
-                        "QTensor::quantize to {dtype:?} for shape {:?}",
+                        "quantize_parallel to {dtype:?} for shape {:?}",
                         weight.shape()
                     )
                 })?;
