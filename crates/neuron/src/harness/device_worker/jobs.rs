@@ -28,6 +28,14 @@ pub struct ArchHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TpHandle(pub u64);
 
+/// Opaque handle to a prefix-cache snapshot (#11) stored worker-side
+/// next to the model slab. Scoped to the `ArchHandle` it was captured
+/// from — `Job::DropArch` drops every snapshot under its handle. The
+/// snapshot's tensors never leave the worker thread; the async side
+/// holds only this id plus the token sequence it covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KvSnapshotId(pub u64);
+
 /// One image payload for `Job::ForwardLogitsWithImages` /
 /// `Job::EncodeImage`. Pixels are row-major `(c, h, w)` f32 — the
 /// shape `harness::preprocess::preprocess` produces. Carries the
@@ -104,6 +112,30 @@ pub enum Job {
     ClearKv {
         handle: ArchHandle,
         reply: oneshot::Sender<Result<()>>,
+    },
+    /// Capture the model's live cache state (attention KV + GDN
+    /// recurrent state + position counters) as a prefix snapshot
+    /// (#11). The snapshot stays in the worker's state, keyed by the
+    /// returned id; the reply carries `(id, bytes)` so the async side
+    /// can do budget accounting without touching tensors. Errors on
+    /// archs without snapshot support.
+    SnapshotKv {
+        handle: ArchHandle,
+        reply: oneshot::Sender<Result<(KvSnapshotId, u64)>>,
+    },
+    /// Replace the model's live cache state with a stored snapshot,
+    /// instead of `ClearKv`, so prefill can resume at the snapshot's
+    /// token boundary. The snapshot remains stored (restorable again).
+    RestoreKv {
+        handle: ArchHandle,
+        snapshot: KvSnapshotId,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// Drop one stored snapshot (prefix-cache eviction). Idempotent.
+    DropKvSnapshot {
+        handle: ArchHandle,
+        snapshot: KvSnapshotId,
+        reply: oneshot::Sender<()>,
     },
     /// Run one forward step and copy the resulting `[vocab]` logits to
     /// CPU. The caller takes the returned `Vec<f32>`, wraps it in a

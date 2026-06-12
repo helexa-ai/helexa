@@ -51,7 +51,7 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "cuda")]
 pub use jobs::TpHandle;
-pub use jobs::{ArchHandle, Job};
+pub use jobs::{ArchHandle, Job, KvSnapshotId};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -294,6 +294,92 @@ impl DeviceWorkerHandle {
             })?;
         match reply_rx.await {
             Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Capture the model's live cache state as a worker-side prefix
+    /// snapshot (#11). Returns the snapshot id plus its byte size for
+    /// the async-side budget accounting. Tensors stay on the worker.
+    pub async fn snapshot_kv(
+        &self,
+        handle: ArchHandle,
+    ) -> Result<(jobs::KvSnapshotId, u64), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::SnapshotKv {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Replace the model's live cache state with a stored snapshot —
+    /// called instead of [`Self::clear_kv_cache`] on a prefix-cache
+    /// hit. The snapshot remains stored and restorable again.
+    pub async fn restore_kv(
+        &self,
+        handle: ArchHandle,
+        snapshot: jobs::KvSnapshotId,
+    ) -> Result<(), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::RestoreKv {
+                handle,
+                snapshot,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop one stored prefix snapshot (eviction). Mirrors
+    /// [`Self::drop_arch`]'s poison-tolerant unit-reply shape so
+    /// bookkeeping always unblocks.
+    pub async fn drop_kv_snapshot(
+        &self,
+        handle: ArchHandle,
+        snapshot: jobs::KvSnapshotId,
+    ) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropKvSnapshot {
+                handle,
+                snapshot,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(()) => Ok(()),
             Err(_) => Err(WorkerError::Gone {
                 device_index: self.device_index,
             }),

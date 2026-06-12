@@ -75,6 +75,9 @@ pub struct CandleHarness {
     /// the unload→reload→health-gate. Unbounded + tiny (model ids), and
     /// the `recovering` set dedupes, so it can't back up.
     recovery_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    /// Prefix-cache settings (#11), applied per loaded model at load
+    /// time (snapshot-capable archs only).
+    prefix_cache_cfg: crate::config::PrefixCacheConfig,
 }
 
 /// Devices/capabilities snapshot of a model entering auto-recovery
@@ -156,6 +159,22 @@ impl LoadedHandle {
         caps
     }
 }
+
+/// Reference to one stored prefix snapshot (#11). CUDA loads keep the
+/// snapshot tensors in the device worker and hold only the opaque id
+/// here; CPU loads hold the snapshot itself (no context-affinity
+/// constraint on CPU tensors).
+#[derive(Clone)]
+pub enum KvSnapshotRef {
+    Worker(super::device_worker::KvSnapshotId),
+    Local(Arc<super::arch::qwen3_5::snapshot::KvCacheSnapshot>),
+}
+
+/// Per-model prefix-cache registry: matching/eviction bookkeeping in
+/// `prefix_cache::PrefixCache`, snapshot refs as the payload. Guarded
+/// by a std Mutex — every access is short and already serialised by
+/// `LoadedModel::inference_lock`.
+pub type ModelPrefixCache = std::sync::Mutex<super::prefix_cache::PrefixCache<KvSnapshotRef>>;
 
 /// A loaded model with its tokenizer, device placement, and architecture-
 /// specific weights. The `arch` is `Arc<Mutex<>>` so the lock guard can be
@@ -253,6 +272,13 @@ pub struct LoadedModel {
     /// (#17) can `unload_model` + `load_model(spec)` a poisoned model
     /// without an operator reconstructing it.
     pub spec: ModelSpec,
+    /// Prefix-cache registry (#11). `None` when the arch has no
+    /// snapshot support or the operator disabled the cache — the
+    /// request path then clears the KV cache every request, exactly
+    /// the pre-#11 behaviour. Dropped with the model, so unload and
+    /// auto-recovery invalidate every entry for free (the worker-side
+    /// snapshots go with `Job::DropArch`).
+    pub prefix_cache: Option<ModelPrefixCache>,
 }
 
 impl LoadedModel {
@@ -414,6 +440,36 @@ impl ModelArch {
                 m.clear_kv_cache();
                 Ok(())
             }
+        }
+    }
+
+    /// Whether this arch can capture/restore prefix snapshots (#11).
+    /// Only the in-tree qwen3_5 arch exposes its cache state; the
+    /// candle-transformers archs keep theirs private, so they stay on
+    /// the clear-every-request path.
+    pub fn supports_kv_snapshot(&self) -> bool {
+        matches!(self, ModelArch::Qwen3_5Dense(_))
+    }
+
+    /// Capture the live cache state as a prefix snapshot. See
+    /// `arch/qwen3_5/snapshot.rs` for what a snapshot contains and the
+    /// copy-semantics constraints.
+    pub fn snapshot_kv_cache(&self) -> Result<super::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => Ok(m.snapshot_kv_cache()?),
+            _ => anyhow::bail!("snapshot_kv_cache: architecture has no snapshot support"),
+        }
+    }
+
+    /// Replace the live cache state with a stored snapshot — the
+    /// restore-instead-of-clear half of prefix caching.
+    pub fn restore_kv_cache(
+        &mut self,
+        snap: &super::arch::qwen3_5::snapshot::KvCacheSnapshot,
+    ) -> Result<()> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => Ok(m.restore_kv_cache(snap)?),
+            _ => anyhow::bail!("restore_kv_cache: architecture has no snapshot support"),
         }
     }
 
@@ -1096,17 +1152,24 @@ fn sample_with_penalty(
 /// sampling. Bounds activation memory to O(chunk × layers × hidden)
 /// instead of O(prompt × layers × hidden); the KV cache grows
 /// monotonically so the model sees the full prompt at the final chunk.
+///
+/// `start_offset` is the number of leading prompt tokens already in
+/// the cache (a restored prefix snapshot, #11); prefill begins there.
+/// 0 = the classic full prefill after a cache clear.
 fn chunked_prefill_local(
     arch: &mut ModelArch,
     device: &Device,
     prompt_tokens: &[u32],
+    start_offset: usize,
 ) -> Result<Tensor> {
     let prompt_len = prompt_tokens.len();
-    if prompt_len == 0 {
-        anyhow::bail!("chunked_prefill_local: empty prompt");
+    if start_offset >= prompt_len {
+        anyhow::bail!(
+            "chunked_prefill_local: start_offset {start_offset} leaves no tokens of {prompt_len} to prefill"
+        );
     }
     let chunk_size = prefill_chunk_tokens();
-    let mut offset = 0;
+    let mut offset = start_offset;
     let mut last_logits: Option<Tensor> = None;
     while offset < prompt_len {
         let end = (offset + chunk_size).min(prompt_len);
@@ -1125,20 +1188,25 @@ fn chunked_prefill_local(
 /// [`chunked_prefill_local`] but the forward runs on the worker thread
 /// and replies with a CPU-side `Vec<f32>` of logits at the final
 /// chunk's last position. Tensors never escape the worker.
+/// `start_offset` skips a restored cached prefix, as in
+/// [`chunked_prefill_local`].
 #[cfg(feature = "cuda")]
 async fn chunked_prefill_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prompt_tokens: &[u32],
+    start_offset: usize,
 ) -> Result<Vec<f32>> {
     let prompt_len = prompt_tokens.len();
-    if prompt_len == 0 {
-        anyhow::bail!("chunked_prefill_via_worker: empty prompt");
+    if start_offset >= prompt_len {
+        anyhow::bail!(
+            "chunked_prefill_via_worker: start_offset {start_offset} leaves no tokens of {prompt_len} to prefill"
+        );
     }
     let chunk_size = prefill_chunk_tokens();
-    let mut offset = 0;
+    let mut offset = start_offset;
     let mut last_logits: Option<Vec<f32>> = None;
-    let total_chunks = prompt_len.div_ceil(chunk_size);
+    let total_chunks = (prompt_len - start_offset).div_ceil(chunk_size);
     let mut chunk_idx = 0_usize;
     while offset < prompt_len {
         let end = (offset + chunk_size).min(prompt_len);
@@ -1286,6 +1354,7 @@ impl CandleHarness {
             device_workers: Arc::new(RwLock::new(HashMap::new())),
             recovering: Arc::new(RwLock::new(HashMap::new())),
             recovery_tx,
+            prefix_cache_cfg: config.prefix_cache.clone(),
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
         // keep the harness alive. Spawned only when a tokio runtime is
@@ -1303,6 +1372,18 @@ impl CandleHarness {
     /// load path's `ModelSourceId::with_default_scheme`.
     pub(crate) fn default_source_scheme(&self) -> &str {
         &self.default_source
+    }
+
+    /// Fresh per-model prefix-cache registry, or `None` when the arch
+    /// can't snapshot or the operator disabled/zeroed the cache.
+    fn new_prefix_cache(&self, arch_supported: bool) -> Option<ModelPrefixCache> {
+        let cfg = &self.prefix_cache_cfg;
+        (arch_supported && cfg.enabled && cfg.budget_mb > 0 && cfg.max_entries > 0).then(|| {
+            std::sync::Mutex::new(super::prefix_cache::PrefixCache::new(
+                cfg.budget_mb.saturating_mul(1024 * 1024),
+                cfg.max_entries,
+            ))
+        })
     }
 
     /// Pick a candle `Device` for the requested indices. Without the
@@ -1900,6 +1981,7 @@ impl CandleHarness {
                                 worker,
                                 handle,
                                 &prompt_tokens,
+                                loaded.prefix_cache.as_ref(),
                                 max_new,
                                 temperature,
                                 top_p,
@@ -1941,6 +2023,7 @@ impl CandleHarness {
                 // CPU path: existing spawn_blocking on the local
                 // Arc<Mutex<ModelArch>>.
                 let device = loaded.device.clone();
+                let loaded_for_cache = Arc::clone(&loaded);
                 let inference_result =
                     tokio::task::spawn_blocking(move || -> Result<(Vec<u32>, String)> {
                         let mut guard = arch_arc.blocking_lock();
@@ -1948,6 +2031,7 @@ impl CandleHarness {
                             &mut guard,
                             &device,
                             &prompt_tokens,
+                            loaded_for_cache.prefix_cache.as_ref(),
                             max_new,
                             temperature,
                             top_p,
@@ -2322,6 +2406,7 @@ impl CandleHarness {
                             tokenizer,
                             prompt_tokens,
                             vision_route,
+                            loaded_for_task.prefix_cache.as_ref(),
                             max_new,
                             temperature,
                             top_p,
@@ -2382,6 +2467,7 @@ impl CandleHarness {
                     &device,
                     &tokenizer,
                     &prompt_tokens,
+                    loaded_for_task.prefix_cache.as_ref(),
                     max_new,
                     temperature,
                     top_p,
@@ -2667,46 +2753,62 @@ impl Harness for CandleHarness {
             _ => None,
         };
 
-        let (tokenizer_path, arch_local, arch_handle, vision_meta) = if let Some(w) = &worker {
-            // CUDA path: resolve, then load in the worker.
-            if spec.quant.is_some() {
-                let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
-                let handle = w
-                    .load_gguf(gguf_path, spec.model_id.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
-                // GGUF Qwen3.6 releases don't ship the vision tower
-                // (Qwen-VL weights are in the dense safetensors only),
-                // so a GGUF load is text-only by construction.
-                (tokenizer_path, None, Some(handle), VisionMeta::default())
+        let (tokenizer_path, arch_local, arch_handle, vision_meta, snapshot_capable) =
+            if let Some(w) = &worker {
+                // CUDA path: resolve, then load in the worker.
+                if spec.quant.is_some() {
+                    let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
+                    let handle = w
+                        .load_gguf(gguf_path, spec.model_id.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
+                    // GGUF Qwen3.6 releases don't ship the vision tower
+                    // (Qwen-VL weights are in the dense safetensors only),
+                    // so a GGUF load is text-only by construction. GGUF
+                    // archs are candle-transformers types — no snapshot
+                    // support either.
+                    (
+                        tokenizer_path,
+                        None,
+                        Some(handle),
+                        VisionMeta::default(),
+                        false,
+                    )
+                } else {
+                    let (config_path, tokenizer_path, safetensors_paths) =
+                        self.resolve_dense_files(spec, &source_id).await?;
+                    let meta = VisionMeta::from_config_path(&config_path);
+                    // Prefix snapshots (#11) exist only for the in-tree
+                    // qwen3_5 arch; the worker holds the ModelArch so
+                    // the async side decides from config.json instead.
+                    let snapshot_capable = config_model_type(&config_path).as_deref()
+                        == Some(super::arch::qwen3_5::MODEL_TYPE);
+                    let handle = w
+                        .load_dense(config_path, safetensors_paths, spec.model_id.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
+                    (tokenizer_path, None, Some(handle), meta, snapshot_capable)
+                }
             } else {
-                let (config_path, tokenizer_path, safetensors_paths) =
-                    self.resolve_dense_files(spec, &source_id).await?;
-                let meta = VisionMeta::from_config_path(&config_path);
-                let handle = w
-                    .load_dense(config_path, safetensors_paths, spec.model_id.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
-                (tokenizer_path, None, Some(handle), meta)
-            }
-        } else {
-            // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
-            let (tokenizer_path, arch) = if spec.quant.is_some() {
-                self.load_arch_gguf(spec, &source_id, &device).await?
-            } else {
-                self.load_arch_dense(spec, &source_id, &device).await?
+                // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
+                let (tokenizer_path, arch) = if spec.quant.is_some() {
+                    self.load_arch_gguf(spec, &source_id, &device).await?
+                } else {
+                    self.load_arch_dense(spec, &source_id, &device).await?
+                };
+                let snapshot_capable = arch.supports_kv_snapshot();
+                // CPU Qwen3.6 isn't a supported deployment target — the
+                // 27B doesn't fit any reasonable CPU memory budget — so
+                // we don't attempt to reach into the arch for vision
+                // metadata. Stays text-only.
+                (
+                    tokenizer_path,
+                    Some(Arc::new(Mutex::new(arch))),
+                    None,
+                    VisionMeta::default(),
+                    snapshot_capable,
+                )
             };
-            // CPU Qwen3.6 isn't a supported deployment target — the
-            // 27B doesn't fit any reasonable CPU memory budget — so
-            // we don't attempt to reach into the arch for vision
-            // metadata. Stays text-only.
-            (
-                tokenizer_path,
-                Some(Arc::new(Mutex::new(arch))),
-                None,
-                VisionMeta::default(),
-            )
-        };
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
@@ -2773,7 +2875,16 @@ impl Harness for CandleHarness {
             image_token_id: vision_meta.image_token_id,
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
+            prefix_cache: self.new_prefix_cache(snapshot_capable),
         });
+        if loaded.prefix_cache.is_some() {
+            tracing::info!(
+                model = %spec.model_id,
+                budget_mb = self.prefix_cache_cfg.budget_mb,
+                max_entries = self.prefix_cache_cfg.max_entries,
+                "prefix cache enabled for this model"
+            );
+        }
 
         let mut models = self.models.write().await;
         models.insert(spec.model_id.clone(), LoadedHandle::Single(loaded));
@@ -4203,6 +4314,18 @@ struct VisionMeta {
     image_grid_factor: Option<usize>,
 }
 
+/// Peek at `config.json` for its `model_type`. Best-effort — `None`
+/// on any read/parse error. The load path uses this to decide prefix-
+/// snapshot capability for worker-held models the async side can't
+/// inspect directly.
+fn config_model_type(config_path: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(config_path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("model_type")
+        .and_then(|x| x.as_str())
+        .map(str::to_string)
+}
+
 impl VisionMeta {
     /// Peek at `config.json` for vision-related fields. Returns the
     /// default (no-vision) struct on any read/parse error — vision is
@@ -4521,11 +4644,159 @@ async fn run_inference_with_images_via_worker(
     Ok((generated, "length".into()))
 }
 
+/// Lock a per-model prefix-cache registry, recovering from a poisoned
+/// mutex (a panic mid-bookkeeping leaves the registry consistent
+/// enough — worst case a stale entry that a failed restore later
+/// drops).
+fn lock_prefix_cache(
+    cache: &ModelPrefixCache,
+) -> std::sync::MutexGuard<'_, super::prefix_cache::PrefixCache<KvSnapshotRef>> {
+    cache
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Prefix-cache decision at the start of a text-only request (#11):
+/// restore the longest snapshot whose tokens strictly prefix the
+/// prompt, or clear the KV cache as before. Returns the number of
+/// prompt tokens already in the cache after this call — prefill
+/// resumes at that offset. A failed restore drops the entry and falls
+/// back to clear + full prefill.
+#[cfg(feature = "cuda")]
+async fn restore_or_clear_via_worker(
+    worker: &super::device_worker::DeviceWorkerHandle,
+    handle: super::device_worker::ArchHandle,
+    prefix_cache: Option<&ModelPrefixCache>,
+    prompt_tokens: &[u32],
+) -> Result<usize> {
+    // Bind the match outside the lock so the registry guard is
+    // released before any await — the guard must never be live across
+    // a suspension point.
+    let hit = prefix_cache.and_then(|cache| lock_prefix_cache(cache).longest_match(prompt_tokens));
+    if let (Some(cache), Some(m)) = (prefix_cache, hit) {
+        let KvSnapshotRef::Worker(id) = m.snapshot else {
+            anyhow::bail!(
+                "prefix cache: local snapshot ref on a worker-loaded model — load-path bug"
+            );
+        };
+        match worker.restore_kv(handle, id).await {
+            Ok(()) => {
+                tracing::info!(
+                    reused_tokens = m.tokens,
+                    prompt_tokens = prompt_tokens.len(),
+                    "prefix cache: hit — skipping prefill of cached prefix"
+                );
+                return Ok(m.tokens);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "prefix cache: restore failed; dropping entry, full prefill"
+                );
+                let removed = lock_prefix_cache(cache).remove_covering(prompt_tokens, m.tokens);
+                if let Some(KvSnapshotRef::Worker(id)) = removed {
+                    let _ = worker.drop_kv_snapshot(handle, id).await;
+                }
+            }
+        }
+    }
+    worker
+        .clear_kv_cache(handle)
+        .await
+        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+    Ok(0)
+}
+
+/// Post-generation half of prefix caching: snapshot the live cache
+/// state (which now covers exactly `forwarded_tokens`) and register
+/// it. Eviction decided by the registry; evicted worker snapshots are
+/// dropped here. Best-effort — a failed snapshot only costs the next
+/// request its prefill saving.
+#[cfg(feature = "cuda")]
+async fn store_prefix_snapshot_via_worker(
+    worker: &super::device_worker::DeviceWorkerHandle,
+    handle: super::device_worker::ArchHandle,
+    prefix_cache: Option<&ModelPrefixCache>,
+    forwarded_tokens: Vec<u32>,
+) {
+    let Some(cache) = prefix_cache else { return };
+    match worker.snapshot_kv(handle).await {
+        Ok((id, bytes)) => {
+            let evicted =
+                lock_prefix_cache(cache).insert(forwarded_tokens, KvSnapshotRef::Worker(id), bytes);
+            for r in evicted {
+                if let KvSnapshotRef::Worker(evicted_id) = r {
+                    let _ = worker.drop_kv_snapshot(handle, evicted_id).await;
+                }
+            }
+        }
+        Err(e) => tracing::debug!(error = %e, "prefix cache: snapshot failed; not cached"),
+    }
+}
+
+/// CPU-path counterpart of [`restore_or_clear_via_worker`]: same
+/// decision, directly against the locally-held [`ModelArch`].
+fn restore_or_clear_local(
+    arch: &mut ModelArch,
+    prefix_cache: Option<&ModelPrefixCache>,
+    prompt_tokens: &[u32],
+) -> Result<usize> {
+    let hit = prefix_cache.and_then(|cache| lock_prefix_cache(cache).longest_match(prompt_tokens));
+    if let (Some(cache), Some(m)) = (prefix_cache, hit) {
+        let KvSnapshotRef::Local(snap) = m.snapshot else {
+            anyhow::bail!(
+                "prefix cache: worker snapshot ref on a CPU-loaded model — load-path bug"
+            );
+        };
+        match arch.restore_kv_cache(&snap) {
+            Ok(()) => {
+                tracing::info!(
+                    reused_tokens = m.tokens,
+                    prompt_tokens = prompt_tokens.len(),
+                    "prefix cache: hit — skipping prefill of cached prefix"
+                );
+                return Ok(m.tokens);
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "prefix cache: restore failed; dropping entry, full prefill"
+                );
+                lock_prefix_cache(cache).remove_covering(prompt_tokens, m.tokens);
+            }
+        }
+    }
+    arch.clear_kv_cache()?;
+    Ok(0)
+}
+
+/// CPU-path counterpart of [`store_prefix_snapshot_via_worker`].
+/// Evicted local snapshots free when their `Arc` drops.
+fn store_prefix_snapshot_local(
+    arch: &ModelArch,
+    prefix_cache: Option<&ModelPrefixCache>,
+    forwarded_tokens: Vec<u32>,
+) {
+    let Some(cache) = prefix_cache else { return };
+    match arch.snapshot_kv_cache() {
+        Ok(snap) => {
+            let bytes = snap.size_bytes();
+            drop(lock_prefix_cache(cache).insert(
+                forwarded_tokens,
+                KvSnapshotRef::Local(Arc::new(snap)),
+                bytes,
+            ));
+        }
+        Err(e) => tracing::debug!(error = %e, "prefix cache: snapshot failed; not cached"),
+    }
+}
+
 #[cfg(feature = "cuda")]
 async fn run_inference_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prompt_tokens: &[u32],
+    prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -4547,17 +4818,15 @@ async fn run_inference_via_worker(
     let mut generated: Vec<u32> = Vec::new();
     let prompt_len = prompt_tokens.len();
 
-    worker
-        .clear_kv_cache(handle)
-        .await
-        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+    let reused = restore_or_clear_via_worker(worker, handle, prefix_cache, prompt_tokens).await?;
 
     // Prefill the prompt in `prefill_chunk_tokens()`-sized chunks so
     // activation memory is bounded per step rather than scaling with
     // prompt length. The KV cache accumulates across chunks; we keep
     // only the final chunk's logits for sampling the first generated
-    // token.
-    let logits_vec = chunked_prefill_via_worker(worker, handle, prompt_tokens).await?;
+    // token. A restored prefix snapshot skips the first `reused`
+    // tokens entirely.
+    let logits_vec = chunked_prefill_via_worker(worker, handle, prompt_tokens, reused).await?;
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
         Ok(t) => t,
@@ -4571,36 +4840,46 @@ async fn run_inference_via_worker(
         }
     };
 
+    // Tokens actually forwarded through the model — exactly what the
+    // live cache state covers, and therefore what a post-generation
+    // snapshot is keyed by. Sampled-but-never-forwarded tokens (EOS,
+    // the final token of a length-capped generation) stay out.
+    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
+
+    let mut finish_reason = "length";
     if Some(next_token) == eos_id {
-        return Ok((generated, "stop".into()));
-    }
-    generated.push(next_token);
-
-    for index in 0..max_new.saturating_sub(1) {
-        let logits_vec = worker
-            .forward_logits(handle, vec![next_token], prompt_len + index)
-            .await
-            .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
-        let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-        next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    step = index,
-                    ?health,
-                    "chat_completion (worker): decode sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
-        if Some(next_token) == eos_id {
-            return Ok((generated, "stop".into()));
-        }
+        finish_reason = "stop";
+    } else {
         generated.push(next_token);
+        for index in 0..max_new.saturating_sub(1) {
+            let logits_vec = worker
+                .forward_logits(handle, vec![next_token], prompt_len + index)
+                .await
+                .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
+            forwarded.push(next_token);
+            let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
+            next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        step = index,
+                        ?health,
+                        "chat_completion (worker): decode sample failed; logits unhealthy"
+                    );
+                    return Err(e);
+                }
+            };
+            if Some(next_token) == eos_id {
+                finish_reason = "stop";
+                break;
+            }
+            generated.push(next_token);
+        }
     }
 
-    Ok((generated, "length".into()))
+    store_prefix_snapshot_via_worker(worker, handle, prefix_cache, forwarded).await;
+    Ok((generated, finish_reason.into()))
 }
 
 /// Streaming counterpart of [`run_inference_via_worker`]. Emits one
@@ -4627,6 +4906,7 @@ async fn stream_inference_via_worker(
     tokenizer: Tokenizer,
     prompt_tokens: Vec<u32>,
     images: Option<(Vec<super::device_worker::jobs::ImageInput>, u32)>,
+    prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -4636,6 +4916,10 @@ async fn stream_inference_via_worker(
     tool_call_tokens: Option<ToolCallTokenPair>,
     tx: mpsc::Sender<InferenceEvent>,
 ) -> Result<String> {
+    // Image content isn't part of the token sequence, so token-prefix
+    // identity would be unsound for vision requests — they bypass the
+    // prefix cache entirely (no restore, no snapshot).
+    let prefix_cache = if images.is_some() { None } else { prefix_cache };
     let mut logits_processor = {
         let sampling = if temperature <= 0.0 {
             Sampling::ArgMax
@@ -4667,23 +4951,30 @@ async fn stream_inference_via_worker(
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
 
-    worker
-        .clear_kv_cache(handle)
-        .await
-        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
-
-    // Prefill. Vision-bearing requests (`images = Some`) do a
-    // single-shot prefill that splices the image embeddings; text-only
-    // requests use chunked prefill (see `chunked_prefill_via_worker`)
-    // to bound activation memory. Either way the owning
-    // `prompt_tokens: Vec<u32>` outlives this step; we use `prompt_len`
-    // (already extracted above) for the decode-step offset arithmetic.
+    // Prefill. Vision-bearing requests (`images = Some`) clear the
+    // cache and do a single-shot prefill that splices the image
+    // embeddings; text-only requests consult the prefix cache
+    // (restore-or-clear) and chunk-prefill only the uncached suffix
+    // (see `chunked_prefill_via_worker`) to bound activation memory.
+    // Either way the owning `prompt_tokens: Vec<u32>` outlives this
+    // step; we use `prompt_len` (already extracted above) for the
+    // decode-step offset arithmetic.
     let logits_vec = match images {
-        Some((imgs, image_token_id)) => worker
-            .forward_logits_with_images(handle, prompt_tokens.clone(), 0, imgs, image_token_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e}"))?,
-        None => chunked_prefill_via_worker(&*worker, handle, &prompt_tokens).await?,
+        Some((imgs, image_token_id)) => {
+            worker
+                .clear_kv_cache(handle)
+                .await
+                .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+            worker
+                .forward_logits_with_images(handle, prompt_tokens.clone(), 0, imgs, image_token_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e}"))?
+        }
+        None => {
+            let reused =
+                restore_or_clear_via_worker(&worker, handle, prefix_cache, &prompt_tokens).await?;
+            chunked_prefill_via_worker(&*worker, handle, &prompt_tokens, reused).await?
+        }
     };
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
@@ -4697,6 +4988,11 @@ async fn stream_inference_via_worker(
             return Err(e);
         }
     };
+
+    // Tokens actually forwarded through the model — what the live
+    // cache covers, and the key a post-generation prefix snapshot is
+    // stored under. See `run_inference_via_worker`.
+    let mut forwarded: Vec<u32> = prompt_tokens.clone();
 
     // Per-token routing. `tokenizers::DecodeStream` carries five
     // generic parameters (`M, N, PT, PP, D`) which makes naming
@@ -4795,6 +5091,7 @@ async fn stream_inference_via_worker(
     if Some(next_token) == eos_id {
         finish_reason = FinishReason::Stop;
     } else if !route_token!(next_token) {
+        store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
         return Ok(finish_reason.as_openai_str().to_string());
     }
 
@@ -4803,6 +5100,7 @@ async fn stream_inference_via_worker(
             .forward_logits(handle, vec![next_token], prompt_len + index)
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
+        forwarded.push(next_token);
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
         next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
             Ok(t) => t,
@@ -4821,9 +5119,12 @@ async fn stream_inference_via_worker(
             break;
         }
         if !route_token!(next_token) {
+            store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
             return Ok(finish_reason.as_openai_str().to_string());
         }
     }
+
+    store_prefix_snapshot_via_worker(&worker, handle, prefix_cache, forwarded).await;
 
     // Terminal Finish event. The wire projector turns this into a
     // format-specific final chunk (`finish_reason: "stop"` on
@@ -4842,6 +5143,7 @@ fn run_inference(
     arch: &mut ModelArch,
     device: &Device,
     prompt_tokens: &[u32],
+    prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -4862,26 +5164,34 @@ fn run_inference(
 
     let mut generated: Vec<u32> = Vec::new();
 
-    arch.clear_kv_cache()?;
-    let logits = chunked_prefill_local(arch, device, prompt_tokens)?;
+    let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
+    let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
     let mut next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
 
+    // Forwarded-token tracking for the post-generation prefix
+    // snapshot — see `run_inference_via_worker`.
+    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
+
+    let mut finish_reason = "length";
     if Some(next_token) == eos_id {
-        return Ok((generated, "stop".into()));
-    }
-    generated.push(next_token);
-
-    for index in 0..max_new.saturating_sub(1) {
-        let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
-        let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-        next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
-        if Some(next_token) == eos_id {
-            return Ok((generated, "stop".into()));
-        }
+        finish_reason = "stop";
+    } else {
         generated.push(next_token);
+        for index in 0..max_new.saturating_sub(1) {
+            let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
+            let logits = arch.forward(&input, prompt_tokens.len() + index)?;
+            forwarded.push(next_token);
+            next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
+            if Some(next_token) == eos_id {
+                finish_reason = "stop";
+                break;
+            }
+            generated.push(next_token);
+        }
     }
 
-    Ok((generated, "length".into()))
+    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
+    Ok((generated, finish_reason.into()))
 }
 
 /// Streaming counterpart to `run_inference`. Emits chunks via `tx` as
@@ -4896,6 +5206,7 @@ fn run_inference_streaming(
     device: &Device,
     tokenizer: &Tokenizer,
     prompt_tokens: &[u32],
+    prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -4939,9 +5250,13 @@ fn run_inference_streaming(
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
 
-    arch.clear_kv_cache()?;
-    let logits = chunked_prefill_local(arch, device, prompt_tokens)?;
+    let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
+    let logits = chunked_prefill_local(arch, device, prompt_tokens, reused)?;
     let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
+
+    // Forwarded-token tracking for the post-generation prefix
+    // snapshot — see `run_inference_via_worker`.
+    let mut forwarded: Vec<u32> = prompt_tokens.to_vec();
 
     // Per-token routing block, used at both the prefill-sample
     // tail and the decode loop. Macros are ugly but Rust's
@@ -4969,6 +5284,7 @@ fn run_inference_streaming(
                                 })
                                 .is_err()
                             {
+                                store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                 return Ok(());
                             }
                         }
@@ -4984,6 +5300,7 @@ fn run_inference_streaming(
                                 .unwrap_or("</tool_call>");
                             let raw = format!("{open}{buffer}{close}");
                             if !emit_delta_blocking(&raw, tx, in_reasoning) {
+                                store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                 return Ok(());
                             }
                         }
@@ -5006,6 +5323,7 @@ fn run_inference_streaming(
                         match decode_stream.step(nt) {
                             Ok(Some(delta)) => {
                                 if !emit_delta_blocking(&delta, tx, in_reasoning) {
+                                    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
                                     return Ok(());
                                 }
                             }
@@ -5030,6 +5348,7 @@ fn run_inference_streaming(
     for index in 0..max_new.saturating_sub(1) {
         let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
         let logits = arch.forward(&input, prompt_tokens.len() + index)?;
+        forwarded.push(next_token);
         next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
@@ -5037,6 +5356,8 @@ fn run_inference_streaming(
         }
         route_token!(next_token);
     }
+
+    store_prefix_snapshot_local(arch, prefix_cache, forwarded);
 
     let _ = tx.blocking_send(InferenceEvent::Finish {
         reason: finish_reason,

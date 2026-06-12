@@ -184,6 +184,42 @@ impl GatedDeltaNet {
         self.state = GatedDeltaNetState::default();
     }
 
+    /// Deep-copy the recurrent state for a prefix snapshot. Must be a
+    /// real copy (`Tensor::copy`), not a refcount clone: the CUDA
+    /// delta-rule kernels write the state buffer in place, so a
+    /// shared-storage snapshot would be corrupted by the next forward.
+    pub fn snapshot_state(&self) -> candle_core::Result<(Option<Tensor>, Option<Tensor>)> {
+        let conv = self
+            .state
+            .conv_state
+            .as_ref()
+            .map(Tensor::copy)
+            .transpose()?;
+        let rec = self
+            .state
+            .recurrent_state
+            .as_ref()
+            .map(Tensor::copy)
+            .transpose()?;
+        Ok((conv, rec))
+    }
+
+    /// Replace the live recurrent state with a deep copy of a
+    /// previously captured snapshot. Deep copy for the same in-place
+    /// kernel reason as [`Self::snapshot_state`] — the snapshot must
+    /// survive being restored more than once.
+    pub fn restore_state(
+        &mut self,
+        conv_state: Option<&Tensor>,
+        recurrent_state: Option<&Tensor>,
+    ) -> candle_core::Result<()> {
+        self.state = GatedDeltaNetState {
+            conv_state: conv_state.map(Tensor::copy).transpose()?,
+            recurrent_state: recurrent_state.map(Tensor::copy).transpose()?,
+        };
+        Ok(())
+    }
+
     /// `x` shape: `(B, L, hidden_size)`. Returns the same shape.
     pub fn forward(&mut self, x: &Tensor) -> candle_core::Result<Tensor> {
         let (batch_size, seq_len, _) = x.dims3()?;

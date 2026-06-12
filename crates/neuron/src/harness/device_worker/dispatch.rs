@@ -13,10 +13,11 @@
 //! ARCH model state in this state slab will gain a companion
 //! `tp_models: HashMap<TpHandle, Box<TpLeaderModel>>`.
 
+use crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot;
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
-use crate::harness::device_worker::jobs::{ArchHandle, ImageInput, Job};
+use crate::harness::device_worker::jobs::{ArchHandle, ImageInput, Job, KvSnapshotId};
 #[cfg(feature = "cuda")]
 use crate::harness::tp::TpLeaderModel;
 use crate::harness::tp::nccl_state::NcclState;
@@ -46,6 +47,14 @@ struct DeviceWorkerState {
     /// increments and returns the new value. Wraps at u64::MAX after
     /// ~10^19 model loads — not a practical concern.
     next_handle: u64,
+    /// Prefix-cache snapshots (#11), keyed by the owning model's
+    /// handle plus a per-worker snapshot counter. Kept beside the
+    /// model slab (not inside it) so every existing `get_mut` on
+    /// `models` stays untouched; `DropArch` retains this map down so
+    /// snapshot tensors drop on this thread alongside the model's.
+    kv_snapshots: HashMap<(ArchHandle, u64), KvCacheSnapshot>,
+    /// Counter for minting fresh `KvSnapshotId`s.
+    next_kv_snapshot_id: u64,
     /// Leader's NCCL state. Populated by `Job::NcclInit`; the
     /// underlying `Comm`'s libnccl handle lives bound to this thread
     /// for its entire lifetime. Subprocess workers maintain their own
@@ -124,6 +133,10 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
             Job::DropArch { handle, reply } => {
                 let removed = state.models.remove(&handle);
                 let was_present = removed.is_some();
+                // Prefix snapshots are scoped to the model: drop them
+                // here (on this thread) so a stale async-side id can
+                // never resurrect tensors from an unloaded model.
+                state.kv_snapshots.retain(|(h, _), _| *h != handle);
                 // Explicit drop on this thread — runs the Box<ModelArch>
                 // Drop with the CUDA context bound here, which frees
                 // all device tensors on the right context. The Drop is
@@ -149,6 +162,76 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     trim_device_pool(&state);
                 }
                 let _ = reply.send(result);
+            }
+            Job::SnapshotKv { handle, reply } => {
+                let result = match state.models.get(&handle) {
+                    Some(arch) => arch.snapshot_kv_cache().map(|snap| {
+                        let id = KvSnapshotId(state.next_kv_snapshot_id);
+                        state.next_kv_snapshot_id = state.next_kv_snapshot_id.wrapping_add(1);
+                        let bytes = snap.size_bytes();
+                        state.kv_snapshots.insert((handle, id.0), snap);
+                        tracing::debug!(
+                            device_index,
+                            handle = handle.0,
+                            snapshot = id.0,
+                            bytes,
+                            stored = state.kv_snapshots.len(),
+                            "device worker: kv snapshot captured"
+                        );
+                        (id, bytes)
+                    }),
+                    None => Err(anyhow::anyhow!(
+                        "SnapshotKv: no model for handle {}",
+                        handle.0
+                    )),
+                };
+                let _ = reply.send(result);
+            }
+            Job::RestoreKv {
+                handle,
+                snapshot,
+                reply,
+            } => {
+                let result = match (
+                    state.models.get_mut(&handle),
+                    state.kv_snapshots.get(&(handle, snapshot.0)),
+                ) {
+                    (Some(arch), Some(snap)) => arch.restore_kv_cache(snap),
+                    (None, _) => Err(anyhow::anyhow!(
+                        "RestoreKv: no model for handle {}",
+                        handle.0
+                    )),
+                    (_, None) => Err(anyhow::anyhow!(
+                        "RestoreKv: no snapshot {} for handle {}",
+                        snapshot.0,
+                        handle.0
+                    )),
+                };
+                // The replaced live cache state just freed its
+                // tensors — same release-to-driver point as ClearKv.
+                if result.is_ok() {
+                    trim_device_pool(&state);
+                }
+                let _ = reply.send(result);
+            }
+            Job::DropKvSnapshot {
+                handle,
+                snapshot,
+                reply,
+            } => {
+                let was_present = state.kv_snapshots.remove(&(handle, snapshot.0)).is_some();
+                if was_present {
+                    trim_device_pool(&state);
+                }
+                tracing::debug!(
+                    device_index,
+                    handle = handle.0,
+                    snapshot = snapshot.0,
+                    was_present,
+                    stored = state.kv_snapshots.len(),
+                    "device worker: kv snapshot dropped"
+                );
+                let _ = reply.send(());
             }
             Job::ForwardLogits {
                 handle,
@@ -363,6 +446,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             device,
             models: HashMap::new(),
             next_handle: 1,
+            kv_snapshots: HashMap::new(),
+            next_kv_snapshot_id: 1,
             nccl: NcclState::new(),
             tp_models: HashMap::new(),
             next_tp_handle: 1,
@@ -376,6 +461,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             device: candle_core::Device::Cpu,
             models: HashMap::new(),
             next_handle: 1,
+            kv_snapshots: HashMap::new(),
+            next_kv_snapshot_id: 1,
             nccl: NcclState::new(),
         }
     }
@@ -998,6 +1085,18 @@ fn drain_poisoned(job: Job, device_index: u32) {
         }
         Job::ClearKv { reply, .. } => {
             let _ = reply.send(Err(err()));
+        }
+        Job::SnapshotKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::RestoreKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::DropKvSnapshot { reply, .. } => {
+            // Same shape as DropArch: unit reply so the caller's await
+            // resolves; the snapshot leaks with the rest of the slab
+            // per the poisoned-thread design.
+            let _ = reply.send(());
         }
         Job::ForwardLogits { reply, .. } => {
             let _ = reply.send(Err(err()));
