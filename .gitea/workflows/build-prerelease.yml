@@ -363,28 +363,28 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # The CUDA image may or may not ship sccache — probe instead of
-      # assuming, so a missing binary degrades to an uncached build
-      # rather than failing cargo at `sccache rustc -vV`. The cache
-      # covers the ~600-crate host-side dep tree (the bulk of the
-      # 10-14 min build); candle-kernels' nvcc output is a build-script
-      # artifact sccache can't cache, but rustc compilations are shared
-      # across all three flavours.
-      - name: Enable sccache when available
+      # Escalation mirrors the lint/test jobs: retry → restart the
+      # sccache server → final attempt uncached.
+      #
+      # The CUDA image may or may not ship sccache — probe inside this
+      # step (NOT via GITHUB_ENV from a prior step, which this runner
+      # does not propagate; observed: probe step said "enabled", build
+      # ran unwrapped, server stats showed 4 compile requests). A
+      # missing binary degrades to an uncached build rather than
+      # failing cargo at `sccache rustc -vV`. The cache covers the
+      # ~600-crate host-side dep tree (the bulk of the 10-14 min
+      # build); rustc compilations are shared across all three
+      # flavours, so even one run seeds the next.
+      - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
+          set -ux
           if command -v sccache >/dev/null 2>&1; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            export RUSTC_WRAPPER=sccache
             sccache --start-server 2>/dev/null || true
             echo "sccache enabled"
           else
             echo "sccache not on PATH — building uncached"
           fi
-
-      # Escalation mirrors the lint/test jobs: retry → restart the
-      # sccache server → final attempt uncached.
-      - name: Build neuron with CUDA (${{ matrix.flavour }})
-        run: |
-          set -ux
           export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
           export LD_LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LIBRARY_PATH:-}"

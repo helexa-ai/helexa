@@ -139,17 +139,18 @@ jobs:
       CUDA_COMPUTE_CAP: "86"
     steps:
       - uses: actions/checkout@v4
-      - name: Enable sccache when available
+      # sccache is probed inside this step (NOT via GITHUB_ENV from a
+      # prior step — this runner doesn't propagate it; see
+      # build-prerelease.yml for the observed failure).
+      - name: cargo check --features cuda (with sccache escalation)
         run: |
           if command -v sccache >/dev/null 2>&1; then
-            echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
+            export RUSTC_WRAPPER=sccache
             sccache --start-server 2>/dev/null || true
             echo "sccache enabled"
           else
             echo "sccache not on PATH — building uncached"
           fi
-      - name: cargo check --features cuda (with sccache escalation)
-        run: |
           # act launches the step shell without /etc/profile, so the
           # gitea_runner user's inherited PATH lacks /usr/local/cuda-13.0/bin.
           # cudarc's build.rs:157 shells out to `nvcc --version` (because
