@@ -50,6 +50,7 @@ fn fake_discovery() -> DiscoveryResponse {
             },
         ],
         harnesses: vec![],
+        cuda_unavailable_reason: None,
     }
 }
 
@@ -103,6 +104,7 @@ async fn test_discovery_no_gpus() {
         driver_version: None,
         devices: vec![],
         harnesses: vec![],
+        cuda_unavailable_reason: None,
     };
     let url = spawn_neuron(disc).await;
 
@@ -486,4 +488,75 @@ async fn test_responses_streaming_model_not_loaded() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_driver_mismatch_rejects_load_and_rides_discovery() {
+    // #19: a host with the driver/library mismatch advertises the
+    // reason on /discovery (so cortex routes around it) and fast-
+    // rejects /models/load with 503 + the actionable message instead
+    // of dying minutes later inside cuInit/NCCL.
+    let reason = "host NVIDIA driver/library mismatch (userspace NVML 580.159 vs loaded \
+                  kernel module 580.159.03) — reboot the host to reload the kernel module; \
+                  all CUDA inference is unavailable until then";
+    let disc = DiscoveryResponse {
+        hostname: "mismatched".into(),
+        os: "Linux".into(),
+        kernel: "6.19.0".into(),
+        cuda_version: Some("13.0".into()),
+        driver_version: None,
+        devices: vec![],
+        harnesses: vec!["candle".into()],
+        cuda_unavailable_reason: Some(reason.into()),
+    };
+    let url = spawn_neuron(disc).await;
+    let client = reqwest::Client::new();
+
+    let body: serde_json::Value = client
+        .get(format!("{url}/discovery"))
+        .send()
+        .await
+        .expect("discovery request")
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(body["cuda_unavailable_reason"], reason);
+
+    let resp = client
+        .post(format!("{url}/models/load"))
+        .json(&serde_json::json!({
+            "model_id": "Qwen/Qwen3.6-27B",
+            "harness": "candle",
+            "quant": "q6k",
+            "tensor_parallel": 2
+        }))
+        .send()
+        .await
+        .expect("load request");
+    assert_eq!(resp.status(), 503);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["code"], "cuda_unavailable");
+    assert!(
+        body["error"].as_str().unwrap().contains("reboot the host"),
+        "error must be operator-actionable: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_healthy_discovery_omits_cuda_unavailable_reason() {
+    // No false positives: the field must be absent (not null) from the
+    // wire format on healthy hosts.
+    let url = spawn_neuron(fake_discovery()).await;
+    let body: serde_json::Value = reqwest::Client::new()
+        .get(format!("{url}/discovery"))
+        .send()
+        .await
+        .expect("discovery request")
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        body.get("cuda_unavailable_reason").is_none(),
+        "healthy host must omit the field entirely: {body}"
+    );
 }

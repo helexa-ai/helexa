@@ -22,6 +22,17 @@ pub struct DiscoveryResponse {
     pub driver_version: Option<String>,
     pub devices: Vec<DeviceInfo>,
     pub harnesses: Vec<String>,
+    /// Set when the host has an NVIDIA stack that is currently
+    /// unusable — specifically the userspace↔kernel-module version
+    /// skew after an un-rebooted driver update ("Driver/library
+    /// version mismatch"), where every CUDA call including nvidia-smi
+    /// fails (#19). `None` on healthy hosts AND on hosts with no
+    /// NVIDIA stack at all (CPU-only is not an error). Carries an
+    /// operator-actionable description; cortex can read it to route
+    /// around the node instead of cold-loading into a guaranteed
+    /// failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cuda_unavailable_reason: Option<String>,
 }
 
 /// Runtime health metrics for a single GPU device.
