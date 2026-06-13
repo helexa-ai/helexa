@@ -78,6 +78,27 @@ async fn test_discovery_endpoint() {
 }
 
 #[tokio::test]
+async fn test_version_endpoint() {
+    let url = spawn_neuron(fake_discovery()).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("{url}/version"))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.status(), 200);
+
+    // Deserialize into the shared type to lock the wire contract.
+    let body: cortex_core::build_info::BuildInfo = resp.json().await.unwrap();
+    assert_eq!(body.package_version, env!("CARGO_PKG_VERSION"));
+    // git_sha is always present — a real short SHA in a git checkout, or
+    // the literal "unknown" in a tarball build. Either way, non-empty.
+    assert!(!body.git_sha.is_empty());
+}
+
+#[tokio::test]
 async fn test_health_endpoint() {
     let url = spawn_neuron(fake_discovery()).await;
 

@@ -20,6 +20,7 @@ use tracing_subscriber::EnvFilter;
 #[command(name = "neuron")]
 #[command(about = "Per-node daemon for cortex inference clusters")]
 #[command(version)]
+#[command(long_version = neuron::version::long_version_static())]
 struct Args {
     /// Run in tensor-parallel worker mode. The leader process spawns
     /// one of these per non-zero NCCL rank and drives it over

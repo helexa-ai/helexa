@@ -64,6 +64,7 @@ jobs:
       commit_timestamp: ${{ steps.info.outputs.commit_timestamp }}
       build_cortex: ${{ steps.changes.outputs.build_cortex }}
       build_neuron: ${{ steps.changes.outputs.build_neuron }}
+      build_bench: ${{ steps.changes.outputs.build_bench }}
       check_rust: ${{ steps.changes.outputs.check_rust }}
     steps:
       - uses: actions/checkout@v4
@@ -101,6 +102,7 @@ jobs:
           # everything — predictable when building odd refs.
           BUILD_CORTEX=true
           BUILD_NEURON=true
+          BUILD_BENCH=true
           CHECK_RUST=true
 
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -145,15 +147,18 @@ jobs:
               # affect both; this workflow file affects both.
               NEURON_RE='^crates/neuron/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-neuron-prerelease\.spec$|^data/neuron|^neuron\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
               CORTEX_RE='^crates/cortex-gateway/|^crates/cortex-cli/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/cortex-prerelease\.spec$|^data/cortex|^cortex\.example\.toml$|^models\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
+              BENCH_RE='^crates/helexa-bench/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-bench-prerelease\.spec$|^data/helexa-bench|^helexa-bench\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
               # Any Rust change (incl. crates not packaged here, e.g.
               # helexa-acp) still needs lint+test on main.
               RUST_RE='\.rs$|^crates/|Cargo\.toml$|^Cargo\.lock$'
 
               CORTEX_BASE=$(base_for cortex)
               NEURON_BASE=$(base_for helexa-neuron-blackwell)
+              BENCH_BASE=$(base_for helexa-bench)
               BUILD_CORTEX=$(decide "$CORTEX_BASE" "$CORTEX_RE")
               BUILD_NEURON=$(decide "$NEURON_BASE" "$NEURON_RE")
-              if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ]; then
+              BUILD_BENCH=$(decide "$BENCH_BASE" "$BENCH_RE")
+              if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ] || [ "$BUILD_BENCH" = "true" ]; then
                 CHECK_RUST=true
               else
                 CHECK_RUST=$(decide "$CORTEX_BASE" "$RUST_RE")
@@ -163,8 +168,9 @@ jobs:
 
           echo "build_cortex=${BUILD_CORTEX}" >> "$GITHUB_OUTPUT"
           echo "build_neuron=${BUILD_NEURON}" >> "$GITHUB_OUTPUT"
+          echo "build_bench=${BUILD_BENCH}" >> "$GITHUB_OUTPUT"
           echo "check_rust=${CHECK_RUST}" >> "$GITHUB_OUTPUT"
-          echo "### change detection: build_cortex=${BUILD_CORTEX} build_neuron=${BUILD_NEURON} check_rust=${CHECK_RUST}"
+          echo "### change detection: build_cortex=${BUILD_CORTEX} build_neuron=${BUILD_NEURON} build_bench=${BUILD_BENCH} check_rust=${CHECK_RUST}"
 
   # fmt + clippy + test moved here from ci.yml for main pushes so the
   # two workflows stop queueing against each other (ci.yml's checks
@@ -321,6 +327,64 @@ jobs:
           path: artifacts/cortex
           retention-days: 1
 
+  build-bench:
+    name: Build helexa-bench binary
+    needs: prepare
+    if: needs.prepare.outputs.build_bench == 'true'
+    # Pure-Rust, non-CUDA binary — same runner as cortex.
+    runs-on: rust
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Build helexa-bench (release, with sccache escalation)
+        run: |
+          # Stamp the SHA helexa-bench records as bench_sha against every
+          # run (option_env! in sweep.rs reads it at compile time).
+          export HELEXA_BUILD_SHA="$(git rev-parse HEAD)"
+          for attempt in 1 2 3; do
+            echo "::group::build attempt ${attempt}"
+            if [ "${attempt}" -eq 3 ]; then
+              echo "final attempt: building without sccache"
+              export RUSTC_WRAPPER=""
+            fi
+            if cargo build --release -p helexa-bench; then
+              echo "::endgroup::"
+              sccache --show-stats || true
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "build failed on attempt ${attempt}"
+            if [ "${attempt}" -eq 1 ]; then
+              sccache --stop-server || true
+              sccache --start-server || true
+            fi
+            sleep 5
+          done
+          echo "build failed after 3 attempts"
+          exit 1
+
+      - name: Stage binary
+        run: |
+          mkdir --parents artifacts
+          cp target/release/helexa-bench artifacts/helexa-bench
+          ./artifacts/helexa-bench --version || true
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: bench-fc43
+          path: artifacts/helexa-bench
+          retention-days: 1
+
   build-neuron:
     name: Build neuron-${{ matrix.flavour }}
     needs: prepare
@@ -388,6 +452,11 @@ jobs:
           export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
           export LD_LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LIBRARY_PATH:-}"
+          # Pin the build SHA neuron reports from GET /version. The git
+          # fallback in build.rs would also work on a full checkout, but
+          # injecting the exact checked-out commit is unambiguous under
+          # shallow/detached states and makes the artifact self-describing.
+          export HELEXA_BUILD_SHA="$(git rev-parse HEAD)"
           for attempt in 1 2 3; do
             echo "::group::build attempt ${attempt}"
             if [ "${attempt}" -eq 3 ]; then
@@ -464,6 +533,42 @@ jobs:
           path: ~/rpmbuild/RPMS/x86_64/*.rpm
           retention-days: 7
 
+  package-bench:
+    name: Package helexa-bench RPM
+    needs: [prepare, build-bench]
+    runs-on: rpm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: bench-fc43
+          path: artifacts/
+
+      - name: Build RPM
+        run: |
+          set -eux
+          rm -f ~/.rpmmacros
+          rpmdev-setuptree
+          cp artifacts/helexa-bench ~/rpmbuild/SOURCES/
+          cp data/helexa-bench.service ~/rpmbuild/SOURCES/
+          cp data/helexa-bench-sysusers.conf ~/rpmbuild/SOURCES/
+          cp helexa-bench.example.toml ~/rpmbuild/SOURCES/
+          cp LICENSE ~/rpmbuild/SOURCES/
+          rpmbuild -bb rpm/helexa-bench-prerelease.spec \
+            --define "bench_version ${{ needs.prepare.outputs.version }}" \
+            --define "bench_prerelease ${{ needs.prepare.outputs.release }}" \
+            --undefine dist \
+            --define "dist .fc43"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rpm-bench-fc43
+          path: ~/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 7
+
   package-neuron:
     name: Package helexa-neuron-${{ matrix.flavour }} RPM
     needs: [prepare, build-neuron]
@@ -511,19 +616,20 @@ jobs:
 
   publish:
     name: Publish to rpm.lair.cafe (unstable)
-    needs: [lint, test, package-cortex, package-neuron]
+    needs: [lint, test, package-cortex, package-neuron, package-bench]
     # Runs when at least one package was built and nothing failed.
     # lint/test may be skipped (docs-only refs never get here because
-    # no packages build), but a real failure in either blocks the
+    # no packages build), but a real failure in any blocks the
     # fleet from receiving the RPMs.
     if: >-
       ${{
         !cancelled()
         && (needs.lint.result == 'success' || needs.lint.result == 'skipped')
         && (needs.test.result == 'success' || needs.test.result == 'skipped')
-        && (needs.package-cortex.result == 'success' || needs.package-neuron.result == 'success')
+        && (needs.package-cortex.result == 'success' || needs.package-neuron.result == 'success' || needs.package-bench.result == 'success')
         && needs.package-cortex.result != 'failure'
         && needs.package-neuron.result != 'failure'
+        && needs.package-bench.result != 'failure'
       }}
     runs-on: rpm
     concurrency:

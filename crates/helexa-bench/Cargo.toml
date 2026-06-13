@@ -1,0 +1,38 @@
+[package]
+name = "helexa-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "helexa-bench"
+path = "src/main.rs"
+
+[dependencies]
+cortex-core = { workspace = true }
+
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+figment = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+tokio-stream = { workspace = true }
+eventsource-stream = { workspace = true }
+
+# SQLite system-of-record. `bundled` compiles SQLite from source so the
+# binary has no libsqlite3 runtime dependency — matches the project's
+# single-static-binary packaging.
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+[dev-dependencies]
+axum = { workspace = true }
+# Jail (isolated cwd + env) for config tests.
+figment = { workspace = true, features = ["test"] }

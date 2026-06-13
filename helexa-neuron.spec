@@ -54,6 +54,11 @@ directory = "vendor"
 EOF
 
 %build
+# Source tarballs carry no .git, so build.rs can't recover the commit on
+# its own — it would report "unknown" from GET /version. Pass the commit
+# in with `rpmbuild --define "helexa_commit <sha>"`; absent that, it
+# degrades to "unknown" rather than failing the build.
+export HELEXA_BUILD_SHA="%{?helexa_commit}"
 cargo build --release -p neuron
 
 %install
