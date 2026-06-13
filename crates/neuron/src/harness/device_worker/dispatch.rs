@@ -1059,21 +1059,10 @@ fn forward_logits_with_images(
         anyhow::bail!("ForwardLogitsWithImages dispatched with zero images");
     }
 
-    let arch = state.models.get_mut(&handle).ok_or_else(|| {
-        anyhow::anyhow!("ForwardLogitsWithImages: no model for handle {}", handle.0)
-    })?;
-
-    // pixel→LM-grid divisor (patch×merge) for this tower; each image's
-    // LM grid is (h/factor, w/factor) (#14 dynamic resolution).
-    let factor = arch.vision_grid_factor().ok_or_else(|| {
-        anyhow::anyhow!("ForwardLogitsWithImages: loaded model has no vision tower")
-    })?;
-
-    // Encode every image on the worker's device, collecting per-image
-    // post-merger embeddings as device-resident tensors plus their LM
-    // grids (for the interleaved-M-RoPE position ids).
-    let mut per_image: Vec<Tensor> = Vec::with_capacity(images.len());
-    let mut grids: Vec<(usize, usize)> = Vec::with_capacity(images.len());
+    // Reconstruct the preprocessed pixels into device-resident
+    // `(C, H, W)` tensors first (immutable `state.device` borrow), then
+    // take the `&mut` model borrow for the chunked prefill below.
+    let mut image_pixels: Vec<Tensor> = Vec::with_capacity(images.len());
     for (idx, img) in images.into_iter().enumerate() {
         anyhow::ensure!(
             img.pixels.len() == img.c * img.h * img.w,
@@ -1083,20 +1072,26 @@ fn forward_logits_with_images(
             img.h,
             img.w,
         );
-        grids.push((img.h / factor, img.w / factor));
-        let image = Tensor::from_vec(img.pixels, (img.c, img.h, img.w), &state.device)?;
-        let embed = arch
-            .encode_image(&image)
-            .with_context(|| format!("encode image[{idx}]"))?;
-        per_image.push(embed);
+        image_pixels.push(Tensor::from_vec(
+            img.pixels,
+            (img.c, img.h, img.w),
+            &state.device,
+        )?);
     }
-    // Concatenate per-image embeddings along the patch axis →
-    // (sum_of_patches, hidden). `Tensor::cat` keeps the result
-    // device-resident.
-    let image_embeds = Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)?;
 
-    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
-    let logits = arch.forward_with_vision(&input, offset, &image_embeds, image_token_id, &grids)?;
+    let chunk_size = crate::harness::candle::prefill_chunk_tokens();
+    let arch = state.models.get_mut(&handle).ok_or_else(|| {
+        anyhow::anyhow!("ForwardLogitsWithImages: no model for handle {}", handle.0)
+    })?;
+
+    // Chunked image prefill (#18): encode once, walk the prompt in
+    // `chunk_size` windows splicing per-chunk image-pad rows — parity
+    // with the TP path so a long single-GPU vision context serves
+    // instead of single-shot OOMing. Returns the final chunk's
+    // `[vocab]` logits.
+    let logits = arch
+        .prefill_with_images_chunked(tokens, offset, &image_pixels, image_token_id, chunk_size)
+        .context("chunked vision prefill")?;
     let values = logits
         .to_dtype(DType::F32)?
         .flatten_all()?

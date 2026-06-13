@@ -514,6 +514,35 @@ impl ModelArch {
         squeeze_to_vocab(&raw)
     }
 
+    /// Chunked image prefill (#18) — encode once, walk the prompt in
+    /// `chunk_size` windows splicing per-chunk image-pad rows, return
+    /// the final chunk's `[vocab]` logits. Bounds activation memory to
+    /// one chunk so a long single-GPU vision context serves instead of
+    /// single-shot OOMing. Only `Qwen3_5Dense` has a vision tower.
+    pub fn prefill_with_images_chunked(
+        &mut self,
+        tokens: &[u32],
+        offset: usize,
+        image_pixels: &[Tensor],
+        image_token_id: u32,
+        chunk_size: usize,
+    ) -> Result<Tensor> {
+        let raw = match self {
+            ModelArch::Qwen3_5Dense(m) => m.prefill_with_images_chunked(
+                tokens,
+                offset,
+                image_pixels,
+                image_token_id,
+                chunk_size,
+            )?,
+            other => anyhow::bail!(
+                "prefill_with_images_chunked: architecture {} has no vision tower",
+                std::any::type_name_of_val(other)
+            ),
+        };
+        squeeze_to_vocab(&raw)
+    }
+
     /// `patch_size × spatial_merge_size` for the loaded vision tower —
     /// divides a resized pixel dim into LM-grid units (an image of
     /// resized `(h, w)` yields the LM grid `(h/factor, w/factor)`).
@@ -1004,7 +1033,9 @@ fn env_u64(name: &str, default: u64) -> u64 {
 /// hidden instead of prompt × layers × hidden. The default (512) keeps
 /// activation peaks under ~1 GiB on a 27B Qwen-class model while
 /// keeping the per-step overhead negligible vs. one big prefill.
-fn prefill_chunk_tokens() -> usize {
+/// `pub(crate)` so the device-worker dispatch handler can chunk the
+/// single-GPU vision prefill (#18) with the same policy.
+pub(crate) fn prefill_chunk_tokens() -> usize {
     env_usize("NEURON_PREFILL_CHUNK_TOKENS", 512)
 }
 

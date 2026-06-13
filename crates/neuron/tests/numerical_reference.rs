@@ -294,4 +294,46 @@ fn vision_tower_and_logits_match_reference() {
     assert_eq!(cl.argmax_ours, cl.argmax_ref, "argmax token diverged");
     assert!(cl.cosine > 0.9995, "logits cosine {:.6} too low", cl.cosine);
     assert!(cl.max_abs < 0.1, "max abs diff {:.4} too high", cl.max_abs);
+
+    // #18: the chunked single-GPU vision prefill must produce the same
+    // logits as the single-shot path. chunk_size 64 over a 217-token
+    // prompt forces 4 chunks, and the ~196-token image-pad run spans
+    // them — exercising the per-chunk splice + img_off accounting and
+    // the GDN/KV cross-chunk state carry. Comparing to BOTH the
+    // single-shot result and the HF reference pins chunked == single-
+    // shot == reference. Re-encodes the image internally (same tower),
+    // so it takes pixel tensors, not the pre-encoded `embeds`.
+    model.clear_kv_cache();
+    let chunked = model
+        .prefill_with_images_chunked(
+            manifest.token_ids.as_slice(),
+            0,
+            std::slice::from_ref(&image),
+            image_token_id,
+            64,
+        )
+        .unwrap();
+    let chunked_logits: Vec<f32> = chunked
+        .to_dtype(DType::F32)
+        .unwrap()
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+    let cc = compare(&chunked_logits, &ours_logits);
+    let cr = compare(&chunked_logits, &ref_logits);
+    eprintln!(
+        "vision chunked(64): vs single-shot max_abs={:.4} cosine={:.6}; vs ref argmax={}",
+        cc.max_abs, cc.cosine, cr.argmax_ours
+    );
+    assert_eq!(
+        cc.argmax_ours, cl.argmax_ours,
+        "chunked vision argmax diverged from single-shot"
+    );
+    assert!(
+        cc.cosine > 0.99995,
+        "chunked vs single-shot cosine {:.6} too low — chunking changed the math",
+        cc.cosine
+    );
+    assert_eq!(cr.argmax_ours, cr.argmax_ref, "chunked argmax vs reference");
 }
