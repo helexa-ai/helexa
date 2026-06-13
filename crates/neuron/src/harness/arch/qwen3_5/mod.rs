@@ -441,7 +441,34 @@ impl Qwen3_5Model {
     }
 
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
-        self.forward_inner(input, offset, None, None, &[])
+        self.forward_inner(input, offset, None, None, &[], None)
+    }
+
+    /// Forward for a vision-prefill chunk: optional image-embedding
+    /// splice plus explicit interleaved-M-RoPE `position_ids` (the
+    /// chunk's slice of the full prompt's 3D positions). Mirrors the TP
+    /// `TpQwen3_5Model::forward_with_positions` — used by
+    /// `Qwen3_5ForCausalLM::prefill_with_images_chunked`, which computes
+    /// the positions once over the whole prompt and slices them per
+    /// chunk so the position counters stay consistent across chunk
+    /// boundaries (an image compresses the position space, so per-chunk
+    /// offset arithmetic would be wrong).
+    pub fn forward_with_positions(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+        position_ids: &Tensor,
+        image_embeds: Option<&Tensor>,
+        image_token_id: Option<u32>,
+    ) -> candle_core::Result<Tensor> {
+        self.forward_inner(
+            input,
+            offset,
+            image_embeds,
+            image_token_id,
+            &[],
+            Some(position_ids),
+        )
     }
 
     /// Forward with image-embedding splice. Stage B of the vision plan.
@@ -477,9 +504,16 @@ impl Qwen3_5Model {
             Some(image_embeds),
             Some(image_token_id),
             grids,
+            None,
         )
     }
 
+    /// Shared forward. Splices image embeddings at `image_token_id`
+    /// positions when present, then builds the rotary cos/sin, in
+    /// precedence order: explicit `position_ids` (interleaved M-RoPE,
+    /// the chunked-vision path that slices a once-computed position
+    /// tensor) > internal M-RoPE from `grids` (single-shot vision) >
+    /// plain positions at `offset + rope_delta` (text / decode).
     fn forward_inner(
         &mut self,
         input: &Tensor,
@@ -487,19 +521,15 @@ impl Qwen3_5Model {
         image_embeds: Option<&Tensor>,
         image_token_id: Option<u32>,
         grids: &[(usize, usize)],
+        position_ids: Option<&Tensor>,
     ) -> candle_core::Result<Tensor> {
         let (b, l) = input.dims2()?;
         let mut h = self.embed_tokens.forward(input)?;
 
-        // Vision path: splice image embeddings at `image_token_id`
-        // positions and build interleaved M-RoPE cos/sin so image tokens
-        // carry their 2D (lm_gh × lm_gw) grid coordinates. Text / decode skip the
-        // device→host id copy entirely and take the plain-RoPE fast path
-        // — bit-for-bit the pre-M-RoPE behaviour when `rope_delta == 0`.
-        let (cos, sin) = if let (Some(img), Some(tok_id)) = (image_embeds, image_token_id) {
-            // Token ids on CPU — reused for the splice + position ids.
+        // Splice image embeddings at `image_token_id` positions, when
+        // this forward carries any. Independent of how cos/sin is built.
+        if let (Some(img), Some(tok_id)) = (image_embeds, image_token_id) {
             let ids: Vec<u32> = input.flatten_all()?.to_vec1()?;
-
             let mut positions: Vec<u32> = Vec::with_capacity(img.dim(0)?);
             for (idx, id) in ids.iter().enumerate() {
                 if *id == tok_id {
@@ -509,9 +539,9 @@ impl Qwen3_5Model {
             let n_img_tokens = img.dim(0)?;
             if positions.len() != n_img_tokens {
                 candle_core::bail!(
-                    "forward_with_vision: prompt has {} image-token positions but \
-                     image_embeds carries {} tokens — call build_prompt_for_request to \
-                     ensure the per-image patch-count expansion has been applied",
+                    "forward_with_vision: chunk has {} image-token positions but \
+                     image_embeds carries {} tokens — per-image patch-count expansion \
+                     / chunk slicing mismatch",
                     positions.len(),
                     n_img_tokens,
                 );
@@ -522,7 +552,20 @@ impl Qwen3_5Model {
                 let img = img.to_dtype(self.dtype)?;
                 h = splice_runs(&h, &img, &positions)?;
             }
+        }
 
+        // Build interleaved M-RoPE cos/sin so image tokens carry their
+        // 2D (lm_gh × lm_gw) grid coordinates. Text / decode take the
+        // plain-RoPE fast path — bit-for-bit the pre-M-RoPE behaviour
+        // when `rope_delta == 0`.
+        let (cos, sin) = if let Some(pos) = position_ids {
+            // Pre-computed positions sliced for this chunk — the splice
+            // above already advanced `rope_delta`'s effect into `pos`.
+            self.rotary.mrope_cos_sin(pos)?
+        } else if let Some(tok_id) = image_token_id {
+            // Single-shot vision: compute the whole prompt's M-RoPE here
+            // and stash `rope_delta` for the decode that follows.
+            let ids: Vec<u32> = input.flatten_all()?.to_vec1()?;
             let (text, height, width, delta) = rope::get_rope_index(&ids, tok_id, grids)
                 .map_err(|e| candle_core::Error::Msg(format!("get_rope_index: {e}")))?;
             self.rope_delta = delta;
@@ -650,6 +693,157 @@ impl Qwen3_5ForCausalLM {
             self.base
                 .forward_with_vision(input, offset, image_embeds, image_token_id, grids)?;
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
+    /// Forward for a vision-prefill chunk: explicit M-RoPE positions +
+    /// optional image splice. Mirrors `forward_with_vision` but routes
+    /// through `Qwen3_5Model::forward_with_positions`. Used by
+    /// [`Self::prefill_with_images_chunked`].
+    pub fn forward_with_positions(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+        position_ids: &Tensor,
+        image_embeds: Option<&Tensor>,
+        image_token_id: Option<u32>,
+    ) -> candle_core::Result<Tensor> {
+        let (_, l) = input.dims2()?;
+        let hidden = self.base.forward_with_positions(
+            input,
+            offset,
+            position_ids,
+            image_embeds,
+            image_token_id,
+        )?;
+        hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
+    /// Encode every preprocessed `(C, H, W)` image once through the
+    /// vision tower and concatenate along the patch axis →
+    /// `(sum_patches, hidden)`. Done once per prefill, not per chunk.
+    fn encode_images_concat(&self, image_pixels: &[Tensor]) -> candle_core::Result<Tensor> {
+        let tower = self.vision.as_ref().ok_or_else(|| {
+            candle_core::Error::Msg(
+                "encode_images_concat: loaded without a vision tower \
+                 (config.json::vision_config absent or weights missing)"
+                    .into(),
+            )
+        })?;
+        let mut per_image = Vec::with_capacity(image_pixels.len());
+        for (idx, img) in image_pixels.iter().enumerate() {
+            let embed = tower
+                .forward(img)
+                .map_err(|e| candle_core::Error::Msg(format!("encode image[{idx}]: {e:#}")))?;
+            per_image.push(embed);
+        }
+        Tensor::cat(&per_image.iter().collect::<Vec<_>>(), 0)
+    }
+
+    /// Chunked image prefill for the single-GPU path (#18) — parity with
+    /// `TpQwen3_5ForCausalLM::prefill_with_images_chunked`. Encodes the
+    /// image(s) once, then walks the (pre-expanded) prompt in
+    /// `chunk_size`-token windows — exactly like the text
+    /// `chunked_prefill_*` paths — splicing the patch embeddings into
+    /// whichever chunk(s) carry `<|image_pad|>` positions. Activation
+    /// memory is bounded by the chunk, not the full prompt, so a long
+    /// vision context no longer single-shot-OOMs.
+    ///
+    /// The KV cache (and GDN recurrent state) accumulate across chunks
+    /// via the growing offset — the same per-chunk associativity the
+    /// text chunked prefill and prefix cache (#11/#23) rely on. Only the
+    /// final chunk's last-position logits are returned; intermediate
+    /// chunks just populate the cache. The caller is responsible for
+    /// clearing the cache first.
+    ///
+    /// `base_offset` is the KV position the prefill starts at (0 for a
+    /// fresh request). `image_pixels` are device-resident `(C, H, W)`
+    /// tensors; grids and the interleaved-M-RoPE position ids are
+    /// recomputed here so an image's position compression is consistent
+    /// across chunk boundaries.
+    pub fn prefill_with_images_chunked(
+        &mut self,
+        tokens: &[u32],
+        base_offset: usize,
+        image_pixels: &[Tensor],
+        image_token_id: u32,
+        chunk_size: usize,
+    ) -> candle_core::Result<Tensor> {
+        if image_pixels.is_empty() {
+            candle_core::bail!("prefill_with_images_chunked: called with zero images");
+        }
+        if tokens.is_empty() {
+            candle_core::bail!("prefill_with_images_chunked: empty prompt");
+        }
+        let chunk_size = chunk_size.max(1);
+        let device = self.base.device.clone();
+
+        let image_embeds = self.encode_images_concat(image_pixels)?;
+
+        // Each image's LM grid (lm_gh, lm_gw) = (h/factor, w/factor),
+        // factor = patch×merge — recomputed from the pixel tensors (#14
+        // dynamic resolution).
+        let factor = self
+            .vision
+            .as_ref()
+            .map(|v| {
+                let c = v.config();
+                c.patch_size * c.spatial_merge_size
+            })
+            .ok_or_else(|| {
+                candle_core::Error::Msg(
+                    "prefill_with_images_chunked: loaded without a vision tower".into(),
+                )
+            })?;
+        let grids: Vec<(usize, usize)> = image_pixels
+            .iter()
+            .map(|t| {
+                let (_, h, w) = t.dims3()?;
+                Ok::<(usize, usize), candle_core::Error>((h / factor, w / factor))
+            })
+            .collect::<candle_core::Result<Vec<_>>>()?;
+
+        // Interleaved-M-RoPE 3D positions for the whole prompt, computed
+        // once and sliced per chunk so image tokens get their grid
+        // coordinates and text after an image resumes from the
+        // compressed counter. `rope_delta` is stashed on the base model
+        // for the decode that follows this prefill.
+        let (text, height, width, delta) = rope::get_rope_index(tokens, image_token_id, &grids)
+            .map_err(|e| candle_core::Error::Msg(format!("get_rope_index: {e}")))?;
+        self.base.rope_delta = delta;
+        let full_pos = rope::mrope_position_tensor(&text, &height, &width, &device)?;
+
+        let mut last_logits: Option<Tensor> = None;
+        // Rows of `image_embeds` already spliced by earlier chunks. The
+        // `<|image_pad|>` run is contiguous, so chunks consume embedding
+        // rows in order.
+        let mut img_off = 0usize;
+        let mut start = 0usize;
+        while start < tokens.len() {
+            let end = (start + chunk_size).min(tokens.len());
+            let chunk = &tokens[start..end];
+            let input = Tensor::new(chunk, &device)?.unsqueeze(0)?;
+            let pos_slice = full_pos.narrow(1, start, end - start)?;
+            let n_here = chunk.iter().filter(|&&t| t == image_token_id).count();
+            let logits = if n_here == 0 {
+                self.forward_with_positions(&input, base_offset + start, &pos_slice, None, None)?
+            } else {
+                // Splice the next `n_here` patch rows at this chunk's
+                // local image-pad positions.
+                let rows = image_embeds.narrow(0, img_off, n_here)?;
+                img_off += n_here;
+                self.forward_with_positions(
+                    &input,
+                    base_offset + start,
+                    &pos_slice,
+                    Some(&rows),
+                    Some(image_token_id),
+                )?
+            };
+            last_logits = Some(logits);
+            start = end;
+        }
+        last_logits
+            .ok_or_else(|| candle_core::Error::Msg("prefill_with_images_chunked: no chunks".into()))
     }
 
     pub fn clear_kv_cache(&mut self) {
