@@ -764,3 +764,39 @@ Landed in four PRs:
   from Phases 2/3 deleted; `SendComm` newtype no longer needed in the
   load path. `grep -rn spawn_blocking crates/neuron/src/harness/`
   returns only deliberate CPU-fallback hits after this PR.
+
+## 2026-06-13 addendum: build metadata + helexa-bench
+
+Two coupled additions so fleet performance can be tracked automatically
+across neuron updates instead of by hand-running `script/bench.py` and
+editing `doc/benchmarks.md`.
+
+**neuron build metadata + `GET /version`.** neuron's `build.rs` now also
+captures build identity (`HELEXA_GIT_SHA` — preferring a CI/RPM-injected
+`HELEXA_BUILD_SHA`, falling back to git, else `unknown` — plus dirty
+flag, build timestamp, rustc version, profile, enabled cargo features,
+and a best-effort `candle-core` version from `Cargo.lock`). These are
+exposed as `cortex_core::build_info::BuildInfo` (new module) from a new
+`GET /version` endpoint (`neuron/src/version.rs`, wired in `api.rs`) and
+in clap's `--version` long form. The SHA is injected in CI
+(`build-prerelease.yml` build-neuron step: `export HELEXA_BUILD_SHA=$(git
+rev-parse HEAD)`) and via `--define helexa_commit` in the source-build
+spec, so tarball-built RPMs report the real SHA. `/version` is now the
+canonical "which build is live" probe (supersedes the per-host RPM-sha
+check in the fleet-validation flow).
+
+**`crates/helexa-bench`** — a new binary: a continuous, version-aware
+benchmark harness (one systemd unit, typically on the metrics host). It
+hits each neuron **directly** on `:13131`, exercises each **warm**
+(`status == "loaded"`) model with an extensible `Scenario` suite (phase
+1: the chat-latency family ported verbatim from `bench.py` — synthetic
+128/4096-tok prompts, `/no_think`, streamed TTFT + decode-window
+tok/s), and records each run into a SQLite system-of-record stamped with
+the neuron's full `BuildInfo`. The loop is **version-aware**: it skips
+any (target, build SHA, model, scenario) cell already at
+`samples_per_version`, so a steady fleet costs only cheap `/version` +
+`/models` polls until a new SHA ships. `helexa-bench report` regenerates
+the `benchmarks.md`-style table from the DB. `kind = "openai"` targets
+(mistral.rs/llama.cpp comparison) are scaffolded but not yet wired.
+Packaged as the `helexa-bench` RPM (prebuilt-binary spec, outbound-only
+so no firewalld service) via the same `build-prerelease.yml` pipeline.

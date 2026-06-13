@@ -1,0 +1,50 @@
+# helexa-bench — continuous, version-aware fleet benchmark harness.
+#
+# Hits each neuron directly, exercises warm models, and records every run
+# with full build/version provenance into SQLite. Once a neuron build has
+# `samples_per_version` results for a (model, scenario), later sweeps skip
+# it until a new build SHA ships — so a steady fleet costs only cheap
+# version polls.
+#
+# Env overrides: BENCH_-prefixed, `__` for nesting
+# (e.g. BENCH_BENCH__SAMPLES_PER_VERSION=10).
+
+[bench]
+# Pause between full sweeps of all targets (seconds).
+sweep_interval_secs = 1800
+# Target measured samples per (target, build SHA, model, scenario).
+samples_per_version = 5
+# Pause between successive measured iterations against one model.
+iteration_pause_secs = 2
+# Per-request timeout (seconds); generous for cold lazy-loads.
+request_timeout_secs = 600
+# SQLite system-of-record.
+db_path = "/var/lib/helexa-bench/bench.sqlite"
+
+[scenarios]
+# One chat-latency scenario is generated per size (chat:128, chat:4096).
+prompt_sizes = [128, 4096]
+max_tokens = 256
+
+# One [[targets]] block per neuron on the fleet. `kind = "neuron"` (the
+# default) gets build metadata via GET /version and warm-model discovery
+# via GET /models.
+[[targets]]
+name = "beast"
+endpoint = "http://beast.hanzalova.internal:13131"
+
+[[targets]]
+name = "benjy"
+endpoint = "http://benjy.hanzalova.internal:13131"
+
+[[targets]]
+name = "quadbrat"
+endpoint = "http://quadbrat.hanzalova.internal:13131"
+
+# Future: compare against a non-neuron OpenAI-compatible engine. `kind =
+# "openai"` skips neuron-only metadata; point `endpoint` at the /v1 base.
+# [[targets]]
+# name = "llamacpp-ref"
+# kind = "openai"
+# endpoint = "http://benjy.hanzalova.internal:8080/v1"
+# label = "llama.cpp"

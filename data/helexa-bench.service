@@ -1,0 +1,21 @@
+[Unit]
+Description=helexa-bench — continuous version-aware benchmark harness for the neuron fleet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/helexa-bench run --config /etc/helexa-bench/helexa-bench.toml
+# Long-running sweep loop; restart unconditionally if it ever exits.
+Restart=always
+RestartSec=10
+User=helexa-bench
+Group=helexa-bench
+# /var/lib/helexa-bench holds the SQLite system-of-record
+# (bench.sqlite) and is the service user's $HOME. StateDirectory makes
+# systemd create it with the right ownership on start.
+StateDirectory=helexa-bench
+StateDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

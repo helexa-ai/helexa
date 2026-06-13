@@ -41,6 +41,7 @@ pub struct NeuronState {
 /// Build the neuron API router.
 pub fn neuron_routes() -> Router<Arc<NeuronState>> {
     Router::new()
+        .route("/version", get(version_handler))
         .route("/discovery", get(discovery_handler))
         .route("/health", get(health_handler))
         .route("/models", get(list_models))
@@ -49,6 +50,14 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/{model_id}/endpoint", get(model_endpoint))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/responses", post(responses))
+}
+
+/// `GET /version` — the daemon's own build identity (git SHA, enabled
+/// features, rustc/candle versions). Static for the process lifetime, so
+/// no state is touched. This is the canonical "which build is live"
+/// probe for fleet validation and benchmark attribution.
+async fn version_handler() -> Json<cortex_core::build_info::BuildInfo> {
+    Json(crate::version::build_info())
 }
 
 async fn discovery_handler(State(state): State<Arc<NeuronState>>) -> Json<DiscoveryResponse> {

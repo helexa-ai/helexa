@@ -115,6 +115,32 @@ Append-only JSON rows (`--json`) keep a longitudinal record across
 commits; the `engine` label column makes cross-engine tables a
 concatenation, not a merge.
 
+## Automated harness (`helexa-bench`)
+
+`script/bench.py` above is the manual, ad-hoc probe (any `/v1`
+endpoint, run by hand). The `helexa-bench` crate is its continuous,
+version-aware successor: a daemon (one systemd unit, typically on the
+metrics host) that hits each neuron **directly** on `:13131`, exercises
+every **warm** model, and records each run into a SQLite
+system-of-record stamped with the neuron's full build identity — git
+SHA, enabled cargo features, rustc/candle versions — read from the new
+neuron `GET /version` endpoint.
+
+It is keyed by build SHA: a given neuron build is benchmarked only until
+it has `samples_per_version` results per (model, scenario), then skipped
+until a new SHA ships. So the table below can be regenerated
+automatically per neuron update instead of edited by hand:
+
+```sh
+helexa-bench once   --config helexa-bench.toml   # single sweep
+helexa-bench report --config helexa-bench.toml   # markdown table by SHA
+```
+
+The scenario method (synthetic 128/4096-token prompts, `/no_think`,
+streamed TTFT + decode-window tok/s) is ported verbatim from bench.py,
+so its columns stay comparable. The OpenAI-target seam for cross-engine
+comparison rows is scaffolded but not yet wired (see gaps).
+
 ## Known gaps
 
 - **No competitor baselines yet** — requires llama.cpp / Ollama

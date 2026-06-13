@@ -6,6 +6,7 @@ members = [
     "crates/cortex-cli",
     "crates/neuron",
     "crates/helexa-acp",
+    "crates/helexa-bench",
 ]
 
 [workspace.package]
