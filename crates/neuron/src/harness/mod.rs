@@ -7,6 +7,7 @@ pub mod device_worker;
 pub mod prefix_cache;
 pub mod preflight;
 pub mod preprocess;
+pub mod speculative;
 pub mod tp;
 
 use anyhow::Result;
