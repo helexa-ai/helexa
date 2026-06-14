@@ -20,6 +20,9 @@ neuron_hosts=(
     benjy.hanzalova.internal
     quadbrat.hanzalova.internal
 )
+# Bench host: runs helexa-bench (outbound-only; polls the neuron fleet).
+# Also runs Agent Zero — it's a client host, not a GPU node.
+bench_host=bob.hanzalova.internal
 
 pubkey="${HOME}/.ssh/id_gitea_ci.pub"
 if [[ ! -f "${pubkey}" ]]; then
@@ -35,7 +38,7 @@ fi
 # element into one space-joined word, which then word-splits when
 # referenced unquoted in `ssh ${host}` — and ssh interprets the second
 # hostname as the remote command. Separate quoting fixes it.
-for host in "${cortex_host}" "${neuron_hosts[@]}"; do
+for host in "${cortex_host}" "${neuron_hosts[@]}" "${bench_host}"; do
     echo "==> ${host}"
     if ! ssh "${host}" '
         set -eu
@@ -109,6 +112,29 @@ for neuron_host in "${neuron_hosts[@]}"; do
         "${repo_path}/asset/sudoers.d/neuron-host.conf"
 done
 
+install_sudoers "${bench_host}" \
+    "${repo_path}/asset/sudoers.d/bench-host.conf"
+
+# bob doesn't otherwise carry the lair-cafe RPM repo (it's a client
+# host, not a cortex/neuron node), so helexa-bench's `dnf install` in
+# deploy.yml would have nothing to install from. Enable the unstable
+# repo here, and pre-create /etc/helexa-bench so the config sync below
+# lands even before the first package install. Idempotent.
+echo "==> ${bench_host}: ensuring lair-cafe-unstable repo + config dir"
+if ! ssh "${bench_host}" '
+    set -eu
+    if dnf repolist --all 2>/dev/null | grep -q "^lair-cafe-unstable"; then
+        echo "  lair-cafe-unstable already present"
+    else
+        sudo dnf config-manager addrepo --from-repofile=https://rpm.lair.cafe/lair-cafe-unstable.repo
+        sudo dnf config-manager setopt lair-cafe-unstable.enabled=1
+        echo "  lair-cafe-unstable enabled"
+    fi
+    sudo install -d -o root -g root -m 0755 /etc/helexa-bench
+'; then
+    echo "  failed to prepare ${bench_host} for helexa-bench"
+fi
+
 # Push application config to the fleet. The deploy workflow is
 # scoped to package install + service restart; config changes ride
 # along with this script instead, since:
@@ -149,3 +175,8 @@ for neuron_host in "${neuron_hosts[@]}"; do
         "${repo_path}/asset/neuron/${short}.toml" \
         /etc/neuron/neuron.toml
 done
+
+echo "==> ${bench_host}: syncing bench config"
+sync_config "${bench_host}" \
+    "${repo_path}/asset/helexa-bench/${bench_host%%.*}.toml" \
+    /etc/helexa-bench/helexa-bench.toml

@@ -1,7 +1,8 @@
 name: deploy
 
 # Roll the freshly-published unstable RPMs onto the helexa fleet:
-# cortex on the gateway, helexa-neuron-<flavour> on each neuron host.
+# cortex on the gateway, helexa-neuron-<flavour> on each neuron host,
+# and helexa-bench on bob (the bench host).
 #
 # Triggered automatically after `build-prerelease` succeeds (by which
 # point the new RPMs are live on rpm.lair.cafe/unstable), and also
@@ -88,7 +89,9 @@ jobs:
             sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
           fi
           sudo /usr/bin/systemctl daemon-reload
-          sudo /usr/bin/systemctl start cortex.service
+          # enable --now: start the service AND enable it for boot so the
+          # fleet self-heals after a host reboot.
+          sudo /usr/bin/systemctl enable --now cortex.service
           DEPLOY
 
       # Wait for the service to either come up or wedge, then capture
@@ -164,7 +167,9 @@ jobs:
             sudo /usr/bin/dnf install --refresh --allowerasing -y "${pkg}"
           fi
           sudo /usr/bin/systemctl daemon-reload
-          sudo /usr/bin/systemctl start neuron.service
+          # enable --now: start the service AND enable it for boot so the
+          # fleet self-heals after a host reboot.
+          sudo /usr/bin/systemctl enable --now neuron.service
 
           # ── Post-deploy validation ────────────────────────────────
           # A deploy only goes green if the neuron (a) finishes loading
@@ -250,3 +255,85 @@ jobs:
           sleep 10
           ssh gitea_ci@${{ matrix.host }} \
               'journalctl --unit neuron.service -I --no-pager'
+
+  # helexa-bench is a separate package on a separate host (bob), and it
+  # only consumes the fleet's HTTP APIs — it has no deploy-ordering
+  # dependency on cortex or the neurons (the sweep loop is version-aware
+  # and picks up whatever each neuron reports whenever). So it runs
+  # alongside the cortex→neurons chain rather than after it.
+  deploy-bench:
+    runs-on: fedora-43
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              gitea_ci@bob.hanzalova.internal 'hostname -f'
+
+      # See deploy-cortex for why gating uses the publish manifest and
+      # not unprivileged `dnf check-update`.
+      - name: Deploy helexa-bench (skips when already current)
+        run: |
+          ssh gitea_ci@bob.hanzalova.internal 'bash -s' <<'DEPLOY'
+          set -eu
+          pkg=helexa-bench
+          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
+            | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          cands = [p for p in json.load(sys.stdin)["packages"] if p.get("name") == name]
+          if cands:
+              p = max(cands, key=lambda p: p.get("buildTime", 0))
+              print(p["version"] + "-" + p["release"])
+          ' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+            echo "${pkg}-${installed} already current — leaving service untouched"
+            exit 0
+          fi
+          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          if systemctl is-active --quiet helexa-bench.service; then
+            sudo /usr/bin/systemctl stop helexa-bench.service
+          fi
+          if rpm -q "${pkg}" >/dev/null 2>&1; then
+            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y helexa-bench
+          else
+            sudo /usr/bin/dnf install --refresh --allowerasing -y helexa-bench
+          fi
+          sudo /usr/bin/systemctl daemon-reload
+          # enable --now: start the service AND enable it for boot so the
+          # bench resumes collecting after a host reboot.
+          sudo /usr/bin/systemctl enable --now helexa-bench.service
+
+          # ── Post-deploy validation ────────────────────────────────
+          # Unlike a neuron, the bench has no listener to probe and no
+          # model to load — it's a continuous outbound sweep loop. The
+          # meaningful check is simply that it stays up: a bad config or
+          # a crash-on-start would leave the unit in activating/failed
+          # (Restart=always backoff) rather than active. Give it a beat,
+          # then assert active.
+          sleep 5
+          if ! systemctl is-active --quiet helexa-bench.service; then
+            echo "FAIL: helexa-bench.service is not active after start"
+            systemctl --no-pager status helexa-bench.service | head -20 || true
+            exit 1
+          fi
+          echo "helexa-bench.service active"
+          DEPLOY
+
+      # Wait for the service to either come up or wedge, then capture
+      # the latest-invocation journal. Runs even on prior failure so a
+      # failed start step still leaves a usable record in the deploy log.
+      - name: Capture helexa-bench.service startup journal
+        if: always()
+        run: |
+          sleep 10
+          ssh gitea_ci@bob.hanzalova.internal \
+              'journalctl --unit helexa-bench.service -I --no-pager'
