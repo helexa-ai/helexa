@@ -5,6 +5,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -91,6 +92,11 @@ export default function Trends() {
     [series, base],
   );
 
+  // Divider marking the boundary between the two regimes (drawn at the
+  // first live build, with baseline points to its left).
+  const firstLive = series[0]?.git_sha;
+  const showDivider = base.length > 0 && series.length > 0;
+
   if (err) return <Alert variant="danger">{err}</Alert>;
   if (!dims) return <Spinner animation="border" />;
 
@@ -132,6 +138,19 @@ export default function Trends() {
               <YAxis />
               <Tooltip />
               <Legend />
+              {showDivider && firstLive && (
+                <ReferenceLine
+                  x={firstLive}
+                  stroke="#bbb"
+                  strokeDasharray="3 3"
+                  label={{
+                    value: "bench.py → helexa-bench",
+                    position: "top",
+                    fill: "#999",
+                    fontSize: 11,
+                  }}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey="decode"
@@ -160,6 +179,19 @@ export default function Trends() {
               <YAxis />
               <Tooltip />
               <Legend />
+              {showDivider && firstLive && (
+                <ReferenceLine
+                  x={firstLive}
+                  stroke="#bbb"
+                  strokeDasharray="3 3"
+                  label={{
+                    value: "bench.py → helexa-bench",
+                    position: "top",
+                    fill: "#999",
+                    fontSize: 11,
+                  }}
+                />
+              )}
               <Line
                 type="monotone"
                 dataKey="ttft"
