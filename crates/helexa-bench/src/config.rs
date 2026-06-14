@@ -16,9 +16,33 @@ pub struct BenchConfig {
     pub bench: BenchSettings,
     #[serde(default)]
     pub scenarios: ScenarioConfig,
+    /// Read-only JSON API (consumed by the bench UI + programmatic access).
+    #[serde(default)]
+    pub api: ApiSettings,
     /// Endpoints to benchmark. At least one is required for `run`/`once`.
     #[serde(default)]
     pub targets: Vec<TargetConfig>,
+}
+
+/// The read-only HTTP API the `run` daemon (and the `serve` subcommand)
+/// exposes over the SQLite store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiSettings {
+    /// Whether to bind the API at all.
+    #[serde(default = "default_api_enabled")]
+    pub enabled: bool,
+    /// Listen address for the API.
+    #[serde(default = "default_api_listen")]
+    pub listen: String,
+}
+
+impl Default for ApiSettings {
+    fn default() -> Self {
+        ApiSettings {
+            enabled: default_api_enabled(),
+            listen: default_api_listen(),
+        }
+    }
 }
 
 /// Loop/timing knobs.
@@ -150,6 +174,12 @@ fn default_timeout() -> u64 {
 }
 fn default_db_path() -> String {
     "/var/lib/helexa-bench/bench.sqlite".to_string()
+}
+fn default_api_enabled() -> bool {
+    true
+}
+fn default_api_listen() -> String {
+    "0.0.0.0:13132".to_string()
 }
 fn default_prompt_sizes() -> Vec<u32> {
     vec![128, 4096]

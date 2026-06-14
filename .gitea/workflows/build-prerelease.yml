@@ -555,6 +555,7 @@ jobs:
           cp artifacts/helexa-bench ~/rpmbuild/SOURCES/
           cp data/helexa-bench.service ~/rpmbuild/SOURCES/
           cp data/helexa-bench-sysusers.conf ~/rpmbuild/SOURCES/
+          cp data/helexa-bench-firewalld.xml ~/rpmbuild/SOURCES/
           cp helexa-bench.example.toml ~/rpmbuild/SOURCES/
           cp LICENSE ~/rpmbuild/SOURCES/
           rpmbuild -bb rpm/helexa-bench-prerelease.spec \

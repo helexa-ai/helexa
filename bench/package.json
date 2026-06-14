@@ -1,0 +1,28 @@
+{
+  "name": "helexa-bench-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Visualisation app for helexa-bench fleet benchmark data.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.3",
+    "react": "^18.3.1",
+    "react-bootstrap": "^2.10.5",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.0"
+  }
+}

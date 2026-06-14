@@ -2,8 +2,9 @@
 #
 # Wraps a pre-built `helexa-bench` binary produced by an upstream CI job
 # and packages it for rpm.lair.cafe. The %build phase is a no-op.
-# helexa-bench is a pure-Rust, non-CUDA, outbound-only daemon (no
-# listener), so there is no firewalld service to install.
+# helexa-bench is a pure-Rust, non-CUDA daemon. It polls the neuron fleet
+# (outbound) and also serves a read-only JSON API on tcp/13132 for the
+# bench UI — hence the firewalld service.
 #
 # Required defines at rpmbuild time:
 #   bench_version    e.g. "0.1.16"
@@ -37,6 +38,9 @@ Source1:        helexa-bench.service
 Source2:        helexa-bench-sysusers.conf
 Source3:        helexa-bench.example.toml
 Source4:        LICENSE
+Source5:        helexa-bench-firewalld.xml
+
+Requires:       firewalld-filesystem
 
 ExclusiveArch:  x86_64
 
@@ -59,6 +63,7 @@ cp %{SOURCE1} .
 cp %{SOURCE2} .
 cp %{SOURCE3} .
 cp %{SOURCE4} .
+cp %{SOURCE5} .
 
 %build
 # Already built in the upstream CI build job.
@@ -67,6 +72,7 @@ cp %{SOURCE4} .
 install -Dm755 helexa-bench %{buildroot}%{_bindir}/helexa-bench
 install -Dm644 helexa-bench.service %{buildroot}%{_unitdir}/helexa-bench.service
 install -Dm644 helexa-bench-sysusers.conf %{buildroot}%{_sysusersdir}/helexa-bench.conf
+install -Dm644 helexa-bench-firewalld.xml %{buildroot}%{_prefix}/lib/firewalld/services/helexa-bench.xml
 install -dm755 %{buildroot}%{_sysconfdir}/helexa-bench
 install -Dm644 helexa-bench.example.toml %{buildroot}%{_sysconfdir}/helexa-bench/helexa-bench.toml
 
@@ -90,6 +96,7 @@ getent passwd helexa-bench >/dev/null || \
 %{_bindir}/helexa-bench
 %{_unitdir}/helexa-bench.service
 %{_sysusersdir}/helexa-bench.conf
+%{_prefix}/lib/firewalld/services/helexa-bench.xml
 %dir %{_sysconfdir}/helexa-bench
 %config(noreplace) %{_sysconfdir}/helexa-bench/helexa-bench.toml
 

@@ -313,20 +313,37 @@ jobs:
           sudo /usr/bin/systemctl enable --now helexa-bench.service
 
           # ── Post-deploy validation ────────────────────────────────
-          # Unlike a neuron, the bench has no listener to probe and no
-          # model to load — it's a continuous outbound sweep loop. The
-          # meaningful check is simply that it stays up: a bad config or
-          # a crash-on-start would leave the unit in activating/failed
-          # (Restart=always backoff) rather than active. Give it a beat,
-          # then assert active.
-          sleep 5
-          if ! systemctl is-active --quiet helexa-bench.service; then
-            echo "FAIL: helexa-bench.service is not active after start"
-            systemctl --no-pager status helexa-bench.service | head -20 || true
-            exit 1
-          fi
-          echo "helexa-bench.service active"
+          # The bench serves a read-only API on :13132 alongside the
+          # outbound sweep loop. Probe the API over localhost (bypasses
+          # firewalld) — catches a crash-on-start or a bad bind. Bail
+          # early if the unit drops out of active (Restart backoff).
+          echo "waiting for bench API on :13132"
+          deadline=$(( $(date +%s) + 30 ))
+          while :; do
+            if curl -fsS --max-time 5 http://localhost:13132/api/health >/dev/null 2>&1; then
+              echo "bench API healthy"
+              break
+            fi
+            if ! systemctl is-active --quiet helexa-bench.service; then
+              echo "FAIL: helexa-bench.service is not active"
+              systemctl --no-pager status helexa-bench.service | head -20 || true
+              exit 1
+            fi
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "FAIL: bench API not healthy within 30s"
+              exit 1
+            fi
+            sleep 3
+          done
           DEPLOY
+
+      - name: Ensure firewalld allows helexa-bench
+        run: |
+          ssh gitea_ci@bob.hanzalova.internal '
+            if ! sudo /usr/bin/firewall-cmd --query-service=helexa-bench --quiet 2>/dev/null; then
+              sudo /usr/bin/firewall-cmd --add-service=helexa-bench --permanent
+              sudo /usr/bin/firewall-cmd --reload
+            fi'
 
       # Wait for the service to either come up or wedge, then capture
       # the latest-invocation journal. Runs even on prior failure so a

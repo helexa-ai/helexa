@@ -10,6 +10,7 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use helexa_bench::api;
 use helexa_bench::config::BenchConfig;
 use helexa_bench::report;
 use helexa_bench::store::Store;
@@ -34,6 +35,11 @@ enum Command {
     },
     /// Run a single sweep over all targets, then exit.
     Once {
+        #[arg(short, long, default_value = "helexa-bench.toml")]
+        config: String,
+    },
+    /// Serve the read-only JSON API only (no sweeping).
+    Serve {
         #[arg(short, long, default_value = "helexa-bench.toml")]
         config: String,
     },
@@ -77,9 +83,30 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Run { config } => {
             let cfg = load_config(&config)?;
             require_targets(&cfg)?;
+            // Bind the read API alongside the sweep loop (one bob service
+            // does both). Its own store connection; WAL keeps the sweep
+            // writer and the API readers from blocking each other.
+            if cfg.api.enabled {
+                let state = api::open_state(&cfg.bench.db_path)?;
+                let listen = cfg.api.listen.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = api::serve(&listen, state).await {
+                        tracing::error!(error = %format!("{e:#}"), "bench API server exited");
+                    }
+                });
+            }
             let sweeper = Sweeper::new(cfg)?;
             tracing::info!("helexa-bench started; entering continuous sweep loop");
             sweeper.run_forever().await
+        }
+        Command::Serve { config } => {
+            let cfg = load_config(&config)?;
+            if !cfg.api.enabled {
+                anyhow::bail!("[api] enabled = false — nothing to serve");
+            }
+            let state = api::open_state(&cfg.bench.db_path)?;
+            tracing::info!("helexa-bench serving API only");
+            api::serve(&cfg.api.listen, state).await
         }
         Command::Once { config } => {
             let cfg = load_config(&config)?;

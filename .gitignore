@@ -1,4 +1,6 @@
 /target
+/bench/node_modules
+/bench/dist
 *.swp
 *.swo
 .idea/

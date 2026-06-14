@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-bench</short>
+  <description>helexa-bench — read-only benchmark data API</description>
+  <port protocol="tcp" port="13132"/>
+</service>

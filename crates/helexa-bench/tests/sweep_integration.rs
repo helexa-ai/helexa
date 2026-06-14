@@ -90,6 +90,7 @@ fn config_for(endpoint: String, db_path: String) -> BenchConfig {
             prompt_sizes: vec![128], // single scenario keeps assertions simple
             max_tokens: 16,
         },
+        api: Default::default(),
         targets: vec![TargetConfig {
             name: "mock".into(),
             kind: TargetKind::Neuron,

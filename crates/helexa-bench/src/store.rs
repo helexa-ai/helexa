@@ -87,6 +87,9 @@ impl Store {
     fn init(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             r#"
+            -- WAL so the read-only API connection never blocks the
+            -- sweep writer (and vice versa).
+            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS runs (
                 id                   INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts                   TEXT NOT NULL,
@@ -242,6 +245,255 @@ impl Store {
         let raws: Vec<RawRow> = rows.collect::<rusqlite::Result<_>>()?;
         Ok(aggregate(raws))
     }
+
+    // ── Read API surface (consumed by api.rs) ─────────────────────────
+
+    /// Total recorded runs (for `/api/health`).
+    pub fn run_count(&self) -> Result<u64> {
+        let n: i64 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM runs", [], |row| row.get(0))?;
+        Ok(n as u64)
+    }
+
+    /// Distinct hosts / models / scenarios / builds, for populating UI
+    /// filters. Builds are ordered chronologically by build timestamp
+    /// (falling back to first-seen wall-clock).
+    pub fn dimensions(&self) -> Result<Dimensions> {
+        let col = |sql: &str| -> Result<Vec<String>> {
+            let mut stmt = self.conn.prepare(sql)?;
+            let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        };
+        let hosts = col("SELECT DISTINCT target_name FROM runs ORDER BY target_name")?;
+        let models = col("SELECT DISTINCT model_id FROM runs ORDER BY model_id")?;
+        let scenarios = col("SELECT DISTINCT scenario_id FROM runs ORDER BY scenario_id")?;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT git_sha, MAX(build_timestamp), MAX(package_version), MIN(COALESCE(build_timestamp, ts)) AS ord
+             FROM runs GROUP BY git_sha ORDER BY ord",
+        )?;
+        let builds = stmt
+            .query_map([], |r| {
+                Ok(BuildRef {
+                    git_sha: r.get(0)?,
+                    build_timestamp: r.get(1)?,
+                    package_version: r.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+
+        Ok(Dimensions {
+            hosts,
+            models,
+            scenarios,
+            builds,
+        })
+    }
+
+    /// Latest-SHA-per-cell medians (the report table as JSON).
+    pub fn summary(&self) -> Result<Vec<ReportRow>> {
+        self.report_rows()
+    }
+
+    /// Per-build median metrics for one (host, model, scenario) cell,
+    /// ordered chronologically by build — the "over time" series.
+    pub fn series(&self, host: &str, model: &str, scenario: &str) -> Result<Vec<SeriesPoint>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT git_sha, build_timestamp, package_version, ttft_s, decode_tps, total_s, ts
+             FROM runs
+             WHERE ok=1 AND target_name=?1 AND model_id=?2 AND scenario_id=?3
+             ORDER BY id",
+        )?;
+        let raws: Vec<SeriesRaw> = stmt
+            .query_map(params![host, model, scenario], |r| {
+                Ok(SeriesRaw {
+                    git_sha: r.get(0)?,
+                    build_timestamp: r.get(1)?,
+                    package_version: r.get(2)?,
+                    ttft_s: r.get(3)?,
+                    decode_tps: r.get(4)?,
+                    total_s: r.get(5)?,
+                    ts: r.get(6)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(aggregate_series(raws))
+    }
+
+    /// Raw rows, optionally filtered. For drill-down + programmatic access.
+    pub fn runs(&self, f: &RunFilter) -> Result<Vec<RunRow>> {
+        let mut sql = String::from(
+            "SELECT id, ts, target_name, hostname, git_sha, build_timestamp, package_version,
+                    model_id, harness, scenario_id, prompt_size_approx, prompt_tokens_actual,
+                    max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error
+             FROM runs",
+        );
+        let mut conds: Vec<String> = Vec::new();
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        let bind = |col: &str,
+                    val: Option<&str>,
+                    conds: &mut Vec<String>,
+                    args: &mut Vec<Box<dyn rusqlite::ToSql>>| {
+            if let Some(v) = val {
+                args.push(Box::new(v.to_string()));
+                conds.push(format!("{col}=?{}", args.len()));
+            }
+        };
+        bind("target_name", f.host.as_deref(), &mut conds, &mut args);
+        bind("model_id", f.model.as_deref(), &mut conds, &mut args);
+        bind("scenario_id", f.scenario.as_deref(), &mut conds, &mut args);
+        bind("git_sha", f.sha.as_deref(), &mut conds, &mut args);
+        if let Some(ok) = f.ok {
+            args.push(Box::new(ok as i64));
+            conds.push(format!("ok=?{}", args.len()));
+        }
+        if !conds.is_empty() {
+            sql.push_str(" WHERE ");
+            sql.push_str(&conds.join(" AND "));
+        }
+        sql.push_str(" ORDER BY id DESC");
+        let limit = f.limit.unwrap_or(500).min(5000);
+        args.push(Box::new(limit as i64));
+        sql.push_str(&format!(" LIMIT ?{}", args.len()));
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(args.iter()), |r| {
+                Ok(RunRow {
+                    id: r.get(0)?,
+                    ts: r.get(1)?,
+                    host: r.get(2)?,
+                    hostname: r.get(3)?,
+                    git_sha: r.get(4)?,
+                    build_timestamp: r.get(5)?,
+                    package_version: r.get(6)?,
+                    model_id: r.get(7)?,
+                    harness: r.get(8)?,
+                    scenario_id: r.get(9)?,
+                    prompt_size_approx: r.get(10)?,
+                    prompt_tokens_actual: r.get(11)?,
+                    max_tokens: r.get(12)?,
+                    ttft_s: r.get(13)?,
+                    decode_tps: r.get(14)?,
+                    total_s: r.get(15)?,
+                    completion_tokens: r.get(16)?,
+                    ok: r.get::<_, i64>(17)? != 0,
+                    error: r.get(18)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+}
+
+// ── Read-API serde types ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Dimensions {
+    pub hosts: Vec<String>,
+    pub models: Vec<String>,
+    pub scenarios: Vec<String>,
+    pub builds: Vec<BuildRef>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BuildRef {
+    pub git_sha: String,
+    pub build_timestamp: Option<String>,
+    pub package_version: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SeriesPoint {
+    pub git_sha: String,
+    pub build_timestamp: Option<String>,
+    pub package_version: Option<String>,
+    pub ttft_s_median: Option<f64>,
+    pub decode_tps_median: Option<f64>,
+    pub total_s_median: Option<f64>,
+    pub samples: usize,
+}
+
+struct SeriesRaw {
+    git_sha: String,
+    build_timestamp: Option<String>,
+    package_version: Option<String>,
+    ttft_s: Option<f64>,
+    decode_tps: Option<f64>,
+    total_s: Option<f64>,
+    ts: String,
+}
+
+/// Group id-ordered rows by build SHA, median each metric, and order the
+/// resulting points chronologically by build (timestamp, else first ts).
+fn aggregate_series(raws: Vec<SeriesRaw>) -> Vec<SeriesPoint> {
+    use std::collections::BTreeMap;
+    // Preserve first-seen order per sha for the chronological sort key.
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: BTreeMap<String, Vec<SeriesRaw>> = BTreeMap::new();
+    for r in raws {
+        if !groups.contains_key(&r.git_sha) {
+            order.push(r.git_sha.clone());
+        }
+        groups.entry(r.git_sha.clone()).or_default().push(r);
+    }
+    let mut points: Vec<(String, SeriesPoint)> = order
+        .into_iter()
+        .map(|sha| {
+            let rows = &groups[&sha];
+            let sort_key = rows
+                .iter()
+                .map(|r| r.build_timestamp.clone().unwrap_or_else(|| r.ts.clone()))
+                .min()
+                .unwrap_or_default();
+            let point = SeriesPoint {
+                git_sha: sha,
+                build_timestamp: rows.iter().find_map(|r| r.build_timestamp.clone()),
+                package_version: rows.iter().find_map(|r| r.package_version.clone()),
+                ttft_s_median: median(rows.iter().filter_map(|r| r.ttft_s)),
+                decode_tps_median: median(rows.iter().filter_map(|r| r.decode_tps)),
+                total_s_median: median(rows.iter().filter_map(|r| r.total_s)),
+                samples: rows.len(),
+            };
+            (sort_key, point)
+        })
+        .collect();
+    points.sort_by(|a, b| a.0.cmp(&b.0));
+    points.into_iter().map(|(_, p)| p).collect()
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RunFilter {
+    pub host: Option<String>,
+    pub model: Option<String>,
+    pub scenario: Option<String>,
+    pub sha: Option<String>,
+    pub ok: Option<bool>,
+    pub limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RunRow {
+    pub id: i64,
+    pub ts: String,
+    pub host: String,
+    pub hostname: Option<String>,
+    pub git_sha: String,
+    pub build_timestamp: Option<String>,
+    pub package_version: String,
+    pub model_id: String,
+    pub harness: String,
+    pub scenario_id: String,
+    pub prompt_size_approx: u32,
+    pub prompt_tokens_actual: Option<u64>,
+    pub max_tokens: u64,
+    pub ttft_s: Option<f64>,
+    pub decode_tps: Option<f64>,
+    pub total_s: Option<f64>,
+    pub completion_tokens: Option<u64>,
+    pub ok: bool,
+    pub error: Option<String>,
 }
 
 struct RawRow {
@@ -257,7 +509,7 @@ struct RawRow {
 }
 
 /// An aggregated cell ready for the report table.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct ReportRow {
     pub target_name: String,
     pub model_id: String,

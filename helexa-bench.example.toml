@@ -26,6 +26,12 @@ db_path = "/var/lib/helexa-bench/bench.sqlite"
 prompt_sizes = [128, 4096]
 max_tokens = 256
 
+# Read-only JSON API (consumed by the bench UI + programmatic access),
+# served alongside the sweep loop by `run` (or standalone via `serve`).
+[api]
+enabled = true
+listen = "0.0.0.0:13132"
+
 # One [[targets]] block per neuron on the fleet. `kind = "neuron"` (the
 # default) gets build metadata via GET /version and warm-model discovery
 # via GET /models.
