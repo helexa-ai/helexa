@@ -224,7 +224,7 @@ impl Store {
         // successful run, then median that SHA's samples.
         let mut stmt = self.conn.prepare(
             "SELECT target_name, model_id, scenario_id, prompt_size_approx, git_sha,
-                    ttft_s, decode_tps, total_s, prompt_tokens_actual
+                    ttft_s, decode_tps, total_s, prompt_tokens_actual, gpus_json
              FROM runs
              WHERE ok=1
              ORDER BY target_name, model_id, scenario_id, id",
@@ -240,6 +240,7 @@ impl Store {
                 decode_tps: row.get(6)?,
                 total_s: row.get(7)?,
                 prompt_tokens_actual: row.get(8)?,
+                gpus_json: row.get(9)?,
             })
         })?;
         let raws: Vec<RawRow> = rows.collect::<rusqlite::Result<_>>()?;
@@ -283,11 +284,35 @@ impl Store {
             })?
             .collect::<rusqlite::Result<_>>()?;
 
+        // host/model → GPU label, taken from each one's most recent run.
+        let gpu_map = |group_col: &str| -> Result<std::collections::HashMap<String, String>> {
+            let sql = format!(
+                "SELECT {group_col}, gpus_json FROM runs \
+                 WHERE id IN (SELECT MAX(id) FROM runs GROUP BY {group_col})"
+            );
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt.query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?))
+            })?;
+            let mut out = std::collections::HashMap::new();
+            for row in rows {
+                let (key, gpus) = row?;
+                if let Some(label) = gpus.as_deref().and_then(gpu_label) {
+                    out.insert(key, label);
+                }
+            }
+            Ok(out)
+        };
+        let host_gpus = gpu_map("target_name")?;
+        let model_gpus = gpu_map("model_id")?;
+
         Ok(Dimensions {
             hosts,
             models,
             scenarios,
             builds,
+            host_gpus,
+            model_gpus,
         })
     }
 
@@ -353,7 +378,8 @@ impl Store {
         let mut sql = String::from(
             "SELECT id, ts, target_name, hostname, git_sha, build_timestamp, package_version,
                     model_id, harness, scenario_id, prompt_size_approx, prompt_tokens_actual,
-                    max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error
+                    max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error,
+                    gpus_json
              FROM runs",
         );
         let mut conds: Vec<String> = Vec::new();
@@ -387,10 +413,12 @@ impl Store {
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(args.iter()), |r| {
+                let gpus_json: Option<String> = r.get(19)?;
                 Ok(RunRow {
                     id: r.get(0)?,
                     ts: r.get(1)?,
                     host: r.get(2)?,
+                    gpu: gpus_json.as_deref().and_then(gpu_label),
                     hostname: r.get(3)?,
                     git_sha: r.get(4)?,
                     build_timestamp: r.get(5)?,
@@ -422,6 +450,11 @@ pub struct Dimensions {
     pub models: Vec<String>,
     pub scenarios: Vec<String>,
     pub builds: Vec<BuildRef>,
+    /// host → GPU label (latest run), so the UI can show the GPU as the
+    /// resource name instead of the internal hostname.
+    pub host_gpus: std::collections::HashMap<String, String>,
+    /// model → GPU label (latest run); model maps to one host today.
+    pub model_gpus: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -505,6 +538,8 @@ pub struct RunRow {
     pub id: i64,
     pub ts: String,
     pub host: String,
+    /// Public-facing resource name (the host's GPU(s)), e.g. "RTX 4090".
+    pub gpu: Option<String>,
     pub hostname: Option<String>,
     pub git_sha: String,
     pub build_timestamp: Option<String>,
@@ -533,6 +568,7 @@ struct RawRow {
     decode_tps: Option<f64>,
     total_s: Option<f64>,
     prompt_tokens_actual: Option<u64>,
+    gpus_json: Option<String>,
 }
 
 /// An aggregated cell ready for the report table.
@@ -548,6 +584,8 @@ pub struct ReportRow {
     pub decode_tps_median: Option<f64>,
     pub total_s_median: Option<f64>,
     pub samples: usize,
+    /// Public-facing resource name (the host's GPU(s)), e.g. "2× RTX 5090".
+    pub gpu: Option<String>,
 }
 
 /// Group by (target, model, scenario), keep only the latest SHA's rows
@@ -584,9 +622,49 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
             decode_tps_median: median(cell.iter().filter_map(|r| r.decode_tps)),
             total_s_median: median(cell.iter().filter_map(|r| r.total_s)),
             samples: cell.len(),
+            gpu: cell
+                .iter()
+                .find_map(|r| r.gpus_json.as_deref().and_then(gpu_label)),
         });
     }
     out
+}
+
+/// Compact GPU label from a run's stored `gpus_json` (the discovery device
+/// list) — e.g. "2× RTX 5090", "RTX 4090". `None` when empty/absent. Used
+/// as the public-facing resource name in place of internal hostnames.
+fn gpu_label(gpus_json: &str) -> Option<String> {
+    let devices: Vec<serde_json::Value> = serde_json::from_str(gpus_json).ok()?;
+    if devices.is_empty() {
+        return None;
+    }
+    let mut order: Vec<String> = Vec::new();
+    let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for d in &devices {
+        let name = d.get("name").and_then(|v| v.as_str()).unwrap_or("GPU");
+        let short = name
+            .trim_start_matches("NVIDIA GeForce ")
+            .trim_start_matches("NVIDIA ")
+            .to_string();
+        if !counts.contains_key(&short) {
+            order.push(short.clone());
+        }
+        *counts.entry(short).or_insert(0) += 1;
+    }
+    Some(
+        order
+            .iter()
+            .map(|n| {
+                let c = counts[n];
+                if c > 1 {
+                    format!("{c}× {n}")
+                } else {
+                    n.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" + "),
+    )
 }
 
 fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
@@ -675,5 +753,16 @@ mod tests {
         assert_eq!(rows[0].git_sha, "new");
         assert_eq!(rows[0].samples, 2);
         assert!((rows[0].ttft_s_median.unwrap() - 0.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn gpu_label_formats() {
+        let two = r#"[{"name":"NVIDIA GeForce RTX 5090"},{"name":"NVIDIA GeForce RTX 5090"}]"#;
+        assert_eq!(gpu_label(two).as_deref(), Some("2× RTX 5090"));
+        let one = r#"[{"name":"NVIDIA GeForce RTX 4090"}]"#;
+        assert_eq!(gpu_label(one).as_deref(), Some("RTX 4090"));
+        let dc = r#"[{"name":"NVIDIA H100"}]"#;
+        assert_eq!(gpu_label(dc).as_deref(), Some("H100"));
+        assert_eq!(gpu_label("[]"), None);
     }
 }

@@ -66,7 +66,18 @@ export default function Runs() {
       <h3 className="mb-3">Runs</h3>
       {dims && (
         <Row className="g-3 mb-3">
-          <Picker label="Host" value={host} set={setHost} options={dims.hosts} />
+          {/* GPU filter — labelled by GPU, but filters by the underlying host. */}
+          <Form.Group as={Col}>
+            <Form.Label>GPU</Form.Label>
+            <Form.Select value={host} onChange={(e) => setHost(e.target.value)}>
+              <option value="">(all)</option>
+              {dims.hosts.map((h) => (
+                <option key={h} value={h}>
+                  {dims.host_gpus[h] ?? h}
+                </option>
+              ))}
+            </Form.Select>
+          </Form.Group>
           <Picker
             label="Model"
             value={model}
@@ -88,7 +99,7 @@ export default function Runs() {
           <thead>
             <tr>
               <th>ts</th>
-              <th>host</th>
+              <th>GPU</th>
               <th>model</th>
               <th>scenario</th>
               <th>build</th>
@@ -102,7 +113,7 @@ export default function Runs() {
             {rows.map((r) => (
               <tr key={r.id}>
                 <td>{r.ts}</td>
-                <td>{r.host}</td>
+                <td>{r.gpu ?? r.host}</td>
                 <td>{r.model_id}</td>
                 <td>{r.scenario_id}</td>
                 <td>

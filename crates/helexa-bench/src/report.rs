@@ -47,6 +47,7 @@ pub fn render_json(rows: &[ReportRow]) -> Result<String> {
                 "total_s_median": r.total_s_median,
                 "git_sha": r.git_sha,
                 "samples": r.samples,
+                "gpu": r.gpu,
             })
         })
         .collect();
@@ -77,6 +78,7 @@ mod tests {
             decode_tps_median: Some(45.6),
             total_s_median: Some(1.234),
             samples: 5,
+            gpu: Some("2× RTX 5090".into()),
         }];
         let md = render_markdown(&rows);
         assert!(md.contains("| engine |"));
@@ -98,6 +100,7 @@ mod tests {
             decode_tps_median: None,
             total_s_median: Some(0.5),
             samples: 1,
+            gpu: None,
         }];
         let md = render_markdown(&rows);
         assert!(md.contains("~128"));

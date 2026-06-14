@@ -11,6 +11,10 @@ export interface Dimensions {
   models: string[];
   scenarios: string[];
   builds: BuildRef[];
+  /** host → GPU label, e.g. "2× RTX 5090". */
+  host_gpus: Record<string, string>;
+  /** model → GPU label (model maps to one host today). */
+  model_gpus: Record<string, string>;
 }
 
 /** Latest-SHA-per-cell medians (the report table). */
@@ -25,6 +29,8 @@ export interface ReportRow {
   decode_tps_median: number | null;
   total_s_median: number | null;
   samples: number;
+  /** Public-facing resource name (the host's GPU(s)). */
+  gpu: string | null;
 }
 
 /** One point in a per-build time-series for a (host, model, scenario) cell. */
@@ -42,6 +48,8 @@ export interface RunRow {
   id: number;
   ts: string;
   host: string;
+  /** Public-facing resource name (the host's GPU(s)). */
+  gpu: string | null;
   hostname: string | null;
   git_sha: string;
   build_timestamp: string | null;

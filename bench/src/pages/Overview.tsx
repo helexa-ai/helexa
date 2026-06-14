@@ -30,7 +30,7 @@ export default function Overview() {
       <Table striped bordered hover responsive size="sm">
         <thead>
           <tr>
-            <th>host</th>
+            <th>GPU</th>
             <th>model</th>
             <th className="text-end">prompt tok</th>
             <th className="text-end">TTFT (s)</th>
@@ -43,7 +43,7 @@ export default function Overview() {
         <tbody>
           {rows.map((r, i) => (
             <tr key={i}>
-              <td>{r.target_name}</td>
+              <td>{r.gpu ?? r.target_name}</td>
               <td>{r.model_id}</td>
               <td className="text-end">
                 {r.prompt_tokens ?? `~${r.prompt_size_approx}`}

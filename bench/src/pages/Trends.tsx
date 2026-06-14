@@ -116,6 +116,12 @@ export default function Trends() {
         />
       </Row>
 
+      {dims.model_gpus[model] && (
+        <p className="text-muted mb-3">
+          Measured on <strong>{dims.model_gpus[model]}</strong>.
+        </p>
+      )}
+
       {data.length === 0 ? (
         <Alert variant="info">No data for this selection yet.</Alert>
       ) : (
