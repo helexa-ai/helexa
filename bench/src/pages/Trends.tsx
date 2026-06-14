@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { getDimensions, getSeries } from "../api";
 import type { Dimensions, SeriesPoint } from "../types";
+import { BASELINE_SOURCE, baselineFor } from "../baseline";
 
 function Picker({
   label,
@@ -65,15 +66,29 @@ export default function Trends() {
     }
   }, [host, model, scenario]);
 
+  // Prepend the pre-helexa-bench baseline (dashed, separate keys) so it
+  // anchors the timeline without being merged into the live line. Different
+  // measurement regime — see baseline.ts / doc/benchmarks.md.
+  const base = useMemo(
+    () => baselineFor(host, model, scenario),
+    [host, model, scenario],
+  );
   const data = useMemo(
-    () =>
-      series.map((p) => ({
+    () => [
+      ...base.map((p) => ({
+        label: p.git_sha,
+        baseTtft: p.ttft_s,
+        baseDecode: p.decode_tps,
+        baseTotal: p.total_s,
+      })),
+      ...series.map((p) => ({
         label: p.git_sha,
         ttft: p.ttft_s_median,
         decode: p.decode_tps_median,
         total: p.total_s_median,
       })),
-    [series],
+    ],
+    [series, base],
   );
 
   if (err) return <Alert variant="danger">{err}</Alert>;
@@ -102,6 +117,13 @@ export default function Trends() {
         <Alert variant="info">No data for this selection yet.</Alert>
       ) : (
         <>
+          {base.length > 0 && (
+            <p className="text-muted small mb-3">
+              Dashed = pre-helexa-bench baseline ({BASELINE_SOURCE}); solid =
+              helexa-bench (direct to neuron). Different measurement regimes —
+              see <code>doc/benchmarks.md</code>.
+            </p>
+          )}
           <h5 className="mt-3">decode tok/s (higher is better)</h5>
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={data} margin={{ top: 8, right: 24, bottom: 8, left: 0 }}>
@@ -117,6 +139,16 @@ export default function Trends() {
                 stroke="#0d6efd"
                 connectNulls
               />
+              {base.length > 0 && (
+                <Line
+                  type="monotone"
+                  dataKey="baseDecode"
+                  name="baseline (bench.py · gateway)"
+                  stroke="#888"
+                  strokeDasharray="5 5"
+                  connectNulls
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
 
@@ -135,6 +167,16 @@ export default function Trends() {
                 stroke="#dc3545"
                 connectNulls
               />
+              {base.length > 0 && (
+                <Line
+                  type="monotone"
+                  dataKey="baseTtft"
+                  name="baseline (bench.py · gateway)"
+                  stroke="#888"
+                  strokeDasharray="5 5"
+                  connectNulls
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </>
