@@ -203,7 +203,9 @@ ssh "${cortex_host}" "test -f '${bench_ui_webroot}/index.html' || \
 # nginx can read it (else 403). New files rsynced in inherit this type.
 ssh "${cortex_host}" "sudo restorecon -R '${bench_ui_webroot}'"
 
-cert_present() { ssh "${cortex_host}" "test -d '/etc/letsencrypt/live/${bench_ui_domain}'"; }
+# /etc/letsencrypt/live is root-only (0700) — must stat it via sudo, else
+# this falsely reports "no cert" and downgrades the vhost to http-only.
+cert_present() { ssh "${cortex_host}" "sudo test -d '/etc/letsencrypt/live/${bench_ui_domain}'"; }
 nginx_active() { ssh "${cortex_host}" "systemctl is-active --quiet nginx"; }
 
 # Obtain the cert (idempotent: --keep-until-expiring). Cloudflare DNS-01,
@@ -272,6 +274,37 @@ ssh "${cortex_host}" "
     sudo install -d -o root -g root -m 0700 /etc/nginx/tls/key
 "
 
+# Issue the initial cert if absent. The JWK 'lair' provisioner password
+# lives only on the operator's machine; rsync it to the host transiently
+# (root-owned, 0600), issue, then remove it — never persisted on the host.
+if ! ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
+    prov_pw_local="${HOME}/.step/secrets/provisioner"
+    prov_pw_remote="/root/.bench-provisioner-pw"
+    if [[ -f "${prov_pw_local}" ]]; then
+        echo "  issuing ${int_domain} cert (JWK 'lair' provisioner)…"
+        if rsync --archive --chown root:root --chmod 0600 --rsync-path 'sudo rsync' \
+            "${prov_pw_local}" "${cortex_host}:${prov_pw_remote}"; then
+            ssh "${cortex_host}" "
+                trap 'sudo rm -f ${prov_pw_remote}' EXIT
+                sudo step ca certificate ${int_domain} ${int_cert} ${int_key} \
+                    --ca-url https://ca.internal \
+                    --root /etc/pki/ca-trust/source/anchors/root-internal.pem \
+                    --provisioner lair \
+                    --provisioner-password-file ${prov_pw_remote} \
+                    --force
+            " || echo "  WARNING: cert issuance failed — review on ${cortex_host}"
+            # Belt-and-suspenders: ensure the secret is gone even if the
+            # trap didn't fire (e.g. dropped connection).
+            ssh "${cortex_host}" "sudo rm -f ${prov_pw_remote}"
+        else
+            echo "  failed to transfer provisioner secret to ${cortex_host}"
+        fi
+    else
+        echo "  NOTE: no provisioner secret at ${prov_pw_local}; issue ${int_domain} cert manually."
+    fi
+fi
+
+# Install the vhost + renewal timer once the cert exists.
 if ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
     if rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
         "${repo_path}/asset/nginx/${int_domain}.conf" \
@@ -288,10 +321,5 @@ if ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
         echo "  failed to install ${int_domain} vhost"
     fi
 else
-    echo "  NOTE: no cert at ${int_cert} yet. Issue it once (JWK 'lair' provisioner),"
-    echo "        then re-run this script to install the vhost + renewal timer:"
-    echo "    sudo step ca certificate ${int_domain} ${int_cert} ${int_key} \\"
-    echo "      --ca-url https://ca.internal \\"
-    echo "      --root /etc/pki/ca-trust/source/anchors/root-internal.pem \\"
-    echo "      --provisioner lair"
+    echo "  ${int_domain} cert still absent — vhost not installed"
 fi
