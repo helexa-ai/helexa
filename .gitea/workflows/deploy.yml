@@ -354,3 +354,44 @@ jobs:
           sleep 10
           ssh gitea_ci@bob.hanzalova.internal \
               'journalctl --unit helexa-bench.service -I --no-pager'
+
+  # Build the bench UI and publish it to the public nginx vhost on the
+  # gateway (https://bench.helexa.ai). The vhost + Let's Encrypt cert are
+  # one-time host setup (script/infra-setup.sh); this job just refreshes
+  # the static assets. nginx reverse-proxies /api to the bob API, so the
+  # SPA is built same-origin (no VITE_API_BASE). Independent of the other
+  # deploy jobs.
+  deploy-bench-ui:
+    runs-on: fedora-43
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build UI
+        run: |
+          cd bench
+          npm ci
+          npm run build
+
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              gitea_ci@hanzalova.internal 'hostname -f'
+
+      - name: Rsync built UI to gateway webroot
+        run: |
+          rsync --archive --compress --delete \
+            --rsync-path 'sudo rsync' \
+            bench/dist/ \
+            gitea_ci@hanzalova.internal:/var/www/bench.helexa.ai/

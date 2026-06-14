@@ -27,13 +27,19 @@ so the dev server talks to the live bench API with no CORS fuss. Point
 the proxy elsewhere (or run a local `helexa-bench serve`) to develop
 against other data.
 
-## Build (for separate hosting)
+## Production hosting
 
-```sh
-VITE_API_BASE=http://bob.hanzalova.internal:13132 npm run build   # → dist/
-```
+Public at **https://bench.helexa.ai** — nginx on the gateway
+(`hanzalova.internal`) serves the static `dist/` and reverse-proxies
+`/api` to the bench API on bob over WireGuard, so the SPA is same-origin
+(no CORS) and the internal API stays off the public internet.
 
-The UI is hosted separately from the API (per design): serve the static
-`dist/` from any web host and set `VITE_API_BASE` to the bob API origin.
-If `VITE_API_BASE` is unset, the app calls `/api/...` on its own origin
-(useful behind a reverse proxy that fronts both).
+- `npm run build` is run with **no** `VITE_API_BASE` (the app calls
+  `/api/...` on its own origin; nginx proxies it to bob).
+- `.gitea/workflows/deploy.yml` (`deploy-bench-ui`) builds and rsyncs
+  `dist/` to `/var/www/bench.helexa.ai` on every deploy.
+- The nginx vhost (`asset/nginx/bench.helexa.ai.conf`) and the
+  Let's Encrypt cert are one-time host setup in `script/infra-setup.sh`.
+
+To host elsewhere instead, build with
+`VITE_API_BASE=<bob-api-origin>` and serve the static `dist/`.

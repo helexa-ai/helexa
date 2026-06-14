@@ -180,3 +180,60 @@ echo "==> ${bench_host}: syncing bench config"
 sync_config "${bench_host}" \
     "${repo_path}/asset/helexa-bench/${bench_host%%.*}.toml" \
     /etc/helexa-bench/helexa-bench.toml
+
+# ── bench UI: public nginx vhost on the gateway (bench.helexa.ai) ──────
+# The built SPA is rsynced to the webroot by deploy.yml; nginx serves it
+# and reverse-proxies /api to the bench API on bob (internal WireGuard),
+# so the UI is same-origin and the API stays off the public internet.
+# This block runs as the operator (own sudo); deploy.yml only needs the
+# scoped rsync grant in asset/sudoers.d/cortex-host.conf. Idempotent.
+bench_ui_domain="bench.helexa.ai"
+bench_ui_webroot="/var/www/${bench_ui_domain}"
+le_email="rthijssen@gmail.com"
+
+echo "==> ${cortex_host}: bench UI nginx vhost (${bench_ui_domain})"
+ssh "${cortex_host}" "sudo install -d -o root -g root -m 0755 '${bench_ui_webroot}'"
+ssh "${cortex_host}" "test -f '${bench_ui_webroot}/index.html' || \
+    echo 'helexa bench UI — not yet deployed' | sudo tee '${bench_ui_webroot}/index.html' >/dev/null"
+
+# Obtain the Let's Encrypt cert once. The full TLS vhost can't load
+# before the cert file exists, so bootstrap an http-only vhost serving
+# the ACME webroot, get the cert, then swap in the full config below.
+if ssh "${cortex_host}" "test ! -d '/etc/letsencrypt/live/${bench_ui_domain}'"; then
+    echo "  no cert yet — bootstrapping http vhost + certbot"
+    if rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/${bench_ui_domain}.bootstrap.conf" \
+        "${cortex_host}:/etc/nginx/sites-available/${bench_ui_domain}.conf"; then
+        ssh "${cortex_host}" "
+            set -eu
+            sudo ln -sf ../sites-available/${bench_ui_domain}.conf \
+                /etc/nginx/sites-enabled/${bench_ui_domain}.conf
+            sudo nginx -t && sudo systemctl reload nginx
+            sudo certbot certonly --webroot -w '${bench_ui_webroot}' -d '${bench_ui_domain}' \
+                --non-interactive --agree-tos -m '${le_email}' --keep-until-expiring
+        " || echo "  WARNING: cert bootstrap failed — review on ${cortex_host}"
+    else
+        echo "  failed to install bootstrap vhost"
+    fi
+fi
+
+# Install the full TLS vhost (idempotent; safe once the cert exists).
+if rsync --archive --compress --chown root:root --chmod 0644 \
+    --rsync-path 'sudo rsync' \
+    "${repo_path}/asset/nginx/${bench_ui_domain}.conf" \
+    "${cortex_host}:/etc/nginx/sites-available/${bench_ui_domain}.conf"; then
+    ssh "${cortex_host}" "
+        set -eu
+        sudo ln -sf ../sites-available/${bench_ui_domain}.conf \
+            /etc/nginx/sites-enabled/${bench_ui_domain}.conf
+        if sudo nginx -t; then
+            sudo systemctl reload nginx
+            echo '  ${bench_ui_domain} vhost installed'
+        else
+            echo '  WARNING: nginx -t failed (cert missing?) — review on ${cortex_host}'
+        fi
+    "
+else
+    echo "  failed to install ${bench_ui_domain} vhost"
+fi
