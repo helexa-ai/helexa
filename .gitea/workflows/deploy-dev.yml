@@ -123,7 +123,9 @@ jobs:
             # Exact command form required by the sudoers rule in
             # asset/sudoers.d/neuron-host.conf — change both together.
             sudo /usr/bin/install -o root -g root -m 0755 /var/lib/gitea_ci/neuron-dev /usr/bin/neuron
-            sudo /usr/bin/systemctl start neuron.service
+            # enable --now so a dev deploy also leaves the unit enabled
+            # for boot, consistent with deploy.yml.
+            sudo /usr/bin/systemctl enable --now neuron.service
             rm -f /var/lib/gitea_ci/neuron-dev'
 
       - name: Capture neuron.service startup journal

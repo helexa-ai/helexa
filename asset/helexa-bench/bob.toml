@@ -1,0 +1,32 @@
+# helexa-bench config for bob.hanzalova.internal.
+#
+# Synced to /etc/helexa-bench/helexa-bench.toml by script/infra-setup.sh
+# (the helexa-bench RPM ships helexa-bench.example.toml as a
+# %config(noreplace) default; this per-host file overrides it).
+#
+# bob is a client host (it also runs Agent Zero); helexa-bench here hits
+# every neuron on the fleet directly and records build-stamped results
+# into the local SQLite store.
+
+[bench]
+sweep_interval_secs = 1800
+samples_per_version = 5
+iteration_pause_secs = 2
+request_timeout_secs = 600
+db_path = "/var/lib/helexa-bench/bench.sqlite"
+
+[scenarios]
+prompt_sizes = [128, 4096]
+max_tokens = 256
+
+[[targets]]
+name = "beast"
+endpoint = "http://beast.hanzalova.internal:13131"
+
+[[targets]]
+name = "benjy"
+endpoint = "http://benjy.hanzalova.internal:13131"
+
+[[targets]]
+name = "quadbrat"
+endpoint = "http://quadbrat.hanzalova.internal:13131"
