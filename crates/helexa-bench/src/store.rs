@@ -7,7 +7,7 @@
 //! never held across one.
 
 use anyhow::{Context, Result};
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::Path;
 
 /// A single measured (or failed) iteration, with full provenance.
@@ -296,9 +296,36 @@ impl Store {
         self.report_rows()
     }
 
-    /// Per-build median metrics for one (host, model, scenario) cell,
-    /// ordered chronologically by build — the "over time" series.
-    pub fn series(&self, host: &str, model: &str, scenario: &str) -> Result<Vec<SeriesPoint>> {
+    /// Per-build median metrics for one (model, scenario) cell, ordered
+    /// chronologically by build — the "over time" series. `host` is
+    /// optional: when omitted it resolves to the host with the most recent
+    /// run for this (model, scenario). Each model is served by a single
+    /// host today, so this yields a coherent single-host series and lets
+    /// callers (the public UI) select by model alone.
+    pub fn series(
+        &self,
+        host: Option<&str>,
+        model: &str,
+        scenario: &str,
+    ) -> Result<Vec<SeriesPoint>> {
+        let host = match host {
+            Some(h) => h.to_string(),
+            None => {
+                let resolved: Option<String> = self
+                    .conn
+                    .query_row(
+                        "SELECT target_name FROM runs WHERE ok=1 AND model_id=?1 \
+                         AND scenario_id=?2 ORDER BY id DESC LIMIT 1",
+                        params![model, scenario],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                match resolved {
+                    Some(h) => h,
+                    None => return Ok(Vec::new()),
+                }
+            }
+        };
         let mut stmt = self.conn.prepare(
             "SELECT git_sha, build_timestamp, package_version, ttft_s, decode_tps, total_s, ts
              FROM runs

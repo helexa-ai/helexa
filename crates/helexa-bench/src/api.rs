@@ -75,7 +75,8 @@ async fn summary(
 
 #[derive(Debug, Deserialize)]
 struct SeriesQuery {
-    host: String,
+    /// Optional — when omitted the store resolves the host serving this model.
+    host: Option<String>,
     model: String,
     scenario: String,
 }
@@ -86,7 +87,7 @@ async fn series(
 ) -> Result<Json<Vec<crate::store::SeriesPoint>>, ApiError> {
     let store = s.lock().await;
     store
-        .series(&q.host, &q.model, &q.scenario)
+        .series(q.host.as_deref(), &q.model, &q.scenario)
         .map(Json)
         .map_err(err500)
 }

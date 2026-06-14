@@ -16,11 +16,11 @@ async function getJson<T>(path: string): Promise<T> {
 export const getDimensions = () => getJson<Dimensions>("/api/dimensions");
 export const getSummary = () => getJson<ReportRow[]>("/api/summary");
 
-export const getSeries = (host: string, model: string, scenario: string) =>
+// host is resolved server-side (each model maps to one host today), so the
+// public UI selects by model + scenario alone.
+export const getSeries = (model: string, scenario: string) =>
   getJson<SeriesPoint[]>(
-    `/api/series?host=${encodeURIComponent(host)}&model=${encodeURIComponent(
-      model,
-    )}&scenario=${encodeURIComponent(scenario)}`,
+    `/api/series?model=${encodeURIComponent(model)}&scenario=${encodeURIComponent(scenario)}`,
   );
 
 export interface RunsParams {

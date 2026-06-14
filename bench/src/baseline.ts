@@ -44,13 +44,9 @@ export const BASELINE: BaselinePoint[] = [
   { host: "quadbrat", model: "Qwen/Qwen3-1.7B", scenario: "chat:4096", git_sha: "a1952a4", build_timestamp: "2026-06-12T16:00:00Z", ttft_s: 2.749, decode_tps: 44.9, total_s: 5.534 },
 ];
 
-/** Baseline points for one cell, oldest first. */
-export function baselineFor(
-  host: string,
-  model: string,
-  scenario: string,
-): BaselinePoint[] {
+/** Baseline points for one (model, scenario) cell, oldest first. */
+export function baselineFor(model: string, scenario: string): BaselinePoint[] {
   return BASELINE.filter(
-    (b) => b.host === host && b.model === model && b.scenario === scenario,
+    (b) => b.model === model && b.scenario === scenario,
   ).sort((a, b) => a.build_timestamp.localeCompare(b.build_timestamp));
 }

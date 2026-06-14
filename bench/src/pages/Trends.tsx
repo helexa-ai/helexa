@@ -42,7 +42,6 @@ function Picker({
 
 export default function Trends() {
   const [dims, setDims] = useState<Dimensions | null>(null);
-  const [host, setHost] = useState("");
   const [model, setModel] = useState("");
   const [scenario, setScenario] = useState("");
   const [series, setSeries] = useState<SeriesPoint[]>([]);
@@ -52,7 +51,6 @@ export default function Trends() {
     getDimensions()
       .then((d) => {
         setDims(d);
-        if (d.hosts[0]) setHost(d.hosts[0]);
         if (d.models[0]) setModel(d.models[0]);
         if (d.scenarios[0]) setScenario(d.scenarios[0]);
       })
@@ -60,19 +58,19 @@ export default function Trends() {
   }, []);
 
   useEffect(() => {
-    if (host && model && scenario) {
-      getSeries(host, model, scenario)
+    if (model && scenario) {
+      getSeries(model, scenario)
         .then(setSeries)
         .catch((e) => setErr(String(e)));
     }
-  }, [host, model, scenario]);
+  }, [model, scenario]);
 
   // Prepend the pre-helexa-bench baseline (dashed, separate keys) so it
   // anchors the timeline without being merged into the live line. Different
   // measurement regime — see baseline.ts / doc/benchmarks.md.
   const base = useMemo(
-    () => baselineFor(host, model, scenario),
-    [host, model, scenario],
+    () => baselineFor(model, scenario),
+    [model, scenario],
   );
   const data = useMemo(
     () => [
@@ -104,7 +102,6 @@ export default function Trends() {
     <>
       <h3 className="mb-3">Trends over builds</h3>
       <Row className="g-3 mb-4">
-        <Picker label="Host" value={host} set={setHost} options={dims.hosts} />
         <Picker
           label="Model"
           value={model}

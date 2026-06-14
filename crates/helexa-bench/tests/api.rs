@@ -192,6 +192,17 @@ async fn series_is_chronological_per_build() {
 }
 
 #[tokio::test]
+async fn series_resolves_host_when_omitted() {
+    // The public UI selects by model alone; the store resolves the host.
+    let base = spawn(&seed("series-nohost")).await;
+    let v = get(&base, "/api/series?model=m&scenario=chat:128").await;
+    let pts = v.as_array().unwrap();
+    assert_eq!(pts.len(), 2);
+    assert_eq!(pts[0]["git_sha"], "old");
+    assert_eq!(pts[1]["git_sha"], "new");
+}
+
+#[tokio::test]
 async fn runs_filters_by_host() {
     let base = spawn(&seed("runs")).await;
     let all = get(&base, "/api/runs").await;
