@@ -1,0 +1,15 @@
+# Periodic internal-cert renewal for %i.internal (every 15 min, jittered).
+# Replicated from oolon.kosherinata.internal. Installed to
+# /etc/systemd/system/step@.timer; enable per-cert with
+# `systemctl enable --now step@bench.timer`.
+[Unit]
+Description=step cert renew timer for %i.internal
+
+[Timer]
+Persistent=true
+OnCalendar=*:1/15
+AccuracySec=1us
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

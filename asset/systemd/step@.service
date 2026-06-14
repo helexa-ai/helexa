@@ -1,0 +1,20 @@
+# Internal-CA cert renewal for %i.internal, driven by step@%i.timer.
+# Replicated from oolon.kosherinata.internal (the kosherinata DC proxy).
+# Renews an EXISTING cert via mTLS (step ca renew) — the initial cert
+# must be issued once with a provisioner (see script/infra-setup.sh).
+# Installed to /etc/systemd/system/step@.service.
+[Unit]
+Description=step cert renew for %i.internal
+Documentation=https://smallstep.com/docs/step-ca/renewal
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/bin/step certificate needs-renewal \
+    /etc/nginx/tls/cert/%i.internal.pem
+ExecStart=/usr/bin/step ca renew \
+    --force \
+    --ca-url https://ca.internal \
+    --root /etc/pki/ca-trust/source/anchors/root-internal.pem \
+    /etc/nginx/tls/cert/%i.internal.pem \
+    /etc/nginx/tls/key/%i.internal.pem
+ExecStartPost=/usr/bin/systemctl reload nginx.service

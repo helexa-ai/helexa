@@ -246,3 +246,52 @@ if rsync --archive --compress --chown root:root --chmod 0644 \
 else
     echo "  failed to install ${bench_ui_domain} vhost"
 fi
+
+# ── bench UI: internal vhost (bench.internal) on the gateway ──────────
+# Reachable from inside the WireGuard mesh — the public bench.helexa.ai
+# dead-ends at the OPNsense LAN interface (it only port-forwards :443
+# from the WAN). Same SPA + /api→bob proxy, but with an internal-CA cert
+# (smallstep "lair") renewed by step@bench.timer, replicating the
+# convention on oolon.kosherinata.internal.
+int_domain="bench.internal"
+int_cert="/etc/nginx/tls/cert/${int_domain}.pem"
+int_key="/etc/nginx/tls/key/${int_domain}.pem"
+
+echo "==> ${cortex_host}: internal vhost (${int_domain}) + step renewal"
+# Install the step@ renewal units + cert/key dirs (idempotent).
+for unit in step@.service step@.timer; do
+    rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/systemd/${unit}" \
+        "${cortex_host}:/etc/systemd/system/${unit}" \
+        || echo "  failed to install ${unit}"
+done
+ssh "${cortex_host}" "
+    set -eu
+    sudo systemctl daemon-reload
+    sudo install -d -o root -g root -m 0755 /etc/nginx/tls/cert
+    sudo install -d -o root -g root -m 0700 /etc/nginx/tls/key
+"
+
+if ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
+    if rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/${int_domain}.conf" \
+        "${cortex_host}:/etc/nginx/sites-available/${int_domain}.conf"; then
+        ssh "${cortex_host}" "
+            set -eu
+            sudo ln -sf ../sites-available/${int_domain}.conf \
+                /etc/nginx/sites-enabled/${int_domain}.conf
+            sudo nginx -t
+            systemctl is-active --quiet nginx && sudo systemctl reload nginx || true
+            sudo systemctl enable --now step@bench.timer
+        " && echo "  ${int_domain} vhost installed + step@bench.timer enabled"
+    else
+        echo "  failed to install ${int_domain} vhost"
+    fi
+else
+    echo "  NOTE: no cert at ${int_cert} yet. Issue it once (JWK 'lair' provisioner),"
+    echo "        then re-run this script to install the vhost + renewal timer:"
+    echo "    sudo step ca certificate ${int_domain} ${int_cert} ${int_key} \\"
+    echo "      --ca-url https://ca.internal \\"
+    echo "      --root /etc/pki/ca-trust/source/anchors/root-internal.pem \\"
+    echo "      --provisioner lair"
+fi
