@@ -4626,7 +4626,23 @@ fn build_prompt_for_request(
         .unwrap_or(serde_json::Value::Null);
 
     match super::chat_template::render_chat_template(tmpl, &request.messages, &tools, &kwargs) {
-        Ok(prompt) => prompt,
+        Ok(prompt) => {
+            // Ground-truth visibility for tool-format debugging: the
+            // fully rendered prompt the model actually sees, including
+            // whether the chat template's `<tool_call>` format
+            // instruction survived a large system prompt + tool list.
+            // trace! so it's opt-in (it can be tens of KB):
+            // RUST_LOG=neuron::harness::candle=trace.
+            tracing::trace!(
+                model = %request.model,
+                prompt_chars = prompt.len(),
+                n_tools = tools.as_array().map(|a| a.len()).unwrap_or(0),
+                has_kwargs = !kwargs.is_null(),
+                prompt = %prompt,
+                "chat_template: rendered prompt"
+            );
+            prompt
+        }
         Err(e) => {
             tracing::warn!(
                 model = %request.model,
