@@ -1044,7 +1044,7 @@ pub(crate) fn prefill_chunk_tokens() -> usize {
 /// work — this is the explicit upper bound on context size, separate
 /// from the model's `max_position_embeddings` (which can be much
 /// larger than what fits in VRAM in practice).
-fn max_prompt_tokens() -> usize {
+pub(crate) fn max_prompt_tokens() -> usize {
     env_usize("NEURON_MAX_PROMPT_TOKENS", 16384)
 }
 

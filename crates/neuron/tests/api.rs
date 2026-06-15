@@ -51,6 +51,7 @@ fn fake_discovery() -> DiscoveryResponse {
         ],
         harnesses: vec![],
         cuda_unavailable_reason: None,
+        max_prompt_tokens: 16384,
     }
 }
 
@@ -126,6 +127,7 @@ async fn test_discovery_no_gpus() {
         devices: vec![],
         harnesses: vec![],
         cuda_unavailable_reason: None,
+        max_prompt_tokens: 16384,
     };
     let url = spawn_neuron(disc).await;
 
@@ -529,6 +531,7 @@ async fn test_driver_mismatch_rejects_load_and_rides_discovery() {
         devices: vec![],
         harnesses: vec!["candle".into()],
         cuda_unavailable_reason: Some(reason.into()),
+        max_prompt_tokens: 16384,
     };
     let url = spawn_neuron(disc).await;
     let client = reqwest::Client::new();

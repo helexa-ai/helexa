@@ -103,6 +103,14 @@ pub struct CortexModelEntry {
     /// declare capabilities yet (tracked separately from C3).
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Effective max prompt size (tokens) for this model — the smallest
+    /// `NEURON_MAX_PROMPT_TOKENS` among the neurons that can serve it.
+    /// Named `max_model_len` per the vLLM / OpenAI-compatible convention
+    /// so clients (opencode, …) can size and compact their context
+    /// rather than overflowing it into a 400. `None` until a serving
+    /// neuron has reported a cap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_model_len: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

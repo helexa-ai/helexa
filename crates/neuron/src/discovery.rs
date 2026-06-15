@@ -273,6 +273,7 @@ pub async fn discover_system() -> Result<DiscoveryResponse> {
         devices,
         harnesses: vec![], // populated by harness registry in Phase 8
         cuda_unavailable_reason,
+        max_prompt_tokens: crate::harness::candle::max_prompt_tokens() as u64,
     })
 }
 
