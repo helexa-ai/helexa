@@ -1904,7 +1904,7 @@ impl CandleHarness {
         let _inference_guard = loaded.inference_lock.lock().await;
 
         let result = async {
-            let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request);
+            let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request)?;
 
             let encoding = loaded
                 .tokenizer
@@ -2301,7 +2301,7 @@ impl CandleHarness {
             }
         };
 
-        let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request);
+        let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request)?;
         let encoding = loaded
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -3346,7 +3346,7 @@ impl CandleHarness {
             });
         }
 
-        let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request);
+        let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request)?;
         let encoding = tp
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -3959,7 +3959,7 @@ async fn chat_completion_tp_inner(
     let req_start = std::time::Instant::now();
     let model_id = request.model.clone();
 
-    let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request);
+    let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request)?;
     let encoding = tp
         .tokenizer
         .encode(prompt.as_str(), true)
@@ -4574,6 +4574,13 @@ pub enum InferenceError {
          remove the image_url content parts from the request"
     )]
     VisionUnsupported { model_id: String },
+    /// The loaded model's chat template could not render the request
+    /// (e.g. a message / tool-call structure it rejects). Returned only
+    /// when the request carried tools — silently degrading to a
+    /// tool-less prompt breaks tool calling invisibly, which is the
+    /// failure mode that hid several client-compat bugs. Maps to 422.
+    #[error("chat template could not render this request: {detail}")]
+    TemplateRenderFailed { detail: String },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -4602,12 +4609,12 @@ pub enum InferenceError {
 fn build_prompt_for_request(
     chat_template: Option<&str>,
     request: &ChatCompletionRequest,
-) -> String {
+) -> Result<String, InferenceError> {
     if !super::chat_template::chat_templates_enabled() {
-        return format_qwen3_prompt(&request.messages);
+        return Ok(format_qwen3_prompt(&request.messages));
     }
     let Some(tmpl) = chat_template else {
-        return format_qwen3_prompt(&request.messages);
+        return Ok(format_qwen3_prompt(&request.messages));
     };
 
     // Pull `chat_template_kwargs` and `tools` from the request's
@@ -4641,15 +4648,30 @@ fn build_prompt_for_request(
                 prompt = %prompt,
                 "chat_template: rendered prompt"
             );
-            prompt
+            Ok(prompt)
         }
         Err(e) => {
+            let detail = format!("{e:#}");
+            // A tools-bearing request the template can't render must NOT
+            // silently degrade to a tool-less fallback prompt — that
+            // strips every tool and breaks tool calling invisibly (the
+            // failure mode behind the system-message, arguments-format,
+            // and tool-render bugs). Surface it as an error instead.
+            let has_tools = tools.as_array().is_some_and(|a| !a.is_empty());
+            if has_tools {
+                tracing::warn!(
+                    model = %request.model,
+                    error = %detail,
+                    "chat_template render failed on a tools-bearing request — returning 422 (refusing silent tool-less fallback)"
+                );
+                return Err(InferenceError::TemplateRenderFailed { detail });
+            }
             tracing::warn!(
                 model = %request.model,
-                error = %format!("{e:#}"),
-                "chat_template render failed; falling back to format_qwen3_prompt"
+                error = %detail,
+                "chat_template render failed; falling back to format_qwen3_prompt (no tools to drop)"
             );
-            format_qwen3_prompt(&request.messages)
+            Ok(format_qwen3_prompt(&request.messages))
         }
     }
 }
@@ -6371,5 +6393,32 @@ mod tests {
         assert!(!prompt_opens_reasoning(&[1, 2, 3], Some(&pair)));
         // Non-reasoning model (no pair) → always false.
         assert!(!prompt_opens_reasoning(&[100], None));
+    }
+
+    #[test]
+    fn render_failure_with_tools_errors_instead_of_silent_fallback() {
+        // A template that always raises — stands in for the real
+        // incompatibilities (system-message position, tool_call arg
+        // shape) that made neuron silently drop tools.
+        let bad = "{{ raise_exception('boom') }}";
+
+        // Tools present → must surface as an error, never a tool-less
+        // fallback prompt.
+        let with_tools: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "x"}}]
+        }))
+        .unwrap();
+        let err = build_prompt_for_request(Some(bad), &with_tools).unwrap_err();
+        assert!(matches!(err, InferenceError::TemplateRenderFailed { .. }));
+
+        // No tools → falling back is harmless, so it stays Ok.
+        let no_tools: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "messages": [{"role": "user", "content": "hi"}]
+        }))
+        .unwrap();
+        assert!(build_prompt_for_request(Some(bad), &no_tools).is_ok());
     }
 }

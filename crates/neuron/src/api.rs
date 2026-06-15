@@ -328,6 +328,14 @@ async fn chat_completions(
                 })),
             )
                 .into_response(),
+            Err(InferenceError::TemplateRenderFailed { detail }) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "error": format!("chat template could not render this request: {detail}"),
+                    "code": "template_render_failed",
+                })),
+            )
+                .into_response(),
             Err(InferenceError::Other(e)) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("{e:#}")})),
@@ -376,6 +384,14 @@ async fn chat_completions(
                     "code": "vision_unsupported",
                     "model_id": model_id,
                     "suggestion": "load a vision-capable model or remove image_url content parts",
+                })),
+            )
+                .into_response(),
+            Err(InferenceError::TemplateRenderFailed { detail }) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "error": format!("chat template could not render this request: {detail}"),
+                    "code": "template_render_failed",
                 })),
             )
                 .into_response(),
@@ -551,6 +567,14 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
                 "code": "vision_unsupported",
                 "model_id": model_id,
                 "suggestion": "load a vision-capable model or remove image_url content parts",
+            })),
+        )
+            .into_response(),
+        InferenceError::TemplateRenderFailed { detail } => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({
+                "error": format!("chat template could not render this request: {detail}"),
+                "code": "template_render_failed",
             })),
         )
             .into_response(),
