@@ -3492,8 +3492,11 @@ impl CandleHarness {
                 let mut finish_reason = FinishReason::Length;
                 // Reasoning + tool-call state machines — same as
                 // the single-GPU path. The TP path needs its own
-                // copies because the spawn closure owns them.
-                let mut in_reasoning = false;
+                // copies because the spawn closure owns them. Start in
+                // reasoning mode when the prompt itself opens a <think>
+                // block (Qwen3.6 injects it into the generation prompt).
+                let mut in_reasoning =
+                    prompt_opens_reasoning(&prompt_tokens, reasoning_tokens.as_ref());
                 let mut in_tool_call = false;
                 let mut tool_call_buf = String::new();
                 let mut tool_call_idx: usize = 0;
@@ -4331,6 +4334,27 @@ fn handle_reasoning_marker(
         return true;
     }
     false
+}
+
+/// Whether a rendered prompt leaves the model *inside* an open
+/// reasoning block. Some chat templates (Qwen3.6) inject the opening
+/// `<think>` into the generation prompt, so generation begins
+/// mid-thought and the open marker is never *sampled* — leaving
+/// `in_reasoning` false would stream the model's thinking out as
+/// visible text. Replaying the prompt's reasoning markers and starting
+/// the loop in whatever state the prompt ends in fixes that without
+/// disabling thinking. `None` pair (non-reasoning model) → false.
+fn prompt_opens_reasoning(prompt_tokens: &[u32], pair: Option<&ReasoningTokenPair>) -> bool {
+    let Some(pair) = pair else { return false };
+    let mut open = false;
+    for &t in prompt_tokens {
+        if t == pair.open_id {
+            open = true;
+        } else if t == pair.close_id {
+            open = false;
+        }
+    }
+    open
 }
 
 /// Outcome of checking a sampled token against the model's
@@ -5414,7 +5438,9 @@ async fn stream_inference_via_worker(
     // `run_inference_streaming` for the why. Markers never reach
     // `decode_stream`; they toggle state. Tool-call content
     // accumulates into `tool_call_buf` until the close marker.
-    let mut in_reasoning = false;
+    // `prompt_opens_reasoning`: Qwen3.6 starts the generation prompt
+    // inside a <think> block, so begin in reasoning mode if it does.
+    let mut in_reasoning = prompt_opens_reasoning(&prompt_tokens, reasoning_tokens.as_ref());
     let mut in_tool_call = false;
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
@@ -5737,8 +5763,9 @@ fn run_inference_streaming(
     // `next_token == reasoning_tokens.open_id`, off on
     // `.close_id`. The marker tokens themselves never feed into
     // `decode_stream` — they aren't part of any visible output,
-    // they exist purely as state transitions.
-    let mut in_reasoning = false;
+    // they exist purely as state transitions. Seeded from the prompt:
+    // Qwen3.6 opens a <think> block in the generation prompt itself.
+    let mut in_reasoning = prompt_opens_reasoning(prompt_tokens, reasoning_tokens);
     // Tool-call state. While `in_tool_call`, content tokens get
     // accumulated into `tool_call_buf` instead of emitted; on the
     // close marker we parse the buffer and emit a structured
@@ -6308,5 +6335,25 @@ mod tests {
             coerce_param_value("true", Some("boolean")),
             Value::Bool(true)
         );
+    }
+
+    #[test]
+    fn prompt_opens_reasoning_tracks_marker_state() {
+        let pair = ReasoningTokenPair {
+            open_id: 100,
+            close_id: 101,
+            open_text: "<think>".into(),
+            close_text: "</think>".into(),
+        };
+        // Generation prompt ends with an unclosed <think> (Qwen3.6).
+        assert!(prompt_opens_reasoning(&[1, 2, 100], Some(&pair)));
+        // A complete <think>…</think> in history leaves us closed.
+        assert!(!prompt_opens_reasoning(&[100, 5, 101, 7], Some(&pair)));
+        // Last marker wins: closed then reopened at the prompt tail.
+        assert!(prompt_opens_reasoning(&[100, 101, 100], Some(&pair)));
+        // No markers → closed.
+        assert!(!prompt_opens_reasoning(&[1, 2, 3], Some(&pair)));
+        // Non-reasoning model (no pair) → always false.
+        assert!(!prompt_opens_reasoning(&[100], None));
     }
 }
