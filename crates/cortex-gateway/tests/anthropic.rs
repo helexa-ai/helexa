@@ -197,9 +197,11 @@ async fn test_anthropic_tools_reshaped_for_upstream() {
         .expect("assistant turn");
     assert_eq!(assistant["tool_calls"][0]["id"], "toolu_42");
     assert_eq!(assistant["tool_calls"][0]["function"]["name"], "Read");
+    // arguments is the parsed object, not a JSON string — the Qwen3.6
+    // chat template iterates `tool_call.arguments | items`.
     assert_eq!(
         assistant["tool_calls"][0]["function"]["arguments"],
-        "{\"path\":\"/etc/hosts\"}"
+        json!({"path": "/etc/hosts"})
     );
 
     let tool_msg = msgs

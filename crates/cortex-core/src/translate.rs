@@ -141,8 +141,6 @@ fn push_translated_message(out: &mut Vec<ChatMessage>, role: &str, content: Anth
                 text_segments.push(t);
             }
             "tool_use" => {
-                // Anthropic `input` is a JSON object; OpenAI wants the
-                // arguments as a JSON *string*.
                 let id = block
                     .data
                     .get("id")
@@ -163,7 +161,15 @@ fn push_translated_message(out: &mut Vec<ChatMessage>, role: &str, content: Anth
                     "type": "function",
                     "function": {
                         "name": name,
-                        "arguments": input.to_string(),
+                        // Arguments as the parsed OBJECT, not the OpenAI
+                        // JSON-string form. The Qwen3.6 chat template
+                        // iterates `tool_call.arguments | items` (treats
+                        // it as a dict); a string throws "cannot convert
+                        // value into pairs", making neuron fall back to a
+                        // tool-less prompt — which silently breaks
+                        // tool-call chaining the moment one tool call is
+                        // in the history.
+                        "arguments": input,
                     }
                 }));
             }
@@ -879,10 +885,10 @@ mod request_tests {
         assert_eq!(calls[0]["id"], "toolu_1");
         assert_eq!(calls[0]["type"], "function");
         assert_eq!(calls[0]["function"]["name"], "Read");
-        // arguments is a JSON *string*, not an object.
+        // arguments is the parsed object (Qwen3.6 template iterates it).
         assert_eq!(
             calls[0]["function"]["arguments"],
-            "{\"path\":\"/etc/hosts\"}"
+            json!({"path": "/etc/hosts"})
         );
     }
 
