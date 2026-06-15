@@ -198,13 +198,43 @@ async fn model_endpoint(
     }
 }
 
+/// Default `chat_template_kwargs.enable_thinking` to `include_thinking`
+/// when the client didn't set it explicitly, leaving any explicit client
+/// choice untouched. See the call site in [`chat_completions`] for the
+/// rationale (reasoning eating the token budget for clients that drop it).
+fn default_enable_thinking(req: &mut ChatCompletionRequest, include_thinking: bool) {
+    if req
+        .extra
+        .get("chat_template_kwargs")
+        .and_then(|k| k.get("enable_thinking"))
+        .is_some()
+    {
+        return; // client chose explicitly — respect it
+    }
+    if !req.extra.is_object() {
+        req.extra = json!({});
+    }
+    let Some(obj) = req.extra.as_object_mut() else {
+        return;
+    };
+    let kwargs = obj
+        .entry("chat_template_kwargs")
+        .or_insert_with(|| json!({}));
+    if !kwargs.is_object() {
+        *kwargs = json!({});
+    }
+    if let Some(kw) = kwargs.as_object_mut() {
+        kw.insert("enable_thinking".into(), json!(include_thinking));
+    }
+}
+
 /// OpenAI-compatible chat completions. Dispatches to streaming SSE when
 /// `stream: true` is set on the request; otherwise returns a single
 /// `ChatCompletionResponse`.
 async fn chat_completions(
     State(state): State<Arc<NeuronState>>,
     headers: axum::http::HeaderMap,
-    Json(req): Json<ChatCompletionRequest>,
+    Json(mut req): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
     let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
         return (
@@ -228,6 +258,18 @@ async fn chat_completions(
         include_thinking,
         reasoning_markers: None, // filled in from the loaded model inside candle
     };
+
+    // Couple reasoning *generation* to reasoning *surfacing*. Reasoning
+    // models (Qwen3.6) think by default, and that `<think>` block can
+    // consume the entire `max_tokens` budget — which, when we then drop
+    // it (`include_thinking == false`, the default for OpenAI/Anthropic
+    // clients like Claude Code), leaves the visible answer empty or
+    // truncated. So when the caller isn't going to see the reasoning,
+    // don't generate it: default `enable_thinking` to `include_thinking`.
+    // A client that explicitly set `chat_template_kwargs.enable_thinking`
+    // wins; thinking-aware clients (helexa-acp, `x-include-thinking:
+    // true`) keep reasoning on.
+    default_enable_thinking(&mut req, include_thinking);
 
     if req.stream.unwrap_or(false) {
         match candle.chat_completion_stream_with(req, chat_config).await {
@@ -540,4 +582,60 @@ fn unix_subsec_nanos() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod thinking_tests {
+    use super::*;
+
+    fn req(value: serde_json::Value) -> ChatCompletionRequest {
+        serde_json::from_value(value).expect("valid ChatCompletionRequest")
+    }
+
+    fn enable_thinking(r: &ChatCompletionRequest) -> Option<bool> {
+        r.extra
+            .get("chat_template_kwargs")
+            .and_then(|k| k.get("enable_thinking"))
+            .and_then(|v| v.as_bool())
+    }
+
+    #[test]
+    fn defaults_enable_thinking_to_include_thinking_false() {
+        let mut r = req(json!({"model": "m", "messages": []}));
+        default_enable_thinking(&mut r, false);
+        assert_eq!(enable_thinking(&r), Some(false));
+    }
+
+    #[test]
+    fn defaults_enable_thinking_true_when_surfacing() {
+        let mut r = req(json!({"model": "m", "messages": []}));
+        default_enable_thinking(&mut r, true);
+        assert_eq!(enable_thinking(&r), Some(true));
+    }
+
+    #[test]
+    fn explicit_client_choice_is_respected() {
+        let mut r = req(json!({
+            "model": "m", "messages": [],
+            "chat_template_kwargs": {"enable_thinking": true}
+        }));
+        // include_thinking=false would normally force false; explicit wins.
+        default_enable_thinking(&mut r, false);
+        assert_eq!(enable_thinking(&r), Some(true));
+    }
+
+    #[test]
+    fn preserves_other_chat_template_kwargs() {
+        let mut r = req(json!({
+            "model": "m", "messages": [],
+            "chat_template_kwargs": {"some_other": 42}
+        }));
+        default_enable_thinking(&mut r, false);
+        assert_eq!(enable_thinking(&r), Some(false));
+        assert_eq!(
+            r.extra["chat_template_kwargs"]["some_other"],
+            json!(42),
+            "existing kwargs must survive"
+        );
+    }
 }
