@@ -41,6 +41,7 @@ env:
 jobs:
   fmt:
     name: Format
+    timeout-minutes: 15
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
@@ -48,67 +49,26 @@ jobs:
 
   clippy:
     name: Clippy
+    timeout-minutes: 25
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
-      # sccache failures come in two modes: transient races (a plain
-      # retry clears them) and a wedged/dead server, where every
-      # same-VM retry fails identically. Escalate: retry → restart the
-      # server → final attempt uncached. A sick cache costs build
-      # time, never the run. Keep in sync with build-prerelease.yml.
-      - name: Clippy (with sccache escalation)
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::clippy attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo clippy --workspace -- -D warnings; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "clippy failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "clippy failed after 3 attempts"
-          exit 1
-      - run: sccache --show-stats || true
+      # Failure-aware sccache escalation lives in the shared script (kept
+      # in sync with build-prerelease.yml): a signal death (rustc SIGSEGV
+      # / OOM-kill) keeps the cache and fails fast instead of an uncached
+      # rebuild; only a real sccache fault drops the cache.
+      - name: Clippy (sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo clippy --workspace -- -D warnings
 
   test:
     name: Test
+    timeout-minutes: 25
     runs-on: rust
     steps:
       - uses: actions/checkout@v4
-      # See the clippy job for the escalation rationale.
-      - name: Test (with sccache escalation)
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::test attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo test --workspace; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "test failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "test failed after 3 attempts"
-          exit 1
-      - run: sccache --show-stats || true
+      # See script/ci-cargo-escalate.sh for the escalation rationale.
+      - name: Test (sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo test --workspace
 
   # Type-check the CUDA-only code path. Borrow-check-only — we
   # never run the tests here (the runner has no GPU). This catches
@@ -122,6 +82,7 @@ jobs:
   # see commit history).
   cuda-check:
     name: CUDA type-check
+    timeout-minutes: 35
     runs-on: cuda-13.0
     # The workflow-level env sets `RUSTC_WRAPPER: sccache`
     # unconditionally, which hard-fails cargo if the CUDA image
@@ -139,52 +100,26 @@ jobs:
       CUDA_COMPUTE_CAP: "86"
     steps:
       - uses: actions/checkout@v4
-      # sccache is probed inside this step (NOT via GITHUB_ENV from a
-      # prior step — this runner doesn't propagate it; see
-      # build-prerelease.yml for the observed failure).
-      - name: cargo check --features cuda (with sccache escalation)
+      # sccache probing + failure classification lives in the shared
+      # script (see build-prerelease.yml's neuron build for the same
+      # pattern). It probes for sccache and, on a rustc SIGSEGV / OOM,
+      # keeps the cache and fails fast rather than rebuilding uncached.
+      - name: cargo check --features cuda (sccache escalation)
         run: |
-          if command -v sccache >/dev/null 2>&1; then
-            export RUSTC_WRAPPER=sccache
-            sccache --start-server 2>/dev/null || true
-            echo "sccache enabled"
-          else
-            echo "sccache not on PATH — building uncached"
-          fi
           # act launches the step shell without /etc/profile, so the
           # gitea_runner user's inherited PATH lacks /usr/local/cuda-13.0/bin.
-          # cudarc's build.rs:157 shells out to `nvcc --version` (because
-          # the neuron crate enables cuda-version-from-build-system) and
-          # panics with ENOENT if nvcc isn't resolvable. build-prerelease.yml
-          # does the same export — keep them in sync.
+          # cudarc's build.rs shells out to `nvcc --version` (the neuron
+          # crate enables cuda-version-from-build-system) and panics with
+          # ENOENT if nvcc isn't resolvable — keep this export in sync
+          # with build-prerelease.yml.
           export PATH="/usr/local/cuda-13.0/bin:${PATH}"
           export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
-          # Escalation mirrors the lint/test jobs: plain retry →
-          # sccache server restart → final attempt uncached.
-          for attempt in 1 2 3; do
-            echo "::group::cuda-check attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo check -p neuron --features cuda --all-targets; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "cuda-check failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ] && command -v sccache >/dev/null 2>&1; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "cuda-check failed after 3 attempts"
-          exit 1
+          script/ci-cargo-escalate.sh cargo check -p neuron --features cuda --all-targets
 
   srpm-cortex:
     name: Build cortex SRPM
+    timeout-minutes: 25
     runs-on: rpm
     needs: [fmt, clippy, test, cuda-check]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -245,6 +180,7 @@ jobs:
 
   srpm-neuron:
     name: Build neuron SRPM
+    timeout-minutes: 25
     runs-on: rpm
     needs: [fmt, clippy, test, cuda-check]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -305,6 +241,7 @@ jobs:
 
   copr-cortex:
     name: Publish cortex to COPR
+    timeout-minutes: 60
     runs-on: fedora-43
     needs: srpm-cortex
     steps:
@@ -322,6 +259,7 @@ jobs:
 
   copr-neuron:
     name: Publish neuron to COPR
+    timeout-minutes: 60
     runs-on: fedora-43
     needs: srpm-neuron
     steps:
@@ -339,6 +277,7 @@ jobs:
 
   bump-version:
     name: Bump version in source
+    timeout-minutes: 15
     runs-on: rust
     needs: [copr-cortex, copr-neuron]
     steps:

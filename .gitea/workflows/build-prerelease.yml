@@ -56,6 +56,7 @@ env:
 jobs:
   prepare:
     name: Resolve version stamps + change detection
+    timeout-minutes: 10
     runs-on: rust
     outputs:
       version: ${{ steps.info.outputs.version }}
@@ -180,6 +181,7 @@ jobs:
   # fleet, but it also doesn't serialize the pipeline.
   lint:
     name: Lint (fmt + clippy)
+    timeout-minutes: 25
     needs: prepare
     if: needs.prepare.outputs.check_rust == 'true'
     runs-on: rust
@@ -196,38 +198,16 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
       - run: cargo fmt --check --all
-      # sccache failures come in two modes: transient races (a plain
-      # retry clears them) and a wedged/dead server, where every
-      # same-VM retry fails identically (sccache fatal error, ENOENT
-      # on its own tmp files). Escalate accordingly: retry → restart
-      # the server → final attempt uncached. A sick cache costs build
-      # time, never the run.
-      - name: Clippy (with sccache escalation)
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::clippy attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo clippy --workspace -- -D warnings; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "clippy failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "clippy failed after 3 attempts"
-          exit 1
-      - run: sccache --show-stats || true
+      # Failure-aware sccache escalation lives in the shared script: a
+      # signal death (rustc SIGSEGV / OOM-kill) keeps the cache and fails
+      # fast instead of triggering a slower uncached rebuild; only a real
+      # sccache fault drops the cache. See script/ci-cargo-escalate.sh.
+      - name: Clippy (sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo clippy --workspace -- -D warnings
 
   test:
     name: Test
+    timeout-minutes: 25
     needs: prepare
     if: needs.prepare.outputs.check_rust == 'true'
     runs-on: rust
@@ -243,33 +223,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
-      # See the lint job for the escalation rationale.
-      - name: Test (with sccache escalation)
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::test attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo test --workspace; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "test failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "test failed after 3 attempts"
-          exit 1
-      - run: sccache --show-stats || true
+      # See script/ci-cargo-escalate.sh for the escalation rationale.
+      - name: Test (sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo test --workspace
 
   build-cortex:
     name: Build cortex binary
+    timeout-minutes: 25
     needs: prepare
     if: needs.prepare.outputs.build_cortex == 'true'
     # runner-rust image already provides rust/cargo/clippy/rustfmt via
@@ -288,32 +248,9 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # Escalation mirrors the lint/test jobs: retry → restart the
-      # sccache server → final attempt uncached. A sick cache costs
-      # build time, never the run.
-      - name: Build cortex (release, with sccache escalation)
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::build attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo build --release -p cortex-cli; then
-              echo "::endgroup::"
-              sccache --show-stats || true
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "build failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "build failed after 3 attempts"
-          exit 1
+      # See script/ci-cargo-escalate.sh for the escalation rationale.
+      - name: Build cortex (release, sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo build --release -p cortex-cli
 
       - name: Stage binary
         run: |
@@ -329,6 +266,7 @@ jobs:
 
   build-bench:
     name: Build helexa-bench binary
+    timeout-minutes: 25
     needs: prepare
     if: needs.prepare.outputs.build_bench == 'true'
     # Pure-Rust, non-CUDA binary — same runner as cortex.
@@ -346,32 +284,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      - name: Build helexa-bench (release, with sccache escalation)
+      - name: Build helexa-bench (release, sccache escalation)
         run: |
           # Stamp the SHA helexa-bench records as bench_sha against every
           # run (option_env! in sweep.rs reads it at compile time).
           export HELEXA_BUILD_SHA="$(git rev-parse HEAD)"
-          for attempt in 1 2 3; do
-            echo "::group::build attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo build --release -p helexa-bench; then
-              echo "::endgroup::"
-              sccache --show-stats || true
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "build failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ]; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "build failed after 3 attempts"
-          exit 1
+          script/ci-cargo-escalate.sh cargo build --release -p helexa-bench
 
       - name: Stage binary
         run: |
@@ -387,6 +305,7 @@ jobs:
 
   build-neuron:
     name: Build neuron-${{ matrix.flavour }}
+    timeout-minutes: 35
     needs: prepare
     if: needs.prepare.outputs.build_neuron == 'true'
     strategy:
@@ -427,28 +346,16 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
-      # Escalation mirrors the lint/test jobs: retry → restart the
-      # sccache server → final attempt uncached.
-      #
-      # The CUDA image may or may not ship sccache — probe inside this
-      # step (NOT via GITHUB_ENV from a prior step, which this runner
-      # does not propagate; observed: probe step said "enabled", build
-      # ran unwrapped, server stats showed 4 compile requests). A
-      # missing binary degrades to an uncached build rather than
-      # failing cargo at `sccache rustc -vV`. The cache covers the
-      # ~600-crate host-side dep tree (the bulk of the 10-14 min
-      # build); rustc compilations are shared across all three
-      # flavours, so even one run seeds the next.
+      # sccache handling + failure classification lives in
+      # script/ci-cargo-escalate.sh: it probes for sccache (the CUDA
+      # image may not ship it — a missing binary degrades to an uncached
+      # build rather than failing at `sccache rustc -vV`), and a rustc
+      # SIGSEGV / OOM-kill keeps the cache and fails fast instead of
+      # escalating to a slower uncached rebuild. The cache covers the
+      # ~600-crate host-side dep tree (the bulk of the 10-14 min build),
+      # shared across all three flavours, so even one run seeds the next.
       - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
-          set -ux
-          if command -v sccache >/dev/null 2>&1; then
-            export RUSTC_WRAPPER=sccache
-            sccache --start-server 2>/dev/null || true
-            echo "sccache enabled"
-          else
-            echo "sccache not on PATH — building uncached"
-          fi
           export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
           export LD_LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="${{ matrix.cuda_home }}/targets/x86_64-linux/lib:${{ matrix.cuda_home }}/lib64:${LIBRARY_PATH:-}"
@@ -457,27 +364,7 @@ jobs:
           # injecting the exact checked-out commit is unambiguous under
           # shallow/detached states and makes the artifact self-describing.
           export HELEXA_BUILD_SHA="$(git rev-parse HEAD)"
-          for attempt in 1 2 3; do
-            echo "::group::build attempt ${attempt}"
-            if [ "${attempt}" -eq 3 ]; then
-              echo "final attempt: building without sccache"
-              export RUSTC_WRAPPER=""
-            fi
-            if cargo build --release -p neuron --features "${{ matrix.cargo_features }}"; then
-              echo "::endgroup::"
-              command -v sccache >/dev/null 2>&1 && sccache --show-stats || true
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "build failed on attempt ${attempt}"
-            if [ "${attempt}" -eq 1 ] && command -v sccache >/dev/null 2>&1; then
-              sccache --stop-server || true
-              sccache --start-server || true
-            fi
-            sleep 5
-          done
-          echo "build failed after 3 attempts"
-          exit 1
+          script/ci-cargo-escalate.sh cargo build --release -p neuron --features "${{ matrix.cargo_features }}"
         env:
           CUDA_COMPUTE_CAP: ${{ matrix.compute_cap }}
           CARGO_BUILD_JOBS: ${{ matrix.build_jobs }}
@@ -497,6 +384,7 @@ jobs:
 
   package-cortex:
     name: Package cortex RPM
+    timeout-minutes: 20
     needs: [prepare, build-cortex]
     runs-on: rpm
     steps:
@@ -535,6 +423,7 @@ jobs:
 
   package-bench:
     name: Package helexa-bench RPM
+    timeout-minutes: 20
     needs: [prepare, build-bench]
     runs-on: rpm
     steps:
@@ -572,6 +461,7 @@ jobs:
 
   package-neuron:
     name: Package helexa-neuron-${{ matrix.flavour }} RPM
+    timeout-minutes: 20
     needs: [prepare, build-neuron]
     runs-on: rpm
     strategy:
@@ -617,6 +507,7 @@ jobs:
 
   publish:
     name: Publish to rpm.lair.cafe (unstable)
+    timeout-minutes: 25
     needs: [lint, test, package-cortex, package-neuron, package-bench]
     # Runs when at least one package was built and nothing failed.
     # lint/test may be skipped (docs-only refs never get here because
