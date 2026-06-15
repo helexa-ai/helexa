@@ -11,14 +11,38 @@ use crate::openai::{
 use serde_json::{Value, json};
 
 /// Convert an Anthropic Messages request into an OpenAI ChatCompletion request.
+///
+/// This is the request half of the round trip Claude Code (and any
+/// Anthropic-native client pointed at cortex via `ANTHROPIC_BASE_URL`)
+/// exercises. The non-obvious work here is **tool translation**: the
+/// Anthropic and OpenAI tool shapes differ, and neuron feeds whatever
+/// `tools` array it receives straight into the HF chat template, which
+/// iterates the OpenAI shape (`tool.function.name`,
+/// `tool.function.parameters`). If we forwarded Anthropic-shaped tools
+/// (`{name, description, input_schema}`) verbatim the template would
+/// render empty/garbage definitions and the model would improvise an
+/// unparseable tool-call format — exactly the
+/// `<tool_use_name>…</tool_use_name>` text that leaks through to the
+/// client. So we reshape here:
+///
+/// - tool **definitions**: `{name, description, input_schema}` →
+///   `{type:"function", function:{name, description, parameters}}`
+/// - `tool_choice`: Anthropic `{type:"auto"|"any"|"tool", name}` →
+///   OpenAI `"auto"|"required"|{type:"function",function:{name}}`
+/// - assistant `tool_use` content blocks → an OpenAI assistant message
+///   carrying `tool_calls` (with `arguments` JSON-stringified)
+/// - user `tool_result` content blocks → standalone `role:"tool"`
+///   messages keyed by `tool_call_id`
 pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
     let mut messages = Vec::new();
 
-    // Anthropic `system` field becomes a system message.
+    // Anthropic `system` field becomes a system message. Block form is
+    // flattened to its text rather than JSON-serialised — a JSON blob
+    // in the system prompt would confuse the model.
     if let Some(system) = req.system {
         let content = match system {
             SystemPrompt::Text(t) => t,
-            SystemPrompt::Blocks(blocks) => serde_json::to_string(&blocks).unwrap_or_default(),
+            SystemPrompt::Blocks(blocks) => system_blocks_to_text(&blocks),
         };
         messages.push(ChatMessage {
             role: "system".into(),
@@ -27,31 +51,29 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         });
     }
 
-    // Convert message roles and content.
+    // Convert message roles and content. A single Anthropic message can
+    // fan out into several OpenAI messages (tool results split off into
+    // their own `role:"tool"` turns).
     for msg in req.messages {
-        let content = match msg.content {
-            AnthropicContent::Text(t) => MessageContent::Text(t),
-            AnthropicContent::Blocks(blocks) => {
-                // For simple text-only blocks, extract the text.
-                // For mixed content (images, etc.), pass as parts.
-                if blocks.len() == 1 && blocks[0].block_type == "text" {
-                    let text = blocks[0]
-                        .data
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    MessageContent::Text(text)
-                } else {
-                    MessageContent::Parts(blocks.into_iter().map(|b| json!(b)).collect())
-                }
-            }
-        };
-        messages.push(ChatMessage {
-            role: msg.role,
-            content,
-            extra: Value::Null,
-        });
+        push_translated_message(&mut messages, &msg.role, msg.content);
+    }
+
+    // Reshape `tools` / `tool_choice` (carried over from the request's
+    // flattened `extra`) into the OpenAI shape neuron's chat template
+    // expects. Computed-then-inserted to avoid borrowing `obj` across
+    // the mutation.
+    let mut extra = req.extra;
+    if let Value::Object(obj) = &mut extra {
+        let tools = obj.get("tools").and_then(anthropic_tools_to_openai);
+        if let Some(tools) = tools {
+            obj.insert("tools".into(), tools);
+        }
+        let tool_choice = obj
+            .get("tool_choice")
+            .and_then(anthropic_tool_choice_to_openai);
+        if let Some(tc) = tool_choice {
+            obj.insert("tool_choice".into(), tc);
+        }
     }
 
     ChatCompletionRequest {
@@ -61,7 +83,244 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         top_p: req.top_p,
         max_tokens: Some(req.max_tokens),
         stream: req.stream,
-        extra: req.extra,
+        extra,
+    }
+}
+
+/// Translate one Anthropic message into one-or-more OpenAI messages,
+/// appending them to `out`.
+fn push_translated_message(out: &mut Vec<ChatMessage>, role: &str, content: AnthropicContent) {
+    let blocks = match content {
+        AnthropicContent::Text(t) => {
+            out.push(ChatMessage {
+                role: role.into(),
+                content: MessageContent::Text(t),
+                extra: Value::Null,
+            });
+            return;
+        }
+        AnthropicContent::Blocks(blocks) => blocks,
+    };
+
+    let mut text_segments: Vec<String> = Vec::new();
+    let mut parts: Vec<Value> = Vec::new();
+    let mut has_nontext_part = false;
+    let mut tool_calls: Vec<Value> = Vec::new();
+    let mut tool_msgs: Vec<ChatMessage> = Vec::new();
+
+    for block in blocks {
+        match block.block_type.as_str() {
+            "text" => {
+                let t = block
+                    .data
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                parts.push(json!({ "type": "text", "text": t }));
+                text_segments.push(t);
+            }
+            "tool_use" => {
+                // Anthropic `input` is a JSON object; OpenAI wants the
+                // arguments as a JSON *string*.
+                let id = block
+                    .data
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("toolu_unknown");
+                let name = block
+                    .data
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                let input = block
+                    .data
+                    .get("input")
+                    .cloned()
+                    .unwrap_or_else(|| json!({}));
+                tool_calls.push(json!({
+                    "id": id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": input.to_string(),
+                    }
+                }));
+            }
+            "tool_result" => {
+                let tool_use_id = block
+                    .data
+                    .get("tool_use_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("toolu_unknown");
+                tool_msgs.push(ChatMessage {
+                    role: "tool".into(),
+                    content: MessageContent::Text(tool_result_content_to_string(&block.data)),
+                    extra: json!({ "tool_call_id": tool_use_id }),
+                });
+            }
+            "image" => {
+                if let Some(part) = anthropic_image_to_openai(&block.data) {
+                    parts.push(part);
+                    has_nontext_part = true;
+                }
+            }
+            _ => {
+                // Unknown block kind: preserve it as a JSON part rather
+                // than silently dropping it.
+                parts.push(serde_json::to_value(&block).unwrap_or(Value::Null));
+                has_nontext_part = true;
+            }
+        }
+    }
+
+    // Tool results become standalone `role:"tool"` turns and must
+    // precede any residual content from the same Anthropic message.
+    out.append(&mut tool_msgs);
+
+    if !tool_calls.is_empty() {
+        // An assistant turn that invoked tools. OpenAI carries the calls
+        // in `tool_calls`; the visible text (if any) stays in `content`.
+        out.push(ChatMessage {
+            role: role.into(),
+            content: MessageContent::Text(text_segments.join("")),
+            extra: json!({ "tool_calls": tool_calls }),
+        });
+    } else if has_nontext_part {
+        // Mixed content (images): forward as OpenAI content parts.
+        out.push(ChatMessage {
+            role: role.into(),
+            content: MessageContent::Parts(parts),
+            extra: Value::Null,
+        });
+    } else if !text_segments.is_empty() {
+        out.push(ChatMessage {
+            role: role.into(),
+            content: MessageContent::Text(text_segments.join("")),
+            extra: Value::Null,
+        });
+    }
+    // else: the message was only tool_result blocks — already emitted
+    // as `role:"tool"` turns above, nothing residual to add.
+}
+
+/// Extract plain text from an Anthropic `tool_result` block's `content`
+/// (a string, or an array of `{type:"text", text}` blocks).
+fn tool_result_content_to_string(data: &Value) -> String {
+    match data.get("content") {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(arr)) => arr
+            .iter()
+            .map(|b| {
+                if b.get("type").and_then(Value::as_str) == Some("text") {
+                    b.get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string()
+                } else {
+                    b.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(""),
+        Some(other) => other.to_string(),
+        None => String::new(),
+    }
+}
+
+/// Convert an Anthropic image block's `data` (`{source:{...}}`) into an
+/// OpenAI `image_url` content part.
+fn anthropic_image_to_openai(data: &Value) -> Option<Value> {
+    let source = data.get("source")?;
+    match source
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("base64")
+    {
+        "base64" => {
+            let media = source
+                .get("media_type")
+                .and_then(Value::as_str)
+                .unwrap_or("image/png");
+            let b64 = source
+                .get("data")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Some(json!({
+                "type": "image_url",
+                "image_url": { "url": format!("data:{media};base64,{b64}") }
+            }))
+        }
+        "url" => {
+            let url = source
+                .get("url")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
+            Some(json!({ "type": "image_url", "image_url": { "url": url } }))
+        }
+        _ => None,
+    }
+}
+
+/// Reshape an Anthropic `tools` array into the OpenAI function-tool
+/// shape. Returns `None` if the value isn't an array (left untouched).
+fn anthropic_tools_to_openai(tools: &Value) -> Option<Value> {
+    let arr = tools.as_array()?;
+    let converted = arr
+        .iter()
+        .map(|t| {
+            // Already OpenAI-shaped (a client mixing conventions, or a
+            // re-translation): pass through unchanged.
+            if t.get("type").and_then(Value::as_str) == Some("function")
+                && t.get("function").is_some()
+            {
+                return t.clone();
+            }
+            let mut function = serde_json::Map::new();
+            function.insert("name".into(), t.get("name").cloned().unwrap_or(Value::Null));
+            if let Some(desc) = t.get("description") {
+                function.insert("description".into(), desc.clone());
+            }
+            function.insert(
+                "parameters".into(),
+                t.get("input_schema")
+                    .cloned()
+                    .unwrap_or_else(|| json!({ "type": "object" })),
+            );
+            json!({ "type": "function", "function": Value::Object(function) })
+        })
+        .collect();
+    Some(Value::Array(converted))
+}
+
+/// Map an Anthropic `tool_choice` to the OpenAI form.
+fn anthropic_tool_choice_to_openai(tc: &Value) -> Option<Value> {
+    match tc.get("type").and_then(Value::as_str)? {
+        "auto" => Some(json!("auto")),
+        "any" => Some(json!("required")),
+        "none" => Some(json!("none")),
+        "tool" => {
+            let name = tc.get("name").and_then(Value::as_str).unwrap_or_default();
+            Some(json!({ "type": "function", "function": { "name": name } }))
+        }
+        _ => None,
+    }
+}
+
+/// Flatten Anthropic system content blocks (`[{type:"text", text}]`)
+/// into a single string.
+fn system_blocks_to_text(blocks: &[Value]) -> String {
+    let joined = blocks
+        .iter()
+        .filter(|b| b.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|b| b.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if joined.is_empty() {
+        // Unusual shape — don't lose it.
+        serde_json::to_string(blocks).unwrap_or_default()
+    } else {
+        joined
     }
 }
 
@@ -473,5 +732,203 @@ mod stream_tests {
         t2.on_chunk(&chunk(json!({"content": "x"}), None));
         assert!(!t2.finish().is_empty());
         assert!(t2.finish().is_empty(), "second finish must emit nothing");
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+    use crate::openai::MessageContent;
+
+    fn req(value: Value) -> MessagesRequest {
+        serde_json::from_value(value).expect("valid MessagesRequest")
+    }
+
+    #[test]
+    fn tool_definitions_reshape_to_openai_function_shape() {
+        let r = req(json!({
+            "model": "Qwen/Qwen3.6-27B",
+            "max_tokens": 1024,
+            "messages": [{"role": "user", "content": "read the file"}],
+            "tools": [{
+                "name": "Read",
+                "description": "Read a file",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"]
+                }
+            }]
+        }));
+        let openai = anthropic_to_openai(r);
+        let tools = openai
+            .extra
+            .get("tools")
+            .and_then(Value::as_array)
+            .expect("tools array");
+        assert_eq!(tools.len(), 1);
+        let t = &tools[0];
+        assert_eq!(t["type"], "function");
+        assert_eq!(t["function"]["name"], "Read");
+        assert_eq!(t["function"]["description"], "Read a file");
+        // input_schema is renamed to parameters, contents preserved.
+        assert_eq!(
+            t["function"]["parameters"]["properties"]["path"]["type"],
+            "string"
+        );
+        assert!(t["function"].get("input_schema").is_none());
+    }
+
+    #[test]
+    fn tool_choice_maps_each_variant() {
+        let mk = |tc: Value| {
+            let r = req(json!({
+                "model": "m", "max_tokens": 8,
+                "messages": [{"role": "user", "content": "hi"}],
+                "tool_choice": tc
+            }));
+            anthropic_to_openai(r)
+                .extra
+                .get("tool_choice")
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(mk(json!({"type": "auto"})), json!("auto"));
+        assert_eq!(mk(json!({"type": "any"})), json!("required"));
+        assert_eq!(mk(json!({"type": "none"})), json!("none"));
+        assert_eq!(
+            mk(json!({"type": "tool", "name": "Read"})),
+            json!({"type": "function", "function": {"name": "Read"}})
+        );
+    }
+
+    #[test]
+    fn assistant_tool_use_block_becomes_openai_tool_calls() {
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me read it."},
+                    {"type": "tool_use", "id": "toolu_1", "name": "Read",
+                     "input": {"path": "/etc/hosts"}}
+                ]
+            }]
+        }));
+        let openai = anthropic_to_openai(r);
+        // One assistant message carrying both the text and the call.
+        let m = openai.messages.last().expect("a message");
+        assert_eq!(m.role, "assistant");
+        match &m.content {
+            MessageContent::Text(t) => assert_eq!(t, "Let me read it."),
+            other => panic!("expected text content, got {other:?}"),
+        }
+        let calls = m
+            .extra
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .expect("tool_calls");
+        assert_eq!(calls[0]["id"], "toolu_1");
+        assert_eq!(calls[0]["type"], "function");
+        assert_eq!(calls[0]["function"]["name"], "Read");
+        // arguments is a JSON *string*, not an object.
+        assert_eq!(
+            calls[0]["function"]["arguments"],
+            "{\"path\":\"/etc/hosts\"}"
+        );
+    }
+
+    #[test]
+    fn user_tool_result_block_becomes_role_tool_message() {
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_1",
+                     "content": "127.0.0.1 localhost"}
+                ]
+            }]
+        }));
+        let openai = anthropic_to_openai(r);
+        assert_eq!(openai.messages.len(), 1);
+        let m = &openai.messages[0];
+        assert_eq!(m.role, "tool");
+        assert_eq!(m.extra["tool_call_id"], "toolu_1");
+        match &m.content {
+            MessageContent::Text(t) => assert_eq!(t, "127.0.0.1 localhost"),
+            other => panic!("expected text content, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_with_block_array_content_is_flattened() {
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "t",
+                     "content": [{"type": "text", "text": "line1"}, {"type": "text", "text": "line2"}]}
+                ]
+            }]
+        }));
+        let openai = anthropic_to_openai(r);
+        match &openai.messages[0].content {
+            MessageContent::Text(t) => assert_eq!(t, "line1line2"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn tool_result_then_text_emits_tool_turn_first() {
+        // A user turn that carries a tool result *and* a follow-up
+        // question must yield the tool message before the user text.
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "tool_result", "tool_use_id": "t", "content": "ok"},
+                    {"type": "text", "text": "now what?"}
+                ]
+            }]
+        }));
+        let openai = anthropic_to_openai(r);
+        assert_eq!(openai.messages.len(), 2);
+        assert_eq!(openai.messages[0].role, "tool");
+        assert_eq!(openai.messages[1].role, "user");
+        match &openai.messages[1].content {
+            MessageContent::Text(t) => assert_eq!(t, "now what?"),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn system_blocks_flatten_to_text_not_json() {
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "system": [{"type": "text", "text": "You are helpful."}],
+            "messages": [{"role": "user", "content": "hi"}]
+        }));
+        let openai = anthropic_to_openai(r);
+        let sys = &openai.messages[0];
+        assert_eq!(sys.role, "system");
+        match &sys.content {
+            MessageContent::Text(t) => assert_eq!(t, "You are helpful."),
+            other => panic!("expected text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn already_openai_shaped_tools_pass_through() {
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "messages": [{"role": "user", "content": "hi"}],
+            "tools": [{"type": "function", "function": {"name": "x", "parameters": {}}}]
+        }));
+        let openai = anthropic_to_openai(r);
+        let tools = openai.extra.get("tools").and_then(Value::as_array).unwrap();
+        assert_eq!(tools[0]["function"]["name"], "x");
     }
 }

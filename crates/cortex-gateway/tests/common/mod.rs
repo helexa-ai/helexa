@@ -54,6 +54,61 @@ pub async fn spawn_mock_neuron() -> String {
     base_url
 }
 
+/// Like [`spawn_mock_neuron`] but captures the JSON body of every
+/// `POST /v1/chat/completions` it receives into the returned handle, so
+/// a test can assert what the gateway *actually forwarded upstream*
+/// (e.g. that Anthropic-shaped tools were reshaped to OpenAI form).
+pub async fn spawn_capturing_mock_neuron() -> (String, Arc<std::sync::Mutex<Vec<Value>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let inference_url = base_url.clone();
+    let captured: Arc<std::sync::Mutex<Vec<Value>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = captured.clone();
+
+    let app = Router::new()
+        .route("/models", get(mock_neuron_list_models))
+        .route(
+            "/models/{model_id}/endpoint",
+            get(move |Path(_): Path<String>| {
+                let url = inference_url.clone();
+                async move { Json(json!({"url": url})) }
+            }),
+        )
+        .route(
+            "/v1/chat/completions",
+            post(move |Json(body): Json<Value>| {
+                let sink = sink.clone();
+                async move {
+                    let model = body
+                        .get("model")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let resp = json!({
+                        "id": "chatcmpl-capture-001",
+                        "object": "chat.completion",
+                        "created": 1700000000_u64,
+                        "model": model,
+                        "choices": [{
+                            "index": 0,
+                            "message": {"role": "assistant", "content": "Hello from mock backend"},
+                            "finish_reason": "stop"
+                        }],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+                    });
+                    sink.lock().unwrap().push(body);
+                    Json(resp)
+                }
+            }),
+        );
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (base_url, captured)
+}
+
 async fn mock_neuron_list_models() -> Json<Value> {
     Json(json!([
         {"id": "test-model", "harness": "candle", "status": "loaded", "devices": [0], "vram_used_mb": 8000}

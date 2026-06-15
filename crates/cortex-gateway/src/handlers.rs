@@ -33,6 +33,7 @@ async fn chat_completions(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    log_inbound("openai-chat", "/v1/chat/completions", &body);
     let model_id = match extract_model(&body) {
         Some(m) => m,
         None => {
@@ -89,6 +90,7 @@ async fn responses(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    log_inbound("openai-responses", "/v1/responses", &body);
     let model_id = match extract_model(&body) {
         Some(m) => m,
         None => {
@@ -133,6 +135,7 @@ async fn completions(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    log_inbound("openai-completions", "/v1/completions", &body);
     let model_id = match extract_model(&body) {
         Some(m) => m,
         None => {
@@ -197,6 +200,36 @@ async fn anthropic_messages(
     let model_id = anth_req.model.clone();
     let is_streaming = anth_req.stream.unwrap_or(false);
 
+    // Wire-debug: make the exercised path and request shape concrete
+    // rather than guesswork. `tool_history` flags whether the client is
+    // continuing a tool conversation (tool_use/tool_result blocks in the
+    // message history) vs. opening a fresh one. Full bodies ride at
+    // trace! (cortex/neuron ship at info; operator infra runs at debug).
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let n_tools = anth_req
+            .extra
+            .get("tools")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0);
+        let tool_history = anth_req
+            .messages
+            .iter()
+            .any(|m| anthropic_message_has_tool_blocks(&m.content));
+        tracing::debug!(
+            wire = "anthropic",
+            endpoint = "/v1/messages",
+            model = %model_id,
+            stream = is_streaming,
+            messages = anth_req.messages.len(),
+            tools = n_tools,
+            tool_history,
+            system = anth_req.system.is_some(),
+            "inbound request"
+        );
+    }
+    tracing::trace!(wire = "anthropic", body = %body_preview(&body), "inbound anthropic body");
+
     // Translate to OpenAI format.
     let openai_req = cortex_core::translate::anthropic_to_openai(anth_req);
     let openai_body = match serde_json::to_vec(&openai_req) {
@@ -235,6 +268,14 @@ async fn anthropic_messages(
     // neuron's harness sees a model name that matches what it has
     // loaded.
     let openai_body = rewrite_model_in_body(openai_body, &route.resolved_model_id);
+    // The translated body is what neuron actually sees — the reshaped
+    // OpenAI-form tools live here. Tracing it makes "did the tool
+    // definitions survive translation?" a log line, not a guess.
+    tracing::trace!(
+        wire = "anthropic",
+        body = %body_preview(&openai_body),
+        "translated openai body (sent upstream)"
+    );
 
     let labels = [
         ("model", route.resolved_model_id.clone()),
@@ -357,6 +398,31 @@ async fn anthropic_messages(
 
         metrics::histogram!("cortex_request_duration_seconds", &labels)
             .record(start.elapsed().as_secs_f64());
+        // Did the model actually produce a structured tool call, or just
+        // text? This is the single most useful signal for "is tool
+        // calling working end-to-end" — a `false` here alongside a
+        // request that carried tools means the model improvised an
+        // unparsed format (the original failure mode).
+        let upstream_tool_calls = openai_resp.choices.iter().any(|c| {
+            c.message
+                .extra
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .map(|a| !a.is_empty())
+                .unwrap_or(false)
+        });
+        let finish_reason = openai_resp
+            .choices
+            .first()
+            .and_then(|c| c.finish_reason.clone());
+        tracing::debug!(
+            wire = "anthropic",
+            model = %model_id,
+            node = %route.node_name,
+            upstream_tool_calls,
+            finish_reason = ?finish_reason,
+            "upstream non-streaming response"
+        );
         let anthropic_resp = cortex_core::translate::openai_to_anthropic(openai_resp);
         Json(json!(anthropic_resp)).into_response()
     }
@@ -619,6 +685,57 @@ async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {
 fn extract_model(body: &[u8]) -> Option<String> {
     let v: Value = serde_json::from_slice(body).ok()?;
     v.get("model")?.as_str().map(|s| s.to_string())
+}
+
+/// Emit a uniform wire-debug summary for an OpenAI-family inbound
+/// request (chat/completions, completions, responses). Makes which
+/// surface a client exercised — and whether it sent tools / asked for
+/// streaming — a concrete log line. The full body rides at trace!.
+///
+/// Parsing is gated on the debug level being enabled so info-level
+/// deployments pay nothing.
+fn log_inbound(wire: &str, endpoint: &str, body: &[u8]) {
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let v: Value = match serde_json::from_slice(body) {
+            Ok(v) => v,
+            Err(_) => return,
+        };
+        let model = v.get("model").and_then(Value::as_str).unwrap_or("?");
+        let stream = v.get("stream").and_then(Value::as_bool).unwrap_or(false);
+        let tools = v
+            .get("tools")
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0);
+        tracing::debug!(wire, endpoint, model, stream, tools, "inbound request");
+    }
+    tracing::trace!(wire, endpoint, body = %body_preview(body), "inbound body");
+}
+
+/// True if an Anthropic message's content carries any `tool_use` or
+/// `tool_result` block — i.e. the client is mid tool-conversation.
+fn anthropic_message_has_tool_blocks(content: &cortex_core::anthropic::AnthropicContent) -> bool {
+    use cortex_core::anthropic::AnthropicContent;
+    match content {
+        AnthropicContent::Text(_) => false,
+        AnthropicContent::Blocks(blocks) => blocks
+            .iter()
+            .any(|b| matches!(b.block_type.as_str(), "tool_use" | "tool_result")),
+    }
+}
+
+/// Render a UTF-8-safe, length-capped preview of a request/response
+/// body for trace logging. Caps by characters (not bytes) so the slice
+/// can never split a multi-byte codepoint.
+fn body_preview(body: &[u8]) -> String {
+    const MAX_CHARS: usize = 8192;
+    let text = String::from_utf8_lossy(body);
+    if text.chars().count() > MAX_CHARS {
+        let head: String = text.chars().take(MAX_CHARS).collect();
+        format!("{head}…<truncated, {} bytes total>", body.len())
+    } else {
+        text.into_owned()
+    }
 }
 
 /// Rewrite the `model` field of an OpenAI-style JSON request body to

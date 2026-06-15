@@ -124,6 +124,92 @@ async fn test_anthropic_invalid_request() {
     assert_eq!(resp.status(), 400);
 }
 
+/// Tool round-trip: an Anthropic `/v1/messages` request carrying tools
+/// (the Claude Code shape: `{name, description, input_schema}`) must
+/// reach the upstream neuron reshaped into OpenAI function-tool form,
+/// and tool history (`tool_use` / `tool_result` blocks) must become
+/// `tool_calls` / `role:"tool"` messages. This is the fix for the
+/// failure where the model received malformed tool defs and improvised
+/// an unparseable `<tool_use_name>` format.
+#[tokio::test]
+async fn test_anthropic_tools_reshaped_for_upstream() {
+    let (mock_url, captured) = common::spawn_capturing_mock_neuron().await;
+    let gw_url = common::spawn_gateway(&mock_url).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{gw_url}/v1/messages"))
+        .header("content-type", "application/json")
+        .json(&json!({
+            "model": "test-model",
+            "max_tokens": 100,
+            "tools": [{
+                "name": "Read",
+                "description": "Read a file from disk",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"]
+                }
+            }],
+            "tool_choice": {"type": "auto"},
+            "messages": [
+                {"role": "user", "content": "read /etc/hosts"},
+                {"role": "assistant", "content": [
+                    {"type": "text", "text": "Reading it."},
+                    {"type": "tool_use", "id": "toolu_42", "name": "Read",
+                     "input": {"path": "/etc/hosts"}}
+                ]},
+                {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "toolu_42",
+                     "content": "127.0.0.1 localhost"}
+                ]}
+            ]
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(resp.status(), 200);
+
+    let forwarded = {
+        let guard = captured.lock().unwrap();
+        guard.last().cloned().expect("upstream received a request")
+    };
+
+    // Tool definitions reshaped to OpenAI function form.
+    let tools = forwarded["tools"].as_array().expect("tools array");
+    assert_eq!(tools[0]["type"], "function");
+    assert_eq!(tools[0]["function"]["name"], "Read");
+    assert_eq!(
+        tools[0]["function"]["parameters"]["properties"]["path"]["type"],
+        "string"
+    );
+    assert!(tools[0]["function"].get("input_schema").is_none());
+
+    // tool_choice mapped.
+    assert_eq!(forwarded["tool_choice"], "auto");
+
+    // Message history: user, assistant(+tool_calls), tool, user.
+    let msgs = forwarded["messages"].as_array().expect("messages array");
+    let assistant = msgs
+        .iter()
+        .find(|m| m["role"] == "assistant")
+        .expect("assistant turn");
+    assert_eq!(assistant["tool_calls"][0]["id"], "toolu_42");
+    assert_eq!(assistant["tool_calls"][0]["function"]["name"], "Read");
+    assert_eq!(
+        assistant["tool_calls"][0]["function"]["arguments"],
+        "{\"path\":\"/etc/hosts\"}"
+    );
+
+    let tool_msg = msgs
+        .iter()
+        .find(|m| m["role"] == "tool")
+        .expect("tool result turn");
+    assert_eq!(tool_msg["tool_call_id"], "toolu_42");
+    assert_eq!(tool_msg["content"], "127.0.0.1 localhost");
+}
+
 /// #24: a streaming Anthropic request gets a translated Anthropic SSE
 /// stream — not raw OpenAI frames. Verifies the full event sequence,
 /// text reassembly, and the content type.

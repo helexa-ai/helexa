@@ -82,11 +82,18 @@ pub async fn stream_translated(
     // discipline as neuron's own projectors.
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Bytes, std::convert::Infallible>>(32);
     let node = node_name.to_string();
+    let model = model_id.to_string();
     tokio::spawn(async move {
         let mut upstream = upstream.bytes_stream();
         let mut translator = AnthropicStreamTranslator::new();
         let mut buf: Vec<u8> = Vec::new();
         let mut done = false;
+        // Wire-debug accounting for the stream summary emitted at the
+        // end: did the model emit a structured tool call, what was the
+        // final finish_reason, and how many upstream frames did we see.
+        let mut saw_tool_call = false;
+        let mut last_finish: Option<String> = None;
+        let mut frames = 0u64;
 
         'outer: while let Some(block) = upstream.next().await {
             let block = match block {
@@ -113,10 +120,22 @@ pub async fn stream_translated(
                         }
                         continue;
                     }
+                    tracing::trace!(node = %node, frame = %data, "anthropic stream: upstream frame");
                     let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) else {
                         tracing::debug!(node = %node, "anthropic stream: unparsable upstream frame skipped");
                         continue;
                     };
+                    frames += 1;
+                    if chunk
+                        .choices
+                        .iter()
+                        .any(|c| c.delta.get("tool_calls").is_some())
+                    {
+                        saw_tool_call = true;
+                    }
+                    if let Some(fr) = chunk.choices.iter().find_map(|c| c.finish_reason.clone()) {
+                        last_finish = Some(fr);
+                    }
                     if !send_frames(&tx, translator.on_chunk(&chunk)).await {
                         break 'outer;
                     }
@@ -129,6 +148,20 @@ pub async fn stream_translated(
         if !done {
             let _ = send_frames(&tx, translator.finish()).await;
         }
+        // Stream summary: the streaming counterpart to the non-streaming
+        // handler's "upstream response" line. `upstream_tool_calls =
+        // false` on a tools-bearing request is the fingerprint of the
+        // model improvising an unparsed tool-call format.
+        tracing::debug!(
+            wire = "anthropic",
+            model = %model,
+            node = %node,
+            frames,
+            upstream_tool_calls = saw_tool_call,
+            finish_reason = ?last_finish,
+            terminated = done,
+            "anthropic stream complete"
+        );
     });
 
     Response::builder()
