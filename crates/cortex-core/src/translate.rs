@@ -34,29 +34,49 @@ use serde_json::{Value, json};
 /// - user `tool_result` content blocks → standalone `role:"tool"`
 ///   messages keyed by `tool_call_id`
 pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
-    let mut messages = Vec::new();
-
-    // Anthropic `system` field becomes a system message. Block form is
-    // flattened to its text rather than JSON-serialised — a JSON blob
-    // in the system prompt would confuse the model.
+    // Collect ALL system content into a single leading system message.
+    // The top-level `system` field PLUS any `role:"system"` turns inside
+    // `messages` (Claude Code injects extra system-role messages beyond
+    // the top-level one) are merged into one message at index 0.
+    //
+    // This is load-bearing: most chat templates — Qwen3.6's among them —
+    // hard-reject a system message anywhere but the start
+    // (`raise_exception('System message must be at the beginning.')`),
+    // and on that render error neuron silently falls back to a
+    // template that renders NO tools at all, so the model gets zero
+    // tool-format guidance and improvises an unparseable tool syntax —
+    // tool calling breaks entirely. Merging keeps every system
+    // instruction while satisfying the template.
+    let mut system_parts: Vec<String> = Vec::new();
     if let Some(system) = req.system {
-        let content = match system {
+        system_parts.push(match system {
             SystemPrompt::Text(t) => t,
             SystemPrompt::Blocks(blocks) => system_blocks_to_text(&blocks),
-        };
-        messages.push(ChatMessage {
-            role: "system".into(),
-            content: MessageContent::Text(content),
-            extra: Value::Null,
         });
     }
 
-    // Convert message roles and content. A single Anthropic message can
-    // fan out into several OpenAI messages (tool results split off into
-    // their own `role:"tool"` turns).
+    // Translate the conversation. A single Anthropic message can fan out
+    // into several OpenAI messages (tool results split into their own
+    // `role:"tool"` turns); `role:"system"` turns are pulled into the
+    // accumulator above rather than emitted mid-stream.
+    let mut convo: Vec<ChatMessage> = Vec::new();
     for msg in req.messages {
-        push_translated_message(&mut messages, &msg.role, msg.content);
+        if msg.role == "system" {
+            system_parts.push(anthropic_content_to_text(msg.content));
+            continue;
+        }
+        push_translated_message(&mut convo, &msg.role, msg.content);
     }
+
+    let mut messages = Vec::new();
+    if !system_parts.is_empty() {
+        messages.push(ChatMessage {
+            role: "system".into(),
+            content: MessageContent::Text(system_parts.join("\n\n")),
+            extra: Value::Null,
+        });
+    }
+    messages.extend(convo);
 
     // Reshape `tools` / `tool_choice` (carried over from the request's
     // flattened `extra`) into the OpenAI shape neuron's chat template
@@ -321,6 +341,34 @@ fn system_blocks_to_text(blocks: &[Value]) -> String {
         serde_json::to_string(blocks).unwrap_or_default()
     } else {
         joined
+    }
+}
+
+/// Flatten an Anthropic message's content into plain text. Used to fold
+/// `role:"system"` conversation turns into the leading system message;
+/// non-text blocks (rare in a system turn) are JSON-stringified rather
+/// than dropped.
+fn anthropic_content_to_text(content: AnthropicContent) -> String {
+    match content {
+        AnthropicContent::Text(t) => t,
+        AnthropicContent::Blocks(blocks) => blocks
+            .iter()
+            .map(|b| {
+                if b.block_type == "text" {
+                    b.data
+                        .get("text")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string()
+                } else {
+                    serde_json::to_value(b)
+                        .ok()
+                        .map(|v| v.to_string())
+                        .unwrap_or_default()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
     }
 }
 
@@ -918,6 +966,43 @@ mod request_tests {
             MessageContent::Text(t) => assert_eq!(t, "You are helpful."),
             other => panic!("expected text, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn system_role_messages_merge_into_one_leading_system() {
+        // Claude Code's shape: a top-level `system` PLUS a `role:"system"`
+        // turn inside `messages` (which Qwen3.6's template rejects unless
+        // it's first). Both must merge into a single leading system msg.
+        let r = req(json!({
+            "model": "m", "max_tokens": 8,
+            "system": "TOP LEVEL SYSTEM",
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {"role": "system", "content": "INJECTED SYSTEM"},
+                {"role": "user", "content": "do it"}
+            ],
+            "tools": [{"name": "noop", "input_schema": {"type": "object"}}]
+        }));
+        let openai = anthropic_to_openai(r);
+        // Exactly one system message, at index 0, merging both parts.
+        let systems: Vec<usize> = openai
+            .messages
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.role == "system")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(systems, vec![0], "one system message, at the front");
+        match &openai.messages[0].content {
+            MessageContent::Text(t) => {
+                assert!(t.contains("TOP LEVEL SYSTEM"));
+                assert!(t.contains("INJECTED SYSTEM"));
+            }
+            other => panic!("expected text, got {other:?}"),
+        }
+        // The two real user turns survive, in order, after the system.
+        let roles: Vec<&str> = openai.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, vec!["system", "user", "user"]);
     }
 
     #[test]
