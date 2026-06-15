@@ -221,7 +221,7 @@ pub fn render_chat_template(
     // becomes a string; Parts becomes an array of content blocks.
     // The HF templates handle both shapes via `content is string`
     // checks or content-array iteration.
-    let messages_json: Vec<Value> = messages
+    let mut messages_json: Vec<Value> = messages
         .iter()
         .map(|m| {
             let content_value = match &m.content {
@@ -242,6 +242,12 @@ pub fn render_chat_template(
             Value::Object(obj)
         })
         .collect();
+
+    // OpenAI clients (opencode, the OpenAI SDK) carry tool-call
+    // `arguments` as a JSON *string*; Qwen3.6's template iterates it as a
+    // dict, so normalise string args to objects before rendering. Without
+    // this, `chat_template:120` errors "cannot convert value into pairs".
+    normalize_tool_call_arguments(&mut messages_json);
 
     // Build the kwargs context. Add base bindings the template
     // expects (`messages`, `add_generation_prompt`, `tools`) plus
@@ -265,6 +271,37 @@ pub fn render_chat_template(
     // `context!` macro (which expects minijinja-native values).
     tmpl.render(Value::Object(ctx_map))
         .context("render chat_template")
+}
+
+/// Normalize OpenAI-style tool-call `arguments` from JSON strings to
+/// objects, in place, across all messages.
+///
+/// The OpenAI wire format carries `tool_calls[].function.arguments` as a
+/// JSON *string*; HF chat templates (Qwen3.6 at `chat_template:120`)
+/// iterate it as a dict (`arguments | items`), which throws "cannot
+/// convert value into pairs" on a string. Parsing string args into the
+/// object the template expects lets OpenAI and Anthropic clients both
+/// render. A string that doesn't parse is left untouched — the render
+/// then fails loudly rather than silently (see
+/// `InferenceError::TemplateRenderFailed`).
+fn normalize_tool_call_arguments(messages: &mut [Value]) {
+    for msg in messages {
+        let Some(tool_calls) = msg.get_mut("tool_calls").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for tc in tool_calls {
+            let Some(func) = tc.get_mut("function").and_then(Value::as_object_mut) else {
+                continue;
+            };
+            let parsed = match func.get("arguments") {
+                Some(Value::String(s)) => serde_json::from_str::<Value>(s).ok(),
+                _ => None,
+            };
+            if let Some(p) = parsed {
+                func.insert("arguments".into(), p);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -558,5 +595,41 @@ THINK_OK\
         let template = "{{ messages[0].tool_calls[0].id }}";
         let rendered = render_chat_template(template, &[msg], &Value::Null, &Value::Null).unwrap();
         assert_eq!(rendered, "t1");
+    }
+
+    #[test]
+    fn normalizes_openai_string_tool_call_arguments_to_object() {
+        // The opencode / OpenAI-SDK shape: arguments as a JSON string.
+        let mut messages = vec![json!({
+            "role": "assistant",
+            "tool_calls": [{
+                "id": "c1", "type": "function",
+                "function": {"name": "Read", "arguments": "{\"path\":\"/x\"}"}
+            }]
+        })];
+        normalize_tool_call_arguments(&mut messages);
+        assert_eq!(
+            messages[0]["tool_calls"][0]["function"]["arguments"],
+            json!({"path": "/x"}),
+            "string args must become the object the template iterates"
+        );
+    }
+
+    #[test]
+    fn leaves_object_args_and_non_tool_messages_untouched() {
+        let mut messages = vec![
+            json!({"role": "user", "content": "hi"}),
+            json!({"role": "assistant", "tool_calls": [
+                {"function": {"name": "f", "arguments": {"a": 1}}}
+            ]}),
+        ];
+        normalize_tool_call_arguments(&mut messages);
+        // Already-object args pass through unchanged (Anthropic path).
+        assert_eq!(
+            messages[1]["tool_calls"][0]["function"]["arguments"],
+            json!({"a": 1})
+        );
+        // Ordinary messages are not disturbed.
+        assert_eq!(messages[0]["content"], "hi");
     }
 }
