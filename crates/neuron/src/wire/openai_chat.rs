@@ -26,7 +26,7 @@
 //! producer blocks on its own send. The bounded channels
 //! propagate without us writing any logic.
 
-use cortex_core::openai::{ChatCompletionChunk, ChunkChoice};
+use cortex_core::openai::{ChatCompletionChunk, ChunkChoice, Usage};
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -188,8 +188,20 @@ pub fn project_chat_stream_with(
                         &id, created, &model_id, index, &call_id, &name, &arguments,
                     )]
                 }
-                InferenceEvent::Finish { reason } => {
-                    vec![final_chunk(&id, created, &model_id, reason)]
+                InferenceEvent::Finish {
+                    reason,
+                    prompt_tokens,
+                    completion_tokens,
+                } => {
+                    // The finish_reason chunk, then an OpenAI-style
+                    // usage-only chunk (`choices: []`, `usage` populated).
+                    // Clients (opencode) read this to track context size;
+                    // cortex's Anthropic translator also picks `usage` up
+                    // for its `message_delta`.
+                    vec![
+                        final_chunk(&id, created, &model_id, reason),
+                        usage_chunk(&id, created, &model_id, prompt_tokens, completion_tokens),
+                    ]
                 }
             };
             for chunk in chunks {
@@ -301,6 +313,34 @@ fn final_chunk(
     }
 }
 
+/// OpenAI-style trailing usage chunk: empty `choices`, populated
+/// `usage`. Mirrors what `stream_options: {include_usage: true}`
+/// produces. Emitted unconditionally — clients that don't read usage
+/// ignore the empty-choices chunk; clients that do (opencode, and
+/// cortex's Anthropic translator) get the token counts they need to
+/// track context.
+fn usage_chunk(
+    id: &str,
+    created: u64,
+    model_id: &str,
+    prompt_tokens: u32,
+    completion_tokens: u32,
+) -> ChatCompletionChunk {
+    ChatCompletionChunk {
+        id: id.into(),
+        object: "chat.completion.chunk".into(),
+        created,
+        model: model_id.into(),
+        choices: Vec::new(),
+        usage: Some(Usage {
+            prompt_tokens: prompt_tokens as u64,
+            completion_tokens: completion_tokens as u64,
+            total_tokens: (prompt_tokens + completion_tokens) as u64,
+        }),
+        extra: serde_json::Value::Object(Default::default()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,7 +363,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_text_finish_produces_three_chunks() {
+    async fn start_text_finish_produces_role_content_finish_and_usage() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
         let out_rx = project_chat_stream(rx, "id-1".into(), 1700, "m".into());
 
@@ -333,16 +373,21 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
         drop(tx);
 
         let out = collect(out_rx).await;
-        assert_eq!(out.len(), 3);
+        assert_eq!(out.len(), 4); // role, content, finish, usage
         assert_eq!(out[0].choices[0].delta["role"], "assistant");
         assert_eq!(out[1].choices[0].delta["content"], "hello");
         assert_eq!(out[2].choices[0].finish_reason.as_deref(), Some("stop"));
+        // Trailing usage-only chunk: empty choices, usage populated.
+        assert!(out[3].choices.is_empty());
+        assert!(out[3].usage.is_some());
         // Every chunk carries the stamped metadata.
         for chunk in &out {
             assert_eq!(chunk.id, "id-1");
@@ -370,13 +415,16 @@ mod tests {
         let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Length,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
         drop(tx);
         let out = collect(out_rx).await;
-        assert_eq!(out.len(), 1);
+        assert_eq!(out.len(), 2); // finish, usage
         assert_eq!(out[0].choices[0].finish_reason.as_deref(), Some("length"));
+        assert!(out[1].usage.is_some(), "usage chunk emitted after finish");
     }
 
     #[tokio::test]
@@ -428,6 +476,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -437,14 +487,19 @@ mod tests {
         // → close marker → visible answer → final chunk.
         let contents: Vec<&str> = out
             .iter()
-            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .filter_map(|c| {
+                c.choices
+                    .first()
+                    .and_then(|ch| ch.delta["content"].as_str())
+            })
             .collect();
         assert_eq!(
             contents,
             vec!["<think>", "first ", "second", "</think>", "answer"]
         );
         assert_eq!(
-            out.last().unwrap().choices[0].finish_reason.as_deref(),
+            out.iter()
+                .find_map(|c| c.choices.first().and_then(|ch| ch.finish_reason.as_deref())),
             Some("stop")
         );
     }
@@ -471,6 +526,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Length,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -478,11 +535,16 @@ mod tests {
         let out = collect(out_rx).await;
         let contents: Vec<&str> = out
             .iter()
-            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .filter_map(|c| {
+                c.choices
+                    .first()
+                    .and_then(|ch| ch.delta["content"].as_str())
+            })
             .collect();
         assert_eq!(contents, vec!["<think>", "thinking...", "</think>"]);
         assert_eq!(
-            out.last().unwrap().choices[0].finish_reason.as_deref(),
+            out.iter()
+                .find_map(|c| c.choices.first().and_then(|ch| ch.finish_reason.as_deref())),
             Some("length")
         );
     }
@@ -508,6 +570,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -515,7 +579,11 @@ mod tests {
         let out = collect(out_rx).await;
         let contents: Vec<&str> = out
             .iter()
-            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .filter_map(|c| {
+                c.choices
+                    .first()
+                    .and_then(|ch| ch.delta["content"].as_str())
+            })
             .collect();
         assert_eq!(contents, vec!["raw"]);
     }
@@ -544,6 +612,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -551,8 +621,36 @@ mod tests {
         let out = collect(out_rx).await;
         let contents: Vec<&str> = out
             .iter()
-            .filter_map(|c| c.choices[0].delta["content"].as_str())
+            .filter_map(|c| {
+                c.choices
+                    .first()
+                    .and_then(|ch| ch.delta["content"].as_str())
+            })
             .collect();
         assert_eq!(contents, vec!["visible"]);
+    }
+    #[tokio::test]
+    async fn finish_emits_a_usage_chunk() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
+        tx.send(InferenceEvent::TextDelta("hello".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 42,
+            completion_tokens: 5,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        // Last chunk is usage-only: empty choices, populated usage.
+        let last = out.last().unwrap();
+        assert!(last.choices.is_empty(), "usage chunk has no choices");
+        let u = last.usage.as_ref().expect("usage present on final chunk");
+        assert_eq!(u.prompt_tokens, 42);
+        assert_eq!(u.completion_tokens, 5);
+        assert_eq!(u.total_tokens, 47);
     }
 }

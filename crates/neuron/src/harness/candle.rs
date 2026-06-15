@@ -3919,6 +3919,8 @@ impl CandleHarness {
                     let _ = tx
                         .send(InferenceEvent::Finish {
                             reason: finish_reason,
+                            prompt_tokens: prompt_len as u32,
+                            completion_tokens: all_tokens.len() as u32,
                         })
                         .await;
                 }
@@ -5684,6 +5686,8 @@ async fn stream_inference_via_worker(
     let _ = tx
         .send(InferenceEvent::Finish {
             reason: finish_reason,
+            prompt_tokens: prompt_tokens.len() as u32,
+            completion_tokens: all_tokens.len() as u32,
         })
         .await;
 
@@ -5935,6 +5939,8 @@ fn run_inference_streaming(
     }
     let _ = tx.blocking_send(InferenceEvent::Finish {
         reason: finish_reason,
+        prompt_tokens: prompt_tokens.len() as u32,
+        completion_tokens: all_tokens.len() as u32,
     });
     Ok(())
 }

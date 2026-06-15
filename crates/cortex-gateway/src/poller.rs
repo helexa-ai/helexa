@@ -26,14 +26,24 @@ pub async fn poll_once(fleet: &CortexState) {
     }
 }
 
-/// One-shot fetch of `GET /discovery`. Cached on the NodeState forever
-/// after the first success — topology is invariant for a given neuron
-/// process. Skipped when the cache is already populated.
+/// Fetch `GET /discovery` and cache it on the NodeState — topology is
+/// invariant for a given neuron process, so a successful fetch is kept.
+/// Re-polled only while `max_prompt_tokens` is still unknown (0): on a
+/// rolling deploy cortex can win the race and cache a neuron's discovery
+/// before that neuron has the field (it deserialises to 0), which would
+/// otherwise pin `max_model_len` to "unknown" forever. Re-polling until
+/// a real cap arrives self-heals that without periodic polling.
 async fn maybe_poll_discovery(fleet: &CortexState, name: &str, endpoint: &str) {
     {
         let nodes = fleet.nodes.read().await;
         match nodes.get(name) {
-            Some(n) if n.discovery.is_some() => return,
+            Some(n)
+                if n.discovery
+                    .as_ref()
+                    .is_some_and(|d| d.max_prompt_tokens > 0) =>
+            {
+                return;
+            }
             _ => {}
         }
     }

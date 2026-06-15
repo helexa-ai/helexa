@@ -69,8 +69,15 @@ pub enum InferenceEvent {
     },
     /// The stream is complete. Carries the reason so wire formats
     /// that use it (OpenAI's `finish_reason`, Anthropic's
-    /// `stop_reason`) can render it without re-parsing.
-    Finish { reason: FinishReason },
+    /// `stop_reason`) can render it without re-parsing — plus the token
+    /// counts, so the streaming projectors can emit a `usage` chunk
+    /// (clients like opencode track context / trigger compaction off
+    /// it; without it they show "0 tokens" and overflow the cap).
+    Finish {
+        reason: FinishReason,
+        prompt_tokens: u32,
+        completion_tokens: u32,
+    },
 }
 
 /// Why a stream stopped. Stays small on purpose — anything that

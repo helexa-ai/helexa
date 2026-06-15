@@ -303,7 +303,7 @@ async fn run_projection(
                 // projector handles tool calls. Future work
                 // tracked in #7 alongside the in_progress event.
             }
-            InferenceEvent::Finish { reason } => {
+            InferenceEvent::Finish { reason, .. } => {
                 finish = Some(reason);
             }
         }
@@ -772,6 +772,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -819,6 +821,8 @@ mod tests {
         tx.send(InferenceEvent::Start).await.unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Length,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
@@ -862,6 +866,8 @@ mod tests {
             .unwrap();
         tx.send(InferenceEvent::Finish {
             reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
         })
         .await
         .unwrap();
