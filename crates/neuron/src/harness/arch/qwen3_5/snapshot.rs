@@ -195,7 +195,7 @@ mod tests {
         // mutates — same justification as the real loader.
         let vb = unsafe {
             candle_nn::var_builder::ShardedSafeTensors::var_builder(
-                &[path.clone()],
+                std::slice::from_ref(&path),
                 DType::F32,
                 &dev,
             )

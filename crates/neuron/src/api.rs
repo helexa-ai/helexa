@@ -286,120 +286,12 @@ async fn chat_completions(
                     .keep_alive(KeepAlive::default())
                     .into_response()
             }
-            Err(InferenceError::ModelNotLoaded(id)) => (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
-            )
-                .into_response(),
-            Err(InferenceError::PromptTooLong { prompt_len, max }) => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!("prompt has {prompt_len} tokens but max is {max}"),
-                    "code": "prompt_too_long",
-                    "prompt_len": prompt_len,
-                    "max": max,
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::InsufficientVram {
-                free_mb,
-                required_mb,
-            }) => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({
-                    "error": format!(
-                        "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
-                    ),
-                    "code": "insufficient_vram",
-                    "free_mb": free_mb,
-                    "required_mb": required_mb,
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::VisionUnsupported { model_id }) => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!(
-                        "model '{model_id}' does not support image input"
-                    ),
-                    "code": "vision_unsupported",
-                    "model_id": model_id,
-                    "suggestion": "load a vision-capable model or remove image_url content parts",
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::TemplateRenderFailed { detail }) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(json!({
-                    "error": format!("chat template could not render this request: {detail}"),
-                    "code": "template_render_failed",
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::Other(e)) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response(),
+            Err(e) => inference_error_response(e),
         }
     } else {
         match candle.chat_completion(req).await {
             Ok(resp) => Json(resp).into_response(),
-            Err(InferenceError::ModelNotLoaded(id)) => (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
-            )
-                .into_response(),
-            Err(InferenceError::PromptTooLong { prompt_len, max }) => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!("prompt has {prompt_len} tokens but max is {max}"),
-                    "code": "prompt_too_long",
-                    "prompt_len": prompt_len,
-                    "max": max,
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::InsufficientVram {
-                free_mb,
-                required_mb,
-            }) => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({
-                    "error": format!(
-                        "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
-                    ),
-                    "code": "insufficient_vram",
-                    "free_mb": free_mb,
-                    "required_mb": required_mb,
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::VisionUnsupported { model_id }) => (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "error": format!(
-                        "model '{model_id}' does not support image input"
-                    ),
-                    "code": "vision_unsupported",
-                    "model_id": model_id,
-                    "suggestion": "load a vision-capable model or remove image_url content parts",
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::TemplateRenderFailed { detail }) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(json!({
-                    "error": format!("chat template could not render this request: {detail}"),
-                    "code": "template_render_failed",
-                })),
-            )
-                .into_response(),
-            Err(InferenceError::Other(e)) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response(),
+            Err(e) => inference_error_response(e),
         }
     }
 }
@@ -524,66 +416,97 @@ fn finish_reason_from_str(s: &str) -> crate::wire::FinishReason {
 }
 
 /// Centralised mapping from [`InferenceError`] to an HTTP response.
-/// Lifted out so the chat-completions and responses handlers stay
-/// readable and changes to error-code semantics happen in one spot.
+///
+/// Emits the OpenAI-standard *nested* error envelope:
+///
+/// ```json
+/// { "error": { "message": "...", "type": "...", "code": "...", "param": null } }
+/// ```
+///
+/// OpenAI-compatible clients (opencode, the openai SDK) reach into
+/// `error.type` / `error.code` to drive behaviour — most importantly,
+/// `code == "context_length_exceeded"` triggers auto-compaction and
+/// retry rather than a hard failure. A flat `{"error": "..."}` string
+/// is invisible to that logic, so every variant nests here. Diagnostic
+/// extras (prompt_len, free_mb, …) ride *inside* the error object so
+/// they don't break the envelope shape.
 fn inference_error_response(err: InferenceError) -> axum::response::Response {
-    match err {
-        InferenceError::ModelNotLoaded(id) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": format!("model '{id}' not loaded on this neuron")})),
-        )
-            .into_response(),
-        InferenceError::PromptTooLong { prompt_len, max } => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": format!("prompt has {prompt_len} tokens but max is {max}"),
-                "code": "prompt_too_long",
-                "prompt_len": prompt_len,
-                "max": max,
-            })),
-        )
-            .into_response(),
-        InferenceError::InsufficientVram {
-            free_mb,
-            required_mb,
-        } => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": format!(
+    // (status, message, type, code, extra-fields-merged-into-error-object)
+    let (status, message, etype, code, extras): (StatusCode, String, &str, Option<&str>, Value) =
+        match err {
+            InferenceError::ModelNotLoaded(id) => (
+                StatusCode::NOT_FOUND,
+                format!("model '{id}' not loaded on this neuron"),
+                "invalid_request_error",
+                Some("model_not_found"),
+                json!({ "model_id": id }),
+            ),
+            // OpenAI's canonical context-overflow error. opencode keys on
+            // `code == "context_length_exceeded"` and the message phrasing
+            // ("maximum context length is N tokens") to auto-compact+retry.
+            InferenceError::PromptTooLong { prompt_len, max } => (
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "This model's maximum context length is {max} tokens. \
+                     However, your messages resulted in {prompt_len} tokens. \
+                     Please reduce the length of the messages."
+                ),
+                "invalid_request_error",
+                Some("context_length_exceeded"),
+                json!({ "prompt_len": prompt_len, "max": max }),
+            ),
+            InferenceError::InsufficientVram {
+                free_mb,
+                required_mb,
+            } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!(
                     "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
                 ),
-                "code": "insufficient_vram",
-                "free_mb": free_mb,
-                "required_mb": required_mb,
-            })),
-        )
-            .into_response(),
-        InferenceError::VisionUnsupported { model_id } => (
-            StatusCode::BAD_REQUEST,
-            Json(json!({
-                "error": format!(
-                    "model '{model_id}' does not support image input"
-                ),
-                "code": "vision_unsupported",
-                "model_id": model_id,
-                "suggestion": "load a vision-capable model or remove image_url content parts",
-            })),
-        )
-            .into_response(),
-        InferenceError::TemplateRenderFailed { detail } => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({
-                "error": format!("chat template could not render this request: {detail}"),
-                "code": "template_render_failed",
-            })),
-        )
-            .into_response(),
-        InferenceError::Other(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("{e:#}")})),
-        )
-            .into_response(),
+                "api_error",
+                Some("insufficient_vram"),
+                json!({ "free_mb": free_mb, "required_mb": required_mb }),
+            ),
+            InferenceError::VisionUnsupported { model_id } => (
+                StatusCode::BAD_REQUEST,
+                format!("model '{model_id}' does not support image input"),
+                "invalid_request_error",
+                Some("vision_unsupported"),
+                json!({
+                    "model_id": model_id,
+                    "suggestion": "load a vision-capable model or remove image_url content parts",
+                }),
+            ),
+            InferenceError::TemplateRenderFailed { detail } => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("chat template could not render this request: {detail}"),
+                "invalid_request_error",
+                Some("template_render_failed"),
+                json!({}),
+            ),
+            InferenceError::Other(e) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("{e:#}"),
+                "api_error",
+                None,
+                json!({}),
+            ),
+        };
+
+    let mut error_obj = json!({
+        "message": message,
+        "type": etype,
+        "code": code,
+        "param": Value::Null,
+    });
+    // Merge the diagnostic extras into the error object.
+    if let (Some(obj), Some(extra)) = (error_obj.as_object_mut(), extras.as_object()) {
+        for (k, v) in extra {
+            obj.insert(k.clone(), v.clone());
+        }
     }
+
+    (status, Json(json!({ "error": error_obj }))).into_response()
 }
 
 fn mint_response_id() -> String {
@@ -661,5 +584,89 @@ mod thinking_tests {
             json!(42),
             "existing kwargs must survive"
         );
+    }
+}
+
+#[cfg(test)]
+mod error_envelope_tests {
+    use super::*;
+    use axum::http::StatusCode;
+
+    /// Drive an `InferenceError` through the mapper and decode the
+    /// `(status, json)` pair it produces.
+    async fn map(err: InferenceError) -> (StatusCode, Value) {
+        let resp = inference_error_response(err);
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("buffer error body");
+        let body: Value = serde_json::from_slice(&bytes).expect("error body is JSON");
+        (status, body)
+    }
+
+    #[tokio::test]
+    async fn prompt_too_long_is_context_length_exceeded() {
+        let (status, body) = map(InferenceError::PromptTooLong {
+            prompt_len: 60_000,
+            max: 49_152,
+        })
+        .await;
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        // The envelope must be nested under `error`, not a flat string.
+        let error = body
+            .get("error")
+            .and_then(Value::as_object)
+            .expect("error object");
+        assert_eq!(error["type"], "invalid_request_error");
+        assert_eq!(
+            error["code"], "context_length_exceeded",
+            "opencode keys on this code to auto-compact and retry"
+        );
+        assert_eq!(error["param"], Value::Null);
+        // Phrasing opencode/openai clients pattern-match on.
+        let msg = error["message"].as_str().unwrap();
+        assert!(
+            msg.contains("maximum context length is 49152 tokens"),
+            "message was: {msg}"
+        );
+        // Diagnostics ride inside the error object.
+        assert_eq!(error["prompt_len"], 60_000);
+        assert_eq!(error["max"], 49_152);
+    }
+
+    #[tokio::test]
+    async fn model_not_loaded_is_404_model_not_found() {
+        let (status, body) = map(InferenceError::ModelNotLoaded("Qwen/X".into())).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        let error = &body["error"];
+        assert_eq!(error["type"], "invalid_request_error");
+        assert_eq!(error["code"], "model_not_found");
+        assert_eq!(error["model_id"], "Qwen/X");
+    }
+
+    #[tokio::test]
+    async fn insufficient_vram_is_503_api_error() {
+        let (status, body) = map(InferenceError::InsufficientVram {
+            free_mb: 1_024,
+            required_mb: 8_192,
+        })
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        let error = &body["error"];
+        assert_eq!(error["type"], "api_error");
+        assert_eq!(error["code"], "insufficient_vram");
+        assert_eq!(error["free_mb"], 1_024);
+        assert_eq!(error["required_mb"], 8_192);
+    }
+
+    #[tokio::test]
+    async fn other_is_500_with_null_code() {
+        let (status, body) = map(InferenceError::Other(anyhow::anyhow!("kaboom"))).await;
+        assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+        let error = &body["error"];
+        assert_eq!(error["type"], "api_error");
+        assert_eq!(error["code"], Value::Null);
+        assert!(error["message"].as_str().unwrap().contains("kaboom"));
     }
 }
