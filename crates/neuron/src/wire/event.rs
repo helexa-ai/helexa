@@ -92,9 +92,9 @@ pub enum FinishReason {
     /// Hit `max_tokens` before EOS.
     Length,
     /// Stopped because the model called a tool and is waiting for
-    /// the result. Not yet emitted by the candle harness —
-    /// reserved for the day tool-call extraction lands.
-    #[allow(dead_code)]
+    /// the result. Emitted by the streaming candle loops once a
+    /// `<tool_call>` block parses into a structured tool call, so
+    /// Anthropic clients receive `stop_reason: tool_use`.
     ToolCalls,
 }
 

@@ -2441,12 +2441,14 @@ impl CandleHarness {
         // role chunk was already sent above, so the client sees
         // immediate "stream open" feedback even when this request
         // queues behind another for the lock.
+        let tool_schemas = build_tool_schemas(&request);
         if let (Some(worker), Some(handle)) = (loaded.worker.clone(), loaded.arch_handle) {
             #[cfg(feature = "cuda")]
             {
                 let prompt_tokens = prompt_tokens.clone();
                 let reasoning_tokens_inner = loaded.reasoning_tokens.clone();
                 let tool_call_tokens_inner = loaded.tool_call_tokens.clone();
+                let tool_schemas_inner = tool_schemas.clone();
                 tokio::spawn(
                     async move {
                         let _inference_guard = loaded_for_task.inference_lock.lock().await;
@@ -2464,6 +2466,7 @@ impl CandleHarness {
                             eos_id,
                             reasoning_tokens_inner,
                             tool_call_tokens_inner,
+                            tool_schemas_inner,
                             tx,
                         )
                         .await
@@ -2505,6 +2508,7 @@ impl CandleHarness {
         } else if let Some(arch_arc) = loaded.arch.clone() {
             let reasoning_tokens_inner = loaded.reasoning_tokens.clone();
             let tool_call_tokens_inner = loaded.tool_call_tokens.clone();
+            let tool_schemas_inner = tool_schemas.clone();
             tokio::task::spawn_blocking(move || {
                 let _g = span_for_task.enter();
                 // `blocking_lock` is safe here: spawn_blocking runs on
@@ -2525,6 +2529,7 @@ impl CandleHarness {
                     eos_id,
                     reasoning_tokens_inner.as_ref(),
                     tool_call_tokens_inner.as_ref(),
+                    tool_schemas_inner,
                     &tx,
                 ) {
                     Ok(()) => tracing::info!(
@@ -3469,6 +3474,7 @@ impl CandleHarness {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
 
+        let tool_schemas = build_tool_schemas(&request);
         let tp_for_task = Arc::clone(&tp);
         tokio::spawn(
             async move {
@@ -3491,6 +3497,10 @@ impl CandleHarness {
                 let mut in_tool_call = false;
                 let mut tool_call_buf = String::new();
                 let mut tool_call_idx: usize = 0;
+                // Set when a `<tool_call>` block parses into a structured
+                // call — promotes the terminal finish_reason to ToolCalls
+                // so Anthropic clients see stop_reason: tool_use.
+                let mut emitted_tool_call = false;
 
                 'work: {
                     // Prefix-cache decision (#11): vision requests
@@ -3653,8 +3663,9 @@ impl CandleHarness {
                             ToolCallMarker::Exit { buffer } => {
                                 let idx = tool_call_idx;
                                 tool_call_idx += 1;
-                                match parse_tool_call_body(&buffer, idx) {
+                                match parse_tool_call_body(&buffer, idx, &tool_schemas) {
                                     Some((id, name, arguments)) => {
+                                        emitted_tool_call = true;
                                         if tx
                                             .send(InferenceEvent::ToolCall {
                                                 index: idx,
@@ -3791,8 +3802,9 @@ impl CandleHarness {
                                 ToolCallMarker::Exit { buffer } => {
                                     let idx = tool_call_idx;
                                     tool_call_idx += 1;
-                                    match parse_tool_call_body(&buffer, idx) {
+                                    match parse_tool_call_body(&buffer, idx, &tool_schemas) {
                                         Some((id, name, arguments)) => {
+                                            emitted_tool_call = true;
                                             if tx
                                                 .send(InferenceEvent::ToolCall {
                                                     index: idx,
@@ -3897,6 +3909,9 @@ impl CandleHarness {
                 // SSE stream end abruptly (matches the pre-refactor
                 // behaviour when the failed-path early-returned
                 // without a final chunk).
+                if emitted_tool_call && finish_reason == FinishReason::Stop {
+                    finish_reason = FinishReason::ToolCalls;
+                }
                 if failure.is_none() {
                     let _ = tx
                         .send(InferenceEvent::Finish {
@@ -4369,15 +4384,146 @@ fn handle_tool_call_marker(
 ///
 /// Generates a fresh `call_<hex>` id per parsed call; the model
 /// itself doesn't include ids in the wire convention we model.
-fn parse_tool_call_body(body: &str, index: usize) -> Option<(String, String, String)> {
-    let value: serde_json::Value = serde_json::from_str(body.trim()).ok()?;
-    let name = value.get("name")?.as_str()?.to_string();
-    let arguments = value
-        .get("arguments")
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| "{}".into());
+/// Per-request tool parameter types, keyed by function name then
+/// parameter name (the JSON-schema `type` string, e.g. `"string"`,
+/// `"integer"`). Built from the request's OpenAI-shape `tools` array so
+/// the Qwen-XML tool-call parser can coerce each `<parameter>` string
+/// to its declared JSON type. An empty map (no tools, or untyped
+/// params) makes the parser fall back to value-sniffing.
+type ToolSchemas = std::collections::HashMap<String, std::collections::HashMap<String, String>>;
+
+/// Extract [`ToolSchemas`] from a request's `tools` (OpenAI shape:
+/// `{type:"function", function:{name, parameters:{properties:{p:{type}}}}}`).
+/// cortex normalises Anthropic tools into exactly this shape before the
+/// request reaches neuron, so one extractor covers both client APIs.
+fn build_tool_schemas(request: &ChatCompletionRequest) -> ToolSchemas {
+    let mut schemas = ToolSchemas::new();
+    let Some(tools) = request.extra.get("tools").and_then(|t| t.as_array()) else {
+        return schemas;
+    };
+    for tool in tools {
+        // Tolerate both the wrapped (`{function:{…}}`) and bare shapes.
+        let func = tool.get("function").unwrap_or(tool);
+        let Some(name) = func.get("name").and_then(|n| n.as_str()) else {
+            continue;
+        };
+        let mut params = std::collections::HashMap::new();
+        if let Some(props) = func
+            .get("parameters")
+            .and_then(|p| p.get("properties"))
+            .and_then(|p| p.as_object())
+        {
+            for (pname, pschema) in props {
+                if let Some(ty) = pschema.get("type").and_then(|t| t.as_str()) {
+                    params.insert(pname.clone(), ty.to_string());
+                }
+            }
+        }
+        schemas.insert(name.to_string(), params);
+    }
+    schemas
+}
+
+/// Parse a buffered `<tool_call>…</tool_call>` body into
+/// `(id, name, arguments_json)`. Two on-the-wire forms are accepted:
+///
+/// 1. **JSON** (Qwen3-Instruct / Hermes): `{"name":…,"arguments":{…}}`.
+/// 2. **Qwen-XML** (Qwen3-Coder / Qwen3.6):
+///    `<function=NAME><parameter=KEY>VALUE</parameter>…</function>`,
+///    with each VALUE coerced to its declared JSON type from `schemas`.
+///
+/// Returns `None` only when neither form yields a usable name, so the
+/// caller can re-emit the raw block as text instead of swallowing it.
+fn parse_tool_call_body(
+    body: &str,
+    index: usize,
+    schemas: &ToolSchemas,
+) -> Option<(String, String, String)> {
+    let trimmed = body.trim();
+    // Form 1: a JSON object with a `name`.
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed)
+        && let Some(name) = value.get("name").and_then(|n| n.as_str())
+    {
+        let arguments = value
+            .get("arguments")
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "{}".into());
+        let id = format!("call_{:x}_{}", unix_subsec_nanos(), index);
+        return Some((id, name.to_string(), arguments));
+    }
+    // Form 2: Qwen-XML.
+    parse_qwen_xml_tool_call(trimmed, index, schemas)
+}
+
+/// Parse the Qwen-XML tool-call body form. See [`parse_tool_call_body`].
+fn parse_qwen_xml_tool_call(
+    body: &str,
+    index: usize,
+    schemas: &ToolSchemas,
+) -> Option<(String, String, String)> {
+    // `<function=NAME>` — name runs to the closing `>` or end of line.
+    let after_fn = body.split("<function=").nth(1)?;
+    let name = after_fn.split(['>', '\n']).next()?.trim().to_string();
+    if name.is_empty() {
+        return None;
+    }
+    let param_types = schemas.get(&name);
+
+    // `<parameter=KEY>VALUE</parameter>`, repeated. Walk a cursor
+    // forward so multiple parameters each get parsed exactly once.
+    // `find` (not `split`) so `seg` keeps the *full* remainder — a
+    // `split("<parameter=")` would truncate it at the next parameter
+    // and only the first would ever parse.
+    let mut args = serde_json::Map::new();
+    let mut rest = after_fn;
+    while let Some(pos) = rest.find("<parameter=") {
+        let seg = &rest[pos + "<parameter=".len()..];
+        let key = seg
+            .split(['>', '\n'])
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let after_gt = seg.split_once('>').map(|(_, after)| after).unwrap_or("");
+        let value_raw = after_gt.split("</parameter>").next().unwrap_or("").trim();
+        if !key.is_empty() {
+            let declared = param_types.and_then(|m| m.get(&key)).map(String::as_str);
+            args.insert(key, coerce_param_value(value_raw, declared));
+        }
+        match after_gt.split_once("</parameter>") {
+            Some((_, tail)) => rest = tail,
+            None => break,
+        }
+    }
+
+    let arguments = serde_json::Value::Object(args).to_string();
     let id = format!("call_{:x}_{}", unix_subsec_nanos(), index);
     Some((id, name, arguments))
+}
+
+/// Coerce a raw Qwen-XML parameter string to a JSON value using the
+/// declared schema type. Unknown/absent type → sniff (JSON-parse, else
+/// string). A coercion that fails for the declared type falls back to a
+/// string so a mistyped schema never drops the argument.
+fn coerce_param_value(raw: &str, declared: Option<&str>) -> serde_json::Value {
+    use serde_json::Value;
+    let sniff = || serde_json::from_str::<Value>(raw).ok();
+    let as_string = || Value::String(raw.to_string());
+    match declared {
+        Some("string") => as_string(),
+        Some("integer") | Some("number") => {
+            sniff().filter(Value::is_number).unwrap_or_else(as_string)
+        }
+        Some("boolean") => match raw.trim() {
+            "true" => Value::Bool(true),
+            "false" => Value::Bool(false),
+            _ => as_string(),
+        },
+        Some("object") | Some("array") => sniff().unwrap_or_else(as_string),
+        // No declared type (untyped schema / model invented a param):
+        // best-effort sniff, then string.
+        _ => sniff().unwrap_or_else(as_string),
+    }
 }
 
 /// Errors returned by `CandleHarness::chat_completion`. The
@@ -5235,6 +5381,7 @@ async fn stream_inference_via_worker(
     eos_id: Option<u32>,
     reasoning_tokens: Option<ReasoningTokenPair>,
     tool_call_tokens: Option<ToolCallTokenPair>,
+    tool_schemas: ToolSchemas,
     tx: mpsc::Sender<InferenceEvent>,
 ) -> Result<String> {
     // Image content isn't part of the token sequence, so token-prefix
@@ -5271,6 +5418,8 @@ async fn stream_inference_via_worker(
     let mut in_tool_call = false;
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
+    // See `inference_tp_stream`: promotes finish_reason to ToolCalls.
+    let mut emitted_tool_call = false;
 
     // Prefill. Vision-bearing requests (`images = Some`) clear the
     // cache and do a single-shot prefill that splices the image
@@ -5366,8 +5515,9 @@ async fn stream_inference_via_worker(
                     ToolCallMarker::Exit { buffer } => {
                         let idx = tool_call_idx;
                         tool_call_idx += 1;
-                        match parse_tool_call_body(&buffer, idx) {
+                        match parse_tool_call_body(&buffer, idx, &tool_schemas) {
                             Some((id, name, arguments)) => {
+                                emitted_tool_call = true;
                                 if tx
                                     .send(InferenceEvent::ToolCall {
                                         index: idx,
@@ -5464,6 +5614,9 @@ async fn stream_inference_via_worker(
     // Terminal Finish event. The wire projector turns this into a
     // format-specific final chunk (`finish_reason: "stop"` on
     // OpenAI chat, `response.completed` on Responses).
+    if emitted_tool_call && finish_reason == FinishReason::Stop {
+        finish_reason = FinishReason::ToolCalls;
+    }
     let _ = tx
         .send(InferenceEvent::Finish {
             reason: finish_reason,
@@ -5558,6 +5711,7 @@ fn run_inference_streaming(
     eos_id: Option<u32>,
     reasoning_tokens: Option<&ReasoningTokenPair>,
     tool_call_tokens: Option<&ToolCallTokenPair>,
+    tool_schemas: ToolSchemas,
     tx: &mpsc::Sender<InferenceEvent>,
 ) -> Result<()> {
     let mut logits_processor = {
@@ -5593,6 +5747,8 @@ fn run_inference_streaming(
     let mut in_tool_call = false;
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
+    // See `inference_tp_stream`: promotes finish_reason to ToolCalls.
+    let mut emitted_tool_call = false;
 
     let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
     // Two-stage prefill around the retokenization-stable snapshot
@@ -5628,8 +5784,9 @@ fn run_inference_streaming(
                 ToolCallMarker::Exit { buffer } => {
                     let idx = tool_call_idx;
                     tool_call_idx += 1;
-                    match parse_tool_call_body(&buffer, idx) {
+                    match parse_tool_call_body(&buffer, idx, &tool_schemas) {
                         Some((id, name, arguments)) => {
+                            emitted_tool_call = true;
                             if tx
                                 .blocking_send(InferenceEvent::ToolCall {
                                     index: idx,
@@ -5708,6 +5865,9 @@ fn run_inference_streaming(
         route_token!(next_token);
     }
 
+    if emitted_tool_call && finish_reason == FinishReason::Stop {
+        finish_reason = FinishReason::ToolCalls;
+    }
     let _ = tx.blocking_send(InferenceEvent::Finish {
         reason: finish_reason,
     });
@@ -6064,5 +6224,89 @@ mod tests {
         // 12960*500/1000 = 8480 MiB) — the chunked prefill handles it,
         // so the guard must NOT reject it.
         assert!(validate_vision_prefill(12_960, 12_445).is_ok());
+    }
+
+    // ── Tool-call body parsing ───────────────────────────────────────
+
+    fn weather_schemas() -> ToolSchemas {
+        let req: ChatCompletionRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "messages": [],
+            "tools": [{
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "city": {"type": "string"},
+                            "days": {"type": "integer"},
+                            "metric": {"type": "boolean"}
+                        }
+                    }
+                }
+            }]
+        }))
+        .unwrap();
+        build_tool_schemas(&req)
+    }
+
+    #[test]
+    fn parses_json_tool_call_body() {
+        let body = r#"{"name": "get_weather", "arguments": {"city": "Brno"}}"#;
+        let (id, name, args) = parse_tool_call_body(body, 0, &ToolSchemas::new()).expect("parsed");
+        assert!(id.starts_with("call_"));
+        assert_eq!(name, "get_weather");
+        assert_eq!(args, r#"{"city":"Brno"}"#);
+    }
+
+    #[test]
+    fn parses_qwen_xml_tool_call_with_schema_coercion() {
+        // The exact shape Qwen3.6-27B emitted on the live fleet.
+        let body = "\n<function=get_weather>\n<parameter=city>\nBrno\n</parameter>\n<parameter=days>\n3\n</parameter>\n<parameter=metric>\ntrue\n</parameter>\n</function>\n";
+        let (_, name, args) = parse_tool_call_body(body, 1, &weather_schemas()).expect("parsed");
+        assert_eq!(name, "get_weather");
+        let v: serde_json::Value = serde_json::from_str(&args).unwrap();
+        // string stays a string; integer + boolean are coerced per schema.
+        assert_eq!(v["city"], "Brno");
+        assert_eq!(v["days"], 3);
+        assert_eq!(v["metric"], true);
+        assert!(v["days"].is_number());
+        assert!(v["metric"].is_boolean());
+    }
+
+    #[test]
+    fn qwen_xml_without_schema_sniffs_types() {
+        let body = "<function=f>\n<parameter=n>\n42\n</parameter>\n<parameter=s>\nhello\n</parameter>\n</function>";
+        let (_, name, args) = parse_tool_call_body(body, 0, &ToolSchemas::new()).expect("parsed");
+        assert_eq!(name, "f");
+        let v: serde_json::Value = serde_json::from_str(&args).unwrap();
+        assert_eq!(v["n"], 42); // sniffed to number
+        assert_eq!(v["s"], "hello"); // un-JSON-parseable → string
+    }
+
+    #[test]
+    fn unparseable_tool_call_body_returns_none() {
+        // Neither JSON nor a `<function=…>` block — caller re-emits as text.
+        assert!(parse_tool_call_body("just some prose", 0, &ToolSchemas::new()).is_none());
+    }
+
+    #[test]
+    fn coerce_falls_back_to_string_on_type_mismatch() {
+        use serde_json::Value;
+        // Declared integer but value isn't numeric → keep as string,
+        // never drop the argument.
+        assert_eq!(
+            coerce_param_value("not-a-number", Some("integer")),
+            Value::String("not-a-number".into())
+        );
+        assert_eq!(
+            coerce_param_value("Brno", Some("string")),
+            Value::String("Brno".into())
+        );
+        assert_eq!(
+            coerce_param_value("true", Some("boolean")),
+            Value::Bool(true)
+        );
     }
 }
