@@ -118,15 +118,27 @@ jobs:
           # loading after a restart. beast cold-loads Qwen3.6-27B Q6K
           # TP=2 (~5-6 min typical, see #1); benjy/quadbrat load small
           # single-GPU models in well under a minute.
+          #
+          # max_prompt_tokens: per-model context cap, written to the
+          # neuron.service.d/model.conf drop-in (NEURON_MAX_PROMPT_TOKENS).
+          # A change here restarts the neuron even with no new RPM. Values
+          # are VRAM-safe ceilings derived per model — see
+          # doc/context-limits.md. beast (Qwen3.6-27B, hybrid linear, 2x
+          # 32GB) has ample KV headroom; benjy (Qwen3-8B dense, ~6GB free)
+          # is VRAM-bound and stays at the default; quadbrat (Qwen3-1.7B)
+          # likewise conservative.
           - host: beast.hanzalova.internal
             flavour: blackwell
             load_timeout: 900
+            max_prompt_tokens: 131072
           - host: benjy.hanzalova.internal
             flavour: ada
             load_timeout: 300
+            max_prompt_tokens: 16384
           - host: quadbrat.hanzalova.internal
             flavour: ampere
             load_timeout: 300
+            max_prompt_tokens: 16384
     steps:
       - name: SSH init
         run: |
@@ -143,6 +155,26 @@ jobs:
           ssh gitea_ci@${{ matrix.host }} 'bash -s' <<'DEPLOY'
           set -eu
           pkg=helexa-neuron-${{ matrix.flavour }}
+          max_prompt_tokens="${{ matrix.max_prompt_tokens }}"
+
+          # ── Desired per-model systemd drop-in ─────────────────────────
+          # model.conf carries NEURON_MAX_PROMPT_TOKENS so the context cap
+          # is deterministic per host and rolled out (with a restart) by
+          # this workflow, not hand-edited. It sorts after local.conf, so a
+          # deploy-managed value wins over any manual local override of the
+          # same variable. See doc/context-limits.md.
+          conf=/etc/systemd/system/neuron.service.d/model.conf
+          config_changed=0
+          if [ -n "${max_prompt_tokens}" ]; then
+            desired=$(printf '%s\n%s\n%s\n%s' \
+              "# Managed by .gitea/workflows/deploy.yml - do not edit by hand." \
+              "# Per-model context cap; see doc/context-limits.md." \
+              "[Service]" \
+              "Environment=NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens}")
+            [ "${desired}" = "$(cat "${conf}" 2>/dev/null || true)" ] || config_changed=1
+          fi
+
+          # ── Package version gate (manifest rationale: see deploy-cortex) ──
           installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
           latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
             | python3 -c '
@@ -153,19 +185,38 @@ jobs:
               p = max(cands, key=lambda p: p.get("buildTime", 0))
               print(p["version"] + "-" + p["release"])
           ' "${pkg}" 2>/dev/null || true)
+          pkg_changed=1
           if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
-            echo "${pkg}-${installed} already current — leaving service untouched"
+            pkg_changed=0
+          fi
+
+          # Skip only when BOTH the package and the drop-in are unchanged —
+          # a context-cap change must restart the neuron even with no new RPM.
+          if [ "${pkg_changed}" -eq 0 ] && [ "${config_changed}" -eq 0 ]; then
+            echo "${pkg}-${installed} current; NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens:-<unset>} unchanged — leaving service untouched"
             exit 0
           fi
-          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          echo "installed=${installed} published=${latest:-unknown} pkg_changed=${pkg_changed} config_changed=${config_changed} — deploying"
+
+          # Write the drop-in (staged in gitea_ci's dir, installed root-owned).
+          if [ "${config_changed}" -eq 1 ]; then
+            printf '%s\n' "${desired}" > /var/lib/gitea_ci/model.conf
+            sudo /usr/bin/install -o root -g root -m 0644 -D /var/lib/gitea_ci/model.conf "${conf}"
+            rm -f /var/lib/gitea_ci/model.conf
+            echo "applied ${conf}: NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens}"
+          fi
+
           if systemctl is-active --quiet neuron.service; then
             sudo /usr/bin/systemctl stop neuron.service
           fi
-          if rpm -q "${pkg}" >/dev/null 2>&1; then
-            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y "${pkg}"
-          else
-            sudo /usr/bin/dnf install --refresh --allowerasing -y "${pkg}"
+          if [ "${pkg_changed}" -eq 1 ]; then
+            if rpm -q "${pkg}" >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y "${pkg}"
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y "${pkg}"
+            fi
           fi
+          # daemon-reload picks up both a new unit (dnf) and the drop-in.
           sudo /usr/bin/systemctl daemon-reload
           # enable --now: start the service AND enable it for boot so the
           # fleet self-heals after a host reboot.
