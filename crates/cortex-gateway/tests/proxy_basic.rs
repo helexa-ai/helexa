@@ -139,7 +139,7 @@ async fn test_no_healthy_nodes() {
         .await
         .expect("request should succeed");
 
-    assert_eq!(resp.status(), 404);
+    assert_eq!(resp.status(), 503);
 
     let body: serde_json::Value = resp.json().await.unwrap();
     assert!(

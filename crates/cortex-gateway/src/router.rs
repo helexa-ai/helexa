@@ -63,13 +63,37 @@ pub enum RouteError {
 }
 
 impl RouteError {
-    /// HTTP status the gateway should answer with. `ModelRecovering`
-    /// is the one transient case (503, retry the same request);
-    /// everything else keeps the long-standing 404 behaviour.
+    /// HTTP status the gateway should answer with. `NoHealthyNodes` and
+    /// `ModelRecovering` are the transient cases (503 service_unavailable,
+    /// safe to retry the same request); everything else is 404.
     pub fn http_status(&self) -> u16 {
         match self {
-            RouteError::ModelRecovering { .. } => 503,
+            RouteError::NoHealthyNodes | RouteError::ModelRecovering { .. } => 503,
             _ => 404,
+        }
+    }
+
+    /// Broad OpenAI error category for the JSON envelope.
+    pub fn broad_type(&self) -> &'static str {
+        match self {
+            RouteError::ModelNotFound(_) => "invalid_request_error",
+            RouteError::NoHealthyNodes
+            | RouteError::EndpointResolveFailed(_, _)
+            | RouteError::NoFeasibleNeuron { .. }
+            | RouteError::ColdLoadFailed { .. }
+            | RouteError::ModelRecovering { .. } => "api_error",
+        }
+    }
+
+    /// Specific machine-readable error code.
+    pub fn code(&self) -> &'static str {
+        match self {
+            RouteError::ModelNotFound(_) => "model_not_found",
+            RouteError::NoHealthyNodes => "service_unavailable",
+            RouteError::EndpointResolveFailed(_, _) => "service_unavailable",
+            RouteError::NoFeasibleNeuron { .. } => "service_unavailable",
+            RouteError::ColdLoadFailed { .. } => "service_unavailable",
+            RouteError::ModelRecovering { .. } => "service_unavailable",
         }
     }
 }

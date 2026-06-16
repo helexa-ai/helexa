@@ -41,7 +41,12 @@ async fn chat_completions(
                 handler = "chat_completions",
                 "rejected: missing 'model' field in request body"
             );
-            return error_response(400, "missing 'model' field in request body");
+            return error_response(
+                400,
+                "invalid_request_error",
+                "missing_model_field",
+                "missing 'model' field in request body",
+            );
         }
     };
 
@@ -54,11 +59,7 @@ async fn chat_completions(
                 error = %e,
                 "route resolve failed"
             );
-            // RouteError's Display strings are short and informative
-            // ("model 'X' not found...", "no healthy nodes available")
-            // — fine to surface to the caller. The warn above carries
-            // any extra context for operators.
-            return error_response(e.http_status(), &e.to_string());
+            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
         }
     };
 
@@ -98,7 +99,12 @@ async fn responses(
                 handler = "responses",
                 "rejected: missing 'model' field in request body"
             );
-            return error_response(400, "missing 'model' field in request body");
+            return error_response(
+                400,
+                "invalid_request_error",
+                "missing_model_field",
+                "missing 'model' field in request body",
+            );
         }
     };
 
@@ -111,7 +117,7 @@ async fn responses(
                 error = %e,
                 "route resolve failed"
             );
-            return error_response(e.http_status(), &e.to_string());
+            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
         }
     };
 
@@ -143,7 +149,12 @@ async fn completions(
                 handler = "completions",
                 "rejected: missing 'model' field in request body"
             );
-            return error_response(400, "missing 'model' field in request body");
+            return error_response(
+                400,
+                "invalid_request_error",
+                "missing_model_field",
+                "missing 'model' field in request body",
+            );
         }
     };
 
@@ -156,11 +167,7 @@ async fn completions(
                 error = %e,
                 "route resolve failed"
             );
-            // RouteError's Display strings are short and informative
-            // ("model 'X' not found...", "no healthy nodes available")
-            // — fine to surface to the caller. The warn above carries
-            // any extra context for operators.
-            return error_response(e.http_status(), &e.to_string());
+            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
         }
     };
 
@@ -193,7 +200,12 @@ async fn anthropic_messages(
                 error = %e,
                 "rejected: invalid Anthropic request body"
             );
-            return error_response(400, "invalid Anthropic request body");
+            return error_response(
+                400,
+                "invalid_request_error",
+                "invalid_anthropic_body",
+                "invalid Anthropic request body",
+            );
         }
     };
 
@@ -241,7 +253,12 @@ async fn anthropic_messages(
                 error = %e,
                 "internal: failed to serialise translated OpenAI request"
             );
-            return error_response(500, "internal translation error");
+            return error_response(
+                500,
+                "api_error",
+                "internal_translation_error",
+                "internal translation error",
+            );
         }
     };
 
@@ -258,7 +275,7 @@ async fn anthropic_messages(
             // ("model 'X' not found...", "no healthy nodes available")
             // — fine to surface to the caller. The warn above carries
             // any extra context for operators.
-            return error_response(e.http_status(), &e.to_string());
+            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
         }
     };
 
@@ -336,7 +353,12 @@ async fn anthropic_messages(
                     error = %e,
                     "upstream request failed (network)"
                 );
-                return error_response(502, "upstream request failed");
+                return error_response(
+                    502,
+                    "api_error",
+                    "upstream_connection_error",
+                    "upstream request failed",
+                );
             }
         };
 
@@ -355,7 +377,12 @@ async fn anthropic_messages(
                 body = %body_snippet,
                 "upstream returned non-2xx"
             );
-            return error_response(status, &format!("upstream returned {status}"));
+            return error_response(
+                status,
+                "api_error",
+                "upstream_error",
+                &format!("upstream returned {status}"),
+            );
         }
 
         let body_bytes = match upstream_resp.bytes().await {
@@ -370,7 +397,12 @@ async fn anthropic_messages(
                     error = %e,
                     "failed to read upstream response body"
                 );
-                return error_response(502, "failed to read upstream response");
+                return error_response(
+                    502,
+                    "api_error",
+                    "upstream_connection_error",
+                    "failed to read upstream response",
+                );
             }
         };
 
@@ -392,7 +424,12 @@ async fn anthropic_messages(
                         body = %body_snippet,
                         "failed to parse upstream response as OpenAI ChatCompletionResponse"
                     );
-                    return error_response(502, "malformed upstream response");
+                    return error_response(
+                        502,
+                        "api_error",
+                        "upstream_malformed_response",
+                        "malformed upstream response",
+                    );
                 }
             };
 
@@ -795,14 +832,16 @@ fn rewrite_model_in_body(body: Bytes, new_model: &str) -> Bytes {
     }
 }
 
-fn error_response(status: u16, message: &str) -> Response {
-    let code = axum::http::StatusCode::from_u16(status)
+fn error_response(status: u16, typ: &str, code: &str, message: &str) -> Response {
+    let status_code = axum::http::StatusCode::from_u16(status)
         .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
     let body = json!({
         "error": {
             "message": message,
-            "type": "gateway_error",
+            "type": typ,
+            "code": code,
+            "param": null,
         }
     });
-    (code, Json(body)).into_response()
+    (status_code, Json(body)).into_response()
 }

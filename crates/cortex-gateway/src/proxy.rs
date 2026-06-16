@@ -113,17 +113,24 @@ pub enum ProxyError {
 
 impl IntoResponse for ProxyError {
     fn into_response(self) -> Response {
-        let (status, message) = match &self {
-            ProxyError::Upstream(_) => (StatusCode::BAD_GATEWAY, "upstream request failed"),
+        let (status, code, message) = match &self {
+            ProxyError::Upstream(_) => (
+                StatusCode::BAD_GATEWAY,
+                "upstream_connection_error",
+                "upstream request failed",
+            ),
             ProxyError::ResponseBuild(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_server_error",
                 "failed to build response",
             ),
         };
         let body = serde_json::json!({
             "error": {
                 "message": message,
-                "type": "proxy_error",
+                "type": "api_error",
+                "code": code,
+                "param": null
             }
         });
         (status, axum::Json(body)).into_response()
