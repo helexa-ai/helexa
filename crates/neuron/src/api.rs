@@ -13,6 +13,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
+use cortex_core::entitlements::{HEADER_ACCOUNT_ID, HEADER_KEY_ID};
 use cortex_core::harness::ModelSpec;
 use cortex_core::openai::{ChatCompletionRequest, MessageContent};
 use cortex_core::responses::{ResponsesRequest, ResponsesUsage};
@@ -234,6 +235,17 @@ fn default_enable_thinking(req: &mut ChatCompletionRequest, include_thinking: bo
     }
 }
 
+/// The request's principal for fair-share admission (#54), reconstructed
+/// from the internal headers cortex stamps (#49). cortex strips any
+/// client-supplied copy and asserts the authoritative value, so over the
+/// trusted WireGuard link these are safe to key fair-share on. `None` for an
+/// unauthenticated/direct request — exempt from the per-principal cap.
+fn principal_key(headers: &axum::http::HeaderMap) -> Option<String> {
+    let account = headers.get(HEADER_ACCOUNT_ID)?.to_str().ok()?;
+    let key = headers.get(HEADER_KEY_ID)?.to_str().ok()?;
+    Some(format!("{account}/{key}"))
+}
+
 /// OpenAI-compatible chat completions. Dispatches to streaming SSE when
 /// `stream: true` is set on the request; otherwise returns a single
 /// `ChatCompletionResponse`.
@@ -277,8 +289,14 @@ async fn chat_completions(
     // true`) keep reasoning on.
     default_enable_thinking(&mut req, include_thinking);
 
+    // Fair-share admission principal (#54), from cortex's stamped headers.
+    let principal = principal_key(&headers);
+
     if req.stream.unwrap_or(false) {
-        match candle.chat_completion_stream_with(req, chat_config).await {
+        match candle
+            .chat_completion_stream_with(req, chat_config, principal)
+            .await
+        {
             Ok(rx) => {
                 // Each chunk → one SSE `data: {json}` line. After the
                 // channel closes, append the OpenAI [DONE] terminator.
@@ -295,7 +313,7 @@ async fn chat_completions(
             Err(e) => inference_error_response(e),
         }
     } else {
-        match candle.chat_completion(req).await {
+        match candle.chat_completion(req, principal).await {
             Ok(resp) => Json(resp).into_response(),
             Err(e) => inference_error_response(e),
         }
@@ -308,6 +326,7 @@ async fn chat_completions(
 /// event stream into the Responses event family.
 async fn responses(
     State(state): State<Arc<NeuronState>>,
+    headers: axum::http::HeaderMap,
     Json(req): Json<ResponsesRequest>,
 ) -> impl IntoResponse {
     let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
@@ -342,9 +361,12 @@ async fn responses(
     };
     chat_req.stream = Some(stream_requested);
 
+    // Fair-share admission principal (#54), from cortex's stamped headers.
+    let principal = principal_key(&headers);
+
     if stream_requested {
         match candle
-            .responses_stream(chat_req, response_id, message_item_id)
+            .responses_stream(chat_req, response_id, message_item_id, principal)
             .await
         {
             Ok(rx) => {
@@ -368,7 +390,7 @@ async fn responses(
         // and translate the result. We don't currently re-tokenise
         // to compute usage; the harness returns it via the chat
         // response and we pass it through.
-        match candle.chat_completion(chat_req).await {
+        match candle.chat_completion(chat_req, principal).await {
             Ok(chat_resp) => {
                 // Extract the assistant text (chat completions
                 // always emits one choice on the candle path).
@@ -492,13 +514,22 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
             "template_render_failed",
             format!("chat template could not render this request: {detail}"),
         ),
-        // Admission control refused (#53): a fast, retryable "busy" signal.
-        // 503 (service busy) + Retry-After; opencode/AI SDK back off.
+        // Admission control refused on load (#53): a fast, retryable "busy"
+        // signal. 503 (service busy) + Retry-After; opencode/AI SDK back off.
         InferenceError::Overloaded { retry_after_secs } => OpenAiError::new(
             503,
             "rate_limit_error",
             "rate_limit_exceeded",
             "model is busy (admission queue full); retry shortly",
+        )
+        .with_retry_after(retry_after_secs),
+        // Per-principal fair-share cap (#54): 429 rate_limit_exceeded +
+        // Retry-After — the caller is sending too many concurrent requests.
+        InferenceError::PerPrincipalLimit { retry_after_secs } => OpenAiError::new(
+            429,
+            "rate_limit_error",
+            "rate_limit_exceeded",
+            "too many concurrent requests for this key; retry shortly",
         )
         .with_retry_after(retry_after_secs),
         InferenceError::Other(e) => OpenAiError::without_code(500, "api_error", format!("{e:#}")),

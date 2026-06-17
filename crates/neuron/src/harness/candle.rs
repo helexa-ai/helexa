@@ -2028,6 +2028,7 @@ impl CandleHarness {
     pub async fn chat_completion(
         &self,
         request: ChatCompletionRequest,
+        principal: Option<String>,
     ) -> Result<ChatCompletionResponse, InferenceError> {
         let handle = {
             let models = self.models.read().await;
@@ -2052,7 +2053,7 @@ impl CandleHarness {
             LoadedHandle::Single(m) => m,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
-                return self.chat_completion_tp(m, request).await;
+                return self.chat_completion_tp(m, request, principal).await;
             }
         };
 
@@ -2086,7 +2087,7 @@ impl CandleHarness {
         // The permit is held for the whole request (released on drop).
         let _admit = loaded
             .admission
-            .enter()
+            .enter(principal.as_deref())
             .await
             .map_err(InferenceError::from)?;
 
@@ -2409,9 +2410,14 @@ impl CandleHarness {
     pub async fn chat_completion_stream(
         &self,
         request: ChatCompletionRequest,
+        principal: Option<String>,
     ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
-        self.chat_completion_stream_with(request, wire_chat::ChatProjectionConfig::default())
-            .await
+        self.chat_completion_stream_with(
+            request,
+            wire_chat::ChatProjectionConfig::default(),
+            principal,
+        )
+        .await
     }
 
     /// Same as [`Self::chat_completion_stream`] but lets the caller
@@ -2422,8 +2428,9 @@ impl CandleHarness {
         &self,
         request: ChatCompletionRequest,
         mut config: wire_chat::ChatProjectionConfig,
+        principal: Option<String>,
     ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
-        let stream = self.inference_stream(request).await?;
+        let stream = self.inference_stream(request, principal).await?;
         // Fill in the model's reasoning markers if the caller
         // didn't pre-populate them — they're a property of the
         // loaded model (which the HTTP handler doesn't reach into
@@ -2450,9 +2457,10 @@ impl CandleHarness {
         request: ChatCompletionRequest,
         response_id: String,
         message_item_id: String,
+        principal: Option<String>,
     ) -> Result<mpsc::Receiver<crate::wire::openai_responses::ResponseStreamFrame>, InferenceError>
     {
-        let stream = self.inference_stream(request).await?;
+        let stream = self.inference_stream(request, principal).await?;
         let meta = crate::wire::openai_responses::ResponseMeta {
             response_id,
             created_at: stream.created,
@@ -2473,6 +2481,7 @@ impl CandleHarness {
     async fn inference_stream(
         &self,
         request: ChatCompletionRequest,
+        principal: Option<String>,
     ) -> Result<InferenceStream, InferenceError> {
         let handle = {
             let models = self.models.read().await;
@@ -2497,7 +2506,7 @@ impl CandleHarness {
             LoadedHandle::Single(m) => m,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
-                return self.inference_tp_stream(m, request).await;
+                return self.inference_tp_stream(m, request, principal).await;
             }
         };
 
@@ -2646,7 +2655,7 @@ impl CandleHarness {
         // into the inference task and is held until it completes.
         let admit = loaded
             .admission
-            .enter()
+            .enter(principal.as_deref())
             .await
             .map_err(InferenceError::from)?;
 
@@ -3500,6 +3509,7 @@ impl CandleHarness {
         &self,
         tp: Arc<TpLoadedModel>,
         request: ChatCompletionRequest,
+        principal: Option<String>,
     ) -> Result<ChatCompletionResponse, InferenceError> {
         // Tag every line of this request with a short req_id so a
         // grep over journalctl reconstructs one request even when
@@ -3536,7 +3546,8 @@ impl CandleHarness {
         }
 
         let tp_for_marker = Arc::clone(&tp);
-        let handle = tokio::spawn(chat_completion_tp_inner(tp, request).instrument(span.clone()));
+        let handle =
+            tokio::spawn(chat_completion_tp_inner(tp, request, principal).instrument(span.clone()));
         match handle.await {
             Ok(Ok(resp)) => Ok(resp),
             Ok(Err(e)) => {
@@ -3607,6 +3618,7 @@ impl CandleHarness {
         &self,
         tp: Arc<TpLoadedModel>,
         request: ChatCompletionRequest,
+        principal: Option<String>,
     ) -> Result<InferenceStream, InferenceError> {
         if tp.poisoned.load(Ordering::Acquire) {
             return Err(self.trigger_recovery(&request.model).await);
@@ -3754,7 +3766,11 @@ impl CandleHarness {
 
         // Admission control (#53): refuse before opening the stream; the
         // permit moves into the orchestration task and is held for its life.
-        let admit = tp.admission.enter().await.map_err(InferenceError::from)?;
+        let admit = tp
+            .admission
+            .enter(principal.as_deref())
+            .await
+            .map_err(InferenceError::from)?;
 
         let tool_schemas = build_tool_schemas(&request);
         let tp_for_task = Arc::clone(&tp);
@@ -4263,6 +4279,7 @@ impl CandleHarness {
 async fn chat_completion_tp_inner(
     tp: Arc<TpLoadedModel>,
     request: ChatCompletionRequest,
+    principal: Option<String>,
 ) -> Result<ChatCompletionResponse, InferenceError> {
     let req_start = std::time::Instant::now();
     let model_id = request.model.clone();
@@ -4353,7 +4370,11 @@ async fn chat_completion_tp_inner(
 
     // Admission control (#53): bounded queue + fast reject before joining
     // the pool-lock wait. Held for the whole request (released on drop).
-    let _admit = tp.admission.enter().await.map_err(InferenceError::from)?;
+    let _admit = tp
+        .admission
+        .enter(principal.as_deref())
+        .await
+        .map_err(InferenceError::from)?;
 
     // Acquire the pool lock for the duration of the request. After
     // Phase 3 the leader's TpLeaderModel lives in the device worker
@@ -4897,19 +4918,31 @@ pub enum InferenceError {
     /// failure mode that hid several client-compat bugs. Maps to 422.
     #[error("chat template could not render this request: {detail}")]
     TemplateRenderFailed { detail: String },
-    /// Admission control (#53) refused the request: the model's bounded
-    /// queue is full or the wait elapsed. Maps to `429 rate_limit_exceeded`
-    /// + `Retry-After` — a fast, retryable "busy" signal, not a stall.
+    /// Admission control (#53) refused on load: the model's bounded queue is
+    /// full or the wait elapsed. Maps to `503 rate_limit_exceeded` +
+    /// `Retry-After` — a fast, retryable "busy" signal, not a stall.
     #[error("model is busy; retry after {retry_after_secs}s")]
     Overloaded { retry_after_secs: u64 },
+    /// Per-principal fair-share cap (#54) exceeded: this principal already
+    /// has its max requests in flight/queued. Maps to `429
+    /// rate_limit_exceeded` + `Retry-After`; a well-behaved client self-paces.
+    #[error("per-principal in-flight limit reached; retry after {retry_after_secs}s")]
+    PerPrincipalLimit { retry_after_secs: u64 },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
 
 impl From<super::admission::AdmissionRejection> for InferenceError {
     fn from(rejection: super::admission::AdmissionRejection) -> Self {
-        InferenceError::Overloaded {
-            retry_after_secs: rejection.retry_after_secs(),
+        use super::admission::AdmissionRejection;
+        match rejection {
+            AdmissionRejection::QueueFull { retry_after_secs }
+            | AdmissionRejection::Timeout { retry_after_secs } => {
+                InferenceError::Overloaded { retry_after_secs }
+            }
+            AdmissionRejection::PrincipalCap { retry_after_secs } => {
+                InferenceError::PerPrincipalLimit { retry_after_secs }
+            }
         }
     }
 }

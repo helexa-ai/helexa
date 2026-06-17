@@ -113,6 +113,13 @@ pub struct AdmissionConfig {
     /// honest signal).
     #[serde(default = "default_admission_max_wait_secs")]
     pub max_wait_secs: u64,
+    /// Per-principal fair-share cap (#54): max in-flight + queued requests
+    /// for any single principal (resolved from the `x-helexa-*` headers
+    /// cortex stamps), so one client can't monopolize the queue while others
+    /// wait. Over-cap → `429 rate_limit_exceeded` + `Retry-After`. `0`
+    /// disables the cap; anonymous requests are always exempt.
+    #[serde(default = "default_admission_max_per_principal")]
+    pub max_per_principal: usize,
 }
 
 impl Default for AdmissionConfig {
@@ -121,6 +128,7 @@ impl Default for AdmissionConfig {
             max_in_flight: default_admission_max_in_flight(),
             max_queue_depth: default_admission_max_queue_depth(),
             max_wait_secs: default_admission_max_wait_secs(),
+            max_per_principal: default_admission_max_per_principal(),
         }
     }
 }
@@ -135,6 +143,10 @@ fn default_admission_max_queue_depth() -> usize {
 
 fn default_admission_max_wait_secs() -> u64 {
     30
+}
+
+fn default_admission_max_per_principal() -> usize {
+    2
 }
 
 /// `[harness.candle.prefix_cache]` settings.
