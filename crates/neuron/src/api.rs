@@ -486,6 +486,15 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
             "template_render_failed",
             format!("chat template could not render this request: {detail}"),
         ),
+        // Admission control refused (#53): a fast, retryable "busy" signal.
+        // 503 (service busy) + Retry-After; opencode/AI SDK back off.
+        InferenceError::Overloaded { retry_after_secs } => OpenAiError::new(
+            503,
+            "rate_limit_error",
+            "rate_limit_exceeded",
+            "model is busy (admission queue full); retry shortly",
+        )
+        .with_retry_after(retry_after_secs),
         InferenceError::Other(e) => OpenAiError::without_code(500, "api_error", format!("{e:#}")),
     };
     envelope_response(env)
@@ -658,6 +667,26 @@ mod error_envelope_tests {
         assert_eq!(error["code"], "insufficient_vram");
         assert_eq!(error["free_mb"], 1_024);
         assert_eq!(error["required_mb"], 8_192);
+    }
+
+    #[tokio::test]
+    async fn overloaded_is_503_rate_limited_with_retry_after() {
+        // Admission rejection (#53) → fast, retryable backpressure.
+        let resp = inference_error_response(InferenceError::Overloaded {
+            retry_after_secs: 7,
+        });
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let retry = resp
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .expect("admission rejection must advertise Retry-After");
+        assert_eq!(retry.to_str().unwrap(), "7");
+
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["error"]["code"], "rate_limit_exceeded");
     }
 
     #[tokio::test]

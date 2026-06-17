@@ -1,5 +1,6 @@
 //! Harness registry — maps harness names to trait implementations.
 
+pub mod admission;
 pub mod arch;
 pub mod candle;
 pub mod chat_template;

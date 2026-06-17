@@ -81,6 +81,9 @@ pub struct CandleHarness {
     /// Context-limit derivation settings (#67), read in `list_models`
     /// to compute each model's advertised `limit{context,input,output}`.
     context_limit_cfg: crate::config::ContextLimitConfig,
+    /// Admission-control settings (#53), used to build each loaded model's
+    /// [`super::admission::AdmissionController`] at load time.
+    admission_cfg: crate::config::AdmissionConfig,
 }
 
 /// Devices/capabilities snapshot of a model entering auto-recovery
@@ -305,6 +308,10 @@ pub struct LoadedModel {
     /// for the TP path (which already had this invariant by accident
     /// because the pool lock covered the same window).
     pub inference_lock: tokio::sync::Mutex<()>,
+    /// Bounded admission scheduler (#53). Gated *before* `inference_lock`
+    /// so a busy model refuses overflow fast instead of growing an
+    /// unbounded, untimed queue of lock waiters.
+    pub admission: super::admission::AdmissionController,
     /// Open/close token IDs for the reasoning marker this model
     /// emits, populated once at load time by probing the tokenizer's
     /// added-tokens table. `None` for non-reasoning models or
@@ -422,6 +429,10 @@ pub struct TpLoadedModel {
     /// serialises subprocess RPC traffic on the pool's
     /// `Vec<Worker>` channels.
     pub pool: tokio::sync::Mutex<super::tp::WorkerPool>,
+    /// Bounded admission scheduler (#53), mirroring the single-GPU path.
+    /// Gated before the pool lock so an overloaded TP model returns fast
+    /// backpressure instead of an unbounded, untimed wait.
+    pub admission: super::admission::AdmissionController,
     /// Handle into the leader device worker's TP slab. The boxed
     /// `TpLeaderModel` (with its embedded `Arc<Comm>` clones and
     /// per-rank CUDA tensors) lives on the worker thread; we hold an
@@ -1565,6 +1576,7 @@ impl CandleHarness {
             recovery_tx,
             prefix_cache_cfg: config.prefix_cache.clone(),
             context_limit_cfg: config.context_limit.clone(),
+            admission_cfg: config.admission.clone(),
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
         // keep the harness alive. Spawned only when a tokio runtime is
@@ -2058,6 +2070,15 @@ impl CandleHarness {
             tracing::warn!("NEURON_DEBUG_POISON: forcing auto-recovery (#17 verification)");
             return Err(self.trigger_recovery(&model_id).await);
         }
+
+        // Admission control (#53): refuse fast if the bounded queue is full
+        // or the wait elapses, rather than joining an unbounded lock-wait.
+        // The permit is held for the whole request (released on drop).
+        let _admit = loaded
+            .admission
+            .enter()
+            .await
+            .map_err(InferenceError::from)?;
 
         // Serialise concurrent requests against this model. Holds for
         // the duration of clear_kv_cache → prefill → decode so two
@@ -2610,6 +2631,15 @@ impl CandleHarness {
         // role chunk was already sent above, so the client sees
         // immediate "stream open" feedback even when this request
         // queues behind another for the lock.
+        // Admission control (#53): refuse before opening the stream if the
+        // model's bounded queue is full / the wait elapses. The permit moves
+        // into the inference task and is held until it completes.
+        let admit = loaded
+            .admission
+            .enter()
+            .await
+            .map_err(InferenceError::from)?;
+
         let tool_schemas = build_tool_schemas(&request);
         if let (Some(worker), Some(handle)) = (loaded.worker.clone(), loaded.arch_handle) {
             #[cfg(feature = "cuda")]
@@ -2620,6 +2650,7 @@ impl CandleHarness {
                 let tool_schemas_inner = tool_schemas.clone();
                 tokio::spawn(
                     async move {
+                        let _admit = admit;
                         let _inference_guard = loaded_for_task.inference_lock.lock().await;
                         match stream_inference_via_worker(
                             worker,
@@ -2680,6 +2711,7 @@ impl CandleHarness {
             let tool_call_tokens_inner = loaded.tool_call_tokens.clone();
             let tool_schemas_inner = tool_schemas.clone();
             tokio::task::spawn_blocking(move || {
+                let _admit = admit;
                 let _g = span_for_task.enter();
                 // `blocking_lock` is safe here: spawn_blocking runs on
                 // a dedicated thread, not on the async runtime, so
@@ -3128,6 +3160,7 @@ impl Harness for CandleHarness {
             worker,
             arch_handle,
             inference_lock: tokio::sync::Mutex::new(()),
+            admission: super::admission::AdmissionController::new(&self.admission_cfg),
             reasoning_tokens,
             tool_call_tokens,
             chat_template,
@@ -3372,6 +3405,7 @@ impl CandleHarness {
             tokenizer,
             devices: devices.clone(),
             pool: TMutex::new(pool),
+            admission: super::admission::AdmissionController::new(&self.admission_cfg),
             leader_handle,
             leader_device: leader_device.clone(),
             poisoned: AtomicBool::new(false),
@@ -3690,10 +3724,15 @@ impl CandleHarness {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
 
+        // Admission control (#53): refuse before opening the stream; the
+        // permit moves into the orchestration task and is held for its life.
+        let admit = tp.admission.enter().await.map_err(InferenceError::from)?;
+
         let tool_schemas = build_tool_schemas(&request);
         let tp_for_task = Arc::clone(&tp);
         tokio::spawn(
             async move {
+                let _admit = admit;
                 let mut failure: Option<String> = None;
                 let mut pool = acquire_pool_lock(&tp_for_task.pool, &model_id).await;
                 let leader_handle = tp_for_task.leader_handle;
@@ -4284,6 +4323,10 @@ async fn chat_completion_tp_inner(
         validate_vision_prefill(prompt_len, vram_free_mb)?;
     }
 
+    // Admission control (#53): bounded queue + fast reject before joining
+    // the pool-lock wait. Held for the whole request (released on drop).
+    let _admit = tp.admission.enter().await.map_err(InferenceError::from)?;
+
     // Acquire the pool lock for the duration of the request. After
     // Phase 3 the leader's TpLeaderModel lives in the device worker
     // thread, so the pool lock now serialises only subprocess RPC
@@ -4826,8 +4869,21 @@ pub enum InferenceError {
     /// failure mode that hid several client-compat bugs. Maps to 422.
     #[error("chat template could not render this request: {detail}")]
     TemplateRenderFailed { detail: String },
+    /// Admission control (#53) refused the request: the model's bounded
+    /// queue is full or the wait elapsed. Maps to `429 rate_limit_exceeded`
+    /// + `Retry-After` — a fast, retryable "busy" signal, not a stall.
+    #[error("model is busy; retry after {retry_after_secs}s")]
+    Overloaded { retry_after_secs: u64 },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+impl From<super::admission::AdmissionRejection> for InferenceError {
+    fn from(rejection: super::admission::AdmissionRejection) -> Self {
+        InferenceError::Overloaded {
+            retry_after_secs: rejection.retry_after_secs(),
+        }
+    }
 }
 
 /// Build the model's prompt from a [`ChatCompletionRequest`].

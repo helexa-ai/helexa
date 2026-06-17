@@ -85,6 +85,56 @@ pub struct CandleHarnessConfig {
     /// `/models`, and enforces it. These knobs tune that derivation.
     #[serde(default)]
     pub context_limit: ContextLimitConfig,
+
+    /// Admission control (#53): bounds the per-model wait queue so a busy
+    /// model returns a fast, retryable `429`/`503` instead of stalling new
+    /// requests until their client times out.
+    #[serde(default)]
+    pub admission: AdmissionConfig,
+}
+
+/// `[harness.candle.admission]` settings (#53).
+///
+/// Inference is batch-1, so `max_in_flight` is 1 in practice; the queue
+/// (`max_queue_depth`) absorbs short bursts, and `max_wait_secs` caps how
+/// long a queued request waits before it's refused with backpressure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdmissionConfig {
+    /// Concurrent running requests per model. Batch-1 inference → 1.
+    #[serde(default = "default_admission_max_in_flight")]
+    pub max_in_flight: usize,
+    /// Queued (waiting) requests allowed beyond the in-flight one. The
+    /// `(max_in_flight + max_queue_depth + 1)`-th request is refused
+    /// immediately with `429`/`503` + `Retry-After`.
+    #[serde(default = "default_admission_max_queue_depth")]
+    pub max_queue_depth: usize,
+    /// Maximum seconds a queued request waits for the in-flight slot before
+    /// it is refused (turns the old ~300s client-side hang into a fast,
+    /// honest signal).
+    #[serde(default = "default_admission_max_wait_secs")]
+    pub max_wait_secs: u64,
+}
+
+impl Default for AdmissionConfig {
+    fn default() -> Self {
+        Self {
+            max_in_flight: default_admission_max_in_flight(),
+            max_queue_depth: default_admission_max_queue_depth(),
+            max_wait_secs: default_admission_max_wait_secs(),
+        }
+    }
+}
+
+fn default_admission_max_in_flight() -> usize {
+    1
+}
+
+fn default_admission_max_queue_depth() -> usize {
+    8
+}
+
+fn default_admission_max_wait_secs() -> u64 {
+    30
 }
 
 /// `[harness.candle.prefix_cache]` settings.
