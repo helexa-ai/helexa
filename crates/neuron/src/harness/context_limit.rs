@@ -22,10 +22,72 @@
 //! n_layers`) and drops in by constructing a `ContextProfile`.
 
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use cortex_core::harness::ModelLimit;
 
 use crate::config::ContextLimitConfig;
+
+/// EMA smoothing factor for the prefill-rate sample. Low enough that one
+/// anomalous turn (a contended GPU, a cold cache) doesn't swing the
+/// advertised limit, high enough to track a real shift (e.g. prefix
+/// caching, #11, dropping effective prefill cost) within a few turns.
+const PREFILL_EMA_ALPHA: f64 = 0.3;
+
+/// Self-measured prefill throughput for one loaded model, as an
+/// exponential moving average of tokens/sec (#67). Updated at the end of
+/// each streaming request's prefill phase, read when deriving the
+/// throughput ceiling. Lock-free: prefill is serialised per model (the
+/// `inference_lock`), and the limit reader only needs a recent value.
+/// Stores the f64 rate as raw bits; `0` means "no sample yet" → callers
+/// fall back to the configured bootstrap estimate.
+#[derive(Debug)]
+pub struct PrefillRateEma {
+    bits: AtomicU64,
+}
+
+impl PrefillRateEma {
+    pub const fn new() -> Self {
+        Self {
+            bits: AtomicU64::new(0),
+        }
+    }
+
+    /// Fold one prefill measurement (`prompt_tokens` processed in
+    /// `elapsed`) into the EMA. No-op for degenerate inputs so a probe
+    /// request or a clock blip can't poison the average.
+    pub fn record(&self, prompt_tokens: usize, elapsed: Duration) {
+        let secs = elapsed.as_secs_f64();
+        if prompt_tokens == 0 || secs <= 0.0 {
+            return;
+        }
+        let sample = prompt_tokens as f64 / secs;
+        if !sample.is_finite() || sample <= 0.0 {
+            return;
+        }
+        let prev = f64::from_bits(self.bits.load(Ordering::Acquire));
+        let next = if prev > 0.0 {
+            PREFILL_EMA_ALPHA * sample + (1.0 - PREFILL_EMA_ALPHA) * prev
+        } else {
+            sample
+        };
+        self.bits.store(next.to_bits(), Ordering::Release);
+    }
+
+    /// The current measured rate (tokens/sec), or `None` before the
+    /// first sample lands.
+    pub fn get(&self) -> Option<f64> {
+        let v = f64::from_bits(self.bits.load(Ordering::Acquire));
+        (v.is_finite() && v > 0.0).then_some(v)
+    }
+}
+
+impl Default for PrefillRateEma {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// Bytes per element of the KV cache. qwen3_5 keeps K/V in the model's
 /// f16/bf16 compute dtype regardless of weight quantisation (ISQ
@@ -262,6 +324,23 @@ mod tests {
         // A backstop above the derived value is a no-op.
         let unclamped = derive_limit(&beast_profile(), 9254, 850.0, Some(200000), &cfg);
         assert_eq!(unclamped.context, 101376);
+    }
+
+    #[test]
+    fn prefill_ema_tracks_and_ignores_degenerate_samples() {
+        let ema = PrefillRateEma::new();
+        assert_eq!(ema.get(), None);
+        // First real sample seeds the average exactly.
+        ema.record(1000, Duration::from_secs(1));
+        assert_eq!(ema.get(), Some(1000.0));
+        // Degenerate inputs are ignored (no poisoning).
+        ema.record(0, Duration::from_secs(1));
+        ema.record(1000, Duration::from_secs(0));
+        assert_eq!(ema.get(), Some(1000.0));
+        // A faster sample pulls the EMA up but is smoothed (alpha 0.3):
+        // 0.3*2000 + 0.7*1000 = 1300.
+        ema.record(2000, Duration::from_secs(1));
+        assert!((ema.get().unwrap() - 1300.0).abs() < 1e-6);
     }
 
     #[test]

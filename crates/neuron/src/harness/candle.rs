@@ -308,6 +308,11 @@ pub struct LoadedModel {
     /// Used to self-derive `limit{context,input,output}` from live free
     /// VRAM + a self-measured throughput ceiling.
     pub context_profile: Option<super::context_limit::ContextProfile>,
+    /// Self-measured prefill throughput (tokens/sec) EMA (#67), updated
+    /// at the end of each streaming request's prefill phase. Feeds the
+    /// throughput ceiling in the derived limit; falls back to the
+    /// configured bootstrap estimate before the first sample.
+    pub prefill_rate: super::context_limit::PrefillRateEma,
 }
 
 impl LoadedModel {
@@ -395,6 +400,9 @@ pub struct TpLoadedModel {
     /// TP world size), so the VRAM ceiling is computed against the
     /// tightest card's free VRAM across ranks.
     pub context_profile: Option<super::context_limit::ContextProfile>,
+    /// Self-measured prefill throughput EMA (#67) — see
+    /// [`LoadedModel::prefill_rate`].
+    pub prefill_rate: super::context_limit::PrefillRateEma,
     /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
     /// needs to hold per model lifetime (snapshots die with the model).
     pub next_snapshot_id: std::sync::atomic::AtomicU64,
@@ -2508,6 +2516,7 @@ impl CandleHarness {
                             prompt_tokens,
                             vision_route,
                             loaded_for_task.prefix_cache.as_ref(),
+                            &loaded_for_task.prefill_rate,
                             max_new,
                             temperature,
                             top_p,
@@ -3010,6 +3019,7 @@ impl Harness for CandleHarness {
             spec: spec.clone(),
             prefix_cache: self.new_prefix_cache(snapshot_capable),
             context_profile,
+            prefill_rate: super::context_limit::PrefillRateEma::new(),
         });
         if loaded.prefix_cache.is_some() {
             tracing::info!(
@@ -3267,6 +3277,7 @@ impl CandleHarness {
                 &config_path,
                 tp_size,
             ),
+            prefill_rate: super::context_limit::PrefillRateEma::new(),
             next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
         });
         if tp_loaded.prefix_cache.is_some() {
@@ -3636,6 +3647,14 @@ impl CandleHarness {
                     // once, splice per chunk); text requests chunk it the
                     // same way. `vision_route` was moved into this task
                     // from the synchronous setup above.
+                    // Time the whole prefill phase. Recorded as
+                    // total-prompt-tokens / elapsed (#67), so the
+                    // self-measured rate captures prefix-cache savings:
+                    // when most of the prompt is restored from a snapshot
+                    // (#11), elapsed drops but the prompt is still large,
+                    // so the effective rate — and the throughput ceiling
+                    // it feeds — rises toward the VRAM ceiling.
+                    let prefill_start = std::time::Instant::now();
                     let prefill_result = match &vision_route {
                         Some((data_uris, image_token_id)) => {
                             pool.generate_step_with_images(
@@ -3712,10 +3731,14 @@ impl CandleHarness {
                             break 'work;
                         }
                     };
+                    tp_for_task
+                        .prefill_rate
+                        .record(prompt_len, prefill_start.elapsed());
                     let (post_prefill_vram_free_mb, _) = tp_for_task.query_vram().await;
                     tracing::info!(
                         model = %model_id,
                         prompt_len,
+                        prefill_ms = prefill_start.elapsed().as_millis(),
                         vram_free_mb = post_prefill_vram_free_mb,
                         "TP chat_completion (stream): prefill complete"
                     );
@@ -5538,6 +5561,7 @@ async fn stream_inference_via_worker(
     prompt_tokens: Vec<u32>,
     images: Option<(Vec<super::device_worker::jobs::ImageInput>, u32)>,
     prefix_cache: Option<&ModelPrefixCache>,
+    prefill_rate: &super::context_limit::PrefillRateEma,
     max_new: usize,
     temperature: f64,
     top_p: Option<f64>,
@@ -5598,6 +5622,13 @@ async fn stream_inference_via_worker(
     // Either way the owning `prompt_tokens: Vec<u32>` outlives this
     // step; we use `prompt_len` (already extracted above) for the
     // decode-step offset arithmetic.
+    //
+    // Time the whole prefill phase, recorded as total-prompt-tokens /
+    // elapsed (#67): when a prefix snapshot covers most of the prompt
+    // (#11), elapsed drops while the prompt stays large, so the
+    // effective rate — and the throughput ceiling it feeds — rises.
+    let prefill_start = std::time::Instant::now();
+    let prefill_prompt_len = prompt_tokens.len();
     let logits_vec = match images {
         Some((imgs, image_token_id)) => {
             worker
@@ -5639,6 +5670,7 @@ async fn stream_inference_via_worker(
             }
         }
     };
+    prefill_rate.record(prefill_prompt_len, prefill_start.elapsed());
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
         Ok(t) => t,
