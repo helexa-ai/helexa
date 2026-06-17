@@ -11,6 +11,7 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use chrono::Utc;
+use cortex_core::error_envelope::OpenAiError;
 use cortex_core::harness::ModelLimit;
 use cortex_core::node::{CortexModelEntry, ModelLocation};
 use serde_json::{Value, json};
@@ -60,7 +61,7 @@ async fn chat_completions(
                 error = %e,
                 "route resolve failed"
             );
-            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
+            return route_error_response(&e);
         }
     };
 
@@ -118,7 +119,7 @@ async fn responses(
                 error = %e,
                 "route resolve failed"
             );
-            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
+            return route_error_response(&e);
         }
     };
 
@@ -168,7 +169,7 @@ async fn completions(
                 error = %e,
                 "route resolve failed"
             );
-            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
+            return route_error_response(&e);
         }
     };
 
@@ -276,7 +277,7 @@ async fn anthropic_messages(
             // ("model 'X' not found...", "no healthy nodes available")
             // — fine to surface to the caller. The warn above carries
             // any extra context for operators.
-            return error_response(e.http_status(), e.broad_type(), e.code(), &e.to_string());
+            return route_error_response(&e);
         }
     };
 
@@ -853,15 +854,15 @@ fn rewrite_model_in_body(body: Bytes, new_model: &str) -> Bytes {
 }
 
 fn error_response(status: u16, typ: &str, code: &str, message: &str) -> Response {
-    let status_code = axum::http::StatusCode::from_u16(status)
-        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
-    let body = json!({
-        "error": {
-            "message": message,
-            "type": typ,
-            "code": code,
-            "param": null,
-        }
-    });
-    (status_code, Json(body)).into_response()
+    crate::error::envelope_response(OpenAiError::new(status, typ, code, message))
+}
+
+/// Render a [`RouteError`] in the standard envelope, attaching `Retry-After`
+/// for its transient variants (#63).
+fn route_error_response(e: &router::RouteError) -> Response {
+    let mut env = OpenAiError::new(e.http_status(), e.broad_type(), e.code(), e.to_string());
+    if let Some(secs) = e.retry_after_secs() {
+        env = env.with_retry_after(secs);
+    }
+    crate::error::envelope_response(env)
 }

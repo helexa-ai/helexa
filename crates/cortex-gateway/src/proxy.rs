@@ -125,15 +125,12 @@ impl IntoResponse for ProxyError {
                 "failed to build response",
             ),
         };
-        let body = serde_json::json!({
-            "error": {
-                "message": message,
-                "type": "api_error",
-                "code": code,
-                "param": null
-            }
-        });
-        (status, axum::Json(body)).into_response()
+        crate::error::envelope_response(cortex_core::error_envelope::OpenAiError::new(
+            status.as_u16(),
+            "api_error",
+            code,
+            message,
+        ))
     }
 }
 

@@ -96,6 +96,19 @@ impl RouteError {
             RouteError::ModelRecovering { .. } => "service_unavailable",
         }
     }
+
+    /// Seconds to advertise in `Retry-After` for the transient variants
+    /// (#63). `NoHealthyNodes` may clear once the poller re-marks a node
+    /// healthy; `ModelRecovering` clears once the device context finishes
+    /// rebuilding — both are safe to retry. Everything else is permanent
+    /// for this request (404) and carries no hint.
+    pub fn retry_after_secs(&self) -> Option<u64> {
+        match self {
+            RouteError::ModelRecovering { .. } => Some(2),
+            RouteError::NoHealthyNodes => Some(5),
+            _ => None,
+        }
+    }
 }
 
 /// Resolve which node should serve a request for the given model.

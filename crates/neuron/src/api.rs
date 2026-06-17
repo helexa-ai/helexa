@@ -434,82 +434,79 @@ fn finish_reason_from_str(s: &str) -> crate::wire::FinishReason {
 /// extras (prompt_len, free_mb, …) ride *inside* the error object so
 /// they don't break the envelope shape.
 fn inference_error_response(err: InferenceError) -> axum::response::Response {
-    // (status, message, type, code, extra-fields-merged-into-error-object)
-    let (status, message, etype, code, extras): (StatusCode, String, &str, Option<&str>, Value) =
-        match err {
-            InferenceError::ModelNotLoaded(id) => (
-                StatusCode::NOT_FOUND,
-                format!("model '{id}' not loaded on this neuron"),
-                "invalid_request_error",
-                Some("model_not_found"),
-                json!({ "model_id": id }),
-            ),
-            // OpenAI's canonical context-overflow error. opencode keys on
-            // `code == "context_length_exceeded"` and the message phrasing
-            // ("maximum context length is N tokens") to auto-compact+retry.
-            InferenceError::PromptTooLong { prompt_len, max } => (
-                StatusCode::BAD_REQUEST,
-                format!(
-                    "This model's maximum context length is {max} tokens. \
-                     However, your messages resulted in {prompt_len} tokens. \
-                     Please reduce the length of the messages."
-                ),
-                "invalid_request_error",
-                Some("context_length_exceeded"),
-                json!({ "prompt_len": prompt_len, "max": max }),
-            ),
-            InferenceError::InsufficientVram {
-                free_mb,
-                required_mb,
-            } => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                format!(
-                    "insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"
-                ),
-                "api_error",
-                Some("insufficient_vram"),
-                json!({ "free_mb": free_mb, "required_mb": required_mb }),
-            ),
-            InferenceError::VisionUnsupported { model_id } => (
-                StatusCode::BAD_REQUEST,
-                format!("model '{model_id}' does not support image input"),
-                "invalid_request_error",
-                Some("vision_unsupported"),
-                json!({
-                    "model_id": model_id,
-                    "suggestion": "load a vision-capable model or remove image_url content parts",
-                }),
-            ),
-            InferenceError::TemplateRenderFailed { detail } => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!("chat template could not render this request: {detail}"),
-                "invalid_request_error",
-                Some("template_render_failed"),
-                json!({}),
-            ),
-            InferenceError::Other(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("{e:#}"),
-                "api_error",
-                None,
-                json!({}),
-            ),
-        };
-
-    let mut error_obj = json!({
-        "message": message,
-        "type": etype,
-        "code": code,
-        "param": Value::Null,
-    });
-    // Merge the diagnostic extras into the error object.
-    if let (Some(obj), Some(extra)) = (error_obj.as_object_mut(), extras.as_object()) {
-        for (k, v) in extra {
-            obj.insert(k.clone(), v.clone());
+    use cortex_core::error_envelope::OpenAiError;
+    let env = match err {
+        InferenceError::ModelNotLoaded(id) => OpenAiError::new(
+            404,
+            "invalid_request_error",
+            "model_not_found",
+            format!("model '{id}' not loaded on this neuron"),
+        )
+        .with_extra("model_id", json!(id)),
+        // OpenAI's canonical context-overflow error. opencode keys on
+        // `code == "context_length_exceeded"` and the message phrasing
+        // ("maximum context length is N tokens") to auto-compact+retry.
+        InferenceError::PromptTooLong { prompt_len, max } => {
+            OpenAiError::context_length_exceeded(format!(
+                "This model's maximum context length is {max} tokens. \
+                 However, your messages resulted in {prompt_len} tokens. \
+                 Please reduce the length of the messages."
+            ))
+            .with_extra("prompt_len", json!(prompt_len))
+            .with_extra("max", json!(max))
         }
-    }
+        // VRAM frees as the in-flight request(s) complete, so this is a
+        // transient 503 — advertise a short Retry-After (#63).
+        InferenceError::InsufficientVram {
+            free_mb,
+            required_mb,
+        } => OpenAiError::new(
+            503,
+            "api_error",
+            "insufficient_vram",
+            format!("insufficient free VRAM: {free_mb} MiB free, need at least {required_mb} MiB"),
+        )
+        .with_retry_after(5)
+        .with_extra("free_mb", json!(free_mb))
+        .with_extra("required_mb", json!(required_mb)),
+        InferenceError::VisionUnsupported { model_id } => OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "vision_unsupported",
+            format!("model '{model_id}' does not support image input"),
+        )
+        .with_extra("model_id", json!(model_id))
+        .with_extra(
+            "suggestion",
+            json!("load a vision-capable model or remove image_url content parts"),
+        ),
+        InferenceError::TemplateRenderFailed { detail } => OpenAiError::new(
+            422,
+            "invalid_request_error",
+            "template_render_failed",
+            format!("chat template could not render this request: {detail}"),
+        ),
+        InferenceError::Other(e) => OpenAiError::without_code(500, "api_error", format!("{e:#}")),
+    };
+    envelope_response(env)
+}
 
-    (status, Json(json!({ "error": error_obj }))).into_response()
+/// Neuron adapter: turn the shared [`cortex_core::error_envelope::OpenAiError`]
+/// into an axum response, setting `Retry-After` when the envelope carries one.
+/// cortex-core owns the envelope shape (#60/#63); this is the only crossing
+/// from that data into axum on the neuron side.
+fn envelope_response(err: cortex_core::error_envelope::OpenAiError) -> axum::response::Response {
+    let status = StatusCode::from_u16(err.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let retry_after = err.retry_after_secs;
+    let mut response = (status, Json(err.body())).into_response();
+    if let Some(secs) = retry_after
+        && let Ok(value) = axum::http::HeaderValue::from_str(&secs.to_string())
+    {
+        response
+            .headers_mut()
+            .insert(axum::http::header::RETRY_AFTER, value);
+    }
+    response
 }
 
 fn mint_response_id() -> String {
@@ -661,6 +658,36 @@ mod error_envelope_tests {
         assert_eq!(error["code"], "insufficient_vram");
         assert_eq!(error["free_mb"], 1_024);
         assert_eq!(error["required_mb"], 8_192);
+    }
+
+    #[tokio::test]
+    async fn insufficient_vram_carries_retry_after() {
+        // Transient 503 — VRAM frees as in-flight requests finish, so the
+        // client should back off and retry (#63).
+        let resp = inference_error_response(InferenceError::InsufficientVram {
+            free_mb: 1_024,
+            required_mb: 8_192,
+        });
+        let retry = resp
+            .headers()
+            .get(axum::http::header::RETRY_AFTER)
+            .expect("transient 503 must advertise Retry-After");
+        assert_eq!(retry.to_str().unwrap(), "5");
+    }
+
+    #[tokio::test]
+    async fn permanent_rejections_have_no_retry_after() {
+        // context_length_exceeded is permanent for this request — no hint.
+        let resp = inference_error_response(InferenceError::PromptTooLong {
+            prompt_len: 60_000,
+            max: 49_152,
+        });
+        assert!(
+            resp.headers()
+                .get(axum::http::header::RETRY_AFTER)
+                .is_none(),
+            "permanent rejection must not advertise Retry-After"
+        );
     }
 
     #[tokio::test]

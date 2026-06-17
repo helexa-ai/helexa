@@ -116,6 +116,17 @@ async fn error_response_no_healthy_nodes() {
 
     assert_eq!(resp.status(), axum::http::StatusCode::SERVICE_UNAVAILABLE);
 
+    // Transient 503 — the gateway advertises Retry-After so OpenAI-compatible
+    // clients back off and retry rather than surfacing an opaque error (#63).
+    let retry_after = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .expect("transient 503 must carry Retry-After")
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(retry_after, "5");
+
     let body: serde_json::Value = resp.json().await.expect("valid json");
     let err = body.get("error").expect("response has error object");
 
