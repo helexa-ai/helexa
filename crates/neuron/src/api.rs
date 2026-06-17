@@ -71,6 +71,12 @@ async fn health_handler(State(state): State<Arc<NeuronState>>) -> Json<HealthRes
     // know about activation lifecycle.
     let mut snapshot = state.health_cache.snapshot().await;
     snapshot.activation = state.activation.snapshot().await;
+    // Per-model admission load (#53) — read live from the candle harness so
+    // cortex's load-aware router (#55) can spread traffic and propagate
+    // backpressure. Absent when no candle harness is present.
+    if let Some(candle) = &state.candle {
+        snapshot.models = candle.load_snapshot().await;
+    }
     Json(snapshot)
 }
 

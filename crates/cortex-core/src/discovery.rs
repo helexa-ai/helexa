@@ -68,6 +68,57 @@ pub struct HealthResponse {
     pub devices: Vec<DeviceHealth>,
     #[serde(default)]
     pub activation: ActivationStatus,
+    /// Per-model admission load (#53): how many requests are running vs.
+    /// queued on each loaded model right now. Cortex's load-aware router
+    /// (#55) reads this to spread traffic across replicas and to propagate
+    /// honest backpressure. `#[serde(default)]` keeps older gateways/neurons
+    /// interoperable (absent → empty → treated as no load info).
+    #[serde(default)]
+    pub models: Vec<ModelLoad>,
+}
+
+/// Live admission load for one loaded model (#53).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelLoad {
+    pub id: String,
+    /// Requests currently running (batch-1 → 0 or 1).
+    pub in_flight: usize,
+    /// Requests waiting in the bounded admission queue.
+    pub queue_depth: usize,
+}
+
+#[cfg(test)]
+mod health_load_tests {
+    use super::*;
+
+    #[test]
+    fn health_response_without_models_field_still_deserializes() {
+        // A pre-#53 neuron's /health payload omits `models`; the gateway
+        // must still parse it (serde default → empty).
+        let json = r#"{"uptime_secs":42,"devices":[]}"#;
+        let resp: HealthResponse = serde_json::from_str(json).expect("back-compat parse");
+        assert_eq!(resp.uptime_secs, 42);
+        assert!(resp.models.is_empty());
+    }
+
+    #[test]
+    fn health_response_round_trips_model_load() {
+        let resp = HealthResponse {
+            uptime_secs: 1,
+            devices: vec![],
+            activation: ActivationStatus::default(),
+            models: vec![ModelLoad {
+                id: "Qwen/Qwen3.6-27B".into(),
+                in_flight: 1,
+                queue_depth: 3,
+            }],
+        };
+        let s = serde_json::to_string(&resp).unwrap();
+        let back: HealthResponse = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.models.len(), 1);
+        assert_eq!(back.models[0].in_flight, 1);
+        assert_eq!(back.models[0].queue_depth, 3);
+    }
 }
 
 /// High-level activation state of the neuron daemon. The HTTP listener

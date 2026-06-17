@@ -30,6 +30,9 @@ impl HealthCache {
                 // direct read from the cache stays a well-typed
                 // HealthResponse on the wire.
                 activation: Default::default(),
+                // Per-model admission load is overlaid by the api handler
+                // from the candle harness (#53); the cache doesn't own it.
+                models: Vec::new(),
             }),
             has_gpus: RwLock::new(false),
         }

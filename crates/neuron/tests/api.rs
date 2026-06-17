@@ -114,6 +114,12 @@ async fn test_health_endpoint() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["uptime_secs"], 0);
+    // Per-model admission load (#53) is always present, even with no models
+    // loaded (empty array) — cortex's load-aware router (#55) relies on it.
+    assert!(
+        body["models"].is_array(),
+        "/health must expose a models load array"
+    );
 }
 
 #[tokio::test]

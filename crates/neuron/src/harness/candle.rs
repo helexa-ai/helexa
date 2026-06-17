@@ -149,6 +149,16 @@ impl LoadedHandle {
         }
     }
 
+    /// Current admission load (#53): `(in_flight, queue_depth)`. Lock-free,
+    /// so `/health` can read it without contending with inference.
+    pub fn load(&self) -> (usize, usize) {
+        match self {
+            LoadedHandle::Single(m) => (m.admission.in_flight(), m.admission.queue_depth()),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => (m.admission.in_flight(), m.admission.queue_depth()),
+        }
+    }
+
     /// Modalities the loaded model supports. Stage B7 (single-GPU) +
     /// TP-vision (#12) — both single-GPU and TP loads advertise
     /// `"vision"` when a replicated vision tower materialised.
@@ -2811,6 +2821,24 @@ pub struct InferenceStream {
 /// Auto-recovery (#17) — rebuild a poisoned model's device context
 /// automatically instead of leaving it bricked until a human reloads.
 impl CandleHarness {
+    /// Per-model admission load for `GET /health` (#53): in-flight + queued
+    /// counts for every resident model. Lock-free per-model reads, so this
+    /// only briefly holds the registry read lock to enumerate handles.
+    pub async fn load_snapshot(&self) -> Vec<cortex_core::discovery::ModelLoad> {
+        let models = self.models.read().await;
+        models
+            .values()
+            .map(|handle| {
+                let (in_flight, queue_depth) = handle.load();
+                cortex_core::discovery::ModelLoad {
+                    id: handle.model_id().to_string(),
+                    in_flight,
+                    queue_depth,
+                }
+            })
+            .collect()
+    }
+
     /// True while `model_id` is being auto-recovered (its slot is briefly
     /// absent from the registry during the reload).
     pub async fn is_recovering(&self, model_id: &str) -> bool {
