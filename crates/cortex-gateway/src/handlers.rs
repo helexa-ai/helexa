@@ -761,6 +761,19 @@ async fn proxy_with_metrics(
     body: Bytes,
     model_id: &str,
 ) -> Response {
+    // Fail-fast prompt pre-validation (#56): refuse a prompt that already
+    // exceeds the model's advertised context window *before* dispatching to
+    // neuron — the same `400 context_length_exceeded` neuron would emit on
+    // overflow, just earlier and without burning a cold-load/queue slot.
+    // cortex has no tokenizer, so the estimate under-counts and neuron stays
+    // the exact wall; we only catch gross overages (the A0 failure mode).
+    if let Some(context) = advertised_context(fleet, &route.node_name, model_id).await {
+        let est = estimate_prompt_tokens(&body);
+        if est > context {
+            return context_length_exceeded_response(context, est, &headers);
+        }
+    }
+
     let labels = [
         ("model", model_id.to_string()),
         ("node", route.node_name.clone()),
@@ -842,6 +855,98 @@ async fn advertised_output_limit(
         .limit
         .as_ref()
         .map(|l| l.output as u64)
+}
+
+/// The model's advertised hard context window (`limit.context`, #62/#67) on a
+/// node, used for fail-fast prompt pre-validation (#56). `None` when no limit
+/// is known — pre-validation is then skipped and neuron remains the wall.
+async fn advertised_context(fleet: &CortexState, node_name: &str, model_id: &str) -> Option<u64> {
+    let nodes = fleet.nodes.read().await;
+    nodes
+        .get(node_name)?
+        .models
+        .get(model_id)?
+        .limit
+        .as_ref()
+        .map(|l| l.context as u64)
+}
+
+/// Conservative prompt-token estimate (~4 chars/token over message text).
+/// cortex has no tokenizer; under-counting is the safe direction — we only
+/// pre-reject gross overages (#56), and neuron enforces the exact wall.
+fn estimate_prompt_tokens(body: &[u8]) -> u64 {
+    let Ok(v) = serde_json::from_slice::<Value>(body) else {
+        return (body.len() as u64 / 4).max(1);
+    };
+    let mut chars = 0usize;
+    if let Some(messages) = v.get("messages").and_then(Value::as_array) {
+        for m in messages {
+            match m.get("content") {
+                Some(Value::String(s)) => chars += s.len(),
+                Some(Value::Array(parts)) => {
+                    for p in parts {
+                        if let Some(t) = p.get("text").and_then(Value::as_str) {
+                            chars += t.len();
+                        }
+                    }
+                }
+                _ => {}
+            }
+            chars += 8; // rough per-message role/formatting overhead
+        }
+    } else if let Some(prompt) = v.get("prompt").and_then(Value::as_str) {
+        chars += prompt.len(); // legacy /v1/completions
+    } else {
+        return (body.len() as u64 / 4).max(1);
+    }
+    (chars as u64 / 4).max(1)
+}
+
+/// Client-specific, advisory guidance for an over-long prompt (#56),
+/// fingerprinted from `User-Agent`. Strictly advisory: it rides the
+/// `X-Helexa-Advice` header only, never the error envelope, and behaviour
+/// never depends on it. Unknown clients get nothing.
+fn client_advice(headers: &HeaderMap) -> Option<&'static str> {
+    let ua = headers
+        .get(axum::http::header::USER_AGENT)?
+        .to_str()
+        .ok()?
+        .to_ascii_lowercase();
+    if ua.contains("litellm") {
+        Some(
+            "litellm forwards the full context; lower the configured context window or enable client-side compaction",
+        )
+    } else if ua.contains("agent-zero") || ua.contains("agent zero") {
+        Some("reduce the conversation/context size or summarize earlier turns before resending")
+    } else if ua.contains("zed") {
+        Some("reduce the assistant context window in Zed's settings")
+    } else {
+        None
+    }
+}
+
+/// `400 context_length_exceeded` for an over-long prompt caught at the edge
+/// (#56), in the #60 envelope — the same shape neuron emits on overflow, so
+/// clients (opencode auto-compacts) handle it identically. Attaches the
+/// advisory `X-Helexa-Advice` header for fingerprinted clients.
+fn context_length_exceeded_response(
+    context: u64,
+    prompt_est: u64,
+    headers: &HeaderMap,
+) -> Response {
+    let env = OpenAiError::context_length_exceeded(format!(
+        "This model's maximum context length is {context} tokens. Your request is \
+         estimated at ~{prompt_est} tokens. Please reduce the length of the messages."
+    ))
+    .with_extra("max", json!(context))
+    .with_extra("estimated_prompt_tokens", json!(prompt_est));
+    let mut response = crate::error::envelope_response(env);
+    if let Some(advice) = client_advice(headers)
+        && let Ok(value) = axum::http::HeaderValue::from_str(advice)
+    {
+        response.headers_mut().insert("x-helexa-advice", value);
+    }
+    response
 }
 
 /// Update `last_accessed` timestamp for a model on a node (drives LRU eviction).
