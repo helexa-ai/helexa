@@ -32,6 +32,7 @@ pub async fn stream_translated(
     openai_body: axum::body::Bytes,
     model_id: &str,
     node_name: &str,
+    inbound_headers: &axum::http::HeaderMap,
 ) -> Response {
     let url = format!("{endpoint}/v1/chat/completions");
     tracing::info!(
@@ -42,13 +43,14 @@ pub async fn stream_translated(
         "proxying streaming request (anthropic SSE translation)"
     );
 
-    let upstream = match client
-        .post(&url)
-        .header("content-type", "application/json")
-        .body(openai_body)
-        .send()
-        .await
-    {
+    let request = crate::auth::forward_principal_headers(
+        client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(openai_body),
+        inbound_headers,
+    );
+    let upstream = match request.send().await {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!(

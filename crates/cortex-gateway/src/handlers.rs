@@ -190,7 +190,7 @@ async fn completions(
 /// `POST /v1/messages` — accept Anthropic format, translate, proxy, translate back.
 async fn anthropic_messages(
     State(fleet): State<Arc<CortexState>>,
-    _headers: HeaderMap,
+    headers: HeaderMap,
     body: Bytes,
 ) -> Response {
     // Parse as Anthropic request.
@@ -316,6 +316,7 @@ async fn anthropic_messages(
             openai_body,
             &model_id,
             &route.node_name,
+            &headers,
         )
         .await;
         metrics::histogram!("cortex_request_duration_seconds", &labels)
@@ -335,13 +336,16 @@ async fn anthropic_messages(
             cold_start = route.cold_start,
             "proxying request"
         );
-        let upstream_resp = fleet
-            .http_client
-            .post(&target_url)
-            .body(openai_body)
-            .header("content-type", "application/json")
-            .send()
-            .await;
+        let upstream_resp = crate::auth::forward_principal_headers(
+            fleet
+                .http_client
+                .post(&target_url)
+                .body(openai_body)
+                .header("content-type", "application/json"),
+            &headers,
+        )
+        .send()
+        .await;
 
         let upstream_resp = match upstream_resp {
             Ok(r) => r,

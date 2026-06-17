@@ -23,6 +23,14 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+/// Internal header carrying the resolved account id from cortex to neuron.
+/// neuron trusts these over the WireGuard link (#54); cortex **strips** any
+/// client-supplied copy before stamping the authoritative value, so a client
+/// can never assert a principal directly.
+pub const HEADER_ACCOUNT_ID: &str = "x-helexa-account-id";
+/// Internal header carrying the resolved key id from cortex to neuron.
+pub const HEADER_KEY_ID: &str = "x-helexa-key-id";
+
 /// Who a request is for. Resolved once at the edge from the bearer key and
 /// carried through the request context. `account_id` is the billable owner
 /// (spendable at any operator, by decision); `key_id` identifies the

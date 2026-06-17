@@ -1,4 +1,5 @@
 pub mod anthropic_sse;
+pub mod auth;
 pub mod entitlements_local;
 pub mod error;
 pub mod evictor;
@@ -11,15 +12,26 @@ pub mod state;
 
 use anyhow::Result;
 use axum::Router;
+use axum::middleware::from_fn_with_state;
 use cortex_core::config::GatewayConfig;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 /// Build the Axum application router with all routes wired up.
+///
+/// Layer order (outermost first): trace → CORS → auth → handlers. CORS is
+/// outer to auth so preflight `OPTIONS` short-circuits before resolution;
+/// auth (`require_principal`) resolves the bearer key, attaches the
+/// principal, and stamps the internal principal headers before any handler
+/// runs.
 pub fn build_app(fleet: Arc<state::CortexState>) -> Router {
     Router::new()
         .merge(handlers::api_routes())
+        .layer(from_fn_with_state(
+            Arc::clone(&fleet),
+            auth::require_principal,
+        ))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(fleet)
