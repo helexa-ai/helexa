@@ -1,4 +1,5 @@
 use crate::discovery::{ActivationStatus, DiscoveryResponse};
+use crate::harness::{ModelCost, ModelLimit};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -43,6 +44,13 @@ pub struct ModelEntry {
     /// older persisted/serialised entries deserialisable.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// Runtime-detected capability flags from the neuron's `/models`
+    /// response (`ModelInfo`). `false` when the neuron predates these
+    /// fields or hasn't reported them yet.
+    #[serde(default)]
+    pub tool_call: bool,
+    #[serde(default)]
+    pub reasoning: bool,
 }
 
 /// Model lifecycle status.
@@ -99,18 +107,25 @@ pub struct CortexModelEntry {
     pub locations: Vec<ModelLocation>,
     /// Union of the modalities advertised by every neuron that has this
     /// model loaded (e.g. `["text", "vision"]`). Empty for catalogue-only
-    /// entries with no loaded location — the catalogue profile doesn't
-    /// declare capabilities yet (tracked separately from C3).
+    /// entries with no loaded location — filled from catalogue profile
+    /// capabilities when available, then unioned with runtime-detected
+    /// values from loaded neurons.
     #[serde(default)]
     pub capabilities: Vec<String>,
-    /// Effective max prompt size (tokens) for this model — the smallest
-    /// `NEURON_MAX_PROMPT_TOKENS` among the neurons that can serve it.
-    /// Named `max_model_len` per the vLLM / OpenAI-compatible convention
-    /// so clients (opencode, …) can size and compact their context
-    /// rather than overflowing it into a 400. `None` until a serving
-    /// neuron has reported a cap.
+    // ── Enrichment (issue #62) ────────────────────────────────
+    /// Per-model token budget from the catalogue profile or discovered
+    /// at load time. `None` when neither source provides it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_model_len: Option<u64>,
+    pub limit: Option<ModelLimit>,
+    /// Operator-set pricing in USD per 1M tokens (0.0 = free/self-hosted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<ModelCost>,
+    /// `true` when any neuron reports this model supports tool calls.
+    #[serde(default)]
+    pub tool_call: bool,
+    /// `true` when any neuron reports this model supports reasoning tokens.
+    #[serde(default)]
+    pub reasoning: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -158,6 +158,26 @@ impl LoadedHandle {
         }
         caps
     }
+
+    /// `true` when the model's tokenizer contains recognised tool-call
+    /// marker tokens (`<tool_call>` / `</tool_call>` convention).
+    pub fn has_tool_call(&self) -> bool {
+        match self {
+            LoadedHandle::Single(m) => m.tool_call_tokens.is_some(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.tool_call_tokens.is_some(),
+        }
+    }
+
+    /// `true` when the model's tokenizer contains recognised reasoning
+    /// marker tokens (`<think>` / `</think>` or similar).
+    pub fn has_reasoning(&self) -> bool {
+        match self {
+            LoadedHandle::Single(m) => m.reasoning_tokens.is_some(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.reasoning_tokens.is_some(),
+        }
+    }
 }
 
 /// Reference to one stored prefix snapshot (#11). CUDA loads keep the
@@ -2722,6 +2742,10 @@ impl Harness for CandleHarness {
                 devices: h.devices(),
                 vram_used_mb: None,
                 capabilities: h.capabilities(),
+                limit: None, // catalogue-level — filled by gateway
+                cost: None,  // operator-set in models.toml — filled by gateway
+                tool_call: h.has_tool_call(),
+                reasoning: h.has_reasoning(),
             })
             .collect();
         // Models mid-recovery whose registry slot is absent (the
@@ -2737,6 +2761,10 @@ impl Harness for CandleHarness {
                     devices: snap.devices.clone(),
                     vram_used_mb: None,
                     capabilities: snap.capabilities.clone(),
+                    limit: None,
+                    cost: None,
+                    tool_call: false, // snapshot doesn't carry these; safe default
+                    reasoning: false,
                 });
             }
         }

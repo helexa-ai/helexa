@@ -305,6 +305,8 @@ async fn cold_load(
                     last_accessed: Some(chrono::Utc::now()),
                     vram_estimate_mb: profile.vram_mb,
                     capabilities: Vec::new(),
+                    tool_call: false,
+                    reasoning: false,
                 },
             );
         }
@@ -464,6 +466,9 @@ mod tests {
             min_device_vram_mb: None,
             pinned_on: vec![],
             source: source.map(String::from),
+            limit: None,
+            cost: None,
+            capabilities: vec![],
         }
     }
 

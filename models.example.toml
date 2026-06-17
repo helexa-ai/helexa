@@ -37,6 +37,15 @@ vram_mb = 54000
 min_devices = 2
 min_device_vram_mb = 24000
 pinned_on = ["your-multi-gpu-neuron"]
+# Token budget: context wall, compaction trigger (input headroom), max output.
+limit.context = 32768
+limit.input = 28672
+limit.output = 4096
+# Pricing in USD per 1M tokens — 0.0 for self-hosted.
+cost.input = 0.0
+cost.output = 0.0
+# Static capability hints (unioned with runtime-detected flags).
+capabilities = ["text", "reasoning"]
 
 # Mid-size dense model — fits on any single GPU with ≥16 GB VRAM.
 [[models]]
@@ -45,6 +54,8 @@ harness = "candle"
 vram_mb = 18000
 min_devices = 1
 min_device_vram_mb = 16000
+limit.context = 16384
+limit.output = 4096
 
 # Small GGUF quantised — runs on any small GPU.
 [[models]]
@@ -54,6 +65,8 @@ quant = "Q4_K_M"
 vram_mb = 500
 min_devices = 1
 min_device_vram_mb = 4000
+limit.context = 8192
+limit.output = 2048
 
 # Helexa registry model — `source` pins this entry to the helexa
 # scheme so cortex forwards `helexa:Helexa/Qwen3.6-27B-Uncensored` to

@@ -30,9 +30,8 @@ pub async fn poll_once(fleet: &CortexState) {
 /// invariant for a given neuron process, so a successful fetch is kept.
 /// Re-polled only while `max_prompt_tokens` is still unknown (0): on a
 /// rolling deploy cortex can win the race and cache a neuron's discovery
-/// before that neuron has the field (it deserialises to 0), which would
-/// otherwise pin `max_model_len` to "unknown" forever. Re-polling until
-/// a real cap arrives self-heals that without periodic polling.
+/// before that neuron reports the field (it deserialises to 0). Re-polling
+/// until a real cap arrives self-heals that without periodic polling.
 async fn maybe_poll_discovery(fleet: &CortexState, name: &str, endpoint: &str) {
     {
         let nodes = fleet.nodes.read().await;
@@ -118,6 +117,8 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 e.status = status;
                                 e.vram_estimate_mb = upstream.vram_used_mb;
                                 e.capabilities = upstream.capabilities.clone();
+                                e.tool_call = upstream.tool_call;
+                                e.reasoning = upstream.reasoning;
                             })
                             .or_insert_with(|| ModelEntry {
                                 id: upstream.id.clone(),
@@ -125,6 +126,8 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 last_accessed: None,
                                 vram_estimate_mb: upstream.vram_used_mb,
                                 capabilities: upstream.capabilities.clone(),
+                                tool_call: upstream.tool_call,
+                                reasoning: upstream.reasoning,
                             });
                     }
 

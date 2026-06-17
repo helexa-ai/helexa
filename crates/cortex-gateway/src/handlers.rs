@@ -512,11 +512,15 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 loaded: false,
                 feasible_on,
                 locations: Vec::new(),
-                // Catalogue profiles don't declare capabilities yet;
-                // the union is filled in Pass 2 from loaded locations.
-                capabilities: Vec::new(),
-                // Computed in the final pass from serving neurons' caps.
-                max_model_len: None,
+                // Start with catalogue-declared capabilities; Pass 2 unions
+                // runtime-detected ones from loaded neurons.
+                capabilities: profile.capabilities.clone(),
+                // Catalogue limit/cost flow through directly.
+                limit: profile.limit.clone(),
+                cost: profile.cost.clone(),
+                // Runtime-detected — will be OR-ed in Pass 2 from neuron data.
+                tool_call: false,
+                reasoning: false,
             },
         );
     }
@@ -549,6 +553,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                             e.capabilities.push(cap.clone());
                         }
                     }
+                    // OR-in runtime-detected capability flags from the neuron.
+                    e.tool_call = e.tool_call || entry.tool_call;
+                    e.reasoning = e.reasoning || entry.reasoning;
                 })
                 .or_insert_with(|| CortexModelEntry {
                     id: model_id.clone(),
@@ -561,7 +568,10 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     feasible_on: Vec::new(),
                     locations: vec![location],
                     capabilities: entry.capabilities.clone(),
-                    max_model_len: None,
+                    limit: None,
+                    cost: None,
+                    tool_call: entry.tool_call,
+                    reasoning: entry.reasoning,
                 });
         }
     }
@@ -614,7 +624,10 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     // A model that's only mid-prewarm has no loaded
                     // location to read capabilities from yet.
                     capabilities: Vec::new(),
-                    max_model_len: None,
+                    limit: None,
+                    cost: None,
+                    tool_call: false,
+                    reasoning: false,
                 });
         }
     }
@@ -645,29 +658,12 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 feasible_on: target_entry.feasible_on,
                 locations: target_entry.locations,
                 capabilities: target_entry.capabilities,
-                max_model_len: target_entry.max_model_len,
+                limit: target_entry.limit.clone(),
+                cost: target_entry.cost.clone(),
+                tool_call: target_entry.tool_call,
+                reasoning: target_entry.reasoning,
             },
         );
-    }
-
-    // Pass 5: advertise each model's effective context limit as
-    // `max_model_len` — the smallest `NEURON_MAX_PROMPT_TOKENS` among the
-    // neurons that can serve it (feasible_on ∪ locations). Clients
-    // (opencode, …) read this to size and compact their context instead
-    // of overflowing it into a 400. A neuron reporting 0 predates the
-    // field; treat it as unknown and skip it.
-    for entry in entries.values_mut() {
-        let cap = entry
-            .feasible_on
-            .iter()
-            .map(String::as_str)
-            .chain(entry.locations.iter().map(|l| l.node.as_str()))
-            .filter_map(|name| nodes.get(name))
-            .filter_map(|node| node.discovery.as_ref())
-            .map(|d| d.max_prompt_tokens)
-            .filter(|&cap| cap > 0)
-            .min();
-        entry.max_model_len = cap;
     }
 
     let data: Vec<Value> = entries.values().map(|e| json!(e)).collect();

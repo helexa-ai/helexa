@@ -1,6 +1,7 @@
 //! Model catalogue — profiles describing how to serve each model.
 
 use crate::discovery::DeviceInfo;
+use crate::harness::{ModelCost, ModelLimit};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -35,6 +36,21 @@ pub struct ModelProfile {
     /// on this being explicit per model rather than implicit.
     #[serde(default)]
     pub source: Option<String>,
+
+    // ── Enrichment (issue #62) ────────────────────────────────
+    /// Per-model token budget. When present, advertised in `/v1/models`
+    /// so clients can size and compact their context automatically.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<ModelLimit>,
+    /// Operator-set pricing (USD per 1M tokens). `0.0` for self-hosted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<ModelCost>,
+    /// Static capability flags the operator wants to advertise even
+    /// before the model is loaded on any neuron (e.g. `"reasoning"`,
+    /// `"tool_call"`). Runtime-detected capabilities from the harness
+    /// are unioned with this set in the gateway's `/v1/models` response.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 fn default_min_devices() -> u32 {
@@ -152,6 +168,9 @@ mod tests {
             min_device_vram_mb: Some(24_000),
             pinned_on: vec![],
             source: None,
+            limit: None,
+            cost: None,
+            capabilities: vec![],
         }
     }
 

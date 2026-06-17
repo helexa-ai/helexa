@@ -192,6 +192,8 @@ async fn test_recovering_model_returns_503_and_stays_listed() {
                 last_accessed: None,
                 vram_estimate_mb: Some(8000),
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
     }

@@ -34,11 +34,9 @@ pub struct DiscoveryResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cuda_unavailable_reason: Option<String>,
     /// The neuron's effective maximum prompt size in tokens
-    /// (`NEURON_MAX_PROMPT_TOKENS`). cortex surfaces this as
-    /// `max_model_len` on `/v1/models` so clients can size and compact
-    /// their context instead of blindly overflowing it into a 400.
-    /// `#[serde(default)]` (→ 0) for forward-compat with neurons that
-    /// predate this field; cortex treats 0 as "unknown" and skips it.
+    /// (`NEURON_MAX_PROMPT_TOKENS`) — the enforced prompt cap on this
+    /// host. `#[serde(default)]` (→ 0) for forward-compat with neurons
+    /// that predate this field; cortex treats 0 as "unknown".
     #[serde(default)]
     pub max_prompt_tokens: u64,
 }

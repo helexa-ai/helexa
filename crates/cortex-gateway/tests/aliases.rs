@@ -75,6 +75,8 @@ async fn test_alias_resolves_in_chat_completions() {
                 last_accessed: None,
                 vram_estimate_mb: None,
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
     }
@@ -156,6 +158,8 @@ async fn test_aliases_surface_in_v1_models() {
                 last_accessed: None,
                 vram_estimate_mb: Some(2000),
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
     }
@@ -238,6 +242,8 @@ async fn test_alias_falls_through_for_unmapped_model() {
                 last_accessed: None,
                 vram_estimate_mb: None,
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
     }

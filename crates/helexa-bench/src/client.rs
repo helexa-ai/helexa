@@ -151,6 +151,10 @@ impl TargetClient {
                         devices: Vec::new(),
                         vram_used_mb: None,
                         capabilities: Vec::new(),
+                        limit: None,
+                        cost: None,
+                        tool_call: false,
+                        reasoning: false,
                     })
                     .collect())
             }

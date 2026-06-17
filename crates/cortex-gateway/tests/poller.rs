@@ -298,6 +298,8 @@ async fn test_poller_removes_stale_models() {
                 last_accessed: None,
                 vram_estimate_mb: None,
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
         node.models.insert(
@@ -308,6 +310,8 @@ async fn test_poller_removes_stale_models() {
                 last_accessed: None,
                 vram_estimate_mb: None,
                 capabilities: Vec::new(),
+                tool_call: false,
+                reasoning: false,
             },
         );
     }
