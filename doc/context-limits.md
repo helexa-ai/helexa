@@ -5,10 +5,15 @@ valid ranges are, and where they live. Getting these out of sync is the
 difference between "the agent has room to think" and "it compacts every
 few turns and reasons from a corrupted summary."
 
-This is currently a **manual, multi-place** configuration. Issue
-[#62](https://git.lair.cafe/helexa/helexa/issues/62) moves the source of
-truth into neuron's `GET /models` so opencode discovers it dynamically —
-see [After #62](#after-62-single-source-of-truth) below.
+The tables below document the **manual** reasoning that
+[#62](https://git.lair.cafe/helexa/helexa/issues/62) and then
+[#67](https://git.lair.cafe/helexa/helexa/issues/67) automate. As of #67
+the neuron **computes** this limit itself from model architecture + live
+VRAM + a self-measured throughput ceiling and advertises it on
+`GET /models`; operators no longer hand-derive it. Read the rules below
+as the *why* behind the derivation — see
+[After #67](#after-67-the-neuron-computes-its-own-limit) for what the
+daemon now does automatically.
 
 ## The knobs
 
@@ -130,22 +135,52 @@ later deploy will re-assert `model.conf`.
 (`input = context − output = 131072 − 8192`; `NEURON_MAX_PROMPT_TOKENS`
 131072 sits one `output` above `input`, the tokenizer-drift margin.)
 
-## After #62: single source of truth
+## After #62: single source of truth (superseded by #67)
 
-Once [#62](https://git.lair.cafe/helexa/helexa/issues/62) lands,
-`GET /models` advertises `limit { context, input, output }` (and `cost`)
-per model, and opencode's dynamic provider populates these from
-discovery. At that point:
+[#62](https://git.lair.cafe/helexa/helexa/issues/62) moved `limit
+{ context, input, output }` (and `cost`) onto `GET /models`, sourced from
+the operator-declared catalogue (`models.toml`). That was the right
+plumbing but the wrong *source*: a per-model catalogue limit goes stale
+the moment cortex hot-swaps a neuron's resident model, and forces the
+hand-tuning fight (the tables above) to be re-run on every change.
 
-- **Remove** the hand-entered `limit` block from `opencode.json` — it
-  goes stale and is overridden by discovery anyway.
-- The `{ context, input, output }` values move to the **neuron** side
-  (model registry / `models.toml` per #62's open question) and become
-  the single source of truth. Per #62, advertised `context` must reflect
-  the **actually-served** max-seq-len (i.e. it tracks
-  `NEURON_MAX_PROMPT_TOKENS`, not the model's theoretical max).
-- Set those advertised values to `min(max_position_embeddings,
-  VRAM-safe ceiling from rule 5)`.
+## After #67: the neuron computes its own limit
+
+[#67](https://git.lair.cafe/helexa/helexa/issues/67) makes the limit a
+**computed function of live state**, not an operator-declared fact. Per
+loaded model, the neuron derives:
+
+```
+output  = output_reserve_tokens                       (config; default 8192)
+kv/token/card = 2(K+V) · n_full_attn_layers · (n_kv_heads / tp) · head_dim · dtype_bytes
+vram_ceiling       = (free_tightest − activation_headroom − min_free_floor) / kv_per_token_per_card
+throughput_ceiling = target_prefill_latency_secs · measured_prefill_tok_per_sec
+context = min(max_position_embeddings, vram_ceiling, throughput_ceiling)
+          clamped by NEURON_MAX_PROMPT_TOKENS only if explicitly set (backstop)
+input   = context − output
+```
+
+- `free_tightest` is the **minimum free VRAM across the model's
+  devices** — the tightest card, often a non-leader TP rank.
+- `measured_prefill_tok_per_sec` is **self-measured** (an EMA over real
+  requests; a configured bootstrap until the first sample). Because it
+  reads live state, the advertised `limit` **rises automatically** as
+  prefix caching (#11) or other efficiency work frees VRAM / speeds
+  prefill — no operator action.
+- Knobs live in `[harness.candle.context_limit]` (see
+  `neuron.example.toml`). The catalogue `limit` is **no longer
+  consulted** (the field is inert/deprecated); `cost` stays
+  operator-set in the catalogue.
+- **opencode**: remove any hand-entered `limit` block from
+  `opencode.json` — discovery is authoritative.
+
+`NEURON_MAX_PROMPT_TOKENS` is demoted from authority to an **optional
+clamp-only backstop** (applied only when explicitly set). The
+deploy-managed drop-in still pins a per-host ceiling, but the derivation
+binds below it in practice. (Enforcement of the *derived* prompt cap —
+rejecting prompts above the computed `input` rather than the static
+`NEURON_MAX_PROMPT_TOKENS` — is the remaining hardening; until it lands,
+the static cap remains the enforced backstop.)
 
 ## Operational note
 

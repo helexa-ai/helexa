@@ -189,9 +189,9 @@ impl LoadedHandle {
     /// (GGUF/CPU/non-qwen3_5) or when the derivation is disabled — those
     /// advertise no limit and fall back to the static prompt cap.
     ///
-    /// No operator clamp is applied here (advertise the honest derived
-    /// value); `NEURON_MAX_PROMPT_TOKENS` acts as a clamp-only backstop
-    /// in the enforcement path.
+    /// `NEURON_MAX_PROMPT_TOKENS`, when explicitly set, is applied as a
+    /// clamp-only upper bound on the derived `context` — a backstop, not
+    /// the authority. Unset → no clamp; the derivation stands alone.
     pub async fn derived_limit(
         &self,
         cfg: &crate::config::ContextLimitConfig,
@@ -214,7 +214,11 @@ impl LoadedHandle {
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
         Some(super::context_limit::derive_limit(
-            &profile, free_mb, rate, None, cfg,
+            &profile,
+            free_mb,
+            rate,
+            max_prompt_tokens_clamp(),
+            cfg,
         ))
     }
 }
@@ -1136,6 +1140,23 @@ pub(crate) fn prefill_chunk_tokens() -> usize {
 /// larger than what fits in VRAM in practice).
 pub(crate) fn max_prompt_tokens() -> usize {
     env_usize("NEURON_MAX_PROMPT_TOKENS", 16384)
+}
+
+/// `NEURON_MAX_PROMPT_TOKENS` as an optional clamp-only backstop for the
+/// self-derived limit (#67), `None` when the operator hasn't set it.
+///
+/// Under the computed-limit model the neuron's own derivation is
+/// authoritative; a per-host static cap can't track a hot-swapped model.
+/// So we apply the env value only as an upper bound on the derived
+/// `context` *when explicitly set*, rather than letting its 16384
+/// default clamp every host. Distinguishing "set" from "default" is why
+/// this reads the var directly instead of going through
+/// [`max_prompt_tokens`].
+pub(crate) fn max_prompt_tokens_clamp() -> Option<usize> {
+    std::env::var("NEURON_MAX_PROMPT_TOKENS")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|&n| n > 0)
 }
 
 /// Minimum free VRAM (MiB) required to even attempt a prefill. Requests
