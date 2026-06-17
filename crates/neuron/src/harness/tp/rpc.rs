@@ -138,6 +138,12 @@ pub enum WorkerRequest {
     /// was present.
     DropKvSnapshot { model_id: String, snapshot_id: u64 },
 
+    /// Query this rank's live device VRAM as `(free_mb, total_mb)`.
+    /// Non-mutating; replies `VramInfo`. Used to derive the context
+    /// limit (#67) against the tightest card across ranks — a non-leader
+    /// card is often tighter than the leader's.
+    QueryVram,
+
     /// Drop this rank's shard for the given model. Releases the VRAM
     /// the shard's weights occupied; subsequent `GenerateStep` calls
     /// against the same `model_id` return an `Error`.
@@ -185,6 +191,9 @@ pub enum WorkerResponse {
 
     /// Reply to `ClearKvCache`. Empty payload.
     KvCacheCleared,
+
+    /// Reply to `QueryVram`. This rank's device VRAM in MiB.
+    VramInfo { free_mb: u64, total_mb: u64 },
 
     /// Reply to `SnapshotKvCache`. Carries this rank's snapshot size
     /// in bytes so the leader can budget-account the whole fleet's

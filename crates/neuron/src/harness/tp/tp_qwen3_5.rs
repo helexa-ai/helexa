@@ -1659,8 +1659,16 @@ fn log_construction_complete(
     // sharded across world_size. Linear-attention layers carry a
     // fixed-size state instead of a growing cache.
     let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
-    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 /* K+V */ * 2 /* bf16 */;
-    let kv_bytes_per_token = kv_bytes_per_token_per_layer * full_attn_layers;
+    // Only full-attention layers grow a KV cache (linear layers carry a
+    // fixed-size recurrent state). Shared helper (#67) — the same
+    // per-card math drives the derived context limit.
+    let kv_bytes_per_token = crate::harness::context_limit::kv_bytes_per_token(
+        full_attn_layers,
+        cfg.num_key_value_heads,
+        cfg.head_dim,
+        crate::harness::context_limit::KV_CACHE_DTYPE_BYTES,
+        world_size,
+    );
     tracing::info!(
         target: "neuron::tp::load",
         rank,

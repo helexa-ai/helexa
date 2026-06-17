@@ -261,8 +261,35 @@ impl WorkerState {
                 model_id,
                 snapshot_id,
             } => self.handle_drop_kv_snapshot(&model_id, snapshot_id),
+            WorkerRequest::QueryVram => self.handle_query_vram(),
             WorkerRequest::UnloadModel { model_id } => self.handle_unload_model(&model_id),
             WorkerRequest::Shutdown => WorkerResponse::Bye,
+        }
+    }
+
+    /// This rank's live device VRAM. `mem_get_info` reports the device
+    /// whose CUDA context is current on this worker thread — which is
+    /// exactly this rank's device. Used to derive the context limit
+    /// against the tightest card across ranks (#67).
+    #[cfg(feature = "cuda")]
+    fn handle_query_vram(&self) -> WorkerResponse {
+        match candle_core::cuda::cudarc::driver::result::mem_get_info() {
+            Ok((free, total)) => WorkerResponse::VramInfo {
+                free_mb: (free / (1024 * 1024)) as u64,
+                total_mb: (total / (1024 * 1024)) as u64,
+            },
+            Err(e) => WorkerResponse::Error {
+                kind: "vram_query_failed".into(),
+                message: format!("mem_get_info: {e:?}"),
+            },
+        }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_query_vram(&self) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "QueryVram requires --features cuda".into(),
         }
     }
 

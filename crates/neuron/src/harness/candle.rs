@@ -302,6 +302,12 @@ pub struct LoadedModel {
     /// auto-recovery invalidate every entry for free (the worker-side
     /// snapshots go with `Job::DropArch`).
     pub prefix_cache: Option<ModelPrefixCache>,
+    /// Context-limit physics (#67), captured at load. `None` for arches
+    /// whose KV layout we don't yet introspect (GGUF/CPU/non-qwen3_5) —
+    /// those fall back to the static prompt cap with no advertised limit.
+    /// Used to self-derive `limit{context,input,output}` from live free
+    /// VRAM + a self-measured throughput ceiling.
+    pub context_profile: Option<super::context_limit::ContextProfile>,
 }
 
 impl LoadedModel {
@@ -384,6 +390,11 @@ pub struct TpLoadedModel {
     /// tensors live on the leader's device worker and in each
     /// subprocess rank, all keyed by the same pool-minted id.
     pub prefix_cache: Option<ModelPrefixCache>,
+    /// Context-limit physics (#67) — see [`LoadedModel::context_profile`].
+    /// `kv_bytes_per_token_per_card` is the per-rank cost (sharded by the
+    /// TP world size), so the VRAM ceiling is computed against the
+    /// tightest card's free VRAM across ranks.
+    pub context_profile: Option<super::context_limit::ContextProfile>,
     /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
     /// needs to hold per model lifetime (snapshots die with the model).
     pub next_snapshot_id: std::sync::atomic::AtomicU64,
@@ -397,6 +408,18 @@ impl TpLoadedModel {
     /// the harness rejects TP without CUDA at load time.
     pub async fn query_vram(&self) -> (u64, u64) {
         self.worker.query_vram().await.unwrap_or((0, 0))
+    }
+
+    /// Minimum free VRAM (MiB) across all ranks' devices — the tightest
+    /// card, fanned out via the pool (#67). The VRAM context ceiling is
+    /// computed against this, since a non-leader rank is often tighter
+    /// than the leader. Returns 0 (treated as "unknown" by the caller)
+    /// on any fan-out error or the no-context sentinel.
+    pub async fn query_vram_tightest_free_mb(&self) -> u64 {
+        let mut pool = self.pool.lock().await;
+        pool.query_vram_tightest_free_mb(self.leader_handle)
+            .await
+            .unwrap_or(0)
     }
 }
 
@@ -2842,62 +2865,83 @@ impl Harness for CandleHarness {
             _ => None,
         };
 
-        let (tokenizer_path, arch_local, arch_handle, vision_meta, snapshot_capable) =
-            if let Some(w) = &worker {
-                // CUDA path: resolve, then load in the worker.
-                if spec.quant.is_some() {
-                    let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
-                    let handle = w
-                        .load_gguf(gguf_path, spec.model_id.clone())
-                        .await
-                        .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
-                    // GGUF Qwen3.6 releases don't ship the vision tower
-                    // (Qwen-VL weights are in the dense safetensors only),
-                    // so a GGUF load is text-only by construction. GGUF
-                    // archs are candle-transformers types — no snapshot
-                    // support either.
-                    (
-                        tokenizer_path,
-                        None,
-                        Some(handle),
-                        VisionMeta::default(),
-                        false,
-                    )
-                } else {
-                    let (config_path, tokenizer_path, safetensors_paths) =
-                        self.resolve_dense_files(spec, &source_id).await?;
-                    let meta = VisionMeta::from_config_path(&config_path);
-                    // Prefix snapshots (#11) exist only for the in-tree
-                    // qwen3_5 arch; the worker holds the ModelArch so
-                    // the async side decides from config.json instead.
-                    let snapshot_capable = config_model_type(&config_path).as_deref()
-                        == Some(super::arch::qwen3_5::MODEL_TYPE);
-                    let handle = w
-                        .load_dense(config_path, safetensors_paths, spec.model_id.clone())
-                        .await
-                        .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
-                    (tokenizer_path, None, Some(handle), meta, snapshot_capable)
-                }
-            } else {
-                // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
-                let (tokenizer_path, arch) = if spec.quant.is_some() {
-                    self.load_arch_gguf(spec, &source_id, &device).await?
-                } else {
-                    self.load_arch_dense(spec, &source_id, &device).await?
-                };
-                let snapshot_capable = arch.supports_kv_snapshot();
-                // CPU Qwen3.6 isn't a supported deployment target — the
-                // 27B doesn't fit any reasonable CPU memory budget — so
-                // we don't attempt to reach into the arch for vision
-                // metadata. Stays text-only.
+        let (
+            tokenizer_path,
+            arch_local,
+            arch_handle,
+            vision_meta,
+            snapshot_capable,
+            context_profile,
+        ) = if let Some(w) = &worker {
+            // CUDA path: resolve, then load in the worker.
+            if spec.quant.is_some() {
+                let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
+                let handle = w
+                    .load_gguf(gguf_path, spec.model_id.clone())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
+                // GGUF Qwen3.6 releases don't ship the vision tower
+                // (Qwen-VL weights are in the dense safetensors only),
+                // so a GGUF load is text-only by construction. GGUF
+                // archs are candle-transformers types — no snapshot
+                // support either, and no introspectable layer layout
+                // for a context profile.
                 (
                     tokenizer_path,
-                    Some(Arc::new(Mutex::new(arch))),
                     None,
+                    Some(handle),
                     VisionMeta::default(),
-                    snapshot_capable,
+                    false,
+                    None,
                 )
+            } else {
+                let (config_path, tokenizer_path, safetensors_paths) =
+                    self.resolve_dense_files(spec, &source_id).await?;
+                let meta = VisionMeta::from_config_path(&config_path);
+                // Prefix snapshots (#11) exist only for the in-tree
+                // qwen3_5 arch; the worker holds the ModelArch so
+                // the async side decides from config.json instead.
+                let snapshot_capable = config_model_type(&config_path).as_deref()
+                    == Some(super::arch::qwen3_5::MODEL_TYPE);
+                // Context-limit physics (#67): single-GPU → world_size 1.
+                // `None` for non-qwen3_5 dense archs.
+                let context_profile =
+                    super::context_limit::profile_from_qwen3_5_config(&config_path, 1);
+                let handle = w
+                    .load_dense(config_path, safetensors_paths, spec.model_id.clone())
+                    .await
+                    .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
+                (
+                    tokenizer_path,
+                    None,
+                    Some(handle),
+                    meta,
+                    snapshot_capable,
+                    context_profile,
+                )
+            }
+        } else {
+            // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
+            let (tokenizer_path, arch) = if spec.quant.is_some() {
+                self.load_arch_gguf(spec, &source_id, &device).await?
+            } else {
+                self.load_arch_dense(spec, &source_id, &device).await?
             };
+            let snapshot_capable = arch.supports_kv_snapshot();
+            // CPU Qwen3.6 isn't a supported deployment target — the
+            // 27B doesn't fit any reasonable CPU memory budget — so
+            // we don't attempt to reach into the arch for vision
+            // metadata or a context profile. Stays text-only, limit
+            // falls back to the static prompt cap.
+            (
+                tokenizer_path,
+                Some(Arc::new(Mutex::new(arch))),
+                None,
+                VisionMeta::default(),
+                snapshot_capable,
+                None,
+            )
+        };
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
             .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
@@ -2965,6 +3009,7 @@ impl Harness for CandleHarness {
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
             prefix_cache: self.new_prefix_cache(snapshot_capable),
+            context_profile,
         });
         if loaded.prefix_cache.is_some() {
             tracing::info!(
@@ -3215,6 +3260,12 @@ impl CandleHarness {
             prefix_cache: self.new_prefix_cache(
                 config_model_type(&config_path).as_deref()
                     == Some(super::arch::qwen3_5::MODEL_TYPE),
+            ),
+            // Context-limit physics (#67): per-rank KV cost sharded across
+            // the TP world. `None` for non-qwen3_5 dense archs.
+            context_profile: super::context_limit::profile_from_qwen3_5_config(
+                &config_path,
+                tp_size,
             ),
             next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
         });

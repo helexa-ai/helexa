@@ -21,9 +21,17 @@
 //! full-attention model is the simpler case (`n_full_attn_layers =
 //! n_layers`) and drops in by constructing a `ContextProfile`.
 
+use std::path::Path;
+
 use cortex_core::harness::ModelLimit;
 
 use crate::config::ContextLimitConfig;
+
+/// Bytes per element of the KV cache. qwen3_5 keeps K/V in the model's
+/// f16/bf16 compute dtype regardless of weight quantisation (ISQ
+/// quantises weights, not the cache), so this is 2 for every supported
+/// load. Matches the per-rank logging math in the TP load paths.
+pub const KV_CACHE_DTYPE_BYTES: usize = 2;
 
 /// Bytes of KV cache one token adds **per card**, counting only the
 /// full-attention layers (linear/recurrent layers carry fixed-size
@@ -57,6 +65,55 @@ pub struct ContextProfile {
     pub kv_bytes_per_token_per_card: u64,
     /// Tensor-parallel world size the model is loaded with (1 = single GPU).
     pub world_size: u32,
+}
+
+/// Build a [`ContextProfile`] from a qwen3_5 `config.json` on disk
+/// (mirrors `VisionMeta::from_config_path`). Returns `None` for any other
+/// `model_type` or an unparseable config — those arches fall back to the
+/// static prompt cap with no advertised limit. `world_size` is the TP
+/// degree the model is loaded with (1 = single GPU).
+///
+/// KV grows only on full-attention layers; `layer_types` is authoritative
+/// (every entry is `"full_attention"` or `"linear_attention"`), with the
+/// `full_attention_interval` hint as a fallback when the array is absent.
+pub fn profile_from_qwen3_5_config(config_path: &Path, world_size: u32) -> Option<ContextProfile> {
+    let text = std::fs::read_to_string(config_path).ok()?;
+    let model_type = serde_json::from_str::<serde_json::Value>(&text)
+        .ok()?
+        .get("model_type")?
+        .as_str()?
+        .to_owned();
+    if model_type != super::arch::qwen3_5::MODEL_TYPE {
+        return None;
+    }
+    let cfg: super::arch::qwen3_5::Config = serde_json::from_str(&text).ok()?;
+    let tc = &cfg.text_config;
+    let n_full_attn_layers = {
+        let counted = tc
+            .layer_types
+            .iter()
+            .filter(|t| t.as_str() == "full_attention")
+            .count();
+        if counted > 0 {
+            counted
+        } else {
+            // layer_types absent — derive from the interval hint.
+            let interval = tc.full_attention_interval.unwrap_or(4).max(1);
+            tc.num_hidden_layers / interval
+        }
+    };
+    let kv_bytes_per_token_per_card = kv_bytes_per_token(
+        n_full_attn_layers,
+        tc.num_key_value_heads,
+        tc.head_dim,
+        KV_CACHE_DTYPE_BYTES,
+        world_size,
+    );
+    Some(ContextProfile {
+        max_position_embeddings: tc.max_position_embeddings,
+        kv_bytes_per_token_per_card,
+        world_size,
+    })
 }
 
 /// Round a token count down to a clean boundary so the advertised limit

@@ -1025,6 +1025,44 @@ impl WorkerPool {
         Ok(())
     }
 
+    /// Minimum free VRAM (MiB) across every rank's device — the tightest
+    /// card, which on a TP model is often a non-leader rank (e.g. beast
+    /// GPU 1). Used to derive the context limit (#67) against what
+    /// actually fits, not just the leader's headroom. Returns 0 if any
+    /// rank reports the CPU/no-context sentinel, so the caller can treat
+    /// it as "unknown" and skip the VRAM ceiling.
+    #[cfg(feature = "cuda")]
+    pub async fn query_vram_tightest_free_mb(
+        &mut self,
+        leader_handle: super::device_worker::TpHandle,
+    ) -> Result<u64> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::QueryVram).await?;
+        }
+        // Leader (rank 0) via its in-process device worker — same
+        // `mem_get_info` the subprocess ranks run, on the leader's
+        // context-owning thread.
+        let (leader_free_mb, _leader_total) = self
+            .leader_worker
+            .query_vram()
+            .await
+            .map_err(|e| anyhow::anyhow!("leader query_vram: {e}"))?;
+        let mut frees = vec![leader_free_mb];
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::VramInfo { free_mb, .. } => {
+                frees.push(free_mb);
+                Ok(())
+            }
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected VramInfo, got {other:?}")),
+        })
+        .await;
+        if !worker_errors.is_empty() {
+            anyhow::bail!("QueryVram: {}", worker_errors.join("; "));
+        }
+        Ok(frees.into_iter().min().unwrap_or(0))
+    }
+
     /// Capture every rank's cache state as one prefix snapshot (#11)
     /// stored under `snapshot_id` (minted by the caller). All ranks
     /// are at the same token boundary — step fan-out is synchronous —

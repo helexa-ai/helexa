@@ -634,8 +634,15 @@ fn log_construction_complete(cfg: &Config, rank: u32, world_size: u32, device: &
     // contributes. Knowing per-token bytes lets the operator estimate
     // headroom for a given prompt length before hitting an edge.
     let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
-    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 * 2;
-    let kv_bytes_per_token = kv_bytes_per_token_per_layer * cfg.num_hidden_layers;
+    // Vanilla Qwen3 is dense attention end-to-end, so every layer
+    // contributes KV. Shared helper (#67) — also drives the derived limit.
+    let kv_bytes_per_token = crate::harness::context_limit::kv_bytes_per_token(
+        cfg.num_hidden_layers,
+        cfg.num_key_value_heads,
+        cfg.head_dim,
+        crate::harness::context_limit::KV_CACHE_DTYPE_BYTES,
+        world_size,
+    );
     tracing::info!(
         target: "neuron::tp::load",
         rank,
@@ -658,8 +665,15 @@ fn log_construction_complete(cfg: &Config, rank: u32, world_size: u32, device: &
 #[cfg(not(feature = "cuda"))]
 fn log_construction_complete(cfg: &Config, rank: u32, world_size: u32, _device: &Device) {
     let per_rank_num_kv_heads = (cfg.num_key_value_heads / world_size as usize).max(1);
-    let kv_bytes_per_token_per_layer = per_rank_num_kv_heads * cfg.head_dim * 2 * 2;
-    let kv_bytes_per_token = kv_bytes_per_token_per_layer * cfg.num_hidden_layers;
+    // Vanilla Qwen3 is dense attention end-to-end, so every layer
+    // contributes KV. Shared helper (#67) — also drives the derived limit.
+    let kv_bytes_per_token = crate::harness::context_limit::kv_bytes_per_token(
+        cfg.num_hidden_layers,
+        cfg.num_key_value_heads,
+        cfg.head_dim,
+        crate::harness::context_limit::KV_CACHE_DTYPE_BYTES,
+        world_size,
+    );
     tracing::info!(
         target: "neuron::tp::load",
         rank,
