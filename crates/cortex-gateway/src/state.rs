@@ -37,6 +37,7 @@ impl CortexState {
                     last_poll: None,
                     discovery: None,
                     activation: None,
+                    model_load: HashMap::new(),
                 },
             );
         }

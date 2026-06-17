@@ -132,7 +132,9 @@ pub async fn resolve(
     // Snapshot loaded / unloaded / recovering state from the poller cache.
     let (loaded_route, unloaded_route, recovering_node, any_healthy) = {
         let nodes = fleet.nodes.read().await;
-        let mut loaded_route = None;
+        // All healthy nodes with the model loaded, each with its current
+        // admission load (#53) so we can pick the least-busy replica (#55).
+        let mut loaded_candidates: Vec<(String, String, usize)> = Vec::new();
         let mut unloaded_route = None;
         let mut recovering_node = None;
         let mut any_healthy = false;
@@ -144,8 +146,15 @@ pub async fn resolve(
             if let Some(entry) = node.models.get(model_id) {
                 match entry.status {
                     ModelStatus::Loaded | ModelStatus::Reloading => {
-                        loaded_route = Some((node.name.clone(), node.endpoint.clone(), false));
-                        break;
+                        // Least-busy score: in-flight + queued from the
+                        // neuron's last /health (#53). Unknown load (no poll
+                        // yet) scores 0 so the replica stays eligible.
+                        let score = node
+                            .model_load
+                            .get(model_id)
+                            .map(|l| l.in_flight + l.queue_depth)
+                            .unwrap_or(0);
+                        loaded_candidates.push((node.name.clone(), node.endpoint.clone(), score));
                     }
                     ModelStatus::Unloaded => {
                         if unloaded_route.is_none() {
@@ -175,6 +184,12 @@ pub async fn resolve(
                 }
             }
         }
+        // Pick the least-busy loaded replica; ties break by node name for
+        // deterministic routing. `false` = not a cold start.
+        let loaded_route = loaded_candidates
+            .into_iter()
+            .min_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)))
+            .map(|(name, endpoint, _score)| (name, endpoint, false));
         (loaded_route, unloaded_route, recovering_node, any_healthy)
     };
 
