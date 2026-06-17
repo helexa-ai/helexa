@@ -77,6 +77,7 @@ async fn test_alias_resolves_in_chat_completions() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }
@@ -160,6 +161,7 @@ async fn test_aliases_surface_in_v1_models() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }
@@ -244,6 +246,7 @@ async fn test_alias_falls_through_for_unmapped_model() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }

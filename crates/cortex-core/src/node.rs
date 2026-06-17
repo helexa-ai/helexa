@@ -51,6 +51,14 @@ pub struct ModelEntry {
     pub tool_call: bool,
     #[serde(default)]
     pub reasoning: bool,
+    /// Self-derived token budget the neuron computed for this loaded
+    /// model (#67), copied from `ModelInfo.limit` at poll time. `None`
+    /// when the neuron doesn't compute one (arch without a context
+    /// profile, or derivation disabled). This is the authoritative
+    /// source the gateway advertises — operator-declared catalogue
+    /// limits are no longer consulted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<ModelLimit>,
 }
 
 /// Model lifecycle status.

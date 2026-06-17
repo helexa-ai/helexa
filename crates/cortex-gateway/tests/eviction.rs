@@ -94,6 +94,7 @@ async fn test_evict_lru_model() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
         node.models.insert(
@@ -106,6 +107,7 @@ async fn test_evict_lru_model() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }
@@ -172,6 +174,7 @@ async fn test_eviction_increments_lifecycle_cycles() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }

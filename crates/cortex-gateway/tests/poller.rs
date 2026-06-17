@@ -300,6 +300,7 @@ async fn test_poller_removes_stale_models() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
         node.models.insert(
@@ -312,6 +313,7 @@ async fn test_poller_removes_stale_models() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }

@@ -78,6 +78,9 @@ pub struct CandleHarness {
     /// Prefix-cache settings (#11), applied per loaded model at load
     /// time (snapshot-capable archs only).
     prefix_cache_cfg: crate::config::PrefixCacheConfig,
+    /// Context-limit derivation settings (#67), read in `list_models`
+    /// to compute each model's advertised `limit{context,input,output}`.
+    context_limit_cfg: crate::config::ContextLimitConfig,
 }
 
 /// Devices/capabilities snapshot of a model entering auto-recovery
@@ -177,6 +180,42 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_tokens.is_some(),
         }
+    }
+
+    /// Self-derived `limit{context,input,output}` (#67) from this model's
+    /// captured physics + live tightest-card free VRAM + its self-measured
+    /// prefill rate (the configured bootstrap estimate until the first
+    /// sample lands). `None` for arches without a context profile
+    /// (GGUF/CPU/non-qwen3_5) or when the derivation is disabled — those
+    /// advertise no limit and fall back to the static prompt cap.
+    ///
+    /// No operator clamp is applied here (advertise the honest derived
+    /// value); `NEURON_MAX_PROMPT_TOKENS` acts as a clamp-only backstop
+    /// in the enforcement path.
+    pub async fn derived_limit(
+        &self,
+        cfg: &crate::config::ContextLimitConfig,
+    ) -> Option<cortex_core::harness::ModelLimit> {
+        if !cfg.enabled {
+            return None;
+        }
+        let (profile, free_mb, rate) = match self {
+            LoadedHandle::Single(m) => (
+                m.context_profile?,
+                m.query_vram().await.0,
+                m.prefill_rate.get(),
+            ),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => (
+                m.context_profile?,
+                m.query_vram_tightest_free_mb().await,
+                m.prefill_rate.get(),
+            ),
+        };
+        let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
+        Some(super::context_limit::derive_limit(
+            &profile, free_mb, rate, None, cfg,
+        ))
     }
 }
 
@@ -1453,6 +1492,7 @@ impl CandleHarness {
             recovering: Arc::new(RwLock::new(HashMap::new())),
             recovery_tx,
             prefix_cache_cfg: config.prefix_cache.clone(),
+            context_limit_cfg: config.context_limit.clone(),
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
         // keep the harness alive. Spawned only when a tokio runtime is
@@ -2762,30 +2802,36 @@ impl Harness for CandleHarness {
     async fn list_models(&self) -> Result<Vec<ModelInfo>> {
         let models = self.models.read().await;
         let recovering = self.recovering.read().await;
-        let mut out: Vec<ModelInfo> = models
-            .values()
-            .map(|h| ModelInfo {
+        let mut out: Vec<ModelInfo> = Vec::with_capacity(models.len());
+        for h in models.values() {
+            // A poisoned model with recovery in flight reports
+            // `recovering` (the operator-actionable state); bare
+            // `poisoned` only appears if the recovery task is gone.
+            let status = if recovering.contains_key(h.model_id()) {
+                "recovering".into()
+            } else if h.is_poisoned() {
+                "poisoned".into()
+            } else {
+                "loaded".into()
+            };
+            // Self-derived limit (#67) — computed from the model's
+            // physics + live free VRAM + measured prefill rate. `None`
+            // for arches without a context profile. `cost` stays
+            // operator-set in the catalogue, filled by the gateway.
+            let limit = h.derived_limit(&self.context_limit_cfg).await;
+            out.push(ModelInfo {
                 id: h.model_id().into(),
                 harness: "candle".into(),
-                // A poisoned model with recovery in flight reports
-                // `recovering` (the operator-actionable state); bare
-                // `poisoned` only appears if the recovery task is gone.
-                status: if recovering.contains_key(h.model_id()) {
-                    "recovering".into()
-                } else if h.is_poisoned() {
-                    "poisoned".into()
-                } else {
-                    "loaded".into()
-                },
+                status,
                 devices: h.devices(),
                 vram_used_mb: None,
                 capabilities: h.capabilities(),
-                limit: None, // catalogue-level — filled by gateway
-                cost: None,  // operator-set in models.toml — filled by gateway
+                limit,
+                cost: None,
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
-            })
-            .collect();
+            });
+        }
         // Models mid-recovery whose registry slot is absent (the
         // unload→reload window, ~minutes for a large TP model) stay
         // listed from their trigger-time snapshot so cortex holds the

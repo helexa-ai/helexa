@@ -307,6 +307,7 @@ async fn cold_load(
                     capabilities: Vec::new(),
                     tool_call: false,
                     reasoning: false,
+                    limit: None,
                 },
             );
         }

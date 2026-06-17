@@ -194,6 +194,7 @@ async fn test_recovering_model_returns_503_and_stays_listed() {
                 capabilities: Vec::new(),
                 tool_call: false,
                 reasoning: false,
+                limit: None,
             },
         );
     }

@@ -219,19 +219,25 @@ pub fn derive_limit(
 ) -> ModelLimit {
     let output = cfg.output_reserve_tokens;
 
-    // VRAM ceiling — what actually fits, from live free VRAM.
-    let reserved_mb = cfg
-        .activation_headroom_mb
-        .saturating_add(cfg.min_free_floor_mb);
-    let avail_bytes = free_tightest_mb
-        .saturating_sub(reserved_mb)
-        .saturating_mul(1024 * 1024);
-    // `checked_div` yields `None` for a degenerate zero-KV profile (e.g.
-    // no full-attention layers) → VRAM imposes no ceiling, the other
-    // terms bind.
-    let vram_ceiling = avail_bytes
-        .checked_div(profile.kv_bytes_per_token_per_card)
-        .map_or(usize::MAX, |t| t as usize);
+    // VRAM ceiling — what actually fits, from live free VRAM. A zero
+    // `free_tightest_mb` is the "unknown / no-context sentinel" (CPU
+    // build, or a failed per-rank query) → VRAM imposes no ceiling, the
+    // other terms bind, rather than collapsing the limit to zero.
+    let vram_ceiling = if free_tightest_mb == 0 {
+        usize::MAX
+    } else {
+        let reserved_mb = cfg
+            .activation_headroom_mb
+            .saturating_add(cfg.min_free_floor_mb);
+        let avail_bytes = free_tightest_mb
+            .saturating_sub(reserved_mb)
+            .saturating_mul(1024 * 1024);
+        // `checked_div` yields `None` for a degenerate zero-KV profile
+        // (e.g. no full-attention layers) → VRAM imposes no ceiling.
+        avail_bytes
+            .checked_div(profile.kv_bytes_per_token_per_card)
+            .map_or(usize::MAX, |t| t as usize)
+    };
 
     // Throughput ceiling — usable, not just fittable. Fall back to the
     // bootstrap estimate until the model has measured its own rate.

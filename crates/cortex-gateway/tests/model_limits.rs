@@ -1,9 +1,11 @@
-//! Issue #62: `GET /v1/models` advertises a per-model serving budget so an
-//! OpenAI-compatible client (opencode's helexa provider) can size and compact
-//! its context without hand-configuration.
+//! Issue #62 / #67: `GET /v1/models` advertises a per-model serving budget so
+//! an OpenAI-compatible client (opencode's helexa provider) can size and
+//! compact its context without hand-configuration.
 //!
-//! Asserts the two composition sources land on the response:
-//!   - `limit` + `cost` from the catalogue profile (operator-declared)
+//! Asserts the composition sources land on the response:
+//!   - `limit` from the neuron's self-derived value (#67) — NOT the catalogue;
+//!     an operator-declared catalogue `limit` is deliberately ignored.
+//!   - `cost` from the catalogue profile (operator-set pricing).
 //!   - `tool_call` / `reasoning` from the neuron's runtime detection (OR-ed in)
 //!
 //! Also a regression guard for the removal of `max_model_len` — the misnamed,
@@ -12,6 +14,7 @@
 use cortex_core::config::{
     EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NeuronEndpoint,
 };
+use cortex_core::harness::ModelLimit;
 use cortex_core::node::{ModelEntry, ModelStatus};
 use cortex_gateway::state::CortexState;
 use std::sync::Arc;
@@ -19,14 +22,15 @@ use tokio::net::TcpListener;
 
 #[tokio::test]
 async fn v1_models_surfaces_limit_cost_and_capability_flags() {
-    // Catalogue declares the token budget + pricing for the model.
+    // Catalogue declares pricing + an operator `limit` that must be IGNORED
+    // (#67): the neuron's self-derived limit is authoritative.
     let models_toml = r#"
 [[models]]
 id = "test-model"
 harness = "candle"
-limit.context = 49152
-limit.input = 40960
-limit.output = 8192
+limit.context = 999999
+limit.input = 999999
+limit.output = 999999
 cost.input = 0.0
 cost.output = 0.0
 capabilities = ["text"]
@@ -70,6 +74,13 @@ capabilities = ["text"]
                 capabilities: vec!["text".into()],
                 tool_call: true,
                 reasoning: true,
+                // Neuron's self-derived limit (#67) — the authoritative
+                // source. Distinct from the catalogue's (ignored) values.
+                limit: Some(ModelLimit {
+                    context: 49152,
+                    input: Some(40960),
+                    output: 8192,
+                }),
             },
         );
     }
@@ -97,7 +108,9 @@ capabilities = ["text"]
         .find(|m| m["id"] == "test-model")
         .expect("test-model present in /v1/models");
 
-    // Catalogue-sourced budget + pricing flow through.
+    // `limit` is the neuron's self-derived value (#67), NOT the catalogue's
+    // (which declared 999999 and must be ignored). `cost` still flows from
+    // the catalogue.
     assert_eq!(entry["limit"]["context"], 49152);
     assert_eq!(entry["limit"]["input"], 40960);
     assert_eq!(entry["limit"]["output"], 8192);

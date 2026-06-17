@@ -11,6 +11,7 @@ use axum::http::HeaderMap;
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::{get, post};
 use chrono::Utc;
+use cortex_core::harness::ModelLimit;
 use cortex_core::node::{CortexModelEntry, ModelLocation};
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -465,6 +466,18 @@ async fn anthropic_messages(
     }
 }
 
+/// Combine two self-derived limits for the same model loaded on
+/// different neurons (#67): keep the tightest (smallest `context`) so a
+/// client sized against the advertised limit never overflows the
+/// most-constrained deployment that might serve the request. `None`
+/// means "that neuron reported no limit"; the present one wins.
+fn tightest_limit(a: Option<ModelLimit>, b: Option<ModelLimit>) -> Option<ModelLimit> {
+    match (a, b) {
+        (None, x) | (x, None) => x,
+        (Some(a), Some(b)) => Some(if b.context < a.context { b } else { a }),
+    }
+}
+
 /// `GET /v1/models` — union of (catalogue × topology feasibility) and
 /// (currently loaded somewhere). The result is what the fleet *could*
 /// serve, not just what's already loaded — so OpenAI-compatible tools
@@ -515,8 +528,13 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 // Start with catalogue-declared capabilities; Pass 2 unions
                 // runtime-detected ones from loaded neurons.
                 capabilities: profile.capabilities.clone(),
-                // Catalogue limit/cost flow through directly.
-                limit: profile.limit.clone(),
+                // `limit` is no longer operator-declared (#67): the neuron
+                // self-derives it from live VRAM + throughput and reports it
+                // per loaded model — Pass 2 fills it from the neuron's
+                // ModelEntry. A catalogue `limit`, if present, is ignored
+                // (it can't track hot-swapped models or live capacity).
+                // `cost` stays operator-set and flows from the catalogue.
+                limit: None,
                 cost: profile.cost.clone(),
                 // Runtime-detected — will be OR-ed in Pass 2 from neuron data.
                 tool_call: false,
@@ -556,6 +574,12 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     // OR-in runtime-detected capability flags from the neuron.
                     e.tool_call = e.tool_call || entry.tool_call;
                     e.reasoning = e.reasoning || entry.reasoning;
+                    // Adopt the neuron's self-derived limit (#67). When a
+                    // model is loaded on several neurons with different
+                    // headroom, advertise the tightest (smallest context)
+                    // so a client never overflows the most-constrained
+                    // deployment that might serve it.
+                    e.limit = tightest_limit(e.limit.take(), entry.limit.clone());
                 })
                 .or_insert_with(|| CortexModelEntry {
                     id: model_id.clone(),
@@ -568,7 +592,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     feasible_on: Vec::new(),
                     locations: vec![location],
                     capabilities: entry.capabilities.clone(),
-                    limit: None,
+                    limit: entry.limit.clone(),
                     cost: None,
                     tool_call: entry.tool_call,
                     reasoning: entry.reasoning,
