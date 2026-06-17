@@ -77,6 +77,14 @@ pub struct CandleHarnessConfig {
     /// model, on architectures that support cache snapshots (qwen3_5).
     #[serde(default)]
     pub prefix_cache: PrefixCacheConfig,
+
+    /// Self-derived context/token limits (#67). The neuron computes the
+    /// most-efficient `limit{context,input,output}` that still allows
+    /// coherent agentic performance from model architecture + live free
+    /// VRAM + a self-measured throughput ceiling, advertises it on
+    /// `/models`, and enforces it. These knobs tune that derivation.
+    #[serde(default)]
+    pub context_limit: ContextLimitConfig,
 }
 
 /// `[harness.candle.prefix_cache]` settings.
@@ -117,6 +125,94 @@ fn default_prefix_cache_budget_mb() -> u64 {
 
 fn default_prefix_cache_max_entries() -> usize {
     8
+}
+
+/// `[harness.candle.context_limit]` settings (#67).
+///
+/// The derived limit is `context = min(max_position_embeddings,
+/// vram_ceiling, throughput_ceiling)`, then `input = context −
+/// output_reserve`. `vram_ceiling` and `throughput_ceiling` read live
+/// state, so the advertised/enforced limit tracks the resident model and
+/// rises automatically as efficiency work (e.g. prefix caching, #11)
+/// frees headroom or speeds prefill — no operator action.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContextLimitConfig {
+    /// Master switch. On by default — set `false` to fall back to the
+    /// static `NEURON_MAX_PROMPT_TOKENS` cap with no advertised limit.
+    #[serde(default = "default_context_limit_enabled")]
+    pub enabled: bool,
+
+    /// Coherence target: the longest prefill-per-turn latency (seconds)
+    /// considered acceptable agentic performance. The throughput ceiling
+    /// is `target_prefill_latency_secs × measured_prefill_tok_per_sec`.
+    /// Raise it once cross-request prefix caching (#11) makes long
+    /// contexts cheap to re-prefill.
+    #[serde(default = "default_target_prefill_latency_secs")]
+    pub target_prefill_latency_secs: f64,
+
+    /// Cold-start prefill speed (tokens/sec) used for the throughput
+    /// ceiling until the model has served enough requests to measure its
+    /// own rate. A conservative estimate; the live EMA supersedes it.
+    #[serde(default = "default_bootstrap_prefill_tok_per_sec")]
+    pub bootstrap_prefill_tok_per_sec: f64,
+
+    /// VRAM (MiB) reserved per card for prefill activations on top of the
+    /// resident weights and the KV cache, before computing the VRAM
+    /// context ceiling.
+    #[serde(default = "default_activation_headroom_mb")]
+    pub activation_headroom_mb: u64,
+
+    /// Free-VRAM floor (MiB) kept available per card — the VRAM ceiling
+    /// leaves at least this much unused. Mirrors `NEURON_MIN_FREE_VRAM_MB`.
+    #[serde(default = "default_context_min_free_floor_mb")]
+    pub min_free_floor_mb: u64,
+
+    /// Generation reserve (tokens) left below the context wall:
+    /// `input = context − output_reserve_tokens`. Defaults to neuron's
+    /// default `max_tokens`.
+    #[serde(default = "default_output_reserve_tokens")]
+    pub output_reserve_tokens: usize,
+}
+
+impl Default for ContextLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_context_limit_enabled(),
+            target_prefill_latency_secs: default_target_prefill_latency_secs(),
+            bootstrap_prefill_tok_per_sec: default_bootstrap_prefill_tok_per_sec(),
+            activation_headroom_mb: default_activation_headroom_mb(),
+            min_free_floor_mb: default_context_min_free_floor_mb(),
+            output_reserve_tokens: default_output_reserve_tokens(),
+        }
+    }
+}
+
+fn default_context_limit_enabled() -> bool {
+    true
+}
+
+fn default_target_prefill_latency_secs() -> f64 {
+    // ~2 min/turn is the coherence wall observed pre-#11 on beast
+    // (the issue's worked example). Raisable once prefix caching lands.
+    120.0
+}
+
+fn default_bootstrap_prefill_tok_per_sec() -> f64 {
+    // beast Qwen3.6-27B TP=2 measured ~850 tok/s prefill; a conservative
+    // floor so the cold-start ceiling isn't wildly optimistic.
+    800.0
+}
+
+fn default_activation_headroom_mb() -> u64 {
+    2048
+}
+
+fn default_context_min_free_floor_mb() -> u64 {
+    1500
+}
+
+fn default_output_reserve_tokens() -> usize {
+    8192
 }
 
 /// Per-scheme source configuration. Mirrors the shape `hf_hub::ApiBuilder`

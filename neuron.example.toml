@@ -77,6 +77,24 @@ name = "candle"
 # budget_mb = 1024
 # max_entries = 8
 
+# -- Self-derived context limits (#67) ---------------------------------------
+# neuron computes the most-efficient limit{context,input,output} that still
+# allows coherent agentic performance, from model architecture + live free
+# VRAM + a self-measured prefill throughput ceiling, advertises it on
+# /models, and enforces it. The advertised limit tracks the resident model
+# and rises automatically as efficiency work (e.g. prefix caching, #11)
+# frees headroom or speeds prefill — no operator action. These defaults
+# rarely need changing; raise target_prefill_latency_secs once prefix
+# caching makes long-context re-prefill cheap.
+#
+# [harness.candle.context_limit]
+# enabled = true
+# target_prefill_latency_secs = 120.0     # coherence wall (longest prefill/turn)
+# bootstrap_prefill_tok_per_sec = 800.0    # cold-start estimate until measured
+# activation_headroom_mb = 2048            # per-card prefill activation reserve
+# min_free_floor_mb = 1500                 # per-card free-VRAM floor to keep
+# output_reserve_tokens = 8192             # generation reserve below the wall
+
 # -- Default models ----------------------------------------------------------
 # Models listed here are loaded automatically when the neuron service
 # activates. Loading is sequential — a slow or failing entry doesn't
