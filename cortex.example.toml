@@ -5,6 +5,11 @@
 # Environment variable overrides use CORTEX_ prefix with __ separators:
 #   CORTEX_GATEWAY__LISTEN=0.0.0.0:31313
 
+# Path to the model catalogue (limits, cost, pinning, aliases, feasibility).
+# Defaults to the packaged location below; uncomment to override for a
+# non-packaged / local run.
+# models_config = "/etc/cortex/models.toml"
+
 [gateway]
 listen = "0.0.0.0:31313"
 metrics_listen = "0.0.0.0:31314"

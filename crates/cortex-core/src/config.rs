@@ -11,13 +11,21 @@ pub struct GatewayConfig {
     pub eviction: EvictionSettings,
     /// Neuron endpoints (replaces old NodeConfig with static vram_mb/pinned).
     pub neurons: Vec<NeuronEndpoint>,
-    /// Path to the model catalogue file (default: "models.toml").
+    /// Path to the model catalogue file. Defaults to the packaged
+    /// location (`/etc/cortex/models.toml`); set explicitly for
+    /// non-packaged / local runs.
     #[serde(default = "default_models_path")]
     pub models_config: String,
 }
 
 fn default_models_path() -> String {
-    "models.toml".into()
+    // Absolute, so the systemd-launched binary finds the catalogue
+    // regardless of its working directory. The RPM installs the catalogue
+    // here (`cortex.spec`); a relative "models.toml" silently resolved to
+    // the service cwd and left the catalogue empty in production
+    // (pinning / aliases / limits all no-ops). Override via `models_config`
+    // in cortex.toml for local runs.
+    "/etc/cortex/models.toml".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
