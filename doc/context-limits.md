@@ -177,10 +177,15 @@ input   = context − output
 `NEURON_MAX_PROMPT_TOKENS` is demoted from authority to an **optional
 clamp-only backstop** (applied only when explicitly set). The
 deploy-managed drop-in still pins a per-host ceiling, but the derivation
-binds below it in practice. (Enforcement of the *derived* prompt cap —
-rejecting prompts above the computed `input` rather than the static
-`NEURON_MAX_PROMPT_TOKENS` — is the remaining hardening; until it lands,
-the static cap remains the enforced backstop.)
+binds below it in practice.
+
+The request path **enforces the derived cap**: a prompt is rejected with
+`PromptTooLong` when it exceeds the model's computed `input` budget
+(refreshed on every `/models` poll), not the static
+`NEURON_MAX_PROMPT_TOKENS` — so a VRAM-tight host rejects an over-budget
+prompt up front instead of OOMing mid-prefill. Before the first
+derivation (or for an arch without a context profile) it falls back to
+the static cap.
 
 ## Operational note
 

@@ -33,7 +33,7 @@ use crate::wire::{
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(feature = "cuda")]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -213,13 +213,26 @@ impl LoadedHandle {
             ),
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
-        Some(super::context_limit::derive_limit(
+        let limit = super::context_limit::derive_limit(
             &profile,
             free_mb,
             rate,
             max_prompt_tokens_clamp(),
             cfg,
-        ))
+        );
+        // Refresh the request-path enforcement cap (#67 phase 5b): the
+        // prompt cap tracks the derived input, so a VRAM-tight host
+        // rejects a prompt that wouldn't fit rather than OOMing
+        // mid-prefill. `input` is `Some` whenever a profile exists.
+        if let Some(input) = limit.input {
+            let cap = match self {
+                LoadedHandle::Single(m) => &m.derived_input_cap,
+                #[cfg(feature = "cuda")]
+                LoadedHandle::Tp(m) => &m.derived_input_cap,
+            };
+            cap.store(input, Ordering::Release);
+        }
+        Some(limit)
     }
 }
 
@@ -356,6 +369,11 @@ pub struct LoadedModel {
     /// throughput ceiling in the derived limit; falls back to the
     /// configured bootstrap estimate before the first sample.
     pub prefill_rate: super::context_limit::PrefillRateEma,
+    /// Last derived input-token cap (#67), refreshed each time
+    /// `derived_limit` runs (i.e. on every `/models` poll). The
+    /// request-path enforcement reads this — `0` means "not derived yet"
+    /// → fall back to the static `NEURON_MAX_PROMPT_TOKENS`.
+    pub derived_input_cap: AtomicUsize,
 }
 
 impl LoadedModel {
@@ -370,6 +388,18 @@ impl LoadedModel {
         match &self.worker {
             Some(w) => w.query_vram().await.unwrap_or((0, 0)),
             None => (0, 0),
+        }
+    }
+
+    /// The enforced prompt-token cap (#67 phase 5b): the last-derived
+    /// input budget if one has been computed, else the static
+    /// `NEURON_MAX_PROMPT_TOKENS`. Read in the request path so a
+    /// VRAM-tight host rejects an over-budget prompt rather than OOMing
+    /// mid-prefill.
+    pub fn effective_prompt_cap(&self) -> usize {
+        match self.derived_input_cap.load(Ordering::Acquire) {
+            0 => max_prompt_tokens(),
+            n => n,
         }
     }
 }
@@ -446,6 +476,9 @@ pub struct TpLoadedModel {
     /// Self-measured prefill throughput EMA (#67) — see
     /// [`LoadedModel::prefill_rate`].
     pub prefill_rate: super::context_limit::PrefillRateEma,
+    /// Last derived input-token cap (#67) — see
+    /// [`LoadedModel::derived_input_cap`].
+    pub derived_input_cap: AtomicUsize,
     /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
     /// needs to hold per model lifetime (snapshots die with the model).
     pub next_snapshot_id: std::sync::atomic::AtomicU64,
@@ -471,6 +504,15 @@ impl TpLoadedModel {
         pool.query_vram_tightest_free_mb(self.leader_handle)
             .await
             .unwrap_or(0)
+    }
+
+    /// The enforced prompt-token cap (#67 phase 5b) — see
+    /// [`LoadedModel::effective_prompt_cap`].
+    pub fn effective_prompt_cap(&self) -> usize {
+        match self.derived_input_cap.load(Ordering::Acquire) {
+            0 => max_prompt_tokens(),
+            n => n,
+        }
     }
 }
 
@@ -1213,8 +1255,17 @@ fn validate_vision_prefill(prompt_len: usize, vram_free_mb: u64) -> Result<(), I
     Ok(())
 }
 
-fn validate_request(prompt_len: usize, vram_free_mb: u64) -> Result<(), InferenceError> {
-    let max = max_prompt_tokens();
+/// Pre-flight: reject the request if the prompt exceeds the model's
+/// effective cap (#67 phase 5b — the self-derived input budget when
+/// available, else the static `NEURON_MAX_PROMPT_TOKENS`, passed in by
+/// the caller as `max`), or if free VRAM is below the floor. Enforcing
+/// the *derived* cap means a VRAM-tight host rejects a prompt that
+/// wouldn't fit, instead of accepting it and OOMing mid-prefill.
+fn validate_request(
+    prompt_len: usize,
+    vram_free_mb: u64,
+    max: usize,
+) -> Result<(), InferenceError> {
     if prompt_len > max {
         return Err(InferenceError::PromptTooLong { prompt_len, max });
     }
@@ -2098,7 +2149,7 @@ impl CandleHarness {
                 "chat_completion: starting"
             );
 
-            validate_request(prompt_len, vram_free_mb)?;
+            validate_request(prompt_len, vram_free_mb, loaded.effective_prompt_cap())?;
             if vision_route.is_some() {
                 validate_vision_prefill(prompt_len, vram_free_mb)?;
             }
@@ -2544,7 +2595,7 @@ impl CandleHarness {
             );
         }
 
-        validate_request(prompt_len, vram_free_mb)?;
+        validate_request(prompt_len, vram_free_mb, loaded.effective_prompt_cap())?;
         if vision_route.is_some() {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
@@ -3087,6 +3138,7 @@ impl Harness for CandleHarness {
             prefix_cache: self.new_prefix_cache(snapshot_capable),
             context_profile,
             prefill_rate: super::context_limit::PrefillRateEma::new(),
+            derived_input_cap: AtomicUsize::new(0),
         });
         if loaded.prefix_cache.is_some() {
             tracing::info!(
@@ -3345,6 +3397,7 @@ impl CandleHarness {
                 tp_size,
             ),
             prefill_rate: super::context_limit::PrefillRateEma::new(),
+            derived_input_cap: AtomicUsize::new(0),
             next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
         });
         if tp_loaded.prefix_cache.is_some() {
@@ -3632,7 +3685,7 @@ impl CandleHarness {
             "TP chat_completion (stream): starting"
         );
 
-        validate_request(prompt_len, vram_free_mb)?;
+        validate_request(prompt_len, vram_free_mb, tp.effective_prompt_cap())?;
         if vision_route.is_some() {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
@@ -4226,7 +4279,7 @@ async fn chat_completion_tp_inner(
         "TP chat_completion: starting"
     );
 
-    validate_request(prompt_len, vram_free_mb)?;
+    validate_request(prompt_len, vram_free_mb, tp.effective_prompt_cap())?;
     if vision_route.is_some() {
         validate_vision_prefill(prompt_len, vram_free_mb)?;
     }
