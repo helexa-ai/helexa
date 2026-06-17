@@ -200,6 +200,9 @@ async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
             let mut nodes = fleet.nodes.write().await;
             if let Some(node) = nodes.get_mut(name) {
                 node.activation = Some(h.activation);
+                // Per-model admission load (#53) → keyed by id for the
+                // load-aware router (#55).
+                node.model_load = h.models.into_iter().map(|m| (m.id.clone(), m)).collect();
             }
         }
         Err(e) => {

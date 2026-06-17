@@ -1,4 +1,4 @@
-use crate::discovery::{ActivationStatus, DiscoveryResponse};
+use crate::discovery::{ActivationStatus, DiscoveryResponse, ModelLoad};
 use crate::harness::{ModelCost, ModelLimit};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -27,6 +27,11 @@ pub struct NodeState {
     /// to synthesize `Loading` locations so clients see a catalogued
     /// model that's mid-prewarm as "loading", not "missing".
     pub activation: Option<ActivationStatus>,
+    /// Last-seen per-model admission load from this neuron's `/health`
+    /// (#53), keyed by model id. The router (#55) reads it to pick the
+    /// least-busy replica when a model is loaded on more than one neuron.
+    /// Empty until the first /health poll reports load.
+    pub model_load: HashMap<String, ModelLoad>,
 }
 
 /// A model registered on a node, with its runtime status.
