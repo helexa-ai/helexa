@@ -83,9 +83,23 @@ pub async fn require_principal(
                 req.extensions_mut().insert(principal);
                 next.run(req).await
             }
-            // A present-but-invalid credential is always an error, even when
-            // anonymous access is otherwise allowed.
-            Err(_) => unauthorized("invalid API key"),
+            // An unrecognized key only hard-fails when auth is *required*.
+            // In allow-anonymous mode (the default) we must IGNORE it and
+            // serve the request unauthenticated — otherwise the placeholder
+            // keys that OpenAI-compatible clients send by default (opencode,
+            // Open WebUI, Agent Zero, litellm) would all break, even though
+            // the operator never opted into auth. Pre-#49 the bearer was
+            // never inspected at all; this preserves that for require_auth=false.
+            Err(_) => {
+                if fleet.require_auth {
+                    unauthorized("invalid API key")
+                } else {
+                    tracing::debug!(
+                        "ignoring unrecognized bearer token (require_auth=false): serving anonymously"
+                    );
+                    next.run(req).await
+                }
+            }
         },
         None => {
             if fleet.require_auth {

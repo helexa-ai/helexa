@@ -175,10 +175,32 @@ async fn missing_key_when_required_is_401_invalid_api_key() {
 }
 
 #[tokio::test]
-async fn invalid_key_is_401_even_when_auth_not_required() {
+async fn unrecognized_key_is_ignored_when_auth_not_required() {
     let (neuron, seen) = spawn_capturing_neuron().await;
-    // A present-but-wrong credential is always an error.
+    // allow-anonymous mode: a placeholder/unknown bearer (as opencode,
+    // Open WebUI, Agent Zero, litellm all send by default) must NOT be
+    // rejected — it's ignored and the request is served anonymously.
     let gateway = spawn_gateway(&neuron, one_key_config(false)).await;
+
+    let resp = reqwest::Client::new()
+        .post(format!("{gateway}/v1/chat/completions"))
+        .bearer_auth("sk-dummy-placeholder")
+        .json(&chat_body())
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+    let _ = resp.bytes().await.unwrap();
+    // Served, but anonymous — no principal stamped from the bogus key.
+    assert!(seen.lock().unwrap().account_id.is_none());
+}
+
+#[tokio::test]
+async fn invalid_key_is_401_when_auth_required() {
+    let (neuron, seen) = spawn_capturing_neuron().await;
+    // With auth required, a present-but-wrong credential is rejected.
+    let gateway = spawn_gateway(&neuron, one_key_config(true)).await;
 
     let resp = reqwest::Client::new()
         .post(format!("{gateway}/v1/chat/completions"))
