@@ -306,19 +306,25 @@ async fn anthropic_messages(
     }
     let start = Instant::now();
 
-    // Per-request metering (#51), same lifecycle as the OpenAI paths:
-    // reserve (0 tokens this phase) and build the completion sink. Consumed
-    // by whichever branch runs below; dropping it unused releases the
-    // reservation.
+    // Per-request metering + budget enforcement (#51/#52), same lifecycle as
+    // the OpenAI paths. Estimate from the translated OpenAI body (what neuron
+    // sees). Refuse over-cap before dispatch via the #63 envelope; otherwise
+    // build the sink consumed by whichever branch runs below.
     let usage_sink = match crate::metering::principal_from_headers(&headers) {
         Some(principal) => {
-            let guard = crate::metering::ReservationGuard::reserve(
+            let advertised =
+                advertised_output_limit(&fleet, &route.node_name, &route.resolved_model_id).await;
+            let max_tokens = crate::metering::reservation_estimate(&openai_body, advertised);
+            match crate::metering::reserve_or_reject(
                 Arc::clone(&fleet.entitlements),
                 &principal,
-                0,
+                max_tokens,
             )
-            .await;
-            Some(crate::metering::usage_sink(principal, guard))
+            .await
+            {
+                Ok(guard) => Some(crate::metering::usage_sink(principal, guard)),
+                Err(env) => return crate::error::envelope_response(env),
+            }
         }
         None => None,
     };
@@ -765,20 +771,27 @@ async fn proxy_with_metrics(
         metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
     }
 
-    // Per-request metering (#51): reconstruct the principal from the
-    // middleware-stamped headers, reserve (0 tokens this phase — metering
-    // only; #52 makes it the real cap), and build the completion sink that
-    // settles spend when the response finishes. Anonymous requests get no
-    // sink. Must happen before `headers`/`body` are moved into the proxy.
+    // Per-request metering + budget enforcement (#51/#52): reconstruct the
+    // principal from the middleware-stamped headers, reserve the request's
+    // upper-bound cost (prompt estimate + max output), and build the
+    // completion sink that settles actual spend when the response finishes.
+    // A reservation over the hard cap is refused *before* dispatch with the
+    // #63 envelope. Anonymous requests skip all of this. Must happen before
+    // `headers`/`body` are moved into the proxy.
     let usage_sink = match crate::metering::principal_from_headers(&headers) {
         Some(principal) => {
-            let guard = crate::metering::ReservationGuard::reserve(
+            let advertised = advertised_output_limit(fleet, &route.node_name, model_id).await;
+            let max_tokens = crate::metering::reservation_estimate(&body, advertised);
+            match crate::metering::reserve_or_reject(
                 Arc::clone(&fleet.entitlements),
                 &principal,
-                0,
+                max_tokens,
             )
-            .await;
-            Some(crate::metering::usage_sink(principal, guard))
+            .await
+            {
+                Ok(guard) => Some(crate::metering::usage_sink(principal, guard)),
+                Err(env) => return crate::error::envelope_response(env),
+            }
         }
         None => None,
     };
@@ -810,6 +823,25 @@ async fn proxy_with_metrics(
             e.into_response()
         }
     }
+}
+
+/// The model's advertised `limit.output` (#62) on a given node, used as the
+/// default output budget for budget reservations (#52) when the request
+/// omits `max_(completion_)tokens`. `None` when the node/model/limit is
+/// unknown — callers fall back to [`crate::metering::FALLBACK_MAX_OUTPUT`].
+async fn advertised_output_limit(
+    fleet: &CortexState,
+    node_name: &str,
+    model_id: &str,
+) -> Option<u64> {
+    let nodes = fleet.nodes.read().await;
+    nodes
+        .get(node_name)?
+        .models
+        .get(model_id)?
+        .limit
+        .as_ref()
+        .map(|l| l.output as u64)
 }
 
 /// Update `last_accessed` timestamp for a model on a node (drives LRU eviction).

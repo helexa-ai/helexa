@@ -19,8 +19,16 @@
 //! or dropped stream can't strand a reservation.
 
 use axum::http::HeaderMap;
-use cortex_core::entitlements::{EntitlementProvider, HEADER_ACCOUNT_ID, HEADER_KEY_ID, Principal};
+use cortex_core::entitlements::{
+    BudgetError, EntitlementProvider, HEADER_ACCOUNT_ID, HEADER_KEY_ID, Principal,
+};
+use cortex_core::error_envelope::OpenAiError;
 use std::sync::Arc;
+
+/// Fallback output-token budget when neither the request nor the model's
+/// advertised limit gives one. Bounds the reservation so a capped key is
+/// still gated even on under-specified requests (#52).
+pub const FALLBACK_MAX_OUTPUT: u64 = 4096;
 
 /// Invoked exactly once at request completion with best-effort
 /// `(prompt_tokens, completion_tokens)`. When no usage could be observed
@@ -70,18 +78,14 @@ impl ReservationGuard {
         }
     }
 
-    /// Reserve `max_tokens` for the principal, returning a guard. In this
-    /// phase callers pass `0` (metering only); #52 passes the real cap and
-    /// surfaces the [`cortex_core::entitlements::BudgetError`] instead.
-    pub async fn reserve(
+    /// Wrap an already-acquired reservation.
+    fn held(
         provider: Arc<dyn EntitlementProvider>,
-        principal: &Principal,
-        max_tokens: u64,
+        reservation: cortex_core::entitlements::Reservation,
     ) -> Self {
-        let reservation = provider.reserve(principal, max_tokens).await.ok();
         Self {
             provider,
-            reservation,
+            reservation: Some(reservation),
         }
     }
 
@@ -118,4 +122,98 @@ pub fn usage_sink(principal: Principal, guard: ReservationGuard) -> UsageSink {
         record_spend(&principal, prompt, completion);
         guard.settle(prompt + completion);
     })
+}
+
+/// Reserve the request's upper-bound token cost for the principal, refusing
+/// *before* dispatch if it would exceed the hard cap (#52). On success
+/// returns a guard the caller settles with actual usage; on refusal returns
+/// the #63 envelope (`rate_limit_exceeded` + `Retry-After` for a resetting
+/// window, `insufficient_quota` for a hard balance — never `402`).
+pub async fn reserve_or_reject(
+    provider: Arc<dyn EntitlementProvider>,
+    principal: &Principal,
+    max_tokens: u64,
+) -> Result<ReservationGuard, OpenAiError> {
+    match provider.reserve(principal, max_tokens).await {
+        Ok(reservation) => Ok(ReservationGuard::held(provider, reservation)),
+        Err(err) => Err(budget_error_to_envelope(err)),
+    }
+}
+
+/// Map a [`BudgetError`] to the #63 envelope. The provider chose the window
+/// semantics; this only translates them to HTTP.
+fn budget_error_to_envelope(err: BudgetError) -> OpenAiError {
+    match err {
+        BudgetError::RateLimited {
+            retry_after_secs, ..
+        } => OpenAiError::rate_limit_exceeded(err.to_string(), retry_after_secs),
+        BudgetError::InsufficientQuota { .. } => OpenAiError::insufficient_quota(err.to_string()),
+    }
+}
+
+/// Upper-bound tokens to reserve for a request (#52): an over-estimate of
+/// the prompt plus the maximum output. `advertised_output` is the model's
+/// `limit.output` (#62), used when the request omits `max_(completion_)tokens`.
+/// Over-reserving is safe — settle corrects spend to the actual usage.
+pub fn reservation_estimate(body: &[u8], advertised_output: Option<u64>) -> u64 {
+    let max_output = requested_max_output(body)
+        .or(advertised_output)
+        .unwrap_or(FALLBACK_MAX_OUTPUT);
+    estimate_prompt_tokens(body).saturating_add(max_output)
+}
+
+/// The client's requested output cap, from `max_completion_tokens` (or the
+/// legacy `max_tokens`). `None` when unspecified.
+fn requested_max_output(body: &[u8]) -> Option<u64> {
+    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
+    v.get("max_completion_tokens")
+        .or_else(|| v.get("max_tokens"))
+        .and_then(serde_json::Value::as_u64)
+}
+
+/// Rough prompt-token estimate at ~4 chars/token over the whole body. cortex
+/// has no tokenizer; JSON overhead makes this a conservative over-estimate,
+/// and neuron remains the exact context wall (#56/#60). Settle reconciles to
+/// the real usage afterward.
+fn estimate_prompt_tokens(body: &[u8]) -> u64 {
+    (body.len() as u64 / 4).max(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn requested_max_output_prefers_max_completion_tokens() {
+        let body = br#"{"model":"m","max_completion_tokens":256,"max_tokens":99}"#;
+        assert_eq!(requested_max_output(body), Some(256));
+    }
+
+    #[test]
+    fn requested_max_output_falls_back_to_legacy_max_tokens() {
+        let body = br#"{"model":"m","max_tokens":128}"#;
+        assert_eq!(requested_max_output(body), Some(128));
+    }
+
+    #[test]
+    fn estimate_uses_requested_output_when_present() {
+        // Requested output dominates; prompt estimate is small for a tiny body.
+        let body = br#"{"model":"m","max_tokens":1000}"#;
+        let est = reservation_estimate(body, Some(8192));
+        assert!(est >= 1000 && est < 1100, "est was {est}");
+    }
+
+    #[test]
+    fn estimate_uses_advertised_output_when_request_omits_it() {
+        let body = br#"{"model":"m","messages":[]}"#;
+        let est = reservation_estimate(body, Some(8192));
+        assert!(est >= 8192, "est was {est}");
+    }
+
+    #[test]
+    fn estimate_falls_back_when_nothing_advertised() {
+        let body = br#"{"model":"m"}"#;
+        let est = reservation_estimate(body, None);
+        assert!(est >= FALLBACK_MAX_OUTPUT, "est was {est}");
+    }
 }
