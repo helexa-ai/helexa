@@ -4,6 +4,7 @@ pub mod entitlements_local;
 pub mod error;
 pub mod evictor;
 pub mod handlers;
+pub mod metering;
 pub mod metrics;
 pub mod poller;
 pub mod proxy;

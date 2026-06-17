@@ -31,6 +31,7 @@ pub async fn forward_request(
     headers: HeaderMap,
     body: bytes::Bytes,
     model_id: &str,
+    usage_sink: Option<crate::metering::UsageSink>,
 ) -> Result<Response, ProxyError> {
     let request_start = Instant::now();
     let url = format!("{}{}", route.endpoint, path);
@@ -82,7 +83,7 @@ pub async fn forward_request(
     let resp_headers = upstream_resp.headers().clone();
     let stream = TokenMetricsStream::new(
         Box::pin(upstream_resp.bytes_stream()),
-        TokenMetrics::new(model_id, &route.node_name, request_start),
+        TokenMetrics::new(model_id, &route.node_name, request_start, usage_sink),
     );
 
     let body = Body::from_stream(stream);
@@ -186,10 +187,19 @@ struct TokenMetrics {
     last_chunk: Option<Instant>,
     tail: String,
     finished: bool,
+    /// Per-principal metering hook (#51). Invoked exactly once in `finish`
+    /// with the observed `(prompt, completion)` so the reservation can be
+    /// settled and spend recorded. `None` for anonymous requests.
+    usage_sink: Option<crate::metering::UsageSink>,
 }
 
 impl TokenMetrics {
-    fn new(model_id: &str, node_name: &str, request_start: Instant) -> Self {
+    fn new(
+        model_id: &str,
+        node_name: &str,
+        request_start: Instant,
+        usage_sink: Option<crate::metering::UsageSink>,
+    ) -> Self {
         Self {
             labels: [
                 ("model", model_id.to_string()),
@@ -200,6 +210,7 @@ impl TokenMetrics {
             last_chunk: None,
             tail: String::new(),
             finished: false,
+            usage_sink,
         }
     }
 
@@ -227,36 +238,45 @@ impl TokenMetrics {
             return;
         }
         self.finished = true;
-        let Some(first) = self.first_chunk else {
-            return; // no body ever arrived — nothing to record
-        };
-        let ttft = first.duration_since(self.request_start).as_secs_f64();
-        metrics::histogram!("cortex_time_to_first_token_seconds", &self.labels).record(ttft);
 
-        if let Some(prompt) = last_count_for(&self.tail, "prompt_tokens") {
-            metrics::counter!("cortex_prompt_tokens_total", &self.labels).increment(prompt);
-        }
-        let Some(completion) = last_count_for(&self.tail, "completion_tokens") else {
-            return;
-        };
-        if completion == 0 {
-            return;
-        }
-        metrics::counter!("cortex_completion_tokens_total", &self.labels).increment(completion);
+        let prompt = last_count_for(&self.tail, "prompt_tokens");
+        let completion = last_count_for(&self.tail, "completion_tokens");
 
-        let last = self.last_chunk.unwrap_or(first);
-        let decode_window = last.duration_since(first).as_secs_f64();
-        // Streaming: rate over the decode window (first→last chunk).
-        // Non-streaming bodies arrive as ~one chunk (window ≈ 0), where
-        // the only honest denominator is the full request duration.
-        let secs = if decode_window >= 0.1 {
-            decode_window
-        } else {
-            last.duration_since(self.request_start).as_secs_f64()
-        };
-        if secs > 0.0 {
-            metrics::histogram!("cortex_tokens_per_second", &self.labels)
-                .record(completion as f64 / secs);
+        // Per-model metrics — only when body chunks actually arrived.
+        if let Some(first) = self.first_chunk {
+            let ttft = first.duration_since(self.request_start).as_secs_f64();
+            metrics::histogram!("cortex_time_to_first_token_seconds", &self.labels).record(ttft);
+
+            if let Some(prompt) = prompt {
+                metrics::counter!("cortex_prompt_tokens_total", &self.labels).increment(prompt);
+            }
+            if let Some(completion) = completion.filter(|c| *c > 0) {
+                metrics::counter!("cortex_completion_tokens_total", &self.labels)
+                    .increment(completion);
+
+                let last = self.last_chunk.unwrap_or(first);
+                let decode_window = last.duration_since(first).as_secs_f64();
+                // Streaming: rate over the decode window (first→last chunk).
+                // Non-streaming bodies arrive as ~one chunk (window ≈ 0),
+                // where the only honest denominator is the full request
+                // duration.
+                let secs = if decode_window >= 0.1 {
+                    decode_window
+                } else {
+                    last.duration_since(self.request_start).as_secs_f64()
+                };
+                if secs > 0.0 {
+                    metrics::histogram!("cortex_tokens_per_second", &self.labels)
+                        .record(completion as f64 / secs);
+                }
+            }
+        }
+
+        // Per-principal metering + reservation settle (#51). Always runs so
+        // the reservation is resolved even when no usage/body was observed
+        // (sink with (0, 0) → settle 0 → release).
+        if let Some(sink) = self.usage_sink.take() {
+            sink(prompt.unwrap_or(0), completion.unwrap_or(0));
         }
     }
 }

@@ -33,6 +33,7 @@ pub async fn stream_translated(
     model_id: &str,
     node_name: &str,
     inbound_headers: &axum::http::HeaderMap,
+    usage_sink: Option<crate::metering::UsageSink>,
 ) -> Response {
     let url = format!("{endpoint}/v1/chat/completions");
     tracing::info!(
@@ -96,6 +97,10 @@ pub async fn stream_translated(
         let mut saw_tool_call = false;
         let mut last_finish: Option<String> = None;
         let mut frames = 0u64;
+        // Engine-truth usage for metering (#51), scanned from the upstream
+        // frames (neuron emits a final `usage` object on the stream, #48).
+        let mut usage_prompt = 0u64;
+        let mut usage_completion = 0u64;
 
         'outer: while let Some(block) = upstream.next().await {
             let block = match block {
@@ -123,6 +128,15 @@ pub async fn stream_translated(
                         continue;
                     }
                     tracing::trace!(node = %node, frame = %data, "anthropic stream: upstream frame");
+                    // Capture usage for metering before translation — the
+                    // usage object rides on a late frame (often after the
+                    // last content delta).
+                    if let Some(p) = crate::proxy::last_count_for(data, "prompt_tokens") {
+                        usage_prompt = p;
+                    }
+                    if let Some(c) = crate::proxy::last_count_for(data, "completion_tokens") {
+                        usage_completion = c;
+                    }
                     let Ok(chunk) = serde_json::from_str::<ChatCompletionChunk>(data) else {
                         tracing::debug!(node = %node, "anthropic stream: unparsable upstream frame skipped");
                         continue;
@@ -164,6 +178,14 @@ pub async fn stream_translated(
             terminated = done,
             "anthropic stream complete"
         );
+
+        // Settle metering with the observed usage (#51). Runs on every exit
+        // path of the pump — clean end, early break, or upstream error — so
+        // the reservation is always resolved. `(0, 0)` when no usage frame
+        // was seen, which releases without recording spend.
+        if let Some(sink) = usage_sink {
+            sink(usage_prompt, usage_completion);
+        }
     });
 
     Response::builder()

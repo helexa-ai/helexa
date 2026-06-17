@@ -63,4 +63,16 @@ fn describe_metrics() {
         "cortex_cold_starts_total",
         "Total number of cold-start model loads"
     );
+    metrics::describe_counter!(
+        "cortex_spend_tokens_total",
+        "Total metered tokens (prompt + completion) per principal, labelled by account/key (#51)"
+    );
+    metrics::describe_counter!(
+        "cortex_spend_prompt_tokens_total",
+        "Metered prompt tokens per principal, labelled by account/key (#51)"
+    );
+    metrics::describe_counter!(
+        "cortex_spend_completion_tokens_total",
+        "Metered completion tokens per principal, labelled by account/key (#51)"
+    );
 }

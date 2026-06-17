@@ -306,6 +306,23 @@ async fn anthropic_messages(
     }
     let start = Instant::now();
 
+    // Per-request metering (#51), same lifecycle as the OpenAI paths:
+    // reserve (0 tokens this phase) and build the completion sink. Consumed
+    // by whichever branch runs below; dropping it unused releases the
+    // reservation.
+    let usage_sink = match crate::metering::principal_from_headers(&headers) {
+        Some(principal) => {
+            let guard = crate::metering::ReservationGuard::reserve(
+                Arc::clone(&fleet.entitlements),
+                &principal,
+                0,
+            )
+            .await;
+            Some(crate::metering::usage_sink(principal, guard))
+        }
+        None => None,
+    };
+
     if is_streaming {
         // Anthropic SSE translation (#24): upstream speaks OpenAI SSE;
         // re-frame it event-by-event into Anthropic's message_start /
@@ -317,6 +334,7 @@ async fn anthropic_messages(
             &model_id,
             &route.node_name,
             &headers,
+            usage_sink,
         )
         .await;
         metrics::histogram!("cortex_request_duration_seconds", &labels)
@@ -441,6 +459,15 @@ async fn anthropic_messages(
 
         metrics::histogram!("cortex_request_duration_seconds", &labels)
             .record(start.elapsed().as_secs_f64());
+        // Settle metering with the upstream usage (#51). Scanned from the
+        // raw body — same engine-truth source as the streaming path — so we
+        // don't depend on the typed usage struct's optionality.
+        if let Some(sink) = usage_sink {
+            let tail = String::from_utf8_lossy(&body_bytes);
+            let prompt = proxy::last_count_for(&tail, "prompt_tokens").unwrap_or(0);
+            let completion = proxy::last_count_for(&tail, "completion_tokens").unwrap_or(0);
+            sink(prompt, completion);
+        }
         // Did the model actually produce a structured tool call, or just
         // text? This is the single most useful signal for "is tool
         // calling working end-to-end" — a `false` here alongside a
@@ -738,9 +765,35 @@ async fn proxy_with_metrics(
         metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
     }
 
+    // Per-request metering (#51): reconstruct the principal from the
+    // middleware-stamped headers, reserve (0 tokens this phase — metering
+    // only; #52 makes it the real cap), and build the completion sink that
+    // settles spend when the response finishes. Anonymous requests get no
+    // sink. Must happen before `headers`/`body` are moved into the proxy.
+    let usage_sink = match crate::metering::principal_from_headers(&headers) {
+        Some(principal) => {
+            let guard = crate::metering::ReservationGuard::reserve(
+                Arc::clone(&fleet.entitlements),
+                &principal,
+                0,
+            )
+            .await;
+            Some(crate::metering::usage_sink(principal, guard))
+        }
+        None => None,
+    };
+
     let start = Instant::now();
-    let result =
-        proxy::forward_request(&fleet.http_client, route, path, headers, body, model_id).await;
+    let result = proxy::forward_request(
+        &fleet.http_client,
+        route,
+        path,
+        headers,
+        body,
+        model_id,
+        usage_sink,
+    )
+    .await;
     let duration = start.elapsed();
 
     match result {
