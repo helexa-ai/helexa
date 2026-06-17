@@ -26,7 +26,7 @@
 //! producer blocks on its own send. The bounded channels
 //! propagate without us writing any logic.
 
-use cortex_core::openai::{ChatCompletionChunk, ChunkChoice, Usage};
+use cortex_core::openai::{ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, Usage};
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -192,6 +192,7 @@ pub fn project_chat_stream_with(
                     reason,
                     prompt_tokens,
                     completion_tokens,
+                    reasoning_tokens,
                 } => {
                     // The finish_reason chunk, then an OpenAI-style
                     // usage-only chunk (`choices: []`, `usage` populated).
@@ -200,7 +201,14 @@ pub fn project_chat_stream_with(
                     // for its `message_delta`.
                     vec![
                         final_chunk(&id, created, &model_id, reason),
-                        usage_chunk(&id, created, &model_id, prompt_tokens, completion_tokens),
+                        usage_chunk(
+                            &id,
+                            created,
+                            &model_id,
+                            prompt_tokens,
+                            completion_tokens,
+                            reasoning_tokens,
+                        ),
                     ]
                 }
             };
@@ -325,6 +333,7 @@ fn usage_chunk(
     model_id: &str,
     prompt_tokens: u32,
     completion_tokens: u32,
+    reasoning_tokens: u32,
 ) -> ChatCompletionChunk {
     ChatCompletionChunk {
         id: id.into(),
@@ -336,6 +345,12 @@ fn usage_chunk(
             prompt_tokens: prompt_tokens as u64,
             completion_tokens: completion_tokens as u64,
             total_tokens: (prompt_tokens + completion_tokens) as u64,
+            // Additive reasoning sub-count — omitted for non-reasoning
+            // models so older clients see unchanged JSON.
+            completion_tokens_details: (reasoning_tokens > 0).then_some(CompletionTokensDetails {
+                reasoning_tokens: reasoning_tokens as u64,
+            }),
+            prompt_tokens_details: None,
         }),
         extra: serde_json::Value::Object(Default::default()),
     }
@@ -375,6 +390,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -417,6 +433,7 @@ mod tests {
             reason: FinishReason::Length,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -478,6 +495,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -528,6 +546,7 @@ mod tests {
             reason: FinishReason::Length,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -572,6 +591,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -614,6 +634,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -640,6 +661,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 42,
             completion_tokens: 5,
+            reasoning_tokens: 2,
         })
         .await
         .unwrap();
@@ -652,5 +674,42 @@ mod tests {
         assert_eq!(u.prompt_tokens, 42);
         assert_eq!(u.completion_tokens, 5);
         assert_eq!(u.total_tokens, 47);
+        // reasoning_tokens is a sub-count of completion_tokens: reported
+        // in the detail object, never added into total_tokens.
+        let d = u
+            .completion_tokens_details
+            .as_ref()
+            .expect("reasoning detail present");
+        assert_eq!(d.reasoning_tokens, 2);
+        assert!(d.reasoning_tokens <= u.completion_tokens);
+    }
+
+    #[tokio::test]
+    async fn non_reasoning_finish_omits_usage_details() {
+        // Back-compat: with reasoning_tokens == 0 the additive detail
+        // object is omitted, so older clients see unchanged JSON.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 10,
+            completion_tokens: 7,
+            reasoning_tokens: 0,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        let u = out
+            .last()
+            .unwrap()
+            .usage
+            .as_ref()
+            .expect("usage present on final chunk");
+        assert!(u.completion_tokens_details.is_none());
+        // And it serialises without the detail key at all.
+        let json = serde_json::to_value(u).unwrap();
+        assert!(json.get("completion_tokens_details").is_none());
+        assert!(json.get("prompt_tokens_details").is_none());
     }
 }

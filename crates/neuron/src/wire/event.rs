@@ -77,6 +77,13 @@ pub enum InferenceEvent {
         reason: FinishReason,
         prompt_tokens: u32,
         completion_tokens: u32,
+        /// Tokens generated inside the reasoning span — a sub-count of
+        /// `completion_tokens` (OpenAI semantics; not added into
+        /// `total_tokens`). Streaming projectors surface this as
+        /// `completion_tokens_details.reasoning_tokens` (chat) /
+        /// `output_tokens_details.reasoning_tokens` (responses).
+        /// Zero for non-reasoning models.
+        reasoning_tokens: u32,
     },
 }
 

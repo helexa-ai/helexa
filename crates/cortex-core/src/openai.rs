@@ -106,6 +106,31 @@ pub struct Usage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+    /// OpenAI-standard breakdown of `completion_tokens`. Optional and
+    /// additive — clients that don't read it are unaffected. Carries
+    /// `reasoning_tokens` for reasoning models (a sub-count of
+    /// `completion_tokens`, never added into `total_tokens`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
+    /// OpenAI-standard breakdown of `prompt_tokens`. Populated once
+    /// prompt caching lands (#11); `None` until then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+/// Sub-counts of `Usage::completion_tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionTokensDetails {
+    /// Tokens generated inside the model's reasoning span.
+    pub reasoning_tokens: u64,
+}
+
+/// Sub-counts of `Usage::prompt_tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptTokensDetails {
+    /// Prompt tokens served from cache (cache-read rate). Populated
+    /// once prompt caching lands (#11).
+    pub cached_tokens: u64,
 }
 
 // ── Models list response ─────────────────────────────────────────────

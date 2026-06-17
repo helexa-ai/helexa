@@ -2171,6 +2171,12 @@ impl CandleHarness {
                 prompt_tokens: prompt_len as u64,
                 completion_tokens: generated_ids.len() as u64,
                 total_tokens: (prompt_len + generated_ids.len()) as u64,
+                // Reasoning accounting is streaming-only: the
+                // non-streaming path doesn't track `in_reasoning`
+                // (would require post-hoc <think> span parsing).
+                // Deferred — see #64.
+                completion_tokens_details: None,
+                prompt_tokens_details: None,
             };
 
             tracing::info!(
@@ -3525,6 +3531,10 @@ impl CandleHarness {
                 // block (Qwen3.6 injects it into the generation prompt).
                 let mut in_reasoning =
                     prompt_opens_reasoning(&prompt_tokens, reasoning_tokens.as_ref());
+                // Sub-count of completion tokens generated while inside
+                // the reasoning span. Surfaced as `reasoning_tokens` on
+                // the terminal Finish event (#64).
+                let mut reasoning_token_count: u32 = 0;
                 let mut in_tool_call = false;
                 let mut tool_call_buf = String::new();
                 let mut tool_call_idx: usize = 0;
@@ -3744,6 +3754,9 @@ impl CandleHarness {
                                 ) {
                                     // marker — nothing to emit
                                 } else {
+                                    if in_reasoning {
+                                        reasoning_token_count += 1;
+                                    }
                                     match decode_stream.step(next_token) {
                                         Ok(Some(delta)) => {
                                             if !emit_delta(&delta, &tx, in_reasoning).await {
@@ -3887,6 +3900,9 @@ impl CandleHarness {
                             ) {
                                 continue;
                             }
+                            if in_reasoning {
+                                reasoning_token_count += 1;
+                            }
                             match decode_stream.step(next_token) {
                                 Ok(Some(delta)) => {
                                     if !emit_delta(&delta, &tx, in_reasoning).await {
@@ -3949,6 +3965,7 @@ impl CandleHarness {
                             reason: finish_reason,
                             prompt_tokens: prompt_len as u32,
                             completion_tokens: all_tokens.len() as u32,
+                            reasoning_tokens: reasoning_token_count,
                         })
                         .await;
                 }
@@ -4271,6 +4288,10 @@ async fn chat_completion_tp_inner(
         prompt_tokens: prompt_len as u64,
         completion_tokens: generated.len() as u64,
         total_tokens: (prompt_len + generated.len()) as u64,
+        // Reasoning accounting is streaming-only (non-streaming TP path
+        // doesn't track `in_reasoning`). Deferred — see #64.
+        completion_tokens_details: None,
+        prompt_tokens_details: None,
     };
 
     tracing::info!(
@@ -5509,6 +5530,9 @@ async fn stream_inference_via_worker(
     // `prompt_opens_reasoning`: Qwen3.6 starts the generation prompt
     // inside a <think> block, so begin in reasoning mode if it does.
     let mut in_reasoning = prompt_opens_reasoning(&prompt_tokens, reasoning_tokens.as_ref());
+    // Sub-count of completion tokens generated while inside the
+    // reasoning span — surfaced as `reasoning_tokens` on Finish (#64).
+    let mut reasoning_token_count: u32 = 0;
     let mut in_tool_call = false;
     let mut tool_call_buf = String::new();
     let mut tool_call_idx: usize = 0;
@@ -5658,6 +5682,9 @@ async fn stream_inference_via_worker(
                 if handle_reasoning_marker(nt, reasoning_tokens.as_ref(), &mut in_reasoning) {
                     break 'route;
                 }
+                if in_reasoning {
+                    reasoning_token_count += 1;
+                }
                 match decode_stream.step(nt) {
                     Ok(Some(delta)) => {
                         if !emit_delta(&delta, &tx, in_reasoning).await {
@@ -5716,6 +5743,7 @@ async fn stream_inference_via_worker(
             reason: finish_reason,
             prompt_tokens: prompt_tokens.len() as u32,
             completion_tokens: all_tokens.len() as u32,
+            reasoning_tokens: reasoning_token_count,
         })
         .await;
 
@@ -5836,6 +5864,9 @@ fn run_inference_streaming(
     // they exist purely as state transitions. Seeded from the prompt:
     // Qwen3.6 opens a <think> block in the generation prompt itself.
     let mut in_reasoning = prompt_opens_reasoning(prompt_tokens, reasoning_tokens);
+    // Sub-count of completion tokens generated while inside the
+    // reasoning span — surfaced as `reasoning_tokens` on Finish (#64).
+    let mut reasoning_token_count: u32 = 0;
     // Tool-call state. While `in_tool_call`, content tokens get
     // accumulated into `tool_call_buf` instead of emitted; on the
     // close marker we parse the buffer and emit a structured
@@ -5927,6 +5958,9 @@ fn run_inference_streaming(
                     } else if handle_reasoning_marker(nt, reasoning_tokens, &mut in_reasoning) {
                         // marker — nothing to emit
                     } else {
+                        if in_reasoning {
+                            reasoning_token_count += 1;
+                        }
                         match decode_stream.step(nt) {
                             Ok(Some(delta)) => {
                                 if !emit_delta_blocking(&delta, tx, in_reasoning) {
@@ -5969,6 +6003,7 @@ fn run_inference_streaming(
         reason: finish_reason,
         prompt_tokens: prompt_tokens.len() as u32,
         completion_tokens: all_tokens.len() as u32,
+        reasoning_tokens: reasoning_token_count,
     });
     Ok(())
 }

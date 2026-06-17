@@ -202,6 +202,30 @@ pub struct ResponsesUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub total_tokens: u64,
+    /// OpenAI-standard breakdown of `output_tokens`. Optional and
+    /// additive. Carries `reasoning_tokens` for reasoning models (a
+    /// sub-count of `output_tokens`, never added into `total_tokens`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens_details: Option<OutputTokensDetails>,
+    /// OpenAI-standard breakdown of `input_tokens`. Populated once
+    /// prompt caching lands (#11); `None` until then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens_details: Option<InputTokensDetails>,
+}
+
+/// Sub-counts of `ResponsesUsage::output_tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputTokensDetails {
+    /// Tokens generated inside the model's reasoning span.
+    pub reasoning_tokens: u64,
+}
+
+/// Sub-counts of `ResponsesUsage::input_tokens`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InputTokensDetails {
+    /// Input tokens served from cache (cache-read rate). Populated
+    /// once prompt caching lands (#11).
+    pub cached_tokens: u64,
 }
 
 // ── Streaming event names ────────────────────────────────────────────
@@ -336,6 +360,8 @@ mod tests {
                 input_tokens: 5,
                 output_tokens: 3,
                 total_tokens: 8,
+                output_tokens_details: None,
+                input_tokens_details: None,
             }),
         };
         let json = serde_json::to_string(&r).unwrap();

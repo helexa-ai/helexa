@@ -29,9 +29,9 @@
 
 use cortex_core::openai::{ChatCompletionRequest, ChatMessage, MessageContent};
 use cortex_core::responses::{
-    ResponsesContentPart, ResponsesInput, ResponsesInputItem, ResponsesMessageContent,
-    ResponsesOutputContent, ResponsesOutputItem, ResponsesRequest, ResponsesResponse,
-    ResponsesUsage, events,
+    OutputTokensDetails, ResponsesContentPart, ResponsesInput, ResponsesInputItem,
+    ResponsesMessageContent, ResponsesOutputContent, ResponsesOutputItem, ResponsesRequest,
+    ResponsesResponse, ResponsesUsage, events,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -263,6 +263,7 @@ async fn run_projection(
 ) {
     let mut accumulated = String::new();
     let mut finish: Option<FinishReason> = None;
+    let mut usage: Option<ResponsesUsage> = None;
     let mut emitted_start = false;
 
     while let Some(event) = rx.recv().await {
@@ -303,8 +304,26 @@ async fn run_projection(
                 // projector handles tool calls. Future work
                 // tracked in #7 alongside the in_progress event.
             }
-            InferenceEvent::Finish { reason, .. } => {
+            InferenceEvent::Finish {
+                reason,
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+            } => {
                 finish = Some(reason);
+                // Surface usage on the streaming `response.completed`
+                // frame — clients (opencode) track context/spend off it.
+                // reasoning_tokens is an additive sub-count of
+                // output_tokens (omitted for non-reasoning models).
+                usage = Some(ResponsesUsage {
+                    input_tokens: prompt_tokens as u64,
+                    output_tokens: completion_tokens as u64,
+                    total_tokens: (prompt_tokens + completion_tokens) as u64,
+                    output_tokens_details: (reasoning_tokens > 0).then_some(OutputTokensDetails {
+                        reasoning_tokens: reasoning_tokens as u64,
+                    }),
+                    input_tokens_details: None,
+                });
             }
         }
     }
@@ -317,7 +336,7 @@ async fn run_projection(
     }
 
     let reason = finish.unwrap_or(FinishReason::Stop);
-    let _ = emit_finish_frames(&tx, &meta, &accumulated, reason).await;
+    let _ = emit_finish_frames(&tx, &meta, &accumulated, reason, usage.as_ref()).await;
 }
 
 async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &ResponseMeta) -> bool {
@@ -370,6 +389,7 @@ async fn emit_finish_frames(
     meta: &ResponseMeta,
     full_text: &str,
     reason: FinishReason,
+    usage: Option<&ResponsesUsage>,
 ) -> bool {
     let status = finish_to_status(reason);
     let full_part = json!({
@@ -413,7 +433,7 @@ async fn emit_finish_frames(
         ResponseStreamFrame {
             event_name: events::COMPLETED,
             data: json!({
-                "response": response_shell(meta, status, &[full_item], None)
+                "response": response_shell(meta, status, &[full_item], usage)
             }),
         },
     ];
@@ -439,14 +459,25 @@ fn response_shell(
     obj.insert("model".into(), Value::String(meta.model_id.clone()));
     obj.insert("output".into(), Value::Array(output.to_vec()));
     if let Some(u) = usage {
-        obj.insert(
-            "usage".into(),
-            json!({
-                "input_tokens": u.input_tokens,
-                "output_tokens": u.output_tokens,
-                "total_tokens": u.total_tokens,
-            }),
-        );
+        let mut usage_obj = serde_json::Map::new();
+        usage_obj.insert("input_tokens".into(), json!(u.input_tokens));
+        usage_obj.insert("output_tokens".into(), json!(u.output_tokens));
+        usage_obj.insert("total_tokens".into(), json!(u.total_tokens));
+        // Additive detail objects — only emitted when populated, so
+        // older clients see the unchanged three-field usage shape.
+        if let Some(d) = &u.output_tokens_details {
+            usage_obj.insert(
+                "output_tokens_details".into(),
+                json!({ "reasoning_tokens": d.reasoning_tokens }),
+            );
+        }
+        if let Some(d) = &u.input_tokens_details {
+            usage_obj.insert(
+                "input_tokens_details".into(),
+                json!({ "cached_tokens": d.cached_tokens }),
+            );
+        }
+        obj.insert("usage".into(), Value::Object(usage_obj));
     }
     Value::Object(obj)
 }
@@ -774,6 +805,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -815,6 +847,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completed_frame_carries_usage_with_reasoning_detail() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 30,
+            completion_tokens: 12,
+            reasoning_tokens: 4,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let frames = collect(out).await;
+        let completed = frames
+            .iter()
+            .find(|f| f.event_name == events::COMPLETED)
+            .unwrap();
+        let usage = &completed.data["response"]["usage"];
+        assert_eq!(usage["input_tokens"], 30);
+        assert_eq!(usage["output_tokens"], 12);
+        // reasoning_tokens is a sub-count of output_tokens, not summed
+        // into total_tokens.
+        assert_eq!(usage["total_tokens"], 42);
+        assert_eq!(usage["output_tokens_details"]["reasoning_tokens"], 4);
+        // Deferred cache detail is absent until #11.
+        assert!(usage.get("input_tokens_details").is_none());
+    }
+
+    #[tokio::test]
+    async fn completed_frame_omits_reasoning_detail_for_non_reasoning() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 8,
+            completion_tokens: 3,
+            reasoning_tokens: 0,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let frames = collect(out).await;
+        let completed = frames
+            .iter()
+            .find(|f| f.event_name == events::COMPLETED)
+            .unwrap();
+        let usage = &completed.data["response"]["usage"];
+        assert_eq!(usage["output_tokens"], 3);
+        assert!(usage.get("output_tokens_details").is_none());
+    }
+
+    #[tokio::test]
     async fn length_finish_maps_to_incomplete_status() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
         let out = project_responses_stream(rx, meta());
@@ -823,6 +909,7 @@ mod tests {
             reason: FinishReason::Length,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -868,6 +955,7 @@ mod tests {
             reason: FinishReason::Stop,
             prompt_tokens: 0,
             completion_tokens: 0,
+            reasoning_tokens: 0,
         })
         .await
         .unwrap();
@@ -892,6 +980,8 @@ mod tests {
                 input_tokens: 5,
                 output_tokens: 1,
                 total_tokens: 6,
+                output_tokens_details: None,
+                input_tokens_details: None,
             }),
         );
         assert_eq!(r.status, "completed");

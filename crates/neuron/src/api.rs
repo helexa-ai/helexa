@@ -390,6 +390,9 @@ async fn responses(
                     input_tokens: u.prompt_tokens,
                     output_tokens: u.completion_tokens,
                     total_tokens: u.prompt_tokens + u.completion_tokens,
+                    // Non-streaming reasoning accounting deferred (#64).
+                    output_tokens_details: None,
+                    input_tokens_details: None,
                 });
                 let meta = openai_responses::ResponseMeta {
                     response_id: mint_response_id(),

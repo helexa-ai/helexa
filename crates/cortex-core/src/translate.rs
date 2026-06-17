@@ -398,6 +398,8 @@ pub fn openai_to_anthropic(resp: ChatCompletionResponse) -> MessagesResponse {
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
+        completion_tokens_details: None,
+        prompt_tokens_details: None,
     });
 
     MessagesResponse {
@@ -768,6 +770,8 @@ mod stream_tests {
             prompt_tokens: 225,
             completion_tokens: 42,
             total_tokens: 267,
+            completion_tokens_details: None,
+            prompt_tokens_details: None,
         });
         t.on_chunk(&usage_chunk);
         let fin = t.finish();
