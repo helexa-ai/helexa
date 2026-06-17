@@ -793,6 +793,7 @@ name = "cortex-gateway"
 version = "0.1.16"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "bytes",
  "chrono",

@@ -1,3 +1,4 @@
+use crate::entitlements::CapWindow;
 use figment::{
     Figment,
     providers::{Env, Format, Toml},
@@ -16,6 +17,46 @@ pub struct GatewayConfig {
     /// non-packaged / local runs.
     #[serde(default = "default_models_path")]
     pub models_config: String,
+    /// Multi-tenant governance: auth + per-key token budgets (#47). Empty
+    /// by default — anonymous, uncapped — so existing single-operator
+    /// setups keep working until keys are configured.
+    #[serde(default)]
+    pub entitlements: EntitlementsConfig,
+}
+
+/// `[entitlements]` — the local/static [`crate::entitlements::EntitlementProvider`]
+/// source of truth (#50). Accounts, keys, and hard caps live here; the
+/// future upstream client (#57) ignores this section.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EntitlementsConfig {
+    /// Reject unauthenticated requests with `401 invalid_api_key` when
+    /// true. Default `false` (allow-anonymous) for dev / single-operator
+    /// continuity.
+    #[serde(default)]
+    pub require_auth: bool,
+    /// Static API keys and their budgets, consumed by the local provider.
+    #[serde(default)]
+    pub keys: Vec<ApiKeyConfig>,
+}
+
+/// One configured API key: the bearer token, the account it bills to, and
+/// its hard cap. `[[entitlements.keys]]` in TOML.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiKeyConfig {
+    /// The bearer token clients send in `Authorization: Bearer <key>`.
+    pub key: String,
+    /// Billable account. Multiple keys may share one account.
+    pub account_id: String,
+    /// Stable per-key identifier for ledger/metrics labels. Defaults to
+    /// `account_id` when omitted, so the secret is never used as a label.
+    #[serde(default)]
+    pub key_id: Option<String>,
+    /// Hard token cap. `None`/omitted = uncapped (e.g. operator infra key).
+    #[serde(default)]
+    pub hard_cap: Option<u64>,
+    /// Cap-window semantics. Default: a non-resetting [`CapWindow::Balance`].
+    #[serde(default)]
+    pub window: CapWindow,
 }
 
 fn default_models_path() -> String {
@@ -87,6 +128,7 @@ impl Default for GatewayConfig {
             },
             neurons: vec![],
             models_config: default_models_path(),
+            entitlements: EntitlementsConfig::default(),
         }
     }
 }

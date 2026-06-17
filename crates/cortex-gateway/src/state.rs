@@ -1,7 +1,10 @@
+use crate::entitlements_local::LocalEntitlementProvider;
 use cortex_core::catalogue::ModelCatalogue;
 use cortex_core::config::{EvictionSettings, GatewayConfig, NeuronEndpoint};
+use cortex_core::entitlements::EntitlementProvider;
 use cortex_core::node::NodeState;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// Shared fleet state, protected by a RwLock for concurrent reader access.
@@ -11,6 +14,12 @@ pub struct CortexState {
     pub eviction: EvictionSettings,
     pub catalogue: ModelCatalogue,
     pub http_client: reqwest::Client,
+    /// Resolves bearer keys to principals and enforces token budgets (#47).
+    /// A local/static provider today (#50); the upstream client later (#57).
+    pub entitlements: Arc<dyn EntitlementProvider>,
+    /// Whether to reject unauthenticated requests (#49). Read by the auth
+    /// middleware once it lands.
+    pub require_auth: bool,
 }
 
 impl CortexState {
@@ -34,6 +43,9 @@ impl CortexState {
 
         let catalogue = ModelCatalogue::load(&config.models_config);
 
+        let entitlements: Arc<dyn EntitlementProvider> =
+            Arc::new(LocalEntitlementProvider::from_config(&config.entitlements));
+
         Self {
             nodes: RwLock::new(nodes),
             neuron_configs: config.neurons.clone(),
@@ -43,6 +55,8 @@ impl CortexState {
                 .timeout(std::time::Duration::from_secs(300))
                 .build()
                 .expect("failed to build HTTP client"),
+            entitlements,
+            require_auth: config.entitlements.require_auth,
         }
     }
 }

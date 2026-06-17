@@ -31,6 +31,7 @@ async fn test_poller_discovers_models() {
             endpoint: mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -82,6 +83,7 @@ async fn test_poller_updates_gateway_models_endpoint() {
             endpoint: mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -153,6 +155,7 @@ async fn test_models_endpoint_unions_capabilities_across_nodes() {
             },
         ],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -215,6 +218,7 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
             endpoint: "http://127.0.0.1:1".into(),
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -252,6 +256,7 @@ async fn test_poller_removes_stale_models() {
             endpoint: mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -282,6 +287,7 @@ async fn test_poller_removes_stale_models() {
             endpoint: new_mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet2 = Arc::new(CortexState::from_config(&config2));
@@ -363,6 +369,7 @@ async fn test_poller_captures_activation_from_health() {
             endpoint: mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -407,6 +414,7 @@ async fn test_poller_parses_recovering_status() {
             endpoint: mock_url,
         }],
         models_config: "/dev/null".into(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));

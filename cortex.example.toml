@@ -48,3 +48,45 @@ vram_mb = 12288           # e.g. RTX 3060 (12 GB)
 pinned = [
     "your-org/embedding-model",
 ]
+
+# -- Entitlements (multi-tenant governance, #47) -------------------------
+# Identity + per-key token budgets. Omit this section entirely for the
+# legacy single-operator behaviour: requests are anonymous and uncapped.
+#
+# The local/static provider below is the source of truth for accounts,
+# keys, and hard caps until the upstream clearing house exists. Identity
+# rides standard bearer auth only — clients send
+#   Authorization: Bearer <key>
+# no custom headers or body fields.
+
+[entitlements]
+# Reject unauthenticated requests with 401 invalid_api_key. Leave false
+# (allow-anonymous) during rollout; flip to true once keys are issued.
+require_auth = false
+
+# One entry per API key.
+[[entitlements.keys]]
+key = "sk-example-rolling"        # the bearer token the client sends
+account_id = "team-research"      # billable account (keys may share one)
+key_id = "research-ci"            # stable label for ledger/metrics (optional)
+hard_cap = 5_000_000              # hard token cap over the window
+# Rolling window that resets — over-cap requests get 429 rate_limit_exceeded
+# + Retry-After, so well-behaved clients (opencode/AI SDK) back off and retry.
+window = { kind = "rolling", seconds = 3600 }
+
+[[entitlements.keys]]
+key = "sk-example-balance"
+account_id = "team-research"
+key_id = "research-prepaid"
+hard_cap = 20_000_000
+# Hard balance, no reset — exhaustion returns 429 insufficient_quota
+# (the client surfaces and stops). This is the default when `window` is
+# omitted. Never 402.
+window = { kind = "balance" }
+
+[[entitlements.keys]]
+key = "sk-example-infra"
+account_id = "operator"
+key_id = "infra"
+# No hard_cap → uncapped operator infra key (own fleet, own use). Still
+# metered for visibility.

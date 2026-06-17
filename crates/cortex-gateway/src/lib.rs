@@ -1,4 +1,5 @@
 pub mod anthropic_sse;
+pub mod entitlements_local;
 pub mod error;
 pub mod evictor;
 pub mod handlers;

@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 cortex-core.workspace = true
+async-trait.workspace = true
 tokio.workspace = true
 axum.workspace = true
 tower.workspace = true

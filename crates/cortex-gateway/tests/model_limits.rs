@@ -54,6 +54,7 @@ capabilities = ["text"]
             endpoint: "http://127.0.0.1:1".into(),
         }],
         models_config: cat_path.to_string_lossy().into_owned(),
+        entitlements: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));

@@ -3,6 +3,7 @@ pub mod build_info;
 pub mod catalogue;
 pub mod config;
 pub mod discovery;
+pub mod entitlements;
 pub mod error_envelope;
 pub mod harness;
 pub mod metrics;
