@@ -5,11 +5,28 @@ use crate::state::CortexState;
 use chrono::Utc;
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
-use cortex_core::node::{ModelEntry, ModelStatus};
+use cortex_core::node::{ModelEntry, ModelStatus, NodeState};
 use std::sync::Arc;
 use std::time::Duration;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(10);
+
+/// Consecutive failed `/models` polls before a node is marked unhealthy.
+/// Debounces transient misses (a busy neuron briefly slow to answer) so a
+/// single blip can't yank a node — and its models — out of routing. At the
+/// 10s poll interval this tolerates ~20s of flapping before evicting.
+const POLL_FAILURE_THRESHOLD: u32 = 3;
+
+/// Record a failed poll for `node`, marking it unhealthy only once failures
+/// reach [`POLL_FAILURE_THRESHOLD`]. Below the threshold the node keeps its
+/// last-known health, riding over transient misses. A successful poll resets
+/// the counter (see the success arm in `poll_once`).
+fn record_poll_failure(node: &mut NodeState) {
+    node.consecutive_poll_failures = node.consecutive_poll_failures.saturating_add(1);
+    if node.consecutive_poll_failures >= POLL_FAILURE_THRESHOLD {
+        node.healthy = false;
+    }
+}
 
 /// Runs forever, polling all neurons on a fixed interval.
 pub async fn poll_loop(fleet: Arc<CortexState>) {
@@ -138,13 +155,14 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                     // Remove models no longer reported by the neuron.
                     node.models.retain(|id, _| seen.contains(id));
 
+                    node.consecutive_poll_failures = 0;
                     node.healthy = true;
                     node.last_poll = Some(Utc::now());
                     tracing::debug!(node = name, models = models.len(), "poll ok");
                 }
                 Err(e) => {
                     tracing::warn!(node = name, error = %e, "failed to parse /models response");
-                    node.healthy = false;
+                    record_poll_failure(node);
                 }
             }
         }
@@ -154,11 +172,11 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                 status = %resp.status(),
                 "neuron returned non-success status"
             );
-            node.healthy = false;
+            record_poll_failure(node);
         }
         Err(e) => {
             tracing::warn!(node = name, error = %e, "failed to reach neuron");
-            node.healthy = false;
+            record_poll_failure(node);
         }
     }
 

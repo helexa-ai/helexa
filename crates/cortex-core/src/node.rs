@@ -32,6 +32,12 @@ pub struct NodeState {
     /// least-busy replica when a model is loaded on more than one neuron.
     /// Empty until the first /health poll reports load.
     pub model_load: HashMap<String, ModelLoad>,
+    /// Consecutive failed `/models` polls. The poller marks a node
+    /// unhealthy only once this crosses a threshold, so a single transient
+    /// miss (e.g. a neuron momentarily slow to answer while busy) doesn't
+    /// yank the node — and all its models — out of routing. Reset to 0 on
+    /// any successful poll.
+    pub consecutive_poll_failures: u32,
 }
 
 /// A model registered on a node, with its runtime status.
