@@ -33,7 +33,7 @@ use crate::wire::{
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 #[cfg(feature = "cuda")]
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -205,23 +205,50 @@ impl LoadedHandle {
     /// `NEURON_MAX_PROMPT_TOKENS`, when explicitly set, is applied as a
     /// clamp-only upper bound on the derived `context` — a backstop, not
     /// the authority. Unset → no clamp; the derivation stands alone.
-    pub async fn derived_limit(
+    /// Refresh the cached free-VRAM reading used by [`Self::derived_limit`]
+    /// (#53). Queries the device worker — so it MUST run off the request
+    /// path (background refresher / load-time seed), never from a control
+    /// endpoint, since the query queues behind inference on the worker.
+    /// Single-GPU caches the device's free VRAM; TP caches the tightest
+    /// free across ranks (the same value `derived_limit` used pre-cache).
+    pub async fn refresh_free_mb(&self) {
+        let free = match self {
+            LoadedHandle::Single(m) => m.query_vram().await.0,
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.query_vram_tightest_free_mb().await,
+        };
+        // Don't clobber a good cached value with a transient `0`
+        // (worker gone/poisoned sentinel).
+        if free > 0 {
+            match self {
+                LoadedHandle::Single(m) => m.last_free_mb.store(free, Ordering::Release),
+                #[cfg(feature = "cuda")]
+                LoadedHandle::Tp(m) => m.last_free_mb.store(free, Ordering::Release),
+            }
+        }
+    }
+
+    pub fn derived_limit(
         &self,
         cfg: &crate::config::ContextLimitConfig,
     ) -> Option<cortex_core::harness::ModelLimit> {
         if !cfg.enabled {
             return None;
         }
+        // Read the *cached* free VRAM — never query the device worker here.
+        // This runs on `GET /models`; a live query would queue behind
+        // inference on the worker thread and stall the control plane (#53).
+        // The cache is refreshed off the request path (load + background task).
         let (profile, free_mb, rate) = match self {
             LoadedHandle::Single(m) => (
                 m.context_profile?,
-                m.query_vram().await.0,
+                m.last_free_mb.load(Ordering::Acquire),
                 m.prefill_rate.get(),
             ),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (
                 m.context_profile?,
-                m.query_vram_tightest_free_mb().await,
+                m.last_free_mb.load(Ordering::Acquire),
                 m.prefill_rate.get(),
             ),
         };
@@ -391,6 +418,13 @@ pub struct LoadedModel {
     /// request-path enforcement reads this — `0` means "not derived yet"
     /// → fall back to the static `NEURON_MAX_PROMPT_TOKENS`.
     pub derived_input_cap: AtomicUsize,
+    /// Cached free VRAM (MiB) for the control plane (#53). `derived_limit`
+    /// (served by `GET /models`) reads this instead of querying the device
+    /// worker, which during inference is saturated processing forward jobs —
+    /// a live query would queue behind them and stall `/models`, tripping
+    /// cortex's health poller into marking the node unhealthy. Refreshed off
+    /// the request path: seeded at load, then by a background task.
+    pub last_free_mb: AtomicU64,
 }
 
 impl LoadedModel {
@@ -503,6 +537,10 @@ pub struct TpLoadedModel {
     /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
     /// needs to hold per model lifetime (snapshots die with the model).
     pub next_snapshot_id: std::sync::atomic::AtomicU64,
+    /// Cached tightest free VRAM (MiB) for the control plane (#53) — see
+    /// [`LoadedModel::last_free_mb`]. Read by `derived_limit` so `GET /models`
+    /// never fans a VRAM query out to the (inference-saturated) TP workers.
+    pub last_free_mb: AtomicU64,
 }
 
 #[cfg(feature = "cuda")]
@@ -1109,6 +1147,32 @@ fn debug_poison_armed(model_id: &str) -> bool {
     armed && !FIRED.swap(true, Ordering::Relaxed)
 }
 
+/// Background control-plane VRAM cache refresher (#53). Every few seconds,
+/// refreshes each loaded model's `last_free_mb` so `derived_limit` (served
+/// by `GET /models`) reads a cached value and never queries the device
+/// worker on the request path — a live query would queue behind inference
+/// forward jobs on the worker thread, stalling `/models` for seconds and
+/// tripping cortex's health poller into evicting the node from routing.
+/// Holds a `Weak` so a shutting-down harness lets the task exit. The query
+/// itself may queue behind inference, but that only delays this background
+/// refresh — no request-path caller is ever blocked.
+async fn vram_cache_refresh_loop(weak: std::sync::Weak<CandleHarness>) {
+    const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+    loop {
+        tokio::time::sleep(REFRESH_INTERVAL).await;
+        let Some(this) = weak.upgrade() else {
+            return; // harness dropped — exit
+        };
+        // Snapshot handles, then release the read lock before awaiting the
+        // (possibly slow) worker queries so we never hold it across an await.
+        let handles: Vec<LoadedHandle> = this.models.read().await.values().cloned().collect();
+        drop(this);
+        for handle in handles {
+            handle.refresh_free_mb().await;
+        }
+    }
+}
+
 /// Background auto-recovery task (#17). Drains poisoned model ids and
 /// rebuilds each via [`CandleHarness::recover_one`]. Holds a `Weak` so a
 /// shutting-down harness lets the task exit; processes one id at a time,
@@ -1595,6 +1659,11 @@ impl CandleHarness {
         if tokio::runtime::Handle::try_current().is_ok() {
             let weak = Arc::downgrade(&this);
             tokio::spawn(recovery_loop(weak, recovery_rx));
+            // Control-plane VRAM cache refresher (#53): keeps each loaded
+            // model's `last_free_mb` current off the request path, so
+            // `derived_limit` / `GET /models` never query the device worker
+            // (which is saturated during inference) and never stall.
+            tokio::spawn(vram_cache_refresh_loop(Arc::downgrade(&this)));
         }
         this
     }
@@ -2959,7 +3028,7 @@ impl Harness for CandleHarness {
             // physics + live free VRAM + measured prefill rate. `None`
             // for arches without a context profile. `cost` stays
             // operator-set in the catalogue, filled by the gateway.
-            let limit = h.derived_limit(&self.context_limit_cfg).await;
+            let limit = h.derived_limit(&self.context_limit_cfg);
             out.push(ModelInfo {
                 id: h.model_id().into(),
                 harness: "candle".into(),
@@ -3209,6 +3278,7 @@ impl Harness for CandleHarness {
             context_profile,
             prefill_rate: super::context_limit::PrefillRateEma::new(),
             derived_input_cap: AtomicUsize::new(0),
+            last_free_mb: AtomicU64::new(0),
         });
         if loaded.prefix_cache.is_some() {
             tracing::info!(
@@ -3217,6 +3287,14 @@ impl Harness for CandleHarness {
                 max_entries = self.prefix_cache_cfg.max_entries,
                 "prefix cache enabled for this model"
             );
+        }
+
+        // Seed the control-plane VRAM cache (#53) while the worker is idle
+        // (load just finished), so `/models` has a value before the
+        // background refresher's first tick and never queries the worker.
+        let (free_mb, _) = loaded.query_vram().await;
+        if free_mb > 0 {
+            loaded.last_free_mb.store(free_mb, Ordering::Release);
         }
 
         let mut models = self.models.write().await;
@@ -3469,6 +3547,7 @@ impl CandleHarness {
             ),
             prefill_rate: super::context_limit::PrefillRateEma::new(),
             derived_input_cap: AtomicUsize::new(0),
+            last_free_mb: AtomicU64::new(0),
             next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
         });
         if tp_loaded.prefix_cache.is_some() {
@@ -3478,6 +3557,14 @@ impl CandleHarness {
                 max_entries = self.prefix_cache_cfg.max_entries,
                 "prefix cache enabled for this TP model"
             );
+        }
+
+        // Seed the control-plane VRAM cache (#53) — tightest free across
+        // ranks, while the workers are idle post-load — so `/models` never
+        // fans a query out to the inference-busy TP workers.
+        let free_mb = tp_loaded.query_vram_tightest_free_mb().await;
+        if free_mb > 0 {
+            tp_loaded.last_free_mb.store(free_mb, Ordering::Release);
         }
 
         let mut models = self.models.write().await;
