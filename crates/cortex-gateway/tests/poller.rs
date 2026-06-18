@@ -228,10 +228,26 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
         nodes.get_mut("dead-node").unwrap().healthy = true;
     }
 
+    // Debounce (#53 follow-up): a single missed poll must NOT evict a
+    // previously-healthy node — a busy neuron briefly slow to answer
+    // shouldn't yank its models out of routing.
     cortex_gateway::poller::poll_once(&fleet).await;
+    assert!(
+        fleet.nodes.read().await.get("dead-node").unwrap().healthy,
+        "one failed poll should not mark a healthy node unhealthy"
+    );
 
-    let nodes = fleet.nodes.read().await;
-    assert!(!nodes.get("dead-node").unwrap().healthy);
+    // It flips unhealthy only after POLL_FAILURE_THRESHOLD (3) consecutive
+    // failures.
+    cortex_gateway::poller::poll_once(&fleet).await;
+    cortex_gateway::poller::poll_once(&fleet).await;
+    assert!(
+        !fleet.nodes.read().await.get("dead-node").unwrap().healthy,
+        "three consecutive failed polls should mark the node unhealthy"
+    );
+
+    // A subsequent successful poll would reset the counter and restore
+    // health; covered implicitly by the discovery tests above.
 }
 
 #[tokio::test]

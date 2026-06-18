@@ -50,6 +50,10 @@ pub enum RouteError {
         "model '{model_id}' is in the catalogue but no healthy neuron's topology satisfies its constraints"
     )]
     NoFeasibleNeuron { model_id: String },
+    #[error(
+        "model '{model_id}' is feasible on a neuron that is currently unhealthy — retry shortly"
+    )]
+    FeasibleNodeUnhealthy { model_id: String },
     #[error("cold-load of '{model_id}' on '{node}' failed: {message}")]
     ColdLoadFailed {
         model_id: String,
@@ -68,7 +72,9 @@ impl RouteError {
     /// safe to retry the same request); everything else is 404.
     pub fn http_status(&self) -> u16 {
         match self {
-            RouteError::NoHealthyNodes | RouteError::ModelRecovering { .. } => 503,
+            RouteError::NoHealthyNodes
+            | RouteError::ModelRecovering { .. }
+            | RouteError::FeasibleNodeUnhealthy { .. } => 503,
             _ => 404,
         }
     }
@@ -81,7 +87,8 @@ impl RouteError {
             | RouteError::EndpointResolveFailed(_, _)
             | RouteError::NoFeasibleNeuron { .. }
             | RouteError::ColdLoadFailed { .. }
-            | RouteError::ModelRecovering { .. } => "api_error",
+            | RouteError::ModelRecovering { .. }
+            | RouteError::FeasibleNodeUnhealthy { .. } => "api_error",
         }
     }
 
@@ -94,6 +101,7 @@ impl RouteError {
             RouteError::NoFeasibleNeuron { .. } => "service_unavailable",
             RouteError::ColdLoadFailed { .. } => "service_unavailable",
             RouteError::ModelRecovering { .. } => "service_unavailable",
+            RouteError::FeasibleNodeUnhealthy { .. } => "service_unavailable",
         }
     }
 
@@ -105,6 +113,7 @@ impl RouteError {
     pub fn retry_after_secs(&self) -> Option<u64> {
         match self {
             RouteError::ModelRecovering { .. } => Some(2),
+            RouteError::FeasibleNodeUnhealthy { .. } => Some(3),
             RouteError::NoHealthyNodes => Some(5),
             _ => None,
         }
@@ -252,11 +261,32 @@ async fn pick_feasible_neuron(
         b.2.cmp(&a.2) // pinned first (true > false)
             .then(a.0.cmp(&b.0))
     });
-    let pick = candidates.into_iter().next();
-    pick.map(|(n, e, _)| (n, e))
-        .ok_or_else(|| RouteError::NoFeasibleNeuron {
+    if let Some((n, e, _)) = candidates.into_iter().next() {
+        return Ok((n, e));
+    }
+
+    // No *healthy* feasible neuron. Distinguish a transient outage from a
+    // permanent misconfiguration: if some neuron is topologically feasible
+    // but currently unhealthy (e.g. it briefly missed polls while busy),
+    // this is retryable — return 503 + Retry-After so the client backs off
+    // and retries instead of treating a 404 as a hard failure. Only when no
+    // neuron could *ever* satisfy the topology is it a permanent 404.
+    let feasible_but_unhealthy = nodes.values().any(|node| {
+        !node.healthy
+            && node
+                .discovery
+                .as_ref()
+                .is_some_and(|disc| profile.is_feasible_on(&node.name, &disc.devices))
+    });
+    if feasible_but_unhealthy {
+        Err(RouteError::FeasibleNodeUnhealthy {
             model_id: profile.id.clone(),
         })
+    } else {
+        Err(RouteError::NoFeasibleNeuron {
+            model_id: profile.id.clone(),
+        })
+    }
 }
 
 /// Issue `POST {endpoint}/models/load` for this profile on this neuron,
