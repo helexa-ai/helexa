@@ -54,10 +54,26 @@ pub struct ModelLimit {
     pub output: usize,
 }
 
-/// Operator-set pricing in USD per 1M tokens.
+/// Operator-set pricing, **USD per 1,000,000 tokens, as JSON numbers**
+/// (`float`) — the models.dev/opencode `cost` convention, which is what
+/// helexa's primary client reads. NOT per-token, NOT decimal strings (that
+/// is OpenRouter's `pricing` shape, which helexa deliberately does not emit
+/// — see #68). A client must not rescale by 10⁶.
 ///
-/// Self-hosted deployments typically leave both at `0.0`.  Cache fields are
-/// optional — set when the backend supports a prefix-cache discount tier.
+/// `cost` is sourced from the operator's `models.toml` catalogue profile and
+/// surfaced verbatim on `/v1/models`. The *absent* vs *zero* distinction is
+/// intentional and load-bearing (#68):
+/// - **`cost` absent** (the whole object omitted) — the model is **not
+///   priced**: the operator has not declared a rate. Clients should treat
+///   spend as unknown, not free.
+/// - **`cost` present with `input`/`output` = `0.0`** — the model is
+///   **intentionally free** (self-hosted, no charge). opencode renders `$0`.
+///
+/// Cache fields are optional — set them only when the backend supports a
+/// prefix-cache discount tier (relevant once cache-token reporting, #64,
+/// lands). The advertised rate here must equal the rate metering (#51) and
+/// reconciliation (#58/#59) bill against; today both read this catalogue
+/// value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCost {
     /// USD per 1M input (prompt) tokens.
@@ -98,7 +114,8 @@ pub struct ModelInfo {
     /// `None` when neither the catalogue nor the loaded model can provide it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<ModelLimit>,
-    /// Operator-set pricing in USD per 1M tokens (0.0 = free/self-hosted).
+    /// Operator-set pricing — see [`ModelCost`] for units and the
+    /// absent (not priced) vs `0.0` (intentionally free) distinction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
     /// `true` when the model's tokenizer contains recognised tool-call

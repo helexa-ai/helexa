@@ -136,7 +136,9 @@ pub struct CortexModelEntry {
     /// at load time. `None` when neither source provides it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<ModelLimit>,
-    /// Operator-set pricing in USD per 1M tokens (0.0 = free/self-hosted).
+    /// Operator-set pricing from the catalogue profile — see
+    /// [`cortex_core::harness::ModelCost`] for units (USD per 1M tokens) and
+    /// the absent (not priced) vs `0.0` (intentionally free) distinction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
     /// `true` when any neuron reports this model supports tool calls.

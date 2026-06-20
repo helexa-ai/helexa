@@ -26,6 +26,18 @@
 #                        the load to neuron as `scheme:id` so the daemon
 #                        fetches from the right registry. Omit to let
 #                        neuron substitute its own `default_source`.
+#   cost.*             - optional operator-set pricing, surfaced verbatim on
+#                        GET /v1/models for clients (opencode) to display
+#                        spend. USD per 1,000,000 tokens, as numbers:
+#                          cost.input        prompt tokens
+#                          cost.output       completion tokens
+#                          cost.cache_read   cache-hit tokens   (optional tier)
+#                          cost.cache_write  cache-write tokens (optional tier)
+#                        Absent vs zero is intentional (#68): OMIT the whole
+#                        cost block to mean "price not declared / unknown";
+#                        set cost.input/output = 0.0 to mean "intentionally
+#                        free" (self-hosted). The advertised rate must match
+#                        what metering bills against.
 
 # Tensor-parallel target — needs a neuron with at least 2 large GPUs.
 # The example pins to a specific neuron name; adjust or remove the
@@ -41,13 +53,16 @@ pinned_on = ["your-multi-gpu-neuron"]
 limit.context = 32768
 limit.input = 28672
 limit.output = 4096
-# Pricing in USD per 1M tokens — 0.0 for self-hosted.
+# Pricing in USD per 1M tokens. Explicit 0.0 = intentionally free
+# (self-hosted) — distinct from omitting `cost`, which means "not priced".
 cost.input = 0.0
 cost.output = 0.0
 # Static capability hints (unioned with runtime-detected flags).
 capabilities = ["text", "reasoning"]
 
 # Mid-size dense model — fits on any single GPU with ≥16 GB VRAM.
+# No `cost` block here: this model is "not priced" — /v1/models omits the
+# `cost` key for it, so opencode shows spend as unknown rather than $0.
 [[models]]
 id = "Qwen/Qwen3-8B"
 harness = "candle"
