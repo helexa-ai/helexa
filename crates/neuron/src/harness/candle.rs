@@ -1346,24 +1346,66 @@ fn validate_vision_prefill(prompt_len: usize, vram_free_mb: u64) -> Result<(), I
 /// the caller as `max`), or if free VRAM is below the floor. Enforcing
 /// the *derived* cap means a VRAM-tight host rejects a prompt that
 /// wouldn't fit, instead of accepting it and OOMing mid-prefill.
+///
+/// The third VRAM check — the length-aware backstop (#65) — closes the
+/// poll-vs-request snapshot gap #67 leaves open. `max` is
+/// `effective_prompt_cap()`, the input budget derived at **/models poll
+/// time** from the tightest card's free VRAM *then*. If free VRAM has
+/// since dropped (a co-resident model loaded, a concurrent prefill grew
+/// its KV), a prompt at-or-below that now-stale cap still clears the
+/// static floor yet no longer fits — and OOMs mid-prefill, poisoning the
+/// device context (the 2026-05-26 beast incident the #47 work exists to
+/// eliminate). So we re-run the same length×KV-vs-VRAM physics #67 uses
+/// for the cap, but against **request-time** free VRAM, reusing the
+/// model's [`ContextProfile`] rather than re-deriving the KV cost. This
+/// gives the text path the live-VRAM guard the vision path already has
+/// (`validate_vision_prefill`). `profile`/`kv_bytes_per_token_per_card`
+/// are per-card and `vram_free_mb` is the tightest card's free VRAM, so
+/// the two are commensurable on both single-GPU and TP loads.
 fn validate_request(
     prompt_len: usize,
     vram_free_mb: u64,
     max: usize,
+    profile: Option<&super::context_limit::ContextProfile>,
+    cfg: &crate::config::ContextLimitConfig,
 ) -> Result<(), InferenceError> {
     if prompt_len > max {
         return Err(InferenceError::PromptTooLong { prompt_len, max });
     }
-    // VRAM check is skipped on CPU loads (vram_free_mb == 0 sentinel)
+    // VRAM checks are skipped on CPU loads (vram_free_mb == 0 sentinel)
     // because the (0, 0) reply from `query_vram` is also what a missing
     // worker returns. The CPU path has no per-GPU memory limit anyway —
     // host RAM is bounded by the OOM killer, not this check.
+    if vram_free_mb == 0 {
+        return Ok(());
+    }
     let min = min_free_vram_mb();
-    if vram_free_mb != 0 && vram_free_mb < min {
+    if vram_free_mb < min {
         return Err(InferenceError::InsufficientVram {
             free_mb: vram_free_mb,
             required_mb: min,
         });
+    }
+    // Length-aware backstop (#65): KV the whole sequence (prompt +
+    // generation reserve) will occupy, plus the prefill activation
+    // headroom, plus the static floor as an additive cushion — all per
+    // card. A degenerate zero-KV profile (no full-attention layers) or a
+    // model with no captured profile skips this and rides the floor
+    // check above, mirroring `derive_limit`'s VRAM-ceiling fallback.
+    if let Some(profile) = profile
+        && profile.kv_bytes_per_token_per_card > 0
+    {
+        let tokens = (prompt_len as u64).saturating_add(cfg.output_reserve_tokens as u64);
+        let kv_mb = profile.kv_bytes_per_token_per_card.saturating_mul(tokens) / (1024 * 1024);
+        let required_mb = kv_mb
+            .saturating_add(cfg.activation_headroom_mb)
+            .saturating_add(min);
+        if required_mb > vram_free_mb {
+            return Err(InferenceError::InsufficientVram {
+                free_mb: vram_free_mb,
+                required_mb,
+            });
+        }
     }
     Ok(())
 }
@@ -2250,7 +2292,13 @@ impl CandleHarness {
                 "chat_completion: starting"
             );
 
-            validate_request(prompt_len, vram_free_mb, loaded.effective_prompt_cap())?;
+            validate_request(
+                prompt_len,
+                vram_free_mb,
+                loaded.effective_prompt_cap(),
+                loaded.context_profile.as_ref(),
+                &self.context_limit_cfg,
+            )?;
             if vision_route.is_some() {
                 validate_vision_prefill(prompt_len, vram_free_mb)?;
             }
@@ -2704,7 +2752,13 @@ impl CandleHarness {
             );
         }
 
-        validate_request(prompt_len, vram_free_mb, loaded.effective_prompt_cap())?;
+        validate_request(
+            prompt_len,
+            vram_free_mb,
+            loaded.effective_prompt_cap(),
+            loaded.context_profile.as_ref(),
+            &self.context_limit_cfg,
+        )?;
         if vision_route.is_some() {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
@@ -3633,8 +3687,11 @@ impl CandleHarness {
         }
 
         let tp_for_marker = Arc::clone(&tp);
-        let handle =
-            tokio::spawn(chat_completion_tp_inner(tp, request, principal).instrument(span.clone()));
+        let context_limit_cfg = self.context_limit_cfg.clone();
+        let handle = tokio::spawn(
+            chat_completion_tp_inner(tp, request, principal, context_limit_cfg)
+                .instrument(span.clone()),
+        );
         match handle.await {
             Ok(Ok(resp)) => Ok(resp),
             Ok(Err(e)) => {
@@ -3846,7 +3903,13 @@ impl CandleHarness {
             "TP chat_completion (stream): starting"
         );
 
-        validate_request(prompt_len, vram_free_mb, tp.effective_prompt_cap())?;
+        validate_request(
+            prompt_len,
+            vram_free_mb,
+            tp.effective_prompt_cap(),
+            tp.context_profile.as_ref(),
+            &self.context_limit_cfg,
+        )?;
         if vision_route.is_some() {
             validate_vision_prefill(prompt_len, vram_free_mb)?;
         }
@@ -4367,6 +4430,7 @@ async fn chat_completion_tp_inner(
     tp: Arc<TpLoadedModel>,
     request: ChatCompletionRequest,
     principal: Option<String>,
+    context_limit_cfg: crate::config::ContextLimitConfig,
 ) -> Result<ChatCompletionResponse, InferenceError> {
     let req_start = std::time::Instant::now();
     let model_id = request.model.clone();
@@ -4450,7 +4514,13 @@ async fn chat_completion_tp_inner(
         "TP chat_completion: starting"
     );
 
-    validate_request(prompt_len, vram_free_mb, tp.effective_prompt_cap())?;
+    validate_request(
+        prompt_len,
+        vram_free_mb,
+        tp.effective_prompt_cap(),
+        tp.context_profile.as_ref(),
+        &context_limit_cfg,
+    )?;
     if vision_route.is_some() {
         validate_vision_prefill(prompt_len, vram_free_mb)?;
     }
@@ -6765,6 +6835,110 @@ mod tests {
         // 12960*500/1000 = 8480 MiB) — the chunked prefill handles it,
         // so the guard must NOT reject it.
         assert!(validate_vision_prefill(12_960, 12_445).is_ok());
+    }
+
+    // ── #65: request-time length-aware VRAM backstop (text prefill) ──
+
+    /// A beast-like profile: 16 full-attn layers, 4 kv heads, head_dim
+    /// 256, f16, TP=2 → 32 KiB/token/card (same numbers as the
+    /// `context_limit` unit tests). At defaults this makes the
+    /// length-aware footprint `(prompt_len + 8192)/32 + 2048 + 1500` MiB
+    /// per card.
+    fn backstop_profile() -> super::super::context_limit::ContextProfile {
+        super::super::context_limit::ContextProfile {
+            max_position_embeddings: 262_144,
+            kv_bytes_per_token_per_card: super::super::context_limit::kv_bytes_per_token(
+                16, 4, 256, 2, 2,
+            ),
+            world_size: 2,
+        }
+    }
+
+    /// A prompt under the cap with ample free VRAM passes; the same
+    /// prompt over the cap is `PromptTooLong` before any VRAM math.
+    #[test]
+    fn validate_request_cap_and_fit() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+        // Under cap, 40 GB free → fits.
+        assert!(validate_request(8_000, 40_000, 100_000, Some(&profile), &cfg).is_ok());
+        // Over the cap → PromptTooLong, independent of VRAM.
+        assert!(matches!(
+            validate_request(100_001, 40_000, 100_000, Some(&profile), &cfg),
+            Err(InferenceError::PromptTooLong { .. })
+        ));
+    }
+
+    /// The CPU sentinel (`vram_free_mb == 0`) skips every VRAM check,
+    /// including the new length-aware one — host RAM is the OOM killer's
+    /// problem, not this guard's.
+    #[test]
+    fn validate_request_cpu_sentinel_skips_vram() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+        assert!(validate_request(1_000_000, 0, 2_000_000, Some(&profile), &cfg).is_ok());
+    }
+
+    /// The static floor remains a backstop: free VRAM below
+    /// `min_free_vram_mb()` is rejected before the length-aware estimate
+    /// even runs (so `required_mb` is the floor, not the KV footprint).
+    #[test]
+    fn validate_request_static_floor_still_binds() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+        assert!(matches!(
+            validate_request(10, 800, 100_000, Some(&profile), &cfg),
+            Err(InferenceError::InsufficientVram {
+                free_mb: 800,
+                required_mb: 1500
+            })
+        ));
+    }
+
+    /// A model with no captured profile (non-qwen3_5 arch) has no
+    /// length-aware physics to apply, so it rides only the static floor —
+    /// a fitting prompt with VRAM above the floor passes.
+    #[test]
+    fn validate_request_no_profile_rides_floor() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        assert!(validate_request(500_000, 5_000, 1_000_000, None, &cfg).is_ok());
+    }
+
+    /// The acceptance test (#65): a cap derived against *ample* free VRAM
+    /// is later applied at request time against *tightened* free VRAM. A
+    /// prompt sized exactly at the now-stale `effective_prompt_cap()`
+    /// clears the cap and the static floor, yet no longer fits — the
+    /// length-aware backstop catches it with a clean `InsufficientVram`
+    /// instead of an OOM-poisoned context. Same prompt with the original
+    /// ample VRAM still passes, proving the guard only bites on staleness.
+    #[test]
+    fn validate_request_catches_poll_vs_request_staleness() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+
+        // Cap derived at /models poll time with 40 GB free on the tightest
+        // card — throughput binds, giving input = 87040 (the issue's
+        // worked beast figure).
+        let limit = super::super::context_limit::derive_limit(&profile, 40_000, 800.0, None, &cfg);
+        let cap = limit.input.expect("input budget derived");
+        assert_eq!(cap, 87_040);
+
+        // With that same ample VRAM, a prompt at the cap still fits.
+        assert!(validate_request(cap, 40_000, cap, Some(&profile), &cfg).is_ok());
+
+        // Now free VRAM has dropped to 5 GB between the poll and the
+        // request (a co-resident model loaded). The prompt is still ≤ cap
+        // and clears the 1500 MiB floor, but its footprint —
+        // (87040 + 8192)/32 + 2048 + 1500 = 6524 MiB — exceeds 5000 MiB.
+        let err = validate_request(cap, 5_000, cap, Some(&profile), &cfg)
+            .expect_err("stale cap must not let an over-VRAM prompt through");
+        assert!(matches!(
+            err,
+            InferenceError::InsufficientVram {
+                free_mb: 5_000,
+                required_mb: 6_524
+            }
+        ));
     }
 
     // ── Tool-call body parsing ───────────────────────────────────────
