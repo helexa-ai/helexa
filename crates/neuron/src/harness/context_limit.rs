@@ -100,9 +100,9 @@ pub const KV_CACHE_DTYPE_BYTES: usize = 2;
 /// state, not a growing cache). Sharded across the TP world: per-rank
 /// KV-head count is `n_kv_heads / world_size`.
 ///
-/// `2 ×` accounts for K and V. Shared by the limit derivation here and
-/// the per-rank load-time logging in the TP paths (and, in future, by
-/// #65's length-aware pre-flight guard).
+/// `2 ×` accounts for K and V. Shared by the limit derivation here, the
+/// per-rank load-time logging in the TP paths, and #65's request-time
+/// length-aware pre-flight guard (`candle::validate_request`).
 pub fn kv_bytes_per_token(
     n_full_attn_layers: usize,
     n_kv_heads: usize,
