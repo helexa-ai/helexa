@@ -32,6 +32,11 @@ pub struct RouterSettings {
     /// cortex↔neuron poll cadence one tier down.
     #[serde(default = "default_poll_interval_secs")]
     pub poll_interval_secs: u64,
+    /// This router instance's region (e.g. "eu-west"). When set, dispatch
+    /// (#73) prefers cortexes whose `region` matches, before falling back to
+    /// any feasible cortex. `None` → no geo affinity.
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 fn default_poll_interval_secs() -> u64 {
@@ -41,12 +46,16 @@ fn default_poll_interval_secs() -> u64 {
 /// One downstream cortex the router may proxy to. The router verifies the
 /// cortex's outbound TLS cert (#74) and routes on capacity (#73); it holds
 /// no entitlement logic of its own and forwards the client bearer verbatim.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CortexEndpoint {
     /// Human-readable label (e.g. "lair-cafe").
     pub name: String,
     /// Base URL of the cortex gateway (e.g. "https://cortex.example.com").
     pub endpoint: String,
+    /// Optional region tag (e.g. "eu-west") for geo affinity in dispatch
+    /// (#73). `None` → no region preference applies to this cortex.
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 impl RouterConfig {
@@ -68,6 +77,7 @@ impl Default for RouterConfig {
             router: RouterSettings {
                 listen: "0.0.0.0:8088".into(),
                 poll_interval_secs: default_poll_interval_secs(),
+                region: None,
             },
             cortexes: vec![],
         }

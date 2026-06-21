@@ -1933,6 +1933,7 @@ dependencies = [
  "clap",
  "cortex-core",
  "figment",
+ "helexa-stream",
  "reqwest",
  "serde",
  "serde_json",

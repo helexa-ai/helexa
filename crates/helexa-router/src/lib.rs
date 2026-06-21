@@ -12,6 +12,8 @@
 //! per-cortex topology (#72) that the dispatcher (#73) will route on.
 
 pub mod config;
+pub mod dispatch;
+pub mod error;
 pub mod handlers;
 pub mod poller;
 pub mod state;

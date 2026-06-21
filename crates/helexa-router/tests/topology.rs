@@ -82,6 +82,7 @@ fn state_for(name: &str, endpoint: &str) -> RouterState {
         cortexes: vec![CortexEndpoint {
             name: name.into(),
             endpoint: endpoint.into(),
+            region: None,
         }],
         ..Default::default()
     };

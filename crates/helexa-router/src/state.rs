@@ -14,8 +14,10 @@ use tokio::sync::RwLock;
 pub struct RouterState {
     /// Downstream cortex endpoints, as configured.
     pub cortexes: Vec<CortexEndpoint>,
-    /// Shared client for polling (and, later, proxying to) cortexes.
+    /// Shared client for polling (and proxying to) cortexes.
     pub http_client: reqwest::Client,
+    /// This router instance's region, for dispatch geo affinity (#73).
+    pub region: Option<String>,
     /// How often the poller refreshes the topology.
     pub poll_interval: Duration,
     /// Live per-cortex topology, keyed by cortex name. Pre-populated from
@@ -66,6 +68,7 @@ impl RouterState {
         Self {
             cortexes: config.cortexes.clone(),
             http_client: reqwest::Client::new(),
+            region: config.router.region.clone(),
             poll_interval: Duration::from_secs(config.router.poll_interval_secs),
             topology: RwLock::new(topology),
         }

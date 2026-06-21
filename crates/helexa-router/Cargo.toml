@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 cortex-core = { workspace = true }
+helexa-stream = { path = "../helexa-stream" }
 
 tokio = { workspace = true }
 axum = { workspace = true }
