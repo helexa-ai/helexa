@@ -8,7 +8,7 @@
 //! then flipped unhealthy and excluded from routing; it recovers on the
 //! next successful poll.
 
-use crate::state::{RouterModelStatus, RouterState};
+use crate::state::RouterState;
 use chrono::Utc;
 use cortex_core::node::CortexModelEntry;
 use serde::Deserialize;
@@ -71,19 +71,7 @@ async fn poll_cortex(state: &RouterState, name: &str, endpoint: &str) {
 
     match models {
         Ok(models) => {
-            entry.models = models
-                .into_iter()
-                .map(|m| {
-                    let feasible = m.loaded || !m.feasible_on.is_empty();
-                    (
-                        m.id,
-                        RouterModelStatus {
-                            loaded: m.loaded,
-                            feasible,
-                        },
-                    )
-                })
-                .collect();
+            entry.models = models.into_iter().map(|m| (m.id.clone(), m)).collect();
             entry.reachable = true;
             entry.consecutive_failures = 0;
             entry.last_poll = Some(Utc::now());

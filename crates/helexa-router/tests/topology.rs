@@ -9,7 +9,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use helexa_router::config::{CortexEndpoint, RouterConfig};
 use helexa_router::poller::{POLL_FAILURE_THRESHOLD, poll_once};
-use helexa_router::state::RouterState;
+use helexa_router::state::{RouterState, entry_feasible};
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -103,11 +103,12 @@ async fn poll_builds_live_topology() {
     assert!(c1.last_poll.is_some());
     assert_eq!((c1.healthy_nodes, c1.total_nodes), (2, 3));
 
-    // Loaded model: loaded + feasible. Catalogue-only model: feasible only.
+    // Loaded model: loaded + feasible. Catalogue-only model: feasible only
+    // (not loaded, but feasible_on non-empty).
     let coder = c1.models.get("Qwen/Qwen3-Coder-30B").unwrap();
-    assert!(coder.loaded && coder.feasible);
+    assert!(coder.loaded && entry_feasible(coder));
     let vl = c1.models.get("Qwen/Qwen3-VL-8B").unwrap();
-    assert!(!vl.loaded && vl.feasible);
+    assert!(!vl.loaded && entry_feasible(vl));
     drop(topo);
 
     // The routing helper sees both serveable models on the reachable cortex.

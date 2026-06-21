@@ -54,10 +54,10 @@ pub async fn select_cortexes(state: &RouterState, model: &str) -> Selection {
     let mut known_anywhere = false;
 
     for (name, t) in topo.iter() {
-        let Some(status) = t.models.get(model) else {
+        let Some(entry) = t.models.get(model) else {
             continue;
         };
-        if !status.feasible {
+        if !crate::state::entry_feasible(entry) {
             continue;
         }
         // Known even via an unreachable cortex's last-good poll — lets us
@@ -74,7 +74,7 @@ pub async fn select_cortexes(state: &RouterState, model: &str) -> Selection {
             _ => false,
         };
         ranked.push(Ranked {
-            loaded: status.loaded,
+            loaded: entry.loaded,
             region_match,
             healthy_nodes: t.healthy_nodes,
             endpoint: (*ep).clone(),
