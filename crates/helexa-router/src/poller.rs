@@ -62,7 +62,19 @@ pub async fn poll_once(state: &RouterState) {
 /// reachability on its own (a cortex serving `/v1/models` is routable even
 /// if `/health` momentarily isn't).
 async fn poll_cortex(state: &RouterState, name: &str, endpoint: &str) {
-    let models = fetch_models(state, endpoint).await;
+    // A cortex whose pinned TLS client failed to build (#74) is disabled:
+    // there is no client to poll with, so it stays unreachable.
+    let Some(client) = state.client_for(name) else {
+        let mut topo = state.topology.write().await;
+        if let Some(entry) = topo.get_mut(name) {
+            entry.consecutive_failures = entry.consecutive_failures.saturating_add(1);
+            entry.reachable = false;
+        }
+        tracing::warn!(cortex = name, "no TLS client (disabled); skipping poll");
+        return;
+    };
+
+    let models = fetch_models(client, endpoint).await;
 
     let mut topo = state.topology.write().await;
     let Some(entry) = topo.get_mut(name) else {
@@ -94,7 +106,7 @@ async fn poll_cortex(state: &RouterState, name: &str, endpoint: &str) {
     drop(topo);
 
     // Best-effort health (node counts). Never flips reachability.
-    if let Some((healthy, total)) = fetch_health(state, endpoint).await {
+    if let Some((healthy, total)) = fetch_health(client, endpoint).await {
         let mut topo = state.topology.write().await;
         if let Some(entry) = topo.get_mut(name) {
             entry.healthy_nodes = healthy;
@@ -105,12 +117,11 @@ async fn poll_cortex(state: &RouterState, name: &str, endpoint: &str) {
 
 /// GET `/v1/models`, returning the parsed entries or a short failure reason.
 async fn fetch_models(
-    state: &RouterState,
+    client: &reqwest::Client,
     endpoint: &str,
 ) -> Result<Vec<CortexModelEntry>, &'static str> {
     let url = format!("{endpoint}/v1/models");
-    let resp = state
-        .http_client
+    let resp = client
         .get(&url)
         .timeout(POLL_TIMEOUT)
         .send()
@@ -128,15 +139,9 @@ async fn fetch_models(
 
 /// GET `/health`, returning `(healthy, total)` node counts. `None` on any
 /// failure — the caller leaves the previous counts in place.
-async fn fetch_health(state: &RouterState, endpoint: &str) -> Option<(u32, u32)> {
+async fn fetch_health(client: &reqwest::Client, endpoint: &str) -> Option<(u32, u32)> {
     let url = format!("{endpoint}/health");
-    let resp = state
-        .http_client
-        .get(&url)
-        .timeout(POLL_TIMEOUT)
-        .send()
-        .await
-        .ok()?;
+    let resp = client.get(&url).timeout(POLL_TIMEOUT).send().await.ok()?;
     if !resp.status().is_success() {
         return None;
     }

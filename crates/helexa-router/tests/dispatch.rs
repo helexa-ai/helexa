@@ -133,6 +133,7 @@ fn ep(name: &str, endpoint: &str, region: Option<&str>) -> CortexEndpoint {
         name: name.into(),
         endpoint: endpoint.into(),
         region: region.map(str::to_string),
+        tls_ca: None,
     }
 }
 

@@ -32,11 +32,13 @@ async fn health_reports_configured_cortex_count() {
             name: "a".into(),
             endpoint: "https://a.example.com".into(),
             region: None,
+            tls_ca: None,
         },
         CortexEndpoint {
             name: "b".into(),
             endpoint: "https://b.example.com".into(),
             region: None,
+            tls_ca: None,
         },
     ])
     .await;

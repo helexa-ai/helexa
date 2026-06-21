@@ -15,8 +15,13 @@ use tokio::sync::RwLock;
 pub struct RouterState {
     /// Downstream cortex endpoints, as configured.
     pub cortexes: Vec<CortexEndpoint>,
-    /// Shared client for polling (and proxying to) cortexes.
-    pub http_client: reqwest::Client,
+    /// Per-cortex HTTP client, keyed by cortex name (#74). A cortex enrolled
+    /// with a `tls_ca` gets a client that trusts only that anchor; others
+    /// get a default client. A cortex whose `tls_ca` failed to load is
+    /// **absent** here — `client_for` returns `None` and it is never
+    /// polled or routed to (fail closed: a misconfigured pin must not
+    /// silently fall back to unpinned TLS).
+    clients: HashMap<String, reqwest::Client>,
     /// This router instance's region, for dispatch geo affinity (#73).
     pub region: Option<String>,
     /// How often the poller refreshes the topology.
@@ -63,13 +68,40 @@ impl RouterState {
             .map(|c| (c.name.clone(), CortexTopology::default()))
             .collect();
 
+        // One client per cortex. A `tls_ca` that fails to load omits the
+        // cortex from the map (fail closed) rather than degrading to an
+        // unpinned client.
+        let mut clients = HashMap::new();
+        for c in &config.cortexes {
+            match build_client(c.tls_ca.as_deref()) {
+                Ok(client) => {
+                    clients.insert(c.name.clone(), client);
+                }
+                Err(e) => {
+                    tracing::error!(
+                        cortex = %c.name,
+                        tls_ca = c.tls_ca.as_deref().unwrap_or(""),
+                        error = %e,
+                        "failed to build pinned TLS client; cortex disabled (fail closed)"
+                    );
+                }
+            }
+        }
+
         Self {
             cortexes: config.cortexes.clone(),
-            http_client: reqwest::Client::new(),
+            clients,
             region: config.router.region.clone(),
             poll_interval: Duration::from_secs(config.router.poll_interval_secs),
             topology: RwLock::new(topology),
         }
+    }
+
+    /// The HTTP client to use for `name`, or `None` if the cortex is
+    /// disabled (its `tls_ca` failed to load). Callers must treat `None` as
+    /// "not routable / not pollable".
+    pub fn client_for(&self, name: &str) -> Option<&reqwest::Client> {
+        self.clients.get(name)
     }
 
     /// Names of reachable cortexes that can serve `model_id` (loaded or
@@ -83,4 +115,30 @@ impl RouterState {
             .map(|(name, _)| name.clone())
             .collect()
     }
+}
+
+/// Build a cortex HTTP client. With `tls_ca` set, the client trusts **only**
+/// that PEM anchor (platform roots disabled) — pinning the router→cortex hop
+/// to an enrolled cert (#74). Without it, standard platform-root validation.
+pub fn build_client(tls_ca: Option<&str>) -> Result<reqwest::Client, BuildClientError> {
+    let mut builder = reqwest::Client::builder();
+    if let Some(path) = tls_ca {
+        let pem = std::fs::read(path).map_err(|e| BuildClientError::Read(path.to_string(), e))?;
+        let cert = reqwest::Certificate::from_pem(&pem).map_err(BuildClientError::Parse)?;
+        builder = builder
+            .tls_built_in_root_certs(false)
+            .add_root_certificate(cert);
+    }
+    builder.build().map_err(BuildClientError::Build)
+}
+
+/// Why a cortex's pinned client could not be built (→ cortex disabled).
+#[derive(Debug, thiserror::Error)]
+pub enum BuildClientError {
+    #[error("reading TLS anchor '{0}'")]
+    Read(String, #[source] std::io::Error),
+    #[error("parsing TLS anchor PEM")]
+    Parse(#[source] reqwest::Error),
+    #[error("building HTTP client")]
+    Build(#[source] reqwest::Error),
 }

@@ -17,14 +17,22 @@ listen = "0.0.0.0:8088"
 # -- Downstream cortexes -------------------------------------------------
 # Each [[cortexes]] entry is an operator-run cortex the router may dispatch
 # to. The router forwards the client's bearer verbatim (auth stays at
-# cortex) and routes on capacity. Outbound TLS to each cortex is verified.
+# cortex) and routes on capacity (preferring matching `region`).
 #
-# The skeleton only loads this list; capacity/catalogue polling and
-# capacity-aware dispatch arrive in later issues.
+# Outbound TLS pinning (optional): set `tls_ca` to a PEM trust anchor that
+# enrols this cortex — the CA (or self-signed cert) its TLS cert must chain
+# to. The router then trusts ONLY that anchor for this cortex (platform
+# roots disabled), so the router->cortex hop (which carries the client's
+# bearer) reaches the cert you expect and a rogue endpoint presenting any
+# other cert is rejected at the handshake. A cortex whose `tls_ca` fails to
+# load is disabled (fail closed). Omit `tls_ca` for a publicly-trusted cert
+# or plaintext http:// on a private (e.g. WireGuard) network.
 
 # [[cortexes]]
 # name = "lair-cafe"
 # endpoint = "https://cortex.lair.cafe"
+# region = "eu-west"
+# tls_ca = "/etc/helexa-router/pins/lair-cafe.pem"
 
 # [[cortexes]]
 # name = "example-operator"
