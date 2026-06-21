@@ -1929,6 +1929,7 @@ version = "0.1.16"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "clap",
  "cortex-core",
  "figment",

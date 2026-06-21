@@ -8,12 +8,12 @@
 //!
 //! It holds **zero entitlement logic** — auth/budget stays at cortex
 //! (epic #47); the router forwards the client bearer unchanged and routes
-//! on capacity (epic #69). This crate is the binary skeleton (#70):
-//! a plaintext axum server reusing `cortex-core` types, serving `/health`
-//! and a stub `/v1/models`.
+//! on capacity (epic #69). A background [`poller`] keeps a live
+//! per-cortex topology (#72) that the dispatcher (#73) will route on.
 
 pub mod config;
 pub mod handlers;
+pub mod poller;
 pub mod state;
 
 use anyhow::Result;
@@ -37,7 +37,15 @@ pub fn build_app(state: Arc<state::RouterState>) -> axum::Router {
 /// listener. TLS is terminated by edge nginx ahead of this process.
 pub async fn run(config: RouterConfig) -> Result<()> {
     let state = Arc::new(state::RouterState::from_config(&config));
-    let app = build_app(state);
+
+    // Background topology poller (#72): refresh each cortex's health +
+    // catalogue so routing decisions see live capacity.
+    let poller_state = Arc::clone(&state);
+    tokio::spawn(async move {
+        poller::poll_loop(poller_state).await;
+    });
+
+    let app = build_app(Arc::clone(&state));
 
     let listen_addr = config.router.listen.parse::<std::net::SocketAddr>()?;
     tracing::info!("helexa-router listening on {listen_addr}");
