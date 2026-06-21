@@ -1923,6 +1923,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "helexa-router"
+version = "0.1.16"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "cortex-core",
+ "figment",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "hermit-abi"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

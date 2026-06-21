@@ -1,0 +1,28 @@
+# helexa-router.example.toml — example configuration
+#
+# Copy to helexa-router.toml and adjust for your environment.
+#
+# Environment variable overrides use the HELEXA_ROUTER_ prefix with __
+# separators:
+#   HELEXA_ROUTER_ROUTER__LISTEN=0.0.0.0:8088
+
+[router]
+# Plaintext listener. Operator/edge nginx terminates client TLS in front of
+# the router — the router never owns an inbound TLS listener.
+listen = "0.0.0.0:8088"
+
+# -- Downstream cortexes -------------------------------------------------
+# Each [[cortexes]] entry is an operator-run cortex the router may dispatch
+# to. The router forwards the client's bearer verbatim (auth stays at
+# cortex) and routes on capacity. Outbound TLS to each cortex is verified.
+#
+# The skeleton only loads this list; capacity/catalogue polling and
+# capacity-aware dispatch arrive in later issues.
+
+# [[cortexes]]
+# name = "lair-cafe"
+# endpoint = "https://cortex.lair.cafe"
+
+# [[cortexes]]
+# name = "example-operator"
+# endpoint = "https://cortex.example.com"
