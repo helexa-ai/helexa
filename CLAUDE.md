@@ -185,6 +185,32 @@ Run these locally before pushing. `cargo fmt --all` fixes formatting
 automatically. Clippy warnings must be resolved, not suppressed with
 `#[allow(...)]` unless there is a clear rationale.
 
+## Development workflow
+
+Work each change on its own branch; `main` stays releasable.
+
+1. Implement on a feature branch (`fix/<issue>-…`, `feat/<issue>-…`).
+2. Run the CI triad locally (`cargo fmt --check --all`,
+   `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`).
+   Local builds are **CPU-only** — the `#[cfg(feature = "cuda")]` neuron/TP
+   paths do NOT compile locally. The branch CI's **CUDA type-check** job is
+   the only thing that validates them, so for any neuron change the push to
+   Gitea is the real gate, not a rubber stamp.
+3. Push the branch on local-green (no need to ask first), and background-watch
+   its CI run via the gitea-mcp `actions_run_read` tools. Start the next piece
+   of work meanwhile.
+4. Merge to `main` when the four **validation** jobs are green — Format,
+   Clippy, Test, CUDA type-check. The SRPM / COPR / version-bump jobs are the
+   deploy pipeline (they run on `main`), not validation — don't wait on them.
+5. Merging/pushing to `main` triggers the auto-deploy pipeline.
+
+Docs-only changes (no `#[cfg(feature = "cuda")]` impact) can go straight to
+`main` — there's nothing for the CUDA type-check to prove.
+
+SSH note: the gitea remote host offers multiple agent keys and cuts the
+connection before reaching the right one. This repo pins the working key via
+`git config core.sshCommand "ssh -i ~/.ssh/id_grenade -o IdentitiesOnly=yes"`.
+
 ## Environment
 
 - Targets Fedora 43 (systemd, SELinux enforcing)
