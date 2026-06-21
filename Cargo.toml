@@ -7,6 +7,7 @@ members = [
     "crates/neuron",
     "crates/helexa-acp",
     "crates/helexa-bench",
+    "crates/helexa-stream",
 ]
 
 [workspace.package]

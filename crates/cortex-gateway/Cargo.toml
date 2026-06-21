@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 cortex-core.workspace = true
+helexa-stream = { path = "../helexa-stream" }
 async-trait.workspace = true
 tokio.workspace = true
 axum.workspace = true

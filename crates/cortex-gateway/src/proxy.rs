@@ -1,20 +1,26 @@
 //! Streaming HTTP reverse proxy to neuron backends.
 //!
-//! For streaming requests, SSE chunks are forwarded as they arrive.
-//! The proxy captures timing information for metrics but does not
-//! buffer the full response.
+//! The streaming *mechanism* — forward an SSE body chunk-for-chunk without
+//! buffering, observing the bytes for metrics — lives in the shared
+//! [`helexa_stream`] crate (#71), so cortex and helexa-router use one
+//! implementation. This module supplies cortex's *policy*: the
+//! [`CortexMetrics`] observer (per-request token metrics + per-principal
+//! reservation settle), cortex's logging contract, and the cortex error
+//! envelope. The usage-extraction helper is re-exported from the shared
+//! crate so existing call sites keep working.
 
 use crate::router::RouteDecision;
-use anyhow::Result;
-use axum::body::Body;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::HeaderMap;
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use futures::Stream;
-use futures::stream::BoxStream;
+use helexa_stream::{BodyTail, ChunkObserver, StreamError};
 use reqwest::Client;
-use std::pin::Pin;
-use std::task::{Context, Poll};
 use std::time::Instant;
+
+/// Re-export the shared usage-extraction helper. Several cortex modules
+/// (`handlers`, `anthropic_sse`) pull token counts out of a buffered body
+/// tail via this function; it lives in `helexa-stream` now.
+pub use helexa_stream::last_count_for;
 
 /// Proxy a request body to the resolved backend node and stream the response.
 ///
@@ -42,66 +48,41 @@ pub async fn forward_request(
         "proxying request"
     );
 
-    let mut req_builder = client.post(&url).body(body);
+    let observer = CortexMetrics::new(model_id, &route.node_name, request_start, usage_sink);
 
-    // Forward relevant headers.
-    for (key, value) in headers.iter() {
-        if key == "host" || key == "content-length" {
-            continue; // reqwest sets these
-        }
-        req_builder = req_builder.header(key, value);
-    }
+    let response = helexa_stream::forward_streaming(client, &url, headers, body, observer)
+        .await
+        .map_err(|e| {
+            match &e {
+                StreamError::Upstream(err) => tracing::warn!(
+                    node = %route.node_name,
+                    url = %url,
+                    error = %err,
+                    "proxy: upstream request failed (network)"
+                ),
+                StreamError::ResponseBuild(err) => tracing::warn!(
+                    node = %route.node_name,
+                    url = %url,
+                    error = %err,
+                    "proxy: failed to build response"
+                ),
+            }
+            ProxyError::from(e)
+        })?;
 
-    let upstream_resp = match req_builder.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::warn!(
-                node = %route.node_name,
-                url = %url,
-                error = %e,
-                "proxy: upstream request failed (network)"
-            );
-            return Err(ProxyError::Upstream(e));
-        }
-    };
-
-    let upstream_status = upstream_resp.status();
-    if !upstream_status.is_success() {
+    if !response.status().is_success() {
         // Streaming body — can't snippet without breaking the stream
         // pass-through. Log status + URL; the client still gets the
         // upstream status, just without the leaked body.
         tracing::warn!(
             node = %route.node_name,
             url = %url,
-            status = upstream_status.as_u16(),
+            status = response.status().as_u16(),
             "proxy: upstream returned non-2xx"
         );
     }
 
-    let status = StatusCode::from_u16(upstream_status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-
-    let resp_headers = upstream_resp.headers().clone();
-    let stream = TokenMetricsStream::new(
-        Box::pin(upstream_resp.bytes_stream()),
-        TokenMetrics::new(model_id, &route.node_name, request_start, usage_sink),
-    );
-
-    let body = Body::from_stream(stream);
-
-    let mut response = Response::builder().status(status);
-    for (key, value) in resp_headers.iter() {
-        response = response.header(key, value);
-    }
-
-    response.body(body).map_err(|e| {
-        tracing::warn!(
-            node = %route.node_name,
-            url = %url,
-            error = %e,
-            "proxy: failed to build response"
-        );
-        ProxyError::ResponseBuild(e.to_string())
-    })
+    Ok(response)
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -110,6 +91,15 @@ pub enum ProxyError {
     Upstream(reqwest::Error),
     #[error("failed to build response")]
     ResponseBuild(String),
+}
+
+impl From<StreamError> for ProxyError {
+    fn from(e: StreamError) -> Self {
+        match e {
+            StreamError::Upstream(err) => ProxyError::Upstream(err),
+            StreamError::ResponseBuild(msg) => ProxyError::ResponseBuild(msg),
+        }
+    }
 }
 
 impl IntoResponse for ProxyError {
@@ -139,9 +129,10 @@ impl IntoResponse for ProxyError {
 //
 // The proxy never buffers or re-serialises the upstream body — chunks
 // are forwarded verbatim. For metrics it observes each chunk's arrival
-// time and keeps a bounded tail of the body text, from which the final
-// OpenAI `usage` object (present on the last SSE chunk and on
-// non-streaming JSON bodies alike) yields engine-truth token counts.
+// time and keeps a bounded tail of the body text (via the shared
+// `helexa_stream::BodyTail`), from which the final OpenAI `usage` object
+// (present on the last SSE chunk and on non-streaming JSON bodies alike)
+// yields engine-truth token counts.
 //
 // Emitted per request, labelled {model, node}:
 //   cortex_time_to_first_token_seconds  (histogram) — first body chunk
@@ -155,37 +146,15 @@ impl IntoResponse for ProxyError {
 /// non-streaming bodies.
 const TAIL_CAP_BYTES: usize = 64 * 1024;
 
-/// Find the value of the LAST `"key": <integer>` occurrence in `tail`.
-/// Pure and chunk-boundary-safe (the tail is contiguous appended text).
-/// The quoted-needle form means `completion_tokens` never matches
-/// `completion_tokens_details`.
-pub(crate) fn last_count_for(tail: &str, key: &str) -> Option<u64> {
-    let needle = format!("\"{key}\"");
-    let mut result = None;
-    for (idx, _) in tail.match_indices(&needle) {
-        let rest = tail[idx + needle.len()..].trim_start();
-        let Some(rest) = rest.strip_prefix(':') else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        let digits: &str = &rest[..rest
-            .char_indices()
-            .find(|(_, c)| !c.is_ascii_digit())
-            .map(|(i, _)| i)
-            .unwrap_or(rest.len())];
-        if let Ok(v) = digits.parse::<u64>() {
-            result = Some(v);
-        }
-    }
-    result
-}
-
-struct TokenMetrics {
+/// cortex's [`ChunkObserver`]: per-request token metrics plus the
+/// per-principal reservation settle. Drives cortex policy over the shared
+/// streaming mechanism.
+struct CortexMetrics {
     labels: [(&'static str, String); 2],
     request_start: Instant,
     first_chunk: Option<Instant>,
     last_chunk: Option<Instant>,
-    tail: String,
+    tail: BodyTail,
     finished: bool,
     /// Per-principal metering hook (#51). Invoked exactly once in `finish`
     /// with the observed `(prompt, completion)` so the reservation can be
@@ -193,7 +162,7 @@ struct TokenMetrics {
     usage_sink: Option<crate::metering::UsageSink>,
 }
 
-impl TokenMetrics {
+impl CortexMetrics {
     fn new(
         model_id: &str,
         node_name: &str,
@@ -208,26 +177,19 @@ impl TokenMetrics {
             request_start,
             first_chunk: None,
             last_chunk: None,
-            tail: String::new(),
+            tail: BodyTail::new(TAIL_CAP_BYTES),
             finished: false,
             usage_sink,
         }
     }
+}
 
+impl ChunkObserver for CortexMetrics {
     fn observe(&mut self, chunk: &[u8]) {
         let now = Instant::now();
         self.first_chunk.get_or_insert(now);
         self.last_chunk = Some(now);
-        self.tail.push_str(&String::from_utf8_lossy(chunk));
-        if self.tail.len() > TAIL_CAP_BYTES {
-            // Keep the newest half; the usage object is always at the
-            // very end of the body. Split at a char boundary.
-            let mut cut = self.tail.len() - TAIL_CAP_BYTES / 2;
-            while !self.tail.is_char_boundary(cut) {
-                cut += 1;
-            }
-            self.tail.drain(..cut);
-        }
+        self.tail.push(chunk);
     }
 
     /// Emit the metrics exactly once — called on clean stream end and
@@ -239,8 +201,8 @@ impl TokenMetrics {
         }
         self.finished = true;
 
-        let prompt = last_count_for(&self.tail, "prompt_tokens");
-        let completion = last_count_for(&self.tail, "completion_tokens");
+        let prompt = last_count_for(self.tail.as_str(), "prompt_tokens");
+        let completion = last_count_for(self.tail.as_str(), "completion_tokens");
 
         // Per-model metrics — only when body chunks actually arrived.
         if let Some(first) = self.first_chunk {
@@ -278,99 +240,5 @@ impl TokenMetrics {
         if let Some(sink) = self.usage_sink.take() {
             sink(prompt.unwrap_or(0), completion.unwrap_or(0));
         }
-    }
-}
-
-/// Pass-through stream wrapper that feeds [`TokenMetrics`]. Emits on
-/// clean end-of-stream; the Drop impl covers client disconnects.
-struct TokenMetricsStream {
-    inner: BoxStream<'static, Result<bytes::Bytes, reqwest::Error>>,
-    metrics: TokenMetrics,
-}
-
-impl TokenMetricsStream {
-    fn new(
-        inner: BoxStream<'static, Result<bytes::Bytes, reqwest::Error>>,
-        metrics: TokenMetrics,
-    ) -> Self {
-        Self { inner, metrics }
-    }
-}
-
-impl Stream for TokenMetricsStream {
-    type Item = Result<bytes::Bytes, reqwest::Error>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-        match this.inner.as_mut().poll_next(cx) {
-            Poll::Ready(Some(Ok(chunk))) => {
-                this.metrics.observe(&chunk);
-                Poll::Ready(Some(Ok(chunk)))
-            }
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(e))),
-            Poll::Ready(None) => {
-                this.metrics.finish();
-                Poll::Ready(None)
-            }
-            Poll::Pending => Poll::Pending,
-        }
-    }
-}
-
-impl Drop for TokenMetricsStream {
-    fn drop(&mut self) {
-        self.metrics.finish();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::last_count_for;
-
-    #[test]
-    fn extracts_counts_from_final_sse_usage_chunk() {
-        let tail = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n",
-            "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":225,",
-            "\"completion_tokens\":42,\"total_tokens\":267}}\n\n",
-            "data: [DONE]\n\n"
-        );
-        assert_eq!(last_count_for(tail, "prompt_tokens"), Some(225));
-        assert_eq!(last_count_for(tail, "completion_tokens"), Some(42));
-    }
-
-    #[test]
-    fn extracts_counts_from_non_streaming_body() {
-        let tail = "{\"choices\":[{\"message\":{\"content\":\"hi\"}}],\
-                    \"usage\":{\"prompt_tokens\": 12, \"completion_tokens\": 7}}";
-        assert_eq!(last_count_for(tail, "prompt_tokens"), Some(12));
-        assert_eq!(last_count_for(tail, "completion_tokens"), Some(7));
-    }
-
-    #[test]
-    fn ignores_details_variants_and_takes_last_occurrence() {
-        // completion_tokens_details must not shadow completion_tokens,
-        // and the LAST usage object wins (matters when content echoes
-        // a usage-shaped string earlier in the stream).
-        let tail = concat!(
-            "data: {\"usage\":{\"completion_tokens\":1}}\n\n",
-            "data: {\"usage\":{\"completion_tokens\":99,",
-            "\"completion_tokens_details\":{\"reasoning_tokens\":3}}}\n\n"
-        );
-        assert_eq!(last_count_for(tail, "completion_tokens"), Some(99));
-    }
-
-    #[test]
-    fn absent_keys_yield_none() {
-        assert_eq!(
-            last_count_for("data: [DONE]\n\n", "completion_tokens"),
-            None
-        );
-        assert_eq!(last_count_for("", "prompt_tokens"), None);
-        // key present but non-numeric value
-        assert_eq!(
-            last_count_for("\"completion_tokens\": null", "completion_tokens"),
-            None
-        );
     }
 }
