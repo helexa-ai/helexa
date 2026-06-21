@@ -8,6 +8,7 @@ members = [
     "crates/helexa-acp",
     "crates/helexa-bench",
     "crates/helexa-router",
+    "crates/helexa-stream",
 ]
 
 [workspace.package]

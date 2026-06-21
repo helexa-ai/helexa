@@ -800,6 +800,7 @@ dependencies = [
  "cortex-core",
  "eventsource-stream",
  "futures",
+ "helexa-stream",
  "metrics",
  "metrics-exporter-prometheus",
  "reqwest",
@@ -1938,6 +1939,19 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "helexa-stream"
+version = "0.1.16"
+dependencies = [
+ "async-stream",
+ "axum",
+ "futures",
+ "reqwest",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]

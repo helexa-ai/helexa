@@ -1,0 +1,21 @@
+[package]
+name = "helexa-stream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "helexa_stream"
+path = "src/lib.rs"
+
+[dependencies]
+axum = { workspace = true }
+reqwest = { workspace = true }
+futures = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+async-stream = "0.3"
