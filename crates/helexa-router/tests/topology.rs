@@ -83,6 +83,7 @@ fn state_for(name: &str, endpoint: &str) -> RouterState {
             name: name.into(),
             endpoint: endpoint.into(),
             region: None,
+            tls_ca: None,
         }],
         ..Default::default()
     };

@@ -86,11 +86,13 @@ async fn federation_catalogue_dedupes_and_preserves_limit_cost() {
             name: "op-a".into(),
             endpoint: a,
             region: None,
+            tls_ca: None,
         },
         CortexEndpoint {
             name: "op-b".into(),
             endpoint: b,
             region: None,
+            tls_ca: None,
         },
     ])
     .await;

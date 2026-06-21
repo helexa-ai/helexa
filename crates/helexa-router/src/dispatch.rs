@@ -159,10 +159,16 @@ pub async fn dispatch(
     // genuine HTTP response (any status — including cortex's #63 429/400)
     // is returned verbatim and never retried away.
     for ep in &candidates {
+        // A candidate whose pinned TLS client failed to build (#74) is
+        // disabled — skip it and fail over, same as an unreachable cortex.
+        let Some(client) = state.client_for(&ep.name) else {
+            tracing::warn!(cortex = %ep.name, "no TLS client (disabled); skipping candidate");
+            continue;
+        };
         let url = format!("{}{}", ep.endpoint, path);
         tracing::info!(cortex = %ep.name, url = %url, model = %model, "dispatching");
         match helexa_stream::forward_streaming(
-            &state.http_client,
+            client,
             &url,
             headers.clone(),
             body.clone(),

@@ -56,6 +56,21 @@ pub struct CortexEndpoint {
     /// (#73). `None` → no region preference applies to this cortex.
     #[serde(default)]
     pub region: Option<String>,
+    /// Path to a PEM trust anchor that **enrols** this cortex (#74): the
+    /// expected CA (or self-signed cert) the cortex's TLS cert must chain
+    /// to. When set on an `https://` endpoint, the router builds a client
+    /// that trusts **only** this anchor (platform roots disabled), so the
+    /// outbound router→cortex hop — which carries the client's bearer —
+    /// reaches a cert the router was told to expect, and a rogue endpoint
+    /// presenting any other (even publicly-valid) cert is rejected at the
+    /// TLS handshake. A rejected handshake surfaces as a connection error,
+    /// which the poller (#72) already treats as unreachable → excluded.
+    ///
+    /// `None` → standard platform-root validation (use for cortexes behind
+    /// a publicly-trusted cert, or plaintext `http://` on a private network
+    /// where the WireGuard mesh is the trust boundary).
+    #[serde(default)]
+    pub tls_ca: Option<String>,
 }
 
 impl RouterConfig {

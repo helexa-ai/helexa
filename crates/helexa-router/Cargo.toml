@@ -25,6 +25,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 figment = { workspace = true }
 anyhow = { workspace = true }
+thiserror = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -33,3 +34,8 @@ chrono = { workspace = true }
 [dev-dependencies]
 # Jail (isolated cwd + env) for config tests.
 figment = { workspace = true, features = ["test"] }
+# Self-signed cert generation + a minimal HTTPS server for the outbound
+# TLS-pinning tests (#74).
+rcgen = "0.13"
+rustls = "0.23"
+tokio-rustls = "0.26"
