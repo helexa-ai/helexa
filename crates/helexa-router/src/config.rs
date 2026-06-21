@@ -27,6 +27,15 @@ pub struct RouterSettings {
     /// of the router (see #69's TLS posture). The router never owns an
     /// inbound TLS listener.
     pub listen: String,
+    /// How often (seconds) the background poller refreshes each cortex's
+    /// health + `/v1/models` topology (#72). Defaults to 10s, matching the
+    /// cortex↔neuron poll cadence one tier down.
+    #[serde(default = "default_poll_interval_secs")]
+    pub poll_interval_secs: u64,
+}
+
+fn default_poll_interval_secs() -> u64 {
+    10
 }
 
 /// One downstream cortex the router may proxy to. The router verifies the
@@ -58,6 +67,7 @@ impl Default for RouterConfig {
         Self {
             router: RouterSettings {
                 listen: "0.0.0.0:8088".into(),
+                poll_interval_secs: default_poll_interval_secs(),
             },
             cortexes: vec![],
         }

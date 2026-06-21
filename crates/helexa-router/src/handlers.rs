@@ -15,13 +15,19 @@ pub fn api_routes() -> Router<Arc<RouterState>> {
         .route("/", get(health))
 }
 
-/// `GET /health` — liveness plus the configured downstream cortex count.
-/// Real per-cortex reachability lands with the poller (#72).
+/// `GET /health` — router liveness plus a summary of downstream cortex
+/// reachability from the topology poller (#72). `status` reflects the
+/// router process itself (always `ok` if it answers); downstream health is
+/// the informational `cortexes` block, so a fully-degraded fleet doesn't
+/// make the router look dead to its own liveness probe.
 async fn health(State(state): State<Arc<RouterState>>) -> Json<Value> {
+    let topo = state.topology.read().await;
+    let reachable = topo.values().filter(|t| t.reachable).count();
     Json(json!({
         "status": "ok",
         "cortexes": {
             "configured": state.cortexes.len(),
+            "reachable": reachable,
         }
     }))
 }

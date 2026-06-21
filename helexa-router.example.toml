@@ -11,6 +11,9 @@
 # the router — the router never owns an inbound TLS listener.
 listen = "0.0.0.0:8088"
 
+# How often (seconds) to refresh each cortex's health + /v1/models topology.
+# poll_interval_secs = 10
+
 # -- Downstream cortexes -------------------------------------------------
 # Each [[cortexes]] entry is an operator-run cortex the router may dispatch
 # to. The router forwards the client's bearer verbatim (auth stays at
