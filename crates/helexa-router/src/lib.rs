@@ -11,6 +11,7 @@
 //! on capacity (epic #69). A background [`poller`] keeps a live
 //! per-cortex topology (#72) that the dispatcher (#73) will route on.
 
+pub mod catalogue;
 pub mod config;
 pub mod dispatch;
 pub mod error;

@@ -12,12 +12,35 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
+use cortex_core::node::CortexModelEntry;
 use helexa_router::config::{CortexEndpoint, RouterConfig};
 use helexa_router::dispatch::{Selection, dispatch, select_cortexes};
-use helexa_router::state::{CortexTopology, RouterModelStatus, RouterState};
+use helexa_router::state::{CortexTopology, RouterState};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use tokio::net::TcpListener;
+
+/// A minimal `CortexModelEntry` for MODEL with the given serveability.
+fn model_entry(loaded: bool, feasible: bool) -> CortexModelEntry {
+    CortexModelEntry {
+        id: MODEL.into(),
+        object: "model".into(),
+        created: 0,
+        owned_by: "helexa".into(),
+        loaded,
+        feasible_on: if feasible || loaded {
+            vec!["n".into()]
+        } else {
+            vec![]
+        },
+        locations: vec![],
+        capabilities: vec![],
+        limit: None,
+        cost: None,
+        tool_call: false,
+        reasoning: false,
+    }
+}
 
 const MODEL: &str = "Qwen/Qwen3-Coder-30B";
 
@@ -91,7 +114,7 @@ async fn set_topology(
 ) {
     let mut topo = state.topology.write().await;
     let mut models = HashMap::new();
-    models.insert(MODEL.to_string(), RouterModelStatus { loaded, feasible });
+    models.insert(MODEL.to_string(), model_entry(loaded, feasible));
     topo.insert(
         name.to_string(),
         CortexTopology {

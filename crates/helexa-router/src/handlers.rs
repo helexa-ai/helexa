@@ -1,10 +1,9 @@
-use crate::dispatch;
 use crate::state::RouterState;
+use crate::{catalogue, dispatch};
 use axum::body::Bytes;
 use axum::http::HeaderMap;
 use axum::response::Response;
 use axum::{Json, Router, extract::State, routing::get, routing::post};
-use cortex_core::openai::ModelsResponse;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -76,12 +75,15 @@ async fn health(State(state): State<Arc<RouterState>>) -> Json<Value> {
     }))
 }
 
-/// `GET /v1/models` — empty catalogue stub. The real cross-operator union
-/// (catalogue × topology feasibility, aggregated from each cortex) is the
-/// federation-catalogue issue (#75).
-async fn list_models() -> Json<ModelsResponse> {
-    Json(ModelsResponse {
-        object: "list".into(),
-        data: vec![],
-    })
+/// `GET /v1/models` — the federation catalogue (#75): the deduped union of
+/// every reachable cortex's `/v1/models`, so a client doing discovery
+/// against the router resolves the whole federation without knowing about
+/// operators or cortexes.
+async fn list_models(State(state): State<Arc<RouterState>>) -> Json<Value> {
+    let topo = state.topology.read().await;
+    let data: Vec<Value> = catalogue::aggregate_models(&topo)
+        .iter()
+        .map(|e| json!(e))
+        .collect();
+    Json(json!({ "object": "list", "data": data }))
 }

@@ -1,5 +1,6 @@
 use crate::config::{CortexEndpoint, RouterConfig};
 use chrono::{DateTime, Utc};
+use cortex_core::node::CortexModelEntry;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::RwLock;
@@ -42,19 +43,16 @@ pub struct CortexTopology {
     /// load signal; #73 refines headroom). 0/0 until first health poll.
     pub healthy_nodes: u32,
     pub total_nodes: u32,
-    /// Per-model serveability, keyed by model id, from `/v1/models`.
-    pub models: HashMap<String, RouterModelStatus>,
+    /// The cortex's full `/v1/models` entries, keyed by model id. Stored
+    /// whole (not distilled to a loaded/feasible bool) so the federation
+    /// catalogue (#75) can preserve per-model `limit`/`cost`/capabilities.
+    pub models: HashMap<String, CortexModelEntry>,
 }
 
-/// What a cortex can do with one model, distilled from its `/v1/models`
-/// entry to the two facts the router routes on.
-#[derive(Debug, Clone)]
-pub struct RouterModelStatus {
-    /// The model is loaded on at least one of the cortex's neurons.
-    pub loaded: bool,
-    /// The cortex can serve it — loaded now, or feasible to cold-load
-    /// (catalogue × topology says some neuron can host it).
-    pub feasible: bool,
+/// Whether a cortex can serve this model — loaded now, or feasible to
+/// cold-load (its catalogue × topology says some neuron can host it).
+pub fn entry_feasible(entry: &CortexModelEntry) -> bool {
+    entry.loaded || !entry.feasible_on.is_empty()
 }
 
 impl RouterState {
@@ -81,7 +79,7 @@ impl RouterState {
         let topo = self.topology.read().await;
         topo.iter()
             .filter(|(_, t)| t.reachable)
-            .filter(|(_, t)| t.models.get(model_id).is_some_and(|m| m.feasible))
+            .filter(|(_, t)| t.models.get(model_id).is_some_and(entry_feasible))
             .map(|(name, _)| name.clone())
             .collect()
     }
