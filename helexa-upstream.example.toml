@@ -21,3 +21,17 @@ url = "postgres://helexa:helexa@localhost/helexa_upstream"
 # When this many accounts share one registration fingerprint, all are
 # silently deactivated (no notice to the user).
 # fingerprint_account_threshold = 5
+
+# -- Client auth: credentials operators' cortexes present to /authz/v1.
+# Each token maps to an operator_id (served-usage attribution). When no
+# tokens are configured the authz surface is OPEN (dev only). Distinct from
+# end-user API keys, which ride inside the resolve request body.
+# [[client_auth.tokens]]
+# token = "replace-with-a-strong-shared-secret"
+# operator_id = "lair-cafe"
+
+[authz]
+# Open reservations older than this are swept (released), self-healing a
+# reservation whose settle/release from a cortex was lost.
+# reservation_ttl_secs = 120
+# sweep_interval_secs = 60

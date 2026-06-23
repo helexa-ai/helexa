@@ -18,6 +18,50 @@ pub struct UpstreamConfig {
     pub grant: GrantSettings,
     #[serde(default)]
     pub abuse: AbuseSettings,
+    #[serde(default)]
+    pub client_auth: ClientAuthSettings,
+    #[serde(default)]
+    pub authz: AuthzSettings,
+}
+
+/// `[client_auth]` — credentials operators' cortexes present to `/authz/v1`.
+/// Each token maps to an `operator_id` (served-usage attribution, #58). This
+/// transport credential is distinct from end-user API keys (which ride in
+/// the `resolve` body). v2 adds mTLS.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ClientAuthSettings {
+    /// When empty the authz surface is **open** (dev only; logged at warn).
+    #[serde(default)]
+    pub tokens: Vec<ClientToken>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClientToken {
+    /// Shared bearer a cortex presents.
+    pub token: String,
+    /// Operator this token identifies.
+    pub operator_id: String,
+}
+
+/// `[authz]` — reservation lifecycle knobs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthzSettings {
+    /// Open reservations older than this are swept (released), self-healing
+    /// a reservation whose settle/release from cortex was lost.
+    #[serde(default = "default_reservation_ttl")]
+    pub reservation_ttl_secs: u64,
+    /// How often the sweeper runs.
+    #[serde(default = "default_sweep_interval")]
+    pub sweep_interval_secs: u64,
+}
+
+impl Default for AuthzSettings {
+    fn default() -> Self {
+        Self {
+            reservation_ttl_secs: default_reservation_ttl(),
+            sweep_interval_secs: default_sweep_interval(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,6 +135,12 @@ fn default_free_grant() -> i64 {
 }
 fn default_fingerprint_threshold() -> i64 {
     5
+}
+fn default_reservation_ttl() -> u64 {
+    120
+}
+fn default_sweep_interval() -> u64 {
+    60
 }
 
 impl UpstreamConfig {
