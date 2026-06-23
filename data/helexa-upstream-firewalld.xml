@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-upstream</short>
+  <description>helexa-upstream — mesh account + budget authority API (/authz/v1 for cortex, /web/v1 for the frontend)</description>
+  <port protocol="tcp" port="8090"/>
+</service>

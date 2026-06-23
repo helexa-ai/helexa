@@ -1,0 +1,22 @@
+[Unit]
+Description=helexa-upstream — mesh account + budget authority (accounts, API keys, allocation ledger, top-up codes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/helexa-upstream serve --config /etc/helexa-upstream/helexa-upstream.toml
+# HTTP authority for cortex (/authz/v1) and the frontend (/web/v1); restart
+# unconditionally if it ever exits. It connects out to PostgreSQL (the
+# system of record) and runs schema migrations on startup.
+Restart=always
+RestartSec=10
+User=helexa-upstream
+Group=helexa-upstream
+# Service user home; no local state (PostgreSQL holds everything), but
+# StateDirectory gives the user a writable, correctly-owned home.
+StateDirectory=helexa-upstream
+StateDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
