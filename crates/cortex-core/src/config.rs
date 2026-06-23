@@ -48,10 +48,17 @@ pub struct UpstreamClientConfig {
     /// Per-call timeout (seconds) to upstream.
     #[serde(default = "default_upstream_timeout")]
     pub timeout_secs: u64,
+    /// How often (seconds) to flush served-usage counters to upstream for
+    /// reconciliation (#58).
+    #[serde(default = "default_served_usage_interval")]
+    pub served_usage_report_interval_secs: u64,
 }
 
 fn default_upstream_timeout() -> u64 {
     5
+}
+fn default_served_usage_interval() -> u64 {
+    60
 }
 
 /// `[entitlements]` — the local/static [`crate::entitlements::EntitlementProvider`]

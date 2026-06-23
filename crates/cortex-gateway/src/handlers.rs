@@ -322,7 +322,11 @@ async fn anthropic_messages(
             )
             .await
             {
-                Ok(guard) => Some(crate::metering::usage_sink(principal, guard)),
+                Ok(guard) => Some(crate::metering::usage_sink(
+                    principal,
+                    guard,
+                    std::sync::Arc::clone(&fleet.served_usage),
+                )),
                 Err(env) => return crate::error::envelope_response(env),
             }
         }
@@ -802,7 +806,11 @@ async fn proxy_with_metrics(
             )
             .await
             {
-                Ok(guard) => Some(crate::metering::usage_sink(principal, guard)),
+                Ok(guard) => Some(crate::metering::usage_sink(
+                    principal,
+                    guard,
+                    std::sync::Arc::clone(&fleet.served_usage),
+                )),
                 Err(env) => return crate::error::envelope_response(env),
             }
         }

@@ -36,6 +36,12 @@ enum Commands {
         #[arg(long)]
         denomination: Option<String>,
     },
+    /// Roll up not-yet-reconciled served usage per operator/period (#58),
+    /// stamp it reconciled, and print the totals. Payout is out of scope.
+    Reconcile {
+        #[arg(short, long, default_value = "helexa-upstream.toml")]
+        config: String,
+    },
 }
 
 #[tokio::main]
@@ -74,6 +80,18 @@ async fn main() -> Result<()> {
             for code in codes {
                 println!("{code}");
             }
+        }
+        Commands::Reconcile { config } => {
+            let cfg = UpstreamConfig::load(&config)
+                .map_err(|e| anyhow::anyhow!("failed to load config from '{config}': {e}"))?;
+            let pool =
+                helexa_upstream::db::connect_and_migrate(&cfg.db.url, cfg.db.max_connections)
+                    .await?;
+            let rollup = helexa_upstream::reconcile::reconcile(&pool).await?;
+            for r in &rollup {
+                println!("{}\t{}\t{}", r.operator_id, r.period, r.total_served_tokens);
+            }
+            tracing::info!(operators_periods = rollup.len(), "reconciliation complete");
         }
     }
 
