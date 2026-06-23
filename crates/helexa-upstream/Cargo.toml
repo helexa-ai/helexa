@@ -42,6 +42,12 @@ sqlx = { version = "0.8", default-features = false, features = [
     "uuid",
 ] }
 uuid = { version = "1", features = ["v4", "serde"] }
+sha2 = "0.10"
+subtle = "2.6"
+
+# cortex-core for the shared #63 OpenAiError envelope on the authz surface.
+cortex-core = { workspace = true }
 
 [dev-dependencies]
 figment = { workspace = true, features = ["test"] }
+reqwest = { workspace = true }

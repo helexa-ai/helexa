@@ -20,6 +20,103 @@
 use sqlx::postgres::PgPool;
 use uuid::Uuid;
 
+/// A bearer key resolved to its principal + a budget snapshot.
+#[derive(Debug, Clone)]
+pub struct ResolvedPrincipal {
+    pub account_id: Uuid,
+    pub key_id: Uuid,
+    /// Effective per-key absolute cap (the key sub-cap; the account cap
+    /// still binds at reserve time).
+    pub hard_cap: i64,
+    pub key_spent: i64,
+    pub key_reserved: i64,
+}
+
+/// Resolve a key by its `sha256` hash to its principal, or `None` when the
+/// key is unknown/archived **or its account is deactivated** (the silent
+/// abuse flag — indistinguishable from an unknown key, by design: no clue).
+pub async fn resolve_key(
+    pool: &PgPool,
+    key_hash: &[u8],
+) -> Result<Option<ResolvedPrincipal>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT k.id AS key_id, k.account_id, k.limit_kind, k.limit_value, \
+                k.key_spent, k.key_reserved, a.allocation_total \
+         FROM api_keys k JOIN accounts a ON a.id = k.account_id \
+         WHERE k.key_hash = $1 AND k.status = 'active' AND a.status = 'active'",
+    )
+    .bind(key_hash)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| {
+        let total: i64 = sqlx::Row::get(&r, "allocation_total");
+        let limit_kind: String = sqlx::Row::get(&r, "limit_kind");
+        let limit_value: i64 = sqlx::Row::get(&r, "limit_value");
+        ResolvedPrincipal {
+            account_id: sqlx::Row::get(&r, "account_id"),
+            key_id: sqlx::Row::get(&r, "key_id"),
+            hard_cap: resolve_abs_cap(&limit_kind, limit_value, total),
+            key_spent: sqlx::Row::get(&r, "key_spent"),
+            key_reserved: sqlx::Row::get(&r, "key_reserved"),
+        }
+    }))
+}
+
+/// Per-key budget snapshot `(hard_cap, spent, reserved)`, or `None` if the
+/// key/account isn't an active pair.
+pub async fn snapshot(
+    pool: &PgPool,
+    account_id: Uuid,
+    key_id: Uuid,
+) -> Result<Option<(i64, i64, i64)>, sqlx::Error> {
+    let row = sqlx::query(
+        "SELECT k.limit_kind, k.limit_value, k.key_spent, k.key_reserved, a.allocation_total \
+         FROM api_keys k JOIN accounts a ON a.id = k.account_id \
+         WHERE k.id = $1 AND k.account_id = $2 AND k.status = 'active' AND a.status = 'active'",
+    )
+    .bind(key_id)
+    .bind(account_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|r| {
+        let total: i64 = sqlx::Row::get(&r, "allocation_total");
+        let limit_kind: String = sqlx::Row::get(&r, "limit_kind");
+        let limit_value: i64 = sqlx::Row::get(&r, "limit_value");
+        let cap = resolve_abs_cap(&limit_kind, limit_value, total);
+        (
+            cap,
+            sqlx::Row::get::<i64, _>(&r, "key_spent"),
+            sqlx::Row::get::<i64, _>(&r, "key_reserved"),
+        )
+    }))
+}
+
+/// Release every `open` reservation older than `max_age_secs`, returning
+/// each one's reserved tokens to its account and key in a single statement.
+/// The lost-settle self-heal. Returns the number swept.
+pub async fn sweep_stale(pool: &PgPool, max_age_secs: i64) -> Result<u64, sqlx::Error> {
+    // Data-modifying CTEs: release stale rows, then fold their reserved sums
+    // back into accounts and api_keys. All in one atomic statement.
+    let result = sqlx::query(
+        "WITH stale AS ( \
+             UPDATE reservations SET state = 'released', settled_at = now() \
+             WHERE state = 'open' AND created_at < now() - make_interval(secs => $1) \
+             RETURNING account_id, key_id, reserved \
+         ), acct AS ( \
+             UPDATE accounts a SET allocation_reserved = allocation_reserved - s.total \
+             FROM (SELECT account_id, SUM(reserved) AS total FROM stale GROUP BY account_id) s \
+             WHERE a.id = s.account_id \
+         ) \
+         UPDATE api_keys k SET key_reserved = key_reserved - s.total \
+         FROM (SELECT key_id, SUM(reserved) AS total FROM stale GROUP BY key_id) s \
+         WHERE k.id = s.key_id",
+    )
+    .bind(max_age_secs as f64)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// Resolve a key's per-key cap to an absolute token count.
 ///
 /// `percent` is `floor(allocation_total * limit_value / 100)`; `hardcap` is
