@@ -1,0 +1,47 @@
+[package]
+name = "helexa-upstream"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "helexa-upstream"
+path = "src/main.rs"
+
+[lib]
+name = "helexa_upstream"
+path = "src/lib.rs"
+
+[dependencies]
+tokio = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+figment = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+
+# PostgreSQL — the mesh authority's system of record. Runtime query API
+# (not the compile-time `query!` macros) so the crate builds in CI without a
+# live database or a committed `.sqlx` offline cache; correctness is covered
+# by the gated integration tests. (Macro adoption is a later refinement once
+# a dev DB + offline cache exist.)
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "macros",
+    "migrate",
+    "chrono",
+    "uuid",
+] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+figment = { workspace = true, features = ["test"] }
