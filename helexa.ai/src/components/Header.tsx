@@ -6,11 +6,12 @@ import { useTheme } from "../layout/theme";
 import { useTranslation } from "react-i18next";
 import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages";
 import { getLanguageOptionsByUsage } from "../i18n/translation-priority";
+import { useAuth } from "../auth/context";
 
 /**
  * Top navigation: brand, primary routes (chat at `/`, `/mission`), an
- * auth-aware cluster (stubbed until F4 wires sessions), the theme toggle,
- * and the language selector.
+ * auth-aware cluster (Account/Sign out when signed in, else Sign in/up),
+ * the theme toggle, and the language selector.
  *
  * The language picker is ordered by **estimated usage**
  * (getLanguageOptionsByUsage), not alphabetically — a deliberate choice that
@@ -21,6 +22,7 @@ import { getLanguageOptionsByUsage } from "../i18n/translation-priority";
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation("common");
+  const { status, logout } = useAuth();
 
   const currentLanguage: LanguageCode = (i18n.language.split("-")[0] ||
     "en") as LanguageCode;
@@ -75,13 +77,31 @@ const Header: React.FC = () => {
           </Nav>
 
           <div className="d-flex align-items-center gap-2">
-            {/* Auth cluster — plain links until F4 wires session state. */}
-            <NavLink to="/login" className="nav-link">
-              {t("nav.login")}
-            </NavLink>
-            <NavLink to="/register" className="nav-link">
-              {t("nav.register")}
-            </NavLink>
+            {/* Auth-aware cluster. */}
+            {status === "authed" ? (
+              <>
+                <NavLink to="/account" className="nav-link">
+                  {t("nav.account")}
+                </NavLink>
+                <Button
+                  size="sm"
+                  variant="outline-secondary"
+                  onClick={logout}
+                  className="me-1"
+                >
+                  {t("nav.logout")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/login" className="nav-link">
+                  {t("nav.login")}
+                </NavLink>
+                <NavLink to="/register" className="nav-link">
+                  {t("nav.register")}
+                </NavLink>
+              </>
+            )}
 
             <Button
               size="sm"
