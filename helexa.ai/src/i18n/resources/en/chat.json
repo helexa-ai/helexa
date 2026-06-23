@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Chat transcript will appear here. Render messages from the model and user in a scrolling container, optionally grouped by turn.",
   "inputPlaceholder": "Type a message to start chatting…",
   "send": "Send",
-  "clear": "Clear"
+  "clear": "Clear",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

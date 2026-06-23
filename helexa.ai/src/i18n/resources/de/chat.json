@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Das Chat-Protokoll erscheint hier. Rendern die Nachrichten des Modells und der Nutzerin bzw. des Nutzers in einem scrollbaren Container, optional nach Gesprächsrunden gruppiert.",
   "inputPlaceholder": "Schreibe eine Nachricht, um mit dem Chat zu beginnen…",
   "send": "Senden",
-  "clear": "Leeren"
+  "clear": "Leeren",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Transkrypcja czatu pojawi się tutaj. Renderuj wiadomości modelu i użytkownika w przewijanym kontenerze, opcjonalnie pogrupowane według tur.",
   "inputPlaceholder": "Napisz wiadomość, aby rozpocząć rozmowę…",
   "send": "Wyślij",
-  "clear": "Wyczyść"
+  "clear": "Wyczyść",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "رونوشت گفتگو در اینجا نمایش داده می‌شود. پیام‌های مدل و کاربر را در یک محفظه قابل اسکرول رندر کنید؛ در صورت تمایل آن‌ها را بر اساس نوبت گروه‌بندی کنید.",
   "inputPlaceholder": "برای شروع گفتگو یک پیام بنویسید…",
   "send": "ارسال",
-  "clear": "پاک کردن"
+  "clear": "پاک کردن",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

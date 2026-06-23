@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Тук ще се показва историята на чата. Визуализирай съобщенията от модела и потребителя в превъртащ се контейнер, по желание групирани по ход.",
   "inputPlaceholder": "Напиши съобщение, за да започнеш разговора…",
   "send": "Изпрати",
-  "clear": "Изчисти"
+  "clear": "Изчисти",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

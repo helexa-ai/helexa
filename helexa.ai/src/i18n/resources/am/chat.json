@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "የውይይቱ ሪኮርድ እዚህ ይታያል። የሞዴሉን እና የተጠቃሚውን መልዕክቶች በሚንቀሳቀስ ኮንቴይነር ውስጥ ያቀርቡ፣  приወይም በዙር ዙር በመከፈል ማቅረብ ይችላሉ።",
   "inputPlaceholder": "ውይይትን ለመጀምር መልዕክት ይፃፉ…",
   "send": "መላክ",
-  "clear": "ማጽዳት"
+  "clear": "ማጽዳት",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

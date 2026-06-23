@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Chat‑loggen vises her. Vis meldinger fra modell og bruker i en rullende beholder, eventuelt gruppert per tur.",
   "inputPlaceholder": "Skriv en melding for å starte en samtale…",
   "send": "Send",
-  "clear": "Tøm"
+  "clear": "Tøm",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

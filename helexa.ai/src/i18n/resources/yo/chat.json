@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Àkọsílẹ̀ ìjíròrò yóò hàn níbí. Ṣàfihàn àwọn ìfiránṣẹ́ láti ọ̀dọ̀ àwòrán àfọwọ́kọ àti láti ọdọ oníṣè̩-ló̩rùn nínú àpótí tí a lè sáré sókè-sísàlẹ̀, tí o bá fẹ́ o tún lè pín wọn sí ìpínpín nípasẹ̀ àtúnṣe (turn).",
   "inputPlaceholder": "Kọ ìfiránṣẹ́ láti bẹ̀rẹ̀ ìjíròrò…",
   "send": "Ránṣẹ́",
-  "clear": "Pa mọ́"
+  "clear": "Pa mọ́",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

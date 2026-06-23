@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Irekhodi lengxoxo lizovela lapha. Bonisa imiyalezo evela kumodeli nasemsebenzini womsebenzisi ngaphakathi kwesiqukathi esinokuskroleka, ungayihlukanisa nangemijikelezo yengxoxo uma uthanda.",
   "inputPlaceholder": "Bhala umlayezo ukuqala ingxoxo…",
   "send": "Thumela",
-  "clear": "Sula"
+  "clear": "Sula",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }
