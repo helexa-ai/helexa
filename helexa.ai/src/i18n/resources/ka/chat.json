@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "ჩატის ისტორია გამოჩნდება აქ. ნაჩვენებია მოდელისა და მომხმარებლის შეტყობინებები გადახვევად კონტეინერში, სურვილის შემთხვევაში ტურნების მიხედვით დაჯგუფებით.",
   "inputPlaceholder": "დაიწყე საუბარი — მიწერე შეტყობინება…",
   "send": "გაგზავნა",
-  "clear": "გასუფთავება"
+  "clear": "გასუფთავება",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

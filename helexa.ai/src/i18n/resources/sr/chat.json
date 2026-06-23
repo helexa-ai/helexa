@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Transkript ćaskanja će se pojaviti ovde. Prikaži poruke modela i korisnika u kliznom kontejneru, po želji grupisane po toku razgovora.",
   "inputPlaceholder": "Unesi poruku da započneš razgovor…",
   "send": "Pošalji",
-  "clear": "Obriši"
+  "clear": "Obriši",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

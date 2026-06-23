@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Το ιστορικό της συνομιλίας θα εμφανίζεται εδώ. Απόδωσε τα μηνύματα του μοντέλου και του χρήστη σε ένα κυλιόμενο container, προαιρετικά ομαδοποιημένα ανά γύρο.",
   "inputPlaceholder": "Πληκτρολόγησε ένα μήνυμα για να ξεκινήσεις τη συνομιλία…",
   "send": "Αποστολή",
-  "clear": "Καθαρισμός"
+  "clear": "Καθαρισμός",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

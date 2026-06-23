@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Maandishi ya mazungumzo yataonekana hapa. Onyesha ujumbe wa mtumiaji na ule wa modeli ndani ya sehemu inayosogezwa, ukipanga kwa mizunguko ya mazungumzo ikiwa utapendelea.",
   "inputPlaceholder": "Andika ujumbe kuanza kuzungumza…",
   "send": "Tuma",
-  "clear": "Futa"
+  "clear": "Futa",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "La transcription du chat apparaîtra ici. Affichez les messages du modèle et de l’utilisateur dans un conteneur défilant, éventuellement groupés par tour.",
   "inputPlaceholder": "Tapez un message pour commencer à discuter…",
   "send": "Envoyer",
-  "clear": "Effacer"
+  "clear": "Effacer",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

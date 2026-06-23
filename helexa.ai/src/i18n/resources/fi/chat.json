@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Keskusteluloki näkyy tässä. Näytä mallin ja käyttäjän viestit vieritettävässä säiliössä, halutessasi vuoroittain ryhmiteltynä.",
   "inputPlaceholder": "Kirjoita viesti aloittaaksesi keskustelun…",
   "send": "Lähetä",
-  "clear": "Tyhjennä"
+  "clear": "Tyhjennä",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

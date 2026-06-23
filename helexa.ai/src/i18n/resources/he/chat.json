@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "תמליל הצ'אט יופיע כאן. הציגו את ההודעות של המודל ושל המשתמש/ת במכל גלילה, אפשר גם לקבץ לפי סבב שיחה.",
   "inputPlaceholder": "כתבו הודעה כדי להתחיל שיחה…",
   "send": "שליחה",
-  "clear": "ניקוי"
+  "clear": "ניקוי",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

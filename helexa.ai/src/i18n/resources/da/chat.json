@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Chattransskriptionen vises her. Gengiv beskeder fra modellen og brugeren i en rullende container, eventuelt grupperet efter tur.",
   "inputPlaceholder": "Skriv en besked for at starte en chat…",
   "send": "Send",
-  "clear": "Ryd"
+  "clear": "Ryd",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }

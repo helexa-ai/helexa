@@ -5,5 +5,13 @@
   "transcriptPlaceholder": "Sohbet geçmişi burada görünecek. Modelden ve kullanıcıdan gelen mesajları, isterseniz turlara göre gruplayarak, kaydırılabilir bir alanda gösterin.",
   "inputPlaceholder": "Sohbete başlamak için bir mesaj yazın…",
   "send": "Gönder",
-  "clear": "Temizle"
+  "clear": "Temizle",
+  "newChat": "New chat",
+  "newProject": "New project",
+  "newProjectName": "New project",
+  "unsorted": "Unsorted",
+  "emptyState": "Start a conversation. Your history stays in this browser.",
+  "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
+  "signUp": "Sign up",
+  "stop": "Stop"
 }
