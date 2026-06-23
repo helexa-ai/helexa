@@ -60,7 +60,9 @@
     "archive": "Archive",
     "save": "Save",
     "status": "Status",
-    "usage": "Used"
+    "usage": "Used",
+    "useForChat": "Use for chat on this device",
+    "usedForChat": "Enabled for chat ✓"
   },
   "error": {
     "generic": "Something went wrong.",

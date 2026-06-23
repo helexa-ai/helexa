@@ -11,38 +11,64 @@ import {
 } from "../data/repositories";
 import { getFingerprint } from "../lib/fingerprint";
 import { useChat } from "../lib/useChat";
+import { useAuth } from "../auth/context";
 
-const ANON_OWNER = "anon";
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
+const AUTH_MODEL = import.meta.env.VITE_DEFAULT_MODEL || "helexa/balanced";
 const ANON_MESSAGE_CAP = 20;
 const ANON_COUNT_KEY = "anonMessageCount";
 
 /**
- * The chat workspace landing (`/`). Anonymous + fingerprinted: history and
- * project organisation live entirely in IndexedDB; inference streams from
- * the mesh router with no bearer (the constrained anonymous model), capped
- * client-side with a sign-up nudge. Authenticated mode (bearer + full
- * models, owner = account) lands in F5.
+ * The chat workspace landing (`/`). Anonymous visitors are fingerprinted and
+ * capped, streaming from the constrained public model with no bearer. Signed
+ * in (F5), the workspace switches its IndexedDB owner to the account, lifts
+ * the cap, uses the full default model, and sends the user's API key (stored
+ * locally, never server-side) as the bearer. History always stays in the
+ * browser.
  */
 export default function Chat() {
   const { t } = useTranslation("chat");
-  const owner = ANON_OWNER;
+  const { status, accountId } = useAuth();
+  const authed = status === "authed" && !!accountId;
+  const owner = authed ? accountId! : "anon";
+  const model = authed ? AUTH_MODEL : ANON_MODEL;
 
   // Namespace anonymous data to the fingerprint (best-effort) at mount.
   useEffect(() => {
     void getFingerprint();
   }, []);
 
+  // The user's API key for authenticated chat — stored client-side only,
+  // captured from the create-key modal ("use for chat on this device").
+  const chatApiKey = useLiveQuery(
+    async () => {
+      const m = await db.meta.get("chatApiKey");
+      return typeof m?.value === "string" ? m.value : undefined;
+    },
+    [],
+    undefined,
+  );
+
   const projects = useLiveQuery(() => listProjects(owner), [owner], []);
   const conversations = useLiveQuery(() => listConversations(owner), [owner], []);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Reset the active conversation when the owner changes (login/logout).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveId(null);
+  }, [owner]);
 
   const anonCount =
     useLiveQuery(async () => {
       const m = await db.meta.get(ANON_COUNT_KEY);
       return typeof m?.value === "number" ? m.value : 0;
     }, [], 0) ?? 0;
-  const capped = anonCount >= ANON_MESSAGE_CAP;
+  // The cap only applies to anonymous visitors; signed-in users are gated by
+  // their account allocation (enforced upstream), not a client counter.
+  const capped = !authed && anonCount >= ANON_MESSAGE_CAP;
+  // Signed in but no local key enabled for chat → can't send as yourself yet.
+  const needsKey = authed && !chatApiKey;
 
   const messages = useLiveQuery(
     async () => {
@@ -54,7 +80,10 @@ export default function Chat() {
     [],
   );
 
-  const { streaming, error, send, stop } = useChat(activeId, { model: ANON_MODEL });
+  const { streaming, error, send, stop } = useChat(activeId, {
+    model,
+    apiKey: authed ? chatApiKey : undefined,
+  });
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
@@ -63,20 +92,22 @@ export default function Chat() {
   }, [messages]);
 
   async function newChat(projectId: string | null = null) {
-    const id = await createConversation(owner, ANON_MODEL, projectId);
+    const id = await createConversation(owner, model, projectId);
     setActiveId(id);
   }
 
   async function onSend() {
     const text = draft.trim();
-    if (!text || streaming || capped) return;
+    if (!text || streaming || capped || needsKey) return;
     let convId = activeId;
     if (!convId) {
-      convId = await createConversation(owner, ANON_MODEL);
+      convId = await createConversation(owner, model);
       setActiveId(convId);
     }
     setDraft("");
-    await db.meta.put({ key: ANON_COUNT_KEY, value: anonCount + 1 });
+    if (!authed) {
+      await db.meta.put({ key: ANON_COUNT_KEY, value: anonCount + 1 });
+    }
     await send(text);
   }
 
@@ -162,15 +193,28 @@ export default function Chat() {
         {error && (
           <Alert variant="warning" className="m-2 py-2">
             {error.message}{" "}
-            {(error.code === "insufficient_quota" ||
-              error.code === "rate_limit_exceeded" ||
-              capped) && <a href="/register">{t("signUp")}</a>}
+            {error.code === "insufficient_quota" ? (
+              // Hard balance exhausted → top up (authed) or sign up (anon).
+              <a href={authed ? "/account" : "/register"}>
+                {authed ? t("topUp") : t("signUp")}
+              </a>
+            ) : error.code === "rate_limit_exceeded" ? (
+              <span className="text-muted">{t("rateLimited")}</span>
+            ) : (
+              !authed && <a href="/register">{t("signUp")}</a>
+            )}
           </Alert>
         )}
 
         {capped && !error && (
           <Alert variant="info" className="m-2 py-2">
             {t("anonBanner")} <a href="/register">{t("signUp")}</a>
+          </Alert>
+        )}
+
+        {needsKey && !error && (
+          <Alert variant="info" className="m-2 py-2">
+            {t("needsKey")} <a href="/account/keys">{t("manageKeysLink")}</a>
           </Alert>
         )}
 
@@ -185,8 +229,10 @@ export default function Chat() {
             as="textarea"
             rows={1}
             value={draft}
-            disabled={capped}
-            placeholder={capped ? t("anonBanner") : t("inputPlaceholder")}
+            disabled={capped || needsKey}
+            placeholder={
+              capped ? t("anonBanner") : needsKey ? t("needsKey") : t("inputPlaceholder")
+            }
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -200,7 +246,7 @@ export default function Chat() {
               {t("stop")}
             </Button>
           ) : (
-            <Button type="submit" variant="primary" disabled={capped || !draft.trim()}>
+            <Button type="submit" variant="primary" disabled={capped || needsKey || !draft.trim()}>
               {t("send")}
             </Button>
           )}

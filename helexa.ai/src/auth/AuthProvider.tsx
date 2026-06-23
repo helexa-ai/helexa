@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { accountApi } from "../api/account";
 import { claimAnonymousData } from "../data/repositories";
 import { getFingerprint } from "../lib/fingerprint";
@@ -14,6 +14,19 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [email, setEmail] = useState<string | null>(() =>
     localStorage.getItem(EMAIL_KEY),
   );
+  const [accountId, setAccountId] = useState<string | null>(null);
+
+  // Resolve the account id for an existing session (page reload) so the chat
+  // workspace can scope its IndexedDB owner without a fresh login.
+  useEffect(() => {
+    if (!token || accountId) return;
+    accountApi()
+      .account(token)
+      .then((a) => setAccountId(a.account_id))
+      .catch(() => {
+        /* token may be stale; chat falls back to anon until re-login */
+      });
+  }, [token, accountId]);
 
   async function login(em: string, password: string): Promise<void> {
     const api = accountApi();
@@ -25,6 +38,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     // Claim anonymous local history into the account (stays client-side).
     try {
       const acct = await api.account(session.token);
+      setAccountId(acct.account_id);
       await claimAnonymousData(acct.account_id);
     } catch {
       /* non-fatal */
@@ -41,11 +55,20 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(EMAIL_KEY);
     setToken(null);
     setEmail(null);
+    setAccountId(null);
   }
 
   return (
     <AuthContext.Provider
-      value={{ token, email, status: token ? "authed" : "anon", login, register, logout }}
+      value={{
+        token,
+        email,
+        accountId,
+        status: token ? "authed" : "anon",
+        login,
+        register,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
