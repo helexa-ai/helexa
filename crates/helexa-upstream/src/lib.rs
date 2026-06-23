@@ -21,6 +21,7 @@ pub mod error;
 pub mod handlers;
 pub mod ledger;
 pub mod state;
+pub mod topup;
 pub mod web;
 
 use anyhow::Result;

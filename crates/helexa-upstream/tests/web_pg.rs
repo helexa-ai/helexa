@@ -294,3 +294,132 @@ async fn fingerprint_abuse_silently_deactivates_all_no_clue() {
         "deactivated account's key looks like any invalid key"
     );
 }
+
+#[tokio::test]
+async fn topup_redeem_raises_allocation_single_use() {
+    let Some((base, pool)) = spawn_or_skip("topup_redeem_raises_allocation_single_use").await
+    else {
+        return;
+    };
+    let email = unique_email();
+    post(
+        format!("{base}/web/v1/register"),
+        json!({"email": email, "password": "password123"}),
+        None,
+    )
+    .await;
+    pool.execute(
+        sqlx::query("UPDATE users SET email_verified = true WHERE email = $1").bind(&email),
+    )
+    .await
+    .unwrap();
+    let token = post(
+        format!("{base}/web/v1/login"),
+        json!({"email": email, "password": "password123"}),
+        None,
+    )
+    .await
+    .json::<Value>()
+    .await
+    .unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    // Mint a code worth 500_000 (mint path used by the CLI/faucet).
+    let codes = helexa_upstream::topup::mint(&pool, 500_000, 1, Some("test"))
+        .await
+        .unwrap();
+    let code = &codes[0];
+
+    // Redeem → allocation_total rises from the 1_000_000 free grant.
+    let r = post(
+        format!("{base}/web/v1/redeem"),
+        json!({"code": code}),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(r.status(), 200);
+    assert_eq!(
+        r.json::<Value>().await.unwrap()["allocation_total"],
+        1_500_000
+    );
+
+    // Single-use: a second redemption fails generically (no oracle).
+    let r = post(
+        format!("{base}/web/v1/redeem"),
+        json!({"code": code}),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(r.status(), 400);
+
+    // Unknown code: same generic 400.
+    let r = post(
+        format!("{base}/web/v1/redeem"),
+        json!({"code": "helexa-topup-does-not-exist"}),
+        Some(&token),
+    )
+    .await;
+    assert_eq!(r.status(), 400);
+}
+
+#[tokio::test]
+async fn topup_concurrent_double_redeem_one_winner() {
+    let Some((base, pool)) = spawn_or_skip("topup_concurrent_double_redeem_one_winner").await
+    else {
+        return;
+    };
+    // Two verified accounts.
+    let mut tokens = Vec::new();
+    for _ in 0..2 {
+        let email = unique_email();
+        post(
+            format!("{base}/web/v1/register"),
+            json!({"email": email, "password": "password123"}),
+            None,
+        )
+        .await;
+        pool.execute(
+            sqlx::query("UPDATE users SET email_verified = true WHERE email = $1").bind(&email),
+        )
+        .await
+        .unwrap();
+        let t = post(
+            format!("{base}/web/v1/login"),
+            json!({"email": email, "password": "password123"}),
+            None,
+        )
+        .await
+        .json::<Value>()
+        .await
+        .unwrap()["token"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        tokens.push(t);
+    }
+    let code = helexa_upstream::topup::mint(&pool, 100, 1, None)
+        .await
+        .unwrap()
+        .remove(0);
+
+    // Both accounts race to redeem the same code; exactly one wins.
+    let (a, b) = tokio::join!(
+        post(
+            format!("{base}/web/v1/redeem"),
+            json!({"code": code}),
+            Some(&tokens[0])
+        ),
+        post(
+            format!("{base}/web/v1/redeem"),
+            json!({"code": code}),
+            Some(&tokens[1])
+        ),
+    );
+    let wins = [a.status(), b.status()]
+        .iter()
+        .filter(|s| s.as_u16() == 200)
+        .count();
+    assert_eq!(wins, 1, "exactly one redemption wins the single-use code");
+}
