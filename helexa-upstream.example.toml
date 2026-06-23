@@ -1,0 +1,23 @@
+# helexa-upstream.example.toml — mesh-level account/authorization authority
+#
+# Copy to helexa-upstream.toml and adjust. Env overrides use the UPSTREAM_
+# prefix with __ separators, e.g. UPSTREAM_DB__URL=postgres://...
+
+[server]
+# Plaintext listener; edge nginx terminates TLS (consistent with the stack).
+listen = "0.0.0.0:8090"
+
+[db]
+# PostgreSQL connection URL. Required.
+url = "postgres://helexa:helexa@localhost/helexa_upstream"
+# max_connections = 16
+
+[grant]
+# Flat free token grant every email-verified account receives (the floor of
+# the hybrid allocation; single-use top-up codes extend it).
+# free_token_grant = 1000000
+
+[abuse]
+# When this many accounts share one registration fingerprint, all are
+# silently deactivated (no notice to the user).
+# fingerprint_account_threshold = 5
