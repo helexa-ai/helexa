@@ -22,6 +22,9 @@ pub struct CortexState {
     /// Whether to reject unauthenticated requests (#49). Read by the auth
     /// middleware once it lands.
     pub require_auth: bool,
+    /// Per-principal served-token tally (#58), reported to upstream for
+    /// operator reconciliation by the flush task when upstream is enabled.
+    pub served_usage: Arc<crate::served_usage::ServedUsage>,
 }
 
 impl CortexState {
@@ -73,6 +76,7 @@ impl CortexState {
                 .expect("failed to build HTTP client"),
             entitlements,
             require_auth: config.entitlements.require_auth,
+            served_usage: Arc::new(crate::served_usage::ServedUsage::new()),
         }
     }
 }

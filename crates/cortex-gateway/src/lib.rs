@@ -11,6 +11,7 @@ pub mod metrics;
 pub mod poller;
 pub mod proxy;
 pub mod router;
+pub mod served_usage;
 pub mod state;
 
 use anyhow::Result;
@@ -56,6 +57,28 @@ pub async fn run(config: GatewayConfig) -> Result<()> {
     tokio::spawn(async move {
         evictor::eviction_loop(evictor_fleet).await;
     });
+
+    // Served-usage reporter (#58): when this operator is part of the mesh,
+    // periodically flush absolute per-principal served-token counters to
+    // upstream for reconciliation.
+    if config.upstream.enabled {
+        let su_fleet = Arc::clone(&fleet);
+        let url = config.upstream.url.clone();
+        let bearer = config.upstream.bearer.clone();
+        let interval =
+            std::time::Duration::from_secs(config.upstream.served_usage_report_interval_secs);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(interval).await;
+                let rows = su_fleet.served_usage.snapshot();
+                if let Err(e) =
+                    served_usage::report(&su_fleet.http_client, &url, &bearer, &rows).await
+                {
+                    tracing::warn!(error = %e, "served-usage report failed (will retry)");
+                }
+            }
+        });
+    }
 
     let app = build_app(Arc::clone(&fleet));
 

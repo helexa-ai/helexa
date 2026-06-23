@@ -105,3 +105,5 @@ enabled = false
 # upstream). Override via CORTEX_UPSTREAM__BEARER in prod.
 # bearer = "replace-with-operator-client-secret"
 # timeout_secs = 5
+# How often to flush served-usage counters to upstream for reconciliation (#58).
+# served_usage_report_interval_secs = 60

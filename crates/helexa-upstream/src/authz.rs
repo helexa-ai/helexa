@@ -22,7 +22,7 @@ use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
-use axum::{Json, Router};
+use axum::{Extension, Json, Router};
 use cortex_core::error_envelope::OpenAiError;
 use serde::{Deserialize, Serialize};
 use subtle::ConstantTimeEq;
@@ -41,6 +41,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .route("/authz/v1/settle", post(settle))
         .route("/authz/v1/release", post(release))
         .route("/authz/v1/snapshot", post(snapshot))
+        .route("/authz/v1/served-usage", post(served_usage))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             client_auth,
@@ -272,6 +273,61 @@ async fn snapshot(State(state): State<AppState>, Json(req): Json<SnapshotReq>) -
             envelope_response(OpenAiError::service_unavailable("authority error", Some(5)))
         }
     }
+}
+
+// ── served-usage report (#58) ───────────────────────────────────────
+
+#[derive(Deserialize)]
+struct ServedUsageReport {
+    rows: Vec<ServedUsageRow>,
+}
+
+#[derive(Deserialize)]
+struct ServedUsageRow {
+    account_id: String,
+    key_id: String,
+    period: String, // YYYY-MM-DD
+    served_tokens: i64,
+}
+
+/// `POST /authz/v1/served-usage` — a cortex reports the absolute served-token
+/// counters it has accrued for the current period. Upsert is monotonic
+/// (`GREATEST`) so re-sends and races are idempotent and never regress.
+/// `operator_id` comes from the validated client bearer (request extension).
+async fn served_usage(
+    State(state): State<AppState>,
+    Extension(operator): Extension<OperatorId>,
+    Json(req): Json<ServedUsageReport>,
+) -> Response {
+    for row in &req.rows {
+        let (Ok(account_id), Ok(key_id)) = (
+            Uuid::parse_str(&row.account_id),
+            Uuid::parse_str(&row.key_id),
+        ) else {
+            continue; // skip malformed ids rather than fail the whole batch
+        };
+        let Ok(period) = chrono::NaiveDate::parse_from_str(&row.period, "%Y-%m-%d") else {
+            continue;
+        };
+        let res = sqlx::query(
+            "INSERT INTO served_usage (operator_id, account_id, key_id, period, served_tokens) \
+             VALUES ($1, $2, $3, $4, $5) \
+             ON CONFLICT (operator_id, account_id, key_id, period) \
+             DO UPDATE SET served_tokens = GREATEST(served_usage.served_tokens, EXCLUDED.served_tokens)",
+        )
+        .bind(&operator.0)
+        .bind(account_id)
+        .bind(key_id)
+        .bind(period)
+        .bind(row.served_tokens.max(0))
+        .execute(&state.pool)
+        .await;
+        if let Err(e) = res {
+            tracing::error!(error = %e, "served-usage upsert failed");
+            return envelope_response(OpenAiError::service_unavailable("authority error", Some(5)));
+        }
+    }
+    StatusCode::NO_CONTENT.into_response()
 }
 
 fn bad_request(msg: &str) -> Response {

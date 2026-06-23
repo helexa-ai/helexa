@@ -60,6 +60,7 @@ fn chain(local: LocalEntitlementProvider, url: &str) -> ChainedEntitlementProvid
         url: url.to_string(),
         bearer: "client-secret".into(),
         timeout_secs: 5,
+        served_usage_report_interval_secs: 60,
     });
     ChainedEntitlementProvider::new(local, upstream)
 }

@@ -117,9 +117,21 @@ impl Drop for ReservationGuard {
 /// Build the completion sink for an authenticated request: record spend and
 /// settle the reservation with the observed total. Dropping it unused (no
 /// usage observed) releases the reservation via the guard.
-pub fn usage_sink(principal: Principal, guard: ReservationGuard) -> UsageSink {
+pub fn usage_sink(
+    principal: Principal,
+    guard: ReservationGuard,
+    served_usage: std::sync::Arc<crate::served_usage::ServedUsage>,
+) -> UsageSink {
     Box::new(move |prompt, completion| {
         record_spend(&principal, prompt, completion);
+        // Per-principal served-usage tally for #58 reconciliation. Recorded
+        // for every metered (authenticated) request; the flush task reports
+        // it to upstream when the operator is part of the mesh.
+        served_usage.add(
+            &principal.account_id,
+            &principal.key_id,
+            prompt + completion,
+        );
         guard.settle(prompt + completion);
     })
 }
