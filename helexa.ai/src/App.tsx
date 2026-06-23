@@ -4,6 +4,7 @@ import AuthProvider from "./auth/AuthProvider";
 import RequireAuth from "./auth/RequireAuth";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
 import Chat from "./pages/Chat";
 import Login from "./pages/auth/Login";
@@ -24,6 +25,7 @@ export default function App() {
       <BrowserRouter>
         <AuthProvider>
           <div className="d-flex flex-column min-vh-100">
+            <BetaBanner />
             <Header />
             <Routes>
               <Route path="/" element={<Chat />} />

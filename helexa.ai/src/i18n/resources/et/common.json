@@ -59,5 +59,10 @@
   },
   "footer": {
     "copyright": "© {{year}} helexa.ai"
+  },
+  "beta": {
+    "tag": "Public beta",
+    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
+    "dismiss": "Dismiss"
   }
 }

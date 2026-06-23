@@ -32,3 +32,22 @@ F0 scaffold. Theming + i18n (33 languages, usage-ordered selector), the
 `/mission` page, the chat workspace (Dexie + streaming), and the account
 dashboard land in subsequent phases — see
 `~/.claude/plans/we-need-to-plan-modular-graham.md`.
+
+## Deploy (public beta)
+
+Build the SPA and serve it from edge nginx on the **same origin** as the
+two backends — so the browser makes no cross-origin request (no CORS) and
+the user's API key rides as a first-party bearer.
+
+```sh
+npm ci && npm run build          # → dist/
+sudo cp -r dist/* /var/www/helexa.ai/
+sudo cp deploy/nginx.conf /etc/nginx/conf.d/helexa.ai.conf   # adjust upstreams + TLS
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+`deploy/nginx.conf` routes `/` → SPA (history fallback), `/v1` + `/health`
+→ helexa-router, and `/api/` → helexa-upstream `/web/v1/`. Set
+`VITE_PUBLIC_BETA=true` at build time for the beta banner. There is **no
+server-side chat history**: conversations live only in the browser
+(IndexedDB).
