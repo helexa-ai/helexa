@@ -10,133 +10,133 @@ import type { LanguageCode } from "./languages";
 // Core languages
 import enCommon from "./resources/en/common.json";
 import ruCommon from "./resources/ru/common.json";
-import enHome from "./resources/en/home.json";
-import ruHome from "./resources/ru/home.json";
+import enMission from "./resources/en/mission.json";
+import ruMission from "./resources/ru/mission.json";
 import enChat from "./resources/en/chat.json";
 import ruChat from "./resources/ru/chat.json";
 
 // Scandinavian & Nordic languages
 import daCommon from "./resources/da/common.json";
-import daHome from "./resources/da/home.json";
+import daMission from "./resources/da/mission.json";
 import daChat from "./resources/da/chat.json";
 
 import fiCommon from "./resources/fi/common.json";
-import fiHome from "./resources/fi/home.json";
+import fiMission from "./resources/fi/mission.json";
 import fiChat from "./resources/fi/chat.json";
 
 import noCommon from "./resources/no/common.json";
-import noHome from "./resources/no/home.json";
+import noMission from "./resources/no/mission.json";
 import noChat from "./resources/no/chat.json";
 
 import svCommon from "./resources/sv/common.json";
-import svHome from "./resources/sv/home.json";
+import svMission from "./resources/sv/mission.json";
 import svChat from "./resources/sv/chat.json";
 
 import bgCommon from "./resources/bg/common.json";
-import bgHome from "./resources/bg/home.json";
+import bgMission from "./resources/bg/mission.json";
 import bgChat from "./resources/bg/chat.json";
 
 import etCommon from "./resources/et/common.json";
-import etHome from "./resources/et/home.json";
+import etMission from "./resources/et/mission.json";
 import etChat from "./resources/et/chat.json";
 
 // African & MENA languages
 import swCommon from "./resources/sw/common.json";
-import swHome from "./resources/sw/home.json";
+import swMission from "./resources/sw/mission.json";
 import swChat from "./resources/sw/chat.json";
 
 import arCommon from "./resources/ar/common.json";
-import arHome from "./resources/ar/home.json";
+import arMission from "./resources/ar/mission.json";
 import arChat from "./resources/ar/chat.json";
 
 import faCommon from "./resources/fa/common.json";
-import faHome from "./resources/fa/home.json";
+import faMission from "./resources/fa/mission.json";
 import faChat from "./resources/fa/chat.json";
 
 import haCommon from "./resources/ha/common.json";
-import haHome from "./resources/ha/home.json";
+import haMission from "./resources/ha/mission.json";
 import haChat from "./resources/ha/chat.json";
 
 import amCommon from "./resources/am/common.json";
-import amHome from "./resources/am/home.json";
+import amMission from "./resources/am/mission.json";
 import amChat from "./resources/am/chat.json";
 
 import yoCommon from "./resources/yo/common.json";
-import yoHome from "./resources/yo/home.json";
+import yoMission from "./resources/yo/mission.json";
 import yoChat from "./resources/yo/chat.json";
 
 import zuCommon from "./resources/zu/common.json";
-import zuHome from "./resources/zu/home.json";
+import zuMission from "./resources/zu/mission.json";
 import zuChat from "./resources/zu/chat.json";
 
 // Darija (Moroccan Arabic)
 import maCommon from "./resources/ma/common.json";
-import maHome from "./resources/ma/home.json";
+import maMission from "./resources/ma/mission.json";
 import maChat from "./resources/ma/chat.json";
 
 // European / other languages
 import esCommon from "./resources/es/common.json";
-import esHome from "./resources/es/home.json";
+import esMission from "./resources/es/mission.json";
 import esChat from "./resources/es/chat.json";
 
 import frCommon from "./resources/fr/common.json";
-import frHome from "./resources/fr/home.json";
+import frMission from "./resources/fr/mission.json";
 import frChat from "./resources/fr/chat.json";
 
 import deCommon from "./resources/de/common.json";
-import deHome from "./resources/de/home.json";
+import deMission from "./resources/de/mission.json";
 import deChat from "./resources/de/chat.json";
 
 import elCommon from "./resources/el/common.json";
-import elHome from "./resources/el/home.json";
+import elMission from "./resources/el/mission.json";
 import elChat from "./resources/el/chat.json";
 
 import itCommon from "./resources/it/common.json";
-import itHome from "./resources/it/home.json";
+import itMission from "./resources/it/mission.json";
 import itChat from "./resources/it/chat.json";
 
 import heCommon from "./resources/he/common.json";
-import heHome from "./resources/he/home.json";
+import heMission from "./resources/he/mission.json";
 import heChat from "./resources/he/chat.json";
 
 import ptCommon from "./resources/pt/common.json";
-import ptHome from "./resources/pt/home.json";
+import ptMission from "./resources/pt/mission.json";
 import ptChat from "./resources/pt/chat.json";
 
 import roCommon from "./resources/ro/common.json";
-import roHome from "./resources/ro/home.json";
+import roMission from "./resources/ro/mission.json";
 import roChat from "./resources/ro/chat.json";
 
 import kaCommon from "./resources/ka/common.json";
-import kaHome from "./resources/ka/home.json";
+import kaMission from "./resources/ka/mission.json";
 import kaChat from "./resources/ka/chat.json";
 
 import trCommon from "./resources/tr/common.json";
-import trHome from "./resources/tr/home.json";
+import trMission from "./resources/tr/mission.json";
 import trChat from "./resources/tr/chat.json";
 
 import plCommon from "./resources/pl/common.json";
-import plHome from "./resources/pl/home.json";
+import plMission from "./resources/pl/mission.json";
 import plChat from "./resources/pl/chat.json";
 
 import ukCommon from "./resources/uk/common.json";
-import ukHome from "./resources/uk/home.json";
+import ukMission from "./resources/uk/mission.json";
 import ukChat from "./resources/uk/chat.json";
 
 import nlCommon from "./resources/nl/common.json";
-import nlHome from "./resources/nl/home.json";
+import nlMission from "./resources/nl/mission.json";
 import nlChat from "./resources/nl/chat.json";
 
 import srCommon from "./resources/sr/common.json";
-import srHome from "./resources/sr/home.json";
+import srMission from "./resources/sr/mission.json";
 import srChat from "./resources/sr/chat.json";
 
 import kkCommon from "./resources/kk/common.json";
-import kkHome from "./resources/kk/home.json";
+import kkMission from "./resources/kk/mission.json";
 import kkChat from "./resources/kk/chat.json";
 
 import uzCommon from "./resources/uz/common.json";
-import uzHome from "./resources/uz/home.json";
+import uzMission from "./resources/uz/mission.json";
 import uzChat from "./resources/uz/chat.json";
 
 /**
@@ -149,166 +149,166 @@ import uzChat from "./resources/uz/chat.json";
 const resources: Resource = {
   en: {
     common: enCommon,
-    home: enHome,
+    mission: enMission,
     chat: enChat,
   },
   ru: {
     common: ruCommon,
-    home: ruHome,
+    mission: ruMission,
     chat: ruChat,
   },
   bg: {
     common: bgCommon,
-    home: bgHome,
+    mission: bgMission,
     chat: bgChat,
   },
   da: {
     common: daCommon,
-    home: daHome,
+    mission: daMission,
     chat: daChat,
   },
   et: {
     common: etCommon,
-    home: etHome,
+    mission: etMission,
     chat: etChat,
   },
   fi: {
     common: fiCommon,
-    home: fiHome,
+    mission: fiMission,
     chat: fiChat,
   },
   kk: {
     common: kkCommon,
-    home: kkHome,
+    mission: kkMission,
     chat: kkChat,
   },
   uz: {
     common: uzCommon,
-    home: uzHome,
+    mission: uzMission,
     chat: uzChat,
   },
 
   // African & MENA languages (LTR unless marked RTL via isRtlLanguage)
   sw: {
     common: swCommon,
-    home: swHome,
+    mission: swMission,
     chat: swChat,
   },
   ar: {
     common: arCommon,
-    home: arHome,
+    mission: arMission,
     chat: arChat,
   },
   fa: {
     common: faCommon,
-    home: faHome,
+    mission: faMission,
     chat: faChat,
   },
   ha: {
     common: haCommon,
-    home: haHome,
+    mission: haMission,
     chat: haChat,
   },
   am: {
     common: amCommon,
-    home: amHome,
+    mission: amMission,
     chat: amChat,
   },
   yo: {
     common: yoCommon,
-    home: yoHome,
+    mission: yoMission,
     chat: yoChat,
   },
   zu: {
     common: zuCommon,
-    home: zuHome,
+    mission: zuMission,
     chat: zuChat,
   },
   ma: {
     common: maCommon,
-    home: maHome,
+    mission: maMission,
     chat: maChat,
   },
 
   // European & other languages
   es: {
     common: esCommon,
-    home: esHome,
+    mission: esMission,
     chat: esChat,
   },
   fr: {
     common: frCommon,
-    home: frHome,
+    mission: frMission,
     chat: frChat,
   },
   de: {
     common: deCommon,
-    home: deHome,
+    mission: deMission,
     chat: deChat,
   },
   el: {
     common: elCommon,
-    home: elHome,
+    mission: elMission,
     chat: elChat,
   },
   it: {
     common: itCommon,
-    home: itHome,
+    mission: itMission,
     chat: itChat,
   },
   he: {
     common: heCommon,
-    home: heHome,
+    mission: heMission,
     chat: heChat,
   },
   pt: {
     common: ptCommon,
-    home: ptHome,
+    mission: ptMission,
     chat: ptChat,
   },
   ro: {
     common: roCommon,
-    home: roHome,
+    mission: roMission,
     chat: roChat,
   },
   ka: {
     common: kaCommon,
-    home: kaHome,
+    mission: kaMission,
     chat: kaChat,
   },
   tr: {
     common: trCommon,
-    home: trHome,
+    mission: trMission,
     chat: trChat,
   },
   pl: {
     common: plCommon,
-    home: plHome,
+    mission: plMission,
     chat: plChat,
   },
   uk: {
     common: ukCommon,
-    home: ukHome,
+    mission: ukMission,
     chat: ukChat,
   },
   nl: {
     common: nlCommon,
-    home: nlHome,
+    mission: nlMission,
     chat: nlChat,
   },
   sr: {
     common: srCommon,
-    home: srHome,
+    mission: srMission,
     chat: srChat,
   },
   no: {
     common: noCommon,
-    home: noHome,
+    mission: noMission,
     chat: noChat,
   },
   sv: {
     common: svCommon,
-    home: svHome,
+    mission: svMission,
     chat: svChat,
   },
 };
@@ -335,7 +335,7 @@ i18n.use(initReactI18next).init({
   lng: browserLang,
   fallbackLng: "en",
   supportedLngs: SUPPORTED_LANGUAGES,
-  ns: ["common", "home", "chat"],
+  ns: ["common", "mission", "chat"],
   defaultNS: "common",
   // Because we control the keys and interpolate only simple values.
   interpolation: {

@@ -3,11 +3,12 @@ import { Container } from "react-bootstrap";
 import ThemeProvider from "./layout/ThemeProvider";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import Mission from "./pages/Mission";
 import "./App.css";
 
-// F1 composition root: theme + router + layout shell. The chat workspace
-// (`/`, F3), `/mission` (F2), and the auth/account routes (F4) replace these
-// placeholders in later phases.
+// Composition root: theme + router + layout shell. `/mission` (F2) is the
+// EU-sovereignty narrative; the chat workspace at `/` (F3) and the
+// auth/account routes (F4) replace the placeholder in later phases.
 function Placeholder({ title }: { title: string }) {
   return (
     <Container className="py-5 flex-grow-1">
@@ -25,7 +26,7 @@ export default function App() {
           <Header />
           <Routes>
             <Route path="/" element={<Placeholder title="Chat" />} />
-            <Route path="/mission" element={<Placeholder title="Mission" />} />
+            <Route path="/mission" element={<Mission />} />
           </Routes>
           <Footer />
         </div>
