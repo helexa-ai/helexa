@@ -35,6 +35,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
             "/web/v1/keys/{id}/limit",
             axum::routing::patch(update_key_limit),
         )
+        .route("/web/v1/redeem", post(redeem))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             require_session,
@@ -564,4 +565,30 @@ async fn update_key_limit(
         return Err(WebError::BadRequest("no such key"));
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Deserialize)]
+struct RedeemReq {
+    code: String,
+}
+
+/// `POST /web/v1/redeem` — redeem a single-use top-up code, raising the
+/// account's allocation. Returns the new total. Generic 400 for an invalid
+/// or already-redeemed code (no oracle).
+async fn redeem(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+    Json(req): Json<RedeemReq>,
+) -> WebResult<Response> {
+    let acct = account_id_for(&state, user.0).await?;
+    match crate::topup::redeem(&state.pool, acct, &req.code).await {
+        Ok(new_total) => Ok(Json(json!({ "allocation_total": new_total })).into_response()),
+        Err(crate::topup::TopUpError::Invalid) => {
+            Err(WebError::BadRequest("invalid or already-redeemed code"))
+        }
+        Err(crate::topup::TopUpError::Db(e)) => {
+            tracing::error!(error = %e, "redeem db error");
+            Err(WebError::Internal)
+        }
+    }
 }
