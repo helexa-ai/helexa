@@ -1,6 +1,9 @@
 /target
 /bench/node_modules
 /bench/dist
+/helexa.ai/node_modules
+/helexa.ai/dist
+helexa.ai/.env.local
 *.swp
 *.swo
 .idea/
