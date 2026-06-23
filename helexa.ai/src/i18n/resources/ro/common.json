@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Acasă",
+    "docs": "Documentație",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Comută la modul luminos",
+      "toDark": "Comută la modul întunecat"
+    }
+  },
+  "lang": {
+    "bg": "Bulgară",
+    "de": "Germană",
+    "el": "Greacă",
+    "en": "Engleză",
+    "es": "Spaniolă",
+    "et": "Estoniană",
+    "fr": "Franceză",
+    "he": "Ebraică",
+    "it": "Italiană",
+    "nl": "Olandeză",
+    "da": "Daneză",
+    "fi": "Finlandeză",
+    "no": "Norvegiană",
+    "sv": "Suedeză",
+    "ar": "Arabă",
+    "fa": "Persană",
+    "sw": "Swahili",
+    "ha": "Hausa",
+    "am": "Amharică",
+    "yo": "Yoruba",
+    "zu": "Zulu",
+    "ma": "Darija",
+    "ig": "Igbo",
+    "ka": "Georgiană",
+    "kk": "Kazahă",
+    "om": "Oromo",
+    "so": "Somaleză",
+    "ti": "Tigrină",
+    "uz": "Uzbecă",
+    "wo": "Wolof",
+    "pl": "Poloneză",
+    "pt": "Portugheză",
+    "ro": "Română",
+    "ru": "Rusă",
+    "sr": "Sârbă",
+    "tr": "Turcă",
+    "uk": "Ucraineană"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

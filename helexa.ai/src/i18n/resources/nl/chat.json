@@ -1,0 +1,9 @@
+{
+  "title": "Gespreksruimte",
+  "badge": "Chat",
+  "lead": "Dit is de chatweergave. Koppel je conversatielogica en UI‑componenten aan deze pagina.",
+  "transcriptPlaceholder": "De chattranscriptie verschijnt hier. Toon berichten van model en gebruiker in een scrollbare container, eventueel gegroepeerd per beurt.",
+  "inputPlaceholder": "Schrijf een bericht om een gesprek te starten…",
+  "send": "Verzenden",
+  "clear": "Leegmaken"
+}

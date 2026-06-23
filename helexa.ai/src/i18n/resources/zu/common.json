@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Ikhasi lasekhaya",
+    "docs": "Imibhalo",
+    "chat": "Ingxoxo",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Shintshela kumodi ekhanyayo",
+      "toDark": "Shintshela kumodi emnyama"
+    }
+  },
+  "lang": {
+    "am": "isi-Amharic",
+    "ar": "isi-Arabhu",
+    "bg": "isiBulgaria",
+    "da": "isiDanish",
+    "de": "isiJalimane",
+    "el": "isiGreki",
+    "en": "isiNgisi",
+    "es": "isiSpanishi",
+    "et": "isi-Estonian",
+    "fa": "isiPheshiyani",
+    "fi": "isiFinnish",
+    "fr": "isiFulentshi",
+    "ha": "isiHausa",
+    "he": "isiHebheru",
+    "ig": "isi-Igbo",
+    "it": "isiTaliyane",
+    "ka": "isiGeorgia",
+    "kk": "isiKazakh",
+    "ma": "iDarija",
+    "nl": "isiDashi",
+    "no": "isiNorwegian",
+    "om": "isi-Oromo",
+    "pl": "isiPholishi",
+    "pt": "isiPhothugali",
+    "ro": "isi-Romanian",
+    "ru": "isiRashiya",
+    "so": "isiSomali",
+    "sr": "isiSerbia",
+    "sv": "isiSwedish",
+    "sw": "isiSwahili",
+    "ti": "isi-Tigrinya",
+    "tr": "isiThekhi",
+    "uk": "isi-Ukraine",
+    "uz": "isiUzbek",
+    "wo": "isiWolof",
+    "yo": "isiYoruba",
+    "zu": "isiZulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

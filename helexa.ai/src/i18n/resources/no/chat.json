@@ -1,0 +1,9 @@
+{
+  "title": "Samtalearbeidsområde",
+  "badge": "Chat",
+  "lead": "Dette er chattevisningen. Koble din samtalelogikk og dine UI‑komponenter inn på denne siden.",
+  "transcriptPlaceholder": "Chat‑loggen vises her. Vis meldinger fra modell og bruker i en rullende beholder, eventuelt gruppert per tur.",
+  "inputPlaceholder": "Skriv en melding for å starte en samtale…",
+  "send": "Send",
+  "clear": "Tøm"
+}

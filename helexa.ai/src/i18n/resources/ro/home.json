@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "O nouă formă de inteligență",
+    "title": "O nouă formă de inteligență",
+    "lead": "Helexa este o rețea de inteligență artificială auto-organizată, alimentată de operatori independenți. Deschisă. Distribuită. În evoluție.",
+    "ctaJoinMesh": "Alătură-te rețelei",
+    "ctaFollowProject": "Urmărește proiectul",
+    "subcopy": "Creată pentru operatori, constructori și comunități care cred că inteligența artificială trebuie să fie deschisă, rezilientă și împărtășită.",
+    "imageAlt": "Vizual cu elicea Helexa"
+  },
+
+  "intent": {
+    "title": "De ce există Helexa",
+    "p1": "Inteligența artificială devine cea mai puternică infrastructură de pe Pământ. Dar astăzi, această putere este concentrată în mâinile câtorva corporații, modelată de priorități private, limitări geografice și economii fragile.",
+    "p2Intro": "Helexa își imaginează altceva:",
+    "bullet1": "O inteligență care crește de pretutindeni, nu dintr-un singur loc.",
+    "bullet2": "O rețea în care oricine poate contribui și beneficia.",
+    "bullet3": "Un sistem care se adaptează la cerere, nu la directive.",
+    "bullet4": "Tehnologie care întărește comunitățile în loc să le înlocuiască.",
+    "closing": "Helexa nu este o platformă. Nu este un cloud.\nEste o rețea — o țesătură vie, în continuă evoluție, de operatori independenți care formează un nou tip de inteligență."
+  },
+
+  "whyNow": {
+    "title": "Un moment de cotitură pentru inteligența artificială",
+    "problemTitle": "Problema",
+    "problemBullet1": "Inteligența artificială se concentrează mai rapid decât orice tehnologie de până acum.",
+    "problemBullet2": "Accesul la putere de calcul definește capabilitățile, iar acest acces se îngustează.",
+    "problemBullet3": "Barierele de cost exclud cercetători, startup-uri și comunități.",
+    "problemBullet4": "Presiunile geopolitice și de reglementare amenință disponibilitatea globală.",
+    "problemBullet5": "Creatorii de modele și operatorii de infrastructură hardware rareori împart valoarea pe care o generează.",
+    "opportunityTitle": "Oportunitatea",
+    "opportunityIntro": "Dar o lume distribuită este posibilă.",
+    "opportunityBullet1": "Mii de GPU-uri sunt deja subutilizate în întreaga lume.",
+    "opportunityBullet2": "Operatorii își doresc o compensație corectă pentru puterea de calcul.",
+    "opportunityBullet3": "Dezvoltatorii vor infrastructură deschisă, rezistentă la cenzură.",
+    "opportunityBullet4": "Comunitățile vor suveranitate și reziliență în sistemele digitale.",
+    "opportunityBullet5": "Creșterea inteligenței artificiale a depășit cloud-urile tradiționale — sunt necesare noi forme.",
+    "opportunityClosing": "Helexa este momentul în care aceste forțe se aliniază."
+  },
+
+  "howItWorks": {
+    "title": "Cum se formează rețeaua",
+    "operators": {
+      "eyebrow": "Operatorii rulează noduri",
+      "title": "Oricine poate contribui cu putere de calcul.",
+      "body": "Operatorii rulează noduri Helexa. Ei decid ce modele să găzduiască. Rămân în controlul hardware-ului și al economiei lor. Fără aprobări, fără gardieni ai porții."
+    },
+    "routing": {
+      "eyebrow": "Rețeaua rutează inteligența",
+      "title": "Cererea curge prin rețea.",
+      "body": "Helexa învață unde există capacitate, unde crește cererea și ce noduri sunt cel mai potrivit poziționate pentru a deservi solicitările. Rețeaua se adaptează organic — ca o elice în creștere."
+    },
+    "value": {
+      "eyebrow": "Valoarea se întoarce",
+      "title": "Munca este dovedită. Plata este corectă.",
+      "body": "Fiecare job poartă un bon criptografic. Operatorii câștigă pentru inteligența pe care ajută să o furnizeze. Fără taxe de platformă. Fără facturare opacă."
+    }
+  },
+
+  "principles": {
+    "title": "Construim pe principii, nu pe platforme",
+    "distributed": {
+      "title": "Distribuită prin design",
+      "body": "Fără un singur punct de eșec. Fără autoritate centrală. O rețea care devine mai puternică cu fiecare nou operator."
+    },
+    "participation": {
+      "title": "Participare deschisă",
+      "body": "Dacă ai putere de calcul, poți contribui. Rețeaua primește pe toată lumea — edge, server de acasă sau centru de date."
+    },
+    "fairness": {
+      "title": "Echitate și transparență",
+      "body": "Câștigurile se bazează pe muncă reală, verificată criptografic. Fără cutii negre. Fără comisioane ascunse."
+    },
+    "evolving": {
+      "title": "Inteligență în evoluție",
+      "body": "Rețeaua învață din cerere. Modelele se încarcă acolo unde sunt necesare. Inteligența se răspândește prin cooperare."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Ce își propune să devină Helexa",
+    "p1": "Un strat global de inteligență care aparține tuturor, alimentat de o elice de noduri și comunități.",
+    "p2": "O rețea rezilientă la întreruperi, politică, monopoluri și eșecuri.",
+    "p3": "Un nou model economic în care operatorii, constructorii și utilizatorii beneficiază împreună.",
+    "p4": "Un ecosistem în care inovația crește de la margini — nu din centru.",
+    "card": {
+      "eyebrow": "Instantaneu de viziune",
+      "title": "Către o rețea de inteligență partajată",
+      "body": "Helexa este la început. Ideile sunt mai mari decât implementarea — și asta este intenționat. Rețeaua va crește iterativ, cu operatorii și constructorii modelându-i evoluția."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Fază incipientă",
+    "title": "Rețeaua se formează.",
+    "titleHighlight": "Poți face parte din ea.",
+    "lead": "Indiferent dacă rulezi hardware, construiești modele sau îți pasă doar de modul în care este guvernată inteligența artificială, există un loc pentru tine în rețea.",
+    "ctaRunNode": "Rulează un nod (în curând)",
+    "ctaJoinAnnouncements": "Alătură-te anunțurilor timpurii",
+    "ctaExploreCode": "Explorează codul",
+    "footer": "Fără grădini închise. Fără un singur proprietar. Doar o rețea de oameni, hardware și idei — care compun un viitor diferit pentru inteligență."
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Ifomu elisha lobuhlakani",
+    "title": "Ifomu Elisha Lobuhlakani",
+    "lead": "I-Helexa iyinethiwekhi ye-AI ezihlela yona uqobo, esekelwa ngabadlali abazimele. Ivulekile. Isakazekile. Iyaguquka.",
+    "ctaJoinMesh": "Joyina inethiwekhi",
+    "ctaFollowProject": "Landela iphrojekthi",
+    "subcopy": "Yakhelwe abadlali, abakhi, nemiphakathi ekholwa ukuthi i-AI kufanele ibe evulekile, iqine, futhi yabelwane ngayo.",
+    "imageAlt": "Isithombe se-helix ye-Helexa"
+  },
+
+  "intent": {
+    "title": "Kungani i-Helexa Ikhona",
+    "p1": "I-AI isiba isakhiwo esinamandla kunazo zonke emhlabeni. Kodwa namuhla, la mandla agxile ezinkampanini ezimbalwa, enzelwe izinqumo zangasese, imingcele yendawo, nezomnotho ezibucayi.",
+    "p2Intro": "I-Helexa icabanga okunye okuhlukile:",
+    "bullet1": "Uhlakaniphile olukhula luvela yonke indawo, hhayi endaweni eyodwa kuphela.",
+    "bullet2": "Inethiwekhi lapho noma ubani angafaka isandla futhi azuze khona.",
+    "bullet3": "Uhlelo oluzivumelanisa nesidingo, hhayi neziqondiso ezivela phezulu.",
+    "bullet4": "Ubuchwepheshe obuqinisa imiphakathi kunokuba buyifake esikhundleni.",
+    "closing": "I-Helexa akuyona ipulatifomu. Akusona “ifu”.\nYinethiwekhi — uhlobo oluphilayo, olusha, olwakhiwe abadlali abazimele abakhela uhlobo olusha lobuhlakani."
+  },
+
+  "whyNow": {
+    "title": "Iphuzu Lokushintsha le-AI",
+    "problemTitle": "Inkinga",
+    "problemBullet1": "I-AI iyagxila ngokushesha kakhulu kunanoma iyiphi enye ubuchwepheshe obake babakhona.",
+    "problemBullet2": "Ukufinyelela emandleni okucubungula kuyakwazi ukunquma amakhono, futhi lokho kufinyelela kuya kuncipha.",
+    "problemBullet3": "Izindleko ziphoqa ososayensi, amabhizinisi amasha, nemiphakathi ukuba bahlale ngaphandle.",
+    "problemBullet4": "Ingcindezi yezombusazwe nemithetho ingasongela ukufinyelela komhlaba wonke.",
+    "problemBullet5": "Abakhi bamamodeli nabadlali bezinsiza bavame ukungabi yingxenye yenani abazalayo.",
+    "opportunityTitle": "Ithuba",
+    "opportunityIntro": "Kodwa umhlaba osakazekile uyenzeka.",
+    "opportunityBullet1": "Izinkulungwane zama-GPU emhlabeni wonke azisetshenziswa ngokuphelele njengamanje.",
+    "opportunityBullet2": "Abadlali bafuna ukukhokhelwa ngendlela efanele ngomsebenzi wabo wokucubungula.",
+    "opportunityBullet3": "Abathuthukisi bafuna ingqalasizinda evulekile, emelana nokucindezelwa.",
+    "opportunityBullet4": "Imiphakathi ifuna ubukhosi nokumelana nezinselelo ohlelweni lwayo lwedijithali.",
+    "opportunityBullet5": "Ukukhula kwe-AI kudlule izinkundla zakudala “zefu” — kudingeka izimo ezintsha.",
+    "opportunityClosing": "I-Helexa yileso sikhathi lapho la mandla ehambisana khona."
+  },
+
+  "howItWorks": {
+    "title": "Indlela Inethiwekhi Ezakheka Ngayo",
+    "operators": {
+      "eyebrow": "Abadlali Balawula Ama-Node",
+      "title": "Noma ubani anganikela ngamandla e-compute.",
+      "body": "Abadlali basebenzisa ama-node e-Helexa. Bona banquma ukuthi yimaphi amamodeli abazowamukela. Bahlala besenkonzweni yawo womabili amathuluzi abo nomnotho wabo. Azikho izigunyazo, azikho izivimbeli ezisesangweni."
+    },
+    "routing": {
+      "eyebrow": "Inethiwekhi Idlulisa Uhlakanipho",
+      "title": "Isidingo sidlula ngaphakathi kwenethiwekhi.",
+      "body": "I-Helexa ifunda ukuthi kuphi lapho kukhona amandla akhululekile, kuphi lapho isidingo sikhula khona, futhi yimaphi ama-node afaneleka kakhulu ukuphendula izicelo. Inethiwekhi iyavumelana ngokwemvelo — njengama-helix akhula njalo."
+    },
+    "value": {
+      "eyebrow": "Inani Libuya Emuva",
+      "title": "Umsebenzi uyabonakala. Inkokhelo ilingana.",
+      "body": "Umsebenzi ngamunye uphethe irisidi ye-cryptographic. Abadlali bathola imali ngohlakanipho abasiza ukululethela umhlaba. Akukho “intela yeplatifomu”. Akukho ukubalwa kwezindleko okungacacile."
+    }
+  },
+
+  "principles": {
+    "title": "Yakhelwe Imigomo, Hhayi Amapulatifomu",
+    "distributed": {
+      "title": "Isatshalaliswe Ngokuklanywa",
+      "body": "Akunamgogodla owodwa wephutha. Akukho gunya elilodwa elisemqoka. Inethiwekhi eqina nsuku zonke njengoba kwengezwa umdlali omusha ngamunye."
+    },
+    "participation": {
+      "title": "Ukubamba Iqhaza Okuvulekile",
+      "body": "Uma unamandla e-compute, ungafaka isandla. Inethiwekhi yamukele wonke umuntu — kusukela kumadivayisi asemaphethelweni, kuya kumaseva asekhaya, kuya emapulazini edatha."
+    },
+    "fairness": {
+      "title": "Ubulungisa Nobala",
+      "body": "Imali engenayo isekelwe emsebenzini wangempela, oqinisekiswe nge-cryptography. Azikho iziqukathi eziyimfihlo. Azikho izimali ezifihlekile."
+    },
+    "evolving": {
+      "title": "Uhlakanipho Oluguqukayo",
+      "body": "Inethiwekhi ifunda kusuka esidingweni. Amamodeli alayishwa lapho edingeka khona. Uhlakanipho lusabalala ngokubambisana."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Lokho I-Helexa Ehlosile Ukuba Yikho",
+    "p1": "Ungqimba lobuhlakani bomhlaba wonke obungelabo bonke abantu, obusekelwa i-helix yama-node nemiphakathi.",
+    "p2": "Inethiwekhi emelana nokuma phansi, ezombusazwe, ama-monopoly, nokwehluleka.",
+    "p3": "Uhlobo olusha lomnotho lapho abadlali, abakhi, nabasetshenziswa bonke bezuza khona.",
+    "p4": "Ukuhlalisana kwemvelo lapho ukusungula okusha kukhula kusukela emaphethelweni — hhayi emaphakathi.",
+    "card": {
+      "eyebrow": "Isithombe esifingqiwe sombono",
+      "title": "Uhambo Oluya Enethiwikhi Yobuhlakani Ebambene",
+      "body": "I-Helexa isesigabeni sokuqala. Imibono mikukhulu kunezinto ezivele zisetshenzisiwe — lokho kwenziwe ngenhloso. Inethiwekhi izokhula kancane kancane, abadlali nabakhi beqopha indlela yokuziphendukela kwayo."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Isigaba sokuqala",
+    "title": "Inethiwekhi Iyazakha.",
+    "titleHighlight": "Wena Nje Ungaba Ingxenye Yayo.",
+    "lead": "Noma ngabe uphethe amathuluzi, wakha amamodeli, noma ukhathazekile ngokuthi i-AI ilawulwa kanjani, kunendawo yakho kule nethiwekhi.",
+    "ctaRunNode": "Qalisa i-node (maduzane)",
+    "ctaJoinAnnouncements": "Joyina izaziso zokuqala",
+    "ctaExploreCode": "Hlola ikhodi",
+    "footer": "Azikho izingadi ezivalekile. Akekho umnikazi oyedwa. Kungumthungo wabantu, amathuluzi, nemicabango — okuhlanganisa ikusasa elihlukile lobuhlakani."
+  }
+}

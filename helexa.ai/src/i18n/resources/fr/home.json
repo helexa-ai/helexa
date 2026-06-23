@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Une nouvelle forme d’intelligence",
+    "title": "Une nouvelle forme d’intelligence",
+    "lead": "Helexa est un maillage d’IA auto-organisé, animé par des opérateurs indépendants. Ouvert. Distribué. En évolution.",
+    "ctaJoinMesh": "Rejoindre le maillage",
+    "ctaFollowProject": "Suivre le projet",
+    "subcopy": "Conçu pour les opérateurs, les bâtisseurs et les communautés qui pensent que l’IA doit être ouverte, résiliente et partagée.",
+    "imageAlt": "Visuel de l’hélice Helexa"
+  },
+
+  "intent": {
+    "title": "Pourquoi Helexa existe",
+    "p1": "L’IA devient l’infrastructure la plus puissante sur Terre. Mais aujourd’hui, ce pouvoir est concentré entre les mains de quelques entreprises, façonné par des priorités privées, des limites géographiques et des modèles économiques fragiles.",
+    "p2Intro": "Helexa imagine autre chose :",
+    "bullet1": "Une intelligence qui se développe partout, pas en un seul endroit.",
+    "bullet2": "Un réseau où chacun peut contribuer et en bénéficier.",
+    "bullet3": "Un système qui s’adapte à la demande, pas aux directives.",
+    "bullet4": "Une technologie qui renforce les communautés au lieu de les remplacer.",
+    "closing": "Helexa n’est pas une plateforme. Ce n’est pas un cloud.\nC’est un maillage — un réseau vivant et évolutif d’opérateurs indépendants formant un nouveau type d’intelligence."
+  },
+
+  "whyNow": {
+    "title": "Un tournant pour l’IA",
+    "problemTitle": "Le problème",
+    "problemBullet1": "L’IA se centralise plus vite que n’importe quelle technologie auparavant.",
+    "problemBullet2": "L’accès au calcul définit les capacités, et cet accès se restreint.",
+    "problemBullet3": "Les barrières de coûts excluent les chercheurs, les startups et les communautés.",
+    "problemBullet4": "Les pressions géopolitiques et réglementaires menacent la disponibilité mondiale.",
+    "problemBullet5": "Les créateurs de modèles et les opérateurs de matériel partagent rarement la valeur qu’ils produisent.",
+    "opportunityTitle": "L’opportunité",
+    "opportunityIntro": "Mais un monde distribué est possible.",
+    "opportunityBullet1": "Des milliers de GPU sont déjà sous-utilisés dans le monde.",
+    "opportunityBullet2": "Les opérateurs souhaitent une rémunération équitable pour leur puissance de calcul.",
+    "opportunityBullet3": "Les développeurs veulent une infrastructure ouverte et résistante à la censure.",
+    "opportunityBullet4": "Les communautés veulent de la souveraineté et de la résilience dans les systèmes numériques.",
+    "opportunityBullet5": "La croissance de l’IA a dépassé les clouds traditionnels — de nouvelles formes sont nécessaires.",
+    "opportunityClosing": "Helexa est le moment où ces forces s’alignent."
+  },
+
+  "howItWorks": {
+    "title": "Comment le maillage se forme",
+    "operators": {
+      "eyebrow": "Les opérateurs font tourner les nœuds",
+      "title": "Tout le monde peut contribuer du calcul.",
+      "body": "Les opérateurs font tourner des nœuds Helexa. Ils décident quels modèles héberger. Ils gardent le contrôle de leur matériel et de leur économie. Pas d’approbations, pas de gardiens."
+    },
+    "routing": {
+      "eyebrow": "Le maillage route l’intelligence",
+      "title": "La demande circule dans le réseau.",
+      "body": "Helexa apprend où se trouve la capacité, où la demande augmente et quels nœuds sont les mieux placés pour traiter les requêtes. Le maillage s’adapte de façon organique — comme une hélice en croissance."
+    },
+    "value": {
+      "eyebrow": "La valeur revient vers la source",
+      "title": "Le travail est prouvé. Le paiement est juste.",
+      "body": "Chaque tâche porte un reçu cryptographique. Les opérateurs gagnent grâce à l’intelligence qu’ils contribuent à fournir. Pas de taxe de plateforme. Pas de facturation opaque."
+    }
+  },
+
+  "principles": {
+    "title": "Fondé sur des principes, pas sur des plateformes",
+    "distributed": {
+      "title": "Distribué par conception",
+      "body": "Aucun point de défaillance unique. Aucune autorité centrale. Un réseau qui se renforce à chaque nouvel opérateur."
+    },
+    "participation": {
+      "title": "Participation ouverte",
+      "body": "Si vous disposez de puissance de calcul, vous pouvez contribuer. Le maillage accueille tout le monde — périphérie, serveur domestique, centre de données."
+    },
+    "fairness": {
+      "title": "Équité et transparence",
+      "body": "Les revenus sont basés sur un travail réel, vérifié cryptographiquement. Pas de boîtes noires. Pas de frais cachés."
+    },
+    "evolving": {
+      "title": "Une intelligence en évolution",
+      "body": "Le maillage apprend de la demande. Les modèles se chargent là où ils sont nécessaires. L’intelligence se diffuse par la coopération."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Ce que Helexa aspire à devenir",
+    "p1": "Une couche d’intelligence globale qui appartient à tous, animée par une hélice de nœuds et de communautés.",
+    "p2": "Un réseau résilient face aux pannes, à la politique, aux monopoles et aux défaillances.",
+    "p3": "Un nouveau modèle économique où opérateurs, bâtisseurs et utilisateurs bénéficient tous de la valeur créée.",
+    "p4": "Un écosystème où l’innovation grandit depuis les bords — pas depuis le centre.",
+    "card": {
+      "eyebrow": "Instantané de la vision",
+      "title": "Vers un maillage d’intelligence partagé",
+      "body": "Helexa en est à ses débuts. Les idées dépassent l’implémentation — et c’est intentionnel. Le réseau grandira itérativement, avec les opérateurs et les bâtisseurs qui façonneront son évolution."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Phase initiale",
+    "title": "Le maillage se forme.",
+    "titleHighlight": "Vous pouvez en faire partie.",
+    "lead": "Que vous fassiez tourner du matériel, construisiez des modèles ou vous souciiez simplement de la gouvernance de l’IA, il y a une place pour vous dans le maillage.",
+    "ctaRunNode": "Lancer un nœud (bientôt)",
+    "ctaJoinAnnouncements": "Rejoindre les annonces précoces",
+    "ctaExploreCode": "Explorer le code",
+    "footer": "Pas de jardins fermés. Pas de propriétaire unique. Juste un maillage de personnes, de matériel et d’idées — composant un futur différent pour l’intelligence."
+  }
+}

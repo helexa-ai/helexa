@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Ìrísí tuntun ti ìmọ̀lára (intelligence)",
+    "title": "Ìrísí Tuntun ti Ìmọ̀lára",
+    "lead": "Helexa jẹ́ àwọ̀n wẹẹbu AI tó ń ṣe ìṣètò ara rẹ̀, tí àwọn oníṣẹ́ aláyẹ̀lújára ń ṣàgbékalẹ̀. Òde. Tó tan ká. Tó ń dàgbà sí i.",
+    "ctaJoinMesh": "Darapọ̀ mọ́ àwọ̀n wẹẹbu",
+    "ctaFollowProject": "Tẹ̀lé ètò yìí",
+    "subcopy": "A dá a sílẹ̀ fún àwọn oníṣẹ́, àwọn akẹ́kọ̀ọ́-ṣíṣe, àti àwọn àwùjọ tí wọ́n gbà pé AI gbọ́dọ̀ jẹ́ òde, tó lágbára, tí a sì lè pín.",
+    "imageAlt": "Àwòrán helix Helexa"
+  },
+
+  "intent": {
+    "title": "Èéṣe tí Helexa fi wà",
+    "p1": "AI ń di àkànṣe pátá jùlọ nínú àwùjọ ènìyàn. Ṣùgbọ́n lónìí, agbára yìí ti wà ní ọwọ́ díẹ̀ lára àwọn ilé-ìṣòwò ńlá, tí ìfẹ́ ara ẹni, ààlà ilẹ̀-òkèèrè àti ìṣúná alágbára-kúrò ti ń darí.",
+    "p2Intro": "Helexa ń ronú nípa nǹkan mìíràn:",
+    "bullet1": "Ìmọ̀lára tó ń dàgbà láti gbogbo ibi, kì í ṣe láti ibi kan ṣoṣo.",
+    "bullet2": "Àwùjọ tó jẹ́ pé ẹnikẹ́ni lè ṣàfikún sí i, tí gbogbo ènìyàn sì lè rí àǹfààní rẹ̀.",
+    "bullet3": "Ètò tó ń fara da ìbéèrè àti ìbéèrè ọjà, kì í ṣe ìlànà lókè-lókè.",
+    "bullet4": "Ìmọ̀ sáyẹ́nsì tó ń fún àwọn àwùjọ ní agbára dípò pípa wọn rọ́pò.",
+    "closing": "Helexa kì í ṣe pátípọ́ọ̀mù. Kò sì ṣe ‘ilẹ̀ awọsanma’ (cloud).\nÀwọn wẹẹbu ni — àkópọ̀ alààyè, tó ń yípadà nípasẹ̀ àwọn oníṣẹ́ aláyẹ̀lújára tó ń dá àwo tuntun ti ìmọ̀lára sílẹ̀."
+  },
+
+  "whyNow": {
+    "title": "Àkókò pàtàkì fún AI",
+    "problemTitle": "Ìṣòro náà",
+    "problemBullet1": "AI ń di ààrín gbòngbò kíákíá ju gbogbo ìmọ̀ sáyẹ́nsì tó ṣáájú rẹ̀ lọ.",
+    "problemBullet2": "Ìrísí ìṣàkóso àgbára kọ̀m̀pútà ni ń pinnu agbára, tí ì wọlé sí i sì ń dínkù.",
+    "problemBullet3": "Ìdènà owó ń yọ àwọn onímọ̀, àwọn ilé-iṣẹ́ tuntun àti àwọn àwùjọ kúrò.",
+    "problemBullet4": "Àwọn ìṣòro ìpò ológun àti ìlànà òfin ń lé ewu lórí bí a ṣe lè fi mú un káàkiri ayé.",
+    "problemBullet5": "Àwọn tó ń dá àwòrán àfọwọ́kọ (models) àti àwọn tó ń ṣiṣẹ́ pẹ̀lú irinṣẹ́ lásán kì í jẹ́ apá pátá nínú èrè tí wọ́n ń dá.",
+    "opportunityTitle": "Ànfààní tó wà",
+    "opportunityIntro": "Ṣùgbọ́n ayé tó yàtọ̀-tó-yàtọ̀ sí ara wọn lè ṣeé ṣe.",
+    "opportunityBullet1": "Ẹgbàá GPU ló ti wà káàkiri ayé tí a ò fi nítorí-hàn-rárá.",
+    "opportunityBullet2": "Àwọn oníṣẹ́ fẹ́ ìsanwó tó dá lórí òtítọ́ fún agbára kọ̀m̀pútà tí wọ́n ń pèsè.",
+    "opportunityBullet3": "Àwọn onígbésẹ (developers) ń wá amáyédẹrùn òde tó ṣòfò sí ìdènà (censorship).",
+    "opportunityBullet4": "Àwọn àwùjọ nílò àṣẹ ara wọn àti àfarawà nínú àwọn ètò oní-nọ́ńbà.",
+    "opportunityBullet5": "Ìdàgbàsókè AI ti kọjá àwòrán ìṣàkóso “awọsanma” àtijọ́ — a nílò àwọn fọ́ọ̀mù tuntun.",
+    "opportunityClosing": "Helexa ni àkókò tí gbogbo agbára wọ̀nyí ti ń bá ara wọn pàdé."
+  },
+
+  "howItWorks": {
+    "title": "Báwo ni wẹẹbu ṣe ń dá sílẹ̀",
+    "operators": {
+      "eyebrow": "Àwọn oníṣẹ́ ló ń ṣiṣẹ́ pẹ̀lú àwọn nod",
+      "title": "Ẹnikẹ́ni lè fi agbára kọ̀m̀pútà fún un.",
+      "body": "Àwọn oníṣẹ́ ni wọ́n ń ṣíṣe àwọn nod Helexa. Wọ́n ni yóò pinnu àwọn àwòrán àfọwọ́kọ tí wọ́n fẹ́ gbà lórí. Wọ́n sì ń bójú tó irinṣẹ́ àti ètò-òṣèlú-òṣùwọ̀n wọn. Kò sí ìforúkọsílẹ̀ pàtàkì, kò sí olùdábòbò ẹnu-ọ̀nà."
+    },
+    "routing": {
+      "eyebrow": "Wẹẹbu ló ń darí ìmọ̀lára",
+      "title": "Ìbéèrè ló ń sáré káàkiri nínú nẹ́tíwọ́ọ̀kì.",
+      "body": "Helexa ń kọ́ ẹ̀kọ́ nípa ibo ni àfiyèsí (capacity) wà, ibo ni ìbéèrè ṣe ń pò sí i, àti èwo lára àwọn nod ló dára jù lọ láti dáhùn sí ìbéèrè. Wẹẹbu ń ṣe àtúnṣe ara rẹ̀ láìfẹ́fú — bí helix tó ń dàgbà."
+    },
+    "value": {
+      "eyebrow": "Ìyelórí ń padà sọdọ́ àwọn tó fi ṣiṣẹ́",
+      "title": "A ń fi hàn pé iṣẹ́ ti wáyé. Ìsanwó sì dá lórí òtítọ́.",
+      "body": "Gbogbo iṣẹ́ ló ń rú ìwé-ẹ̀rí àkọsílẹ̀ (cryptographic receipt). Àwọn oníṣẹ́ ń rí owó fún ìmọ̀lára tí wọ́n ṣe iranwọ́ láti mú wa. Kò sí owó-ori pátípọ́ọ̀mù. Kò sí ìwé-ìsanwó (billing) tí kò ye."
+    }
+  },
+
+  "principles": {
+    "title": "A dá a lórí ìlànà, kì í ṣe lórí pátípọ́ọ̀mù",
+    "distributed": {
+      "title": "A ti tú ka látìbẹrẹ",
+      "body": "Kò sí àyè kan ṣoṣo tí ó bá ṣòfo gbogbo nǹkan máa ṣu. Kò sí agbára àárín gbòngbò. Àwọn wẹẹbu ni tó ń lágbára sí i pẹ̀lú gbogbo oníṣẹ́ tuntun."
+    },
+    "participation": {
+      "title": "Ìpinnu àpapọ̀ tí ó ṣí sí gbogbo ènìyàn",
+      "body": "Tí o bá ní agbára kọ̀m̀pútà, o lè ṣe àfikún. Wẹẹbu ń gba gbogbo ènìyàn — láti ọ̀dọ̀ ohun èlò eti-nẹ́tíwọ́ọ̀kì, sí àwọn sẹ́fà ilé, sí ilé iṣé data."
+    },
+    "fairness": {
+      "title": "Ìdájọ́ òdodo àti kedere",
+      "body": "Èrè ń bẹ lórí iṣẹ́ gidi, tí a sì ń fìdí rẹ̀ múlẹ̀ nípasẹ̀ ìmúlòlùú ṣíṣi (cryptography). Kò sí apótí dídúdú. Kò sí owó ìfilọ́lẹ̀ tí a fi pamọ́."
+    },
+    "evolving": {
+      "title": "Ìmọ̀lára tó ń dàgbà lẹ́sẹ̀kẹsẹ̀",
+      "body": "Wẹẹbu ń kọ́ ẹ̀kọ́ láti inú ìbéèrè. Àwọn àwòrán àfọwọ́kọ ń gbé kalẹ̀ níbi tí wọ́n ti nílò wọn jù lọ. Ìmọ̀lára ń tàn ká nípasẹ̀ ìfowósowópò."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Ìtòsí Helexa sí ìwọ̀n tó fẹ́ dé",
+    "p1": "Fílá (layer) ìmọ̀lára àgbáyé tí gbogbo ènìyàn ní apá nínú rẹ̀, tí helix àwọn nod àti àwọn àwùjọ ṣe ń fún ní agbára.",
+    "p2": "Nẹ́tíwọ́ọ̀kì tó ní agbára láti koju ìdínkù iṣẹ́, ìṣèlú, ìtajà àpapọ̀, àti ìṣòro kópọ̀.",
+    "p3": "Àwòrán ètò-òṣùwọ̀ tuntun tí àwọn oníṣẹ́, àwọn akẹ́kọ̀ọ́-ṣíṣe àti àwọn olùlò gbogbo ti ń rí èrè.",
+    "p4": "Ayíká ìmọ̀-sáyẹ́nsì tí ìmọ̀ ẹ̀dá tuntun ti ń wá láti ẹ̀gbè — kì í ṣe láti àárín gbòngbò.",
+    "card": {
+      "eyebrow": "Àkótán ìran àtijọ́",
+      "title": "Sí wẹẹbu ìmọ̀lára tí a fi jọ pín",
+      "body": "Helexa ṣi wà ní ìpele ìpilẹ̀. Àwọn èrò tó wà lẹ́yìn rẹ̀ tóbi ju àpẹẹrẹ ìmọ̀lára òde òní lọ — èyí sì jẹ́ ètò. Nẹ́tíwọ́ọ̀kì yìí máa dàgbà díẹ̀díẹ̀, nígbà tí àwọn oníṣẹ́ àti àwọn akẹ́kọ̀ọ́-ṣíṣe yóò máa dásílẹ̀ ìtàn ìdàgbàsókè rẹ̀."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Ìpele ìbẹ̀rẹ̀",
+    "title": "Wẹẹbu ń dá sílẹ̀.",
+    "titleHighlight": "Ìwọ náà lè jẹ́ apá rẹ̀.",
+    "lead": "Bóyá o ń ṣiṣẹ́ pẹ̀lú irinṣẹ́ kọ̀m̀pútà, o ń ṣe amùlò àwòrán àfọwọ́kọ, tàbí o kan ń bikita nípa bí a ṣe ń ṣàkóso AI, ibì kan wà fún ẹ nínú wẹẹbu yìí.",
+    "ctaRunNode": "Ṣíṣè nod kan (láìpẹ́)",
+    "ctaJoinAnnouncements": "Darapọ̀ mọ́ ìkéde ìbẹ̀rẹ̀",
+    "ctaExploreCode": "Ṣàwárí kóòdù",
+    "footer": "Kò sí ọgbà tí a yí ká. Kò sí onílé kan ṣoṣo. Wẹẹbu àwọn ènìyàn, irinṣẹ́ àti èrò ni — tí ń dá ìwàláàyè tuntun fún ìmọ̀lára."
+  }
+}

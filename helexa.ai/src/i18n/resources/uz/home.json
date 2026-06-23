@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Yangi intellekt shakli",
+    "title": "Intellektning yangi shakli",
+    "lead": "Helexa — mustaqil operatorlar boshqaradigan, oʻzi tashkil topadigan AI tarmogʻi. Ochiq. Tarqatilgan. Doimiy rivojlanishda.",
+    "ctaJoinMesh": "Tarmoqqa qoʻshilish",
+    "ctaFollowProject": "Loyihani kuzatish",
+    "subcopy": "AI ochiq, barqaror va umumiy boʻlishi kerak deb hisoblaydigan operatorlar, bunyodkorlar va hamjamiyatlar uchun yaratilgan.",
+    "imageAlt": "Helexa geliksi vizualizatsiyasi"
+  },
+
+  "intent": {
+    "title": "Nega Helexa mavjud",
+    "p1": "AI Yer yuzidagi eng kuchli infratuzilmaga aylanib bormoqda. Ammo bugun bu quvvat shaxsiy ustuvorliklar, geografik cheklovlar va beqaror iqtisodiyot bilan shakllangan bir nechta korporatsiyalar qoʻlida jamlangan.",
+    "p2Intro": "Helexa boshqacha kelajakni tasavvur qiladi:",
+    "bullet1": "Bitta markazdan emas, har tomondan oʻsib keladigan intellekt.",
+    "bullet2": "Har kim hissa qoʻshishi va foyda olishi mumkin boʻlgan tarmoq.",
+    "bullet3": "Buyruqlarga emas, talabga qarab moslashadigan tizim.",
+    "bullet4": "Hamjamiyatlarni almashtirish emas, ularni mustahkamlovchi texnologiya.",
+    "closing": "Helexa — bu platforma ham emas, bulut ham emas.\nBu — mustaqil operatorlarning tirik, doimo oʻzgarib boradigan tarmogʻi bo‘lib, u yangi turdagi intellektni shakllantiradi."
+  },
+
+  "whyNow": {
+    "title": "AI uchun burilish nuqtasi",
+    "problemTitle": "Muammo",
+    "problemBullet1": "AI tarixdagi istalgan texnologiyadan tezroq markazlashmoqda.",
+    "problemBullet2": "Hisoblash quvvatiga kirish imkoniyati qobiliyatni belgilaydi va bu imkoniyat tobora torayib bormoqda.",
+    "problemBullet3": "Xarajat toʻsiqlari tadqiqotchilar, startaplar va mahalliy hamjamiyatlarni chetda qoldiradi.",
+    "problemBullet4": "Geosiyosiy va tartibga soluvchi bosimlar global mavjudlikka tahdid soladi.",
+    "problemBullet5": "Model yaratuvchilari va temir‑tuzilma operatorlari koʻpincha oʻzlari yaratgan qiymatdan ulush olmaydi.",
+    "opportunityTitle": "Imkoniyat",
+    "opportunityIntro": "Ammo tarqatilgan dunyo qurish mumkin.",
+    "opportunityBullet1": "Dunyo boʻylab minglab GPU qurilmalari yetarli darajada ishlatilmayapti.",
+    "opportunityBullet2": "Operatorlar hisoblash quvvati uchun adolatli haq olishni xohlaydi.",
+    "opportunityBullet3": "Dasturchilarga ochiq, senzura bardoshli infratuzilma kerak.",
+    "opportunityBullet4": "Hamjamiyatlar raqamli tizimlarda suverenitet va barqarorlikni xohlaydi.",
+    "opportunityBullet5": "AI oʻsish sur’ati an’anaviy bulutlardan oshib ketdi — yangi shakllar zarur.",
+    "opportunityClosing": "Helexa — ana shu kuchlar birlashadigan on."
+  },
+
+  "howItWorks": {
+    "title": "Tarmoq qanday shakllanadi",
+    "operators": {
+      "eyebrow": "Operatorlar tugunlarni boshqaradi",
+      "title": "Har kim hisoblash quvvatini qoʻsha oladi.",
+      "body": "Operatorlar Helexa tugunlarini ishga tushiradi. Qaysi modellarga xizmat koʻrsatishni ular oʻzlari belgilaydi. Ular oʻz temir‑tuzilmasi va iqtisodiyotini nazoratida saqlab qoladi. Ruxsat kutish yoʻq, eshikbonlar yoʻq."
+    },
+    "routing": {
+      "eyebrow": "Tarmoq intellektni yoʻnaltiradi",
+      "title": "Talab tarmoq orqali oqib oʻtadi.",
+      "body": "Helexa quvvat qayerda mavjudligini, talab qayerda oshayotganini va qaysi tugunlar soʻrovlarni eng yaxshi bajarishini oʻrganadi. Tarmoq oʻsib borayotgan geliks singari tabiiy ravishda moslashadi."
+    },
+    "value": {
+      "eyebrow": "Qiymat ortga qaytadi",
+      "title": "Ish isbotlanadi. Toʻlov adolatli taqsimlanadi.",
+      "body": "Har bir ishga kriptografik kvitansiya biriktiriladi. Operatorlar oʻzlari yetkazib berishga yordam bergan intellekt uchun daromad oladi. Platforma soligʻi yoʻq. Tushunarsiz hisob‑fakturalar yoʻq."
+    }
+  },
+
+  "principles": {
+    "title": "Platformalarga emas, tamoyillarga asoslangan",
+    "distributed": {
+      "title": "Avvaldan tarqatilgan",
+      "body": "Yagona nosozlik nuqtasi yoʻq. Markaziy hokimiyat yoʻq. Har bir yangi operator qoʻshilganda kuchayib boradigan tarmoq."
+    },
+    "participation": {
+      "title": "Ochiq ishtirok",
+      "body": "Agar sizda hisoblash quvvati boʻlsa, hissa qoʻsha olasiz. Tarmoq chekka qurilmalarni ham, uy serverlarini ham, ma’lumotlar markazlarini ham qabul qiladi."
+    },
+    "fairness": {
+      "title": "Adolat va oshkoralik",
+      "body": "Daromad haqiqiy ishga, kriptografik tasdiqqa asoslanadi. Qora qutilar yoʻq. Yashirin toʻlovlar yoʻq."
+    },
+    "evolving": {
+      "title": "Rivojlanib boradigan intellekt",
+      "body": "Tarmoq talabdan saboq oladi. Modellar kerak boʻlgan joyga yuklanadi. Intellekt hamkorlik orqali tarqaladi."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Helexa nimaga intilmoqda",
+    "p1": "Har kimga tegishli boʻlgan, tugunlar va hamjamiyatlar geliksi tomonidan quvvatlanadigan global intellekt qatlami.",
+    "p2": "Nosozliklarga, uzilishlarga, siyosatga va monopoliyalarga bardosh bera oladigan tarmoq.",
+    "p3": "Operatorlar, bunyodkorlar va foydalanuvchilar barchasi foyda koʻradigan yangi iqtisodiy model.",
+    "p4": "Innovatsiya markazdan emas, chekkalardan oʻsib chiqadigan ekotizim.",
+    "card": {
+      "eyebrow": "Tasavvur manzarasi",
+      "title": "Umumiy intellekt tarmogʻiga tomon",
+      "body": "Helexa hali erta bosqichda. Gʻoyalar joriy amalga oshirishdan kattaroq — bu ataylab qilingan tanlov. Tarmoq bosqichma‑bosqich oʻsadi, uning rivojlanishini operatorlar va bunyodkorlar birgalikda shakllantiradi."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Erta bosqich",
+    "title": "Tarmoq shakllanib bormoqda.",
+    "titleHighlight": "Siz ham uning bir qismi boʻlishingiz mumkin.",
+    "lead": "Agar siz temir‑tuzilma boshqarsangiz, modellarga ishlov bersangiz yoki shunchaki AI qanday boshqarilishi muhim deb bilsangiz, tarmoqda siz uchun ham joy bor.",
+    "ctaRunNode": "Tugunni ishga tushirish (tez orada)",
+    "ctaJoinAnnouncements": "Dastlabki yangiliklarga obuna boʻlish",
+    "ctaExploreCode": "Kod bilan tanishish",
+    "footer": "Toʻsiqli bogʻlar yoʻq. Yagona egasi yoʻq. Intellektning boshqacha kelajagini birgalikda yaratadigan odamlar, temir‑tuzilma va gʻoyalar tarmogʻi xolos."
+  }
+}

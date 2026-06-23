@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Sabon siffar hankali",
+    "title": "Sabon Siffar Hankali",
+    "lead": "Helexa na’urar sadarwar AI ce mai tsara kanta wacce ‘yan kasuwa masu zaman kansu ke sarrafawa. Bude take. Tana rarrabewa. Tana ci gaba da canzawa.",
+    "ctaJoinMesh": "Shiga cikin cibiyar",
+    "ctaFollowProject": "Bi aikin",
+    "subcopy": "An gina ta ne don masu aiki da na’ura, masu gina tsarin da al’ummomi da ke ganin cewa AI ya kamata ta kasance a bude, mai ɗorewa kuma mai rabawa.",
+    "imageAlt": "Hoton helix na Helexa"
+  },
+
+  "intent": {
+    "title": "Dalilin Da Ya Sa Helexa Take Aiki",
+    "p1": "AI na zama mafi ƙarfi cikin dukkanin tsare-tsaren kayan aiki a doron kasa. Amma a yau, wannan ƙarfi ya takaita ga ‘yan kamfanoni kaɗan, yana bin son ran masu su, iyakokin ƙasa da tsarin tattalin arziki masu rauni.",
+    "p2Intro": "Helexa tana tunanin wani abu dabam:",
+    "bullet1": "Hankali da ke tashi daga ko’ina, ba daga wuri ɗaya ba.",
+    "bullet2": "Cibiyar sadarwa wacce kowa zai iya bada gudummawa kuma ya amfana.",
+    "bullet3": "Tsarin da ke daidaitawa da bukata, ba da umarni ba.",
+    "bullet4": "Fasaha wacce ke ƙarfafa al’ummomi maimakon maye gurbinsu.",
+    "closing": "Helexa ba dandali ba ce. Ba “gajimare” ba ce ma.\nCibiya ce — hanyar sadarwa mai rai, mai canzawa, ta masu aiki masu zaman kansu da ke samar da wani sabon nau’in hankali."
+  },
+
+  "whyNow": {
+    "title": "Mahimmin Lokaci Ga AI",
+    "problemTitle": "Matsalar",
+    "problemBullet1": "AI na tattaruwa a wuri guda da sauri fiye da kowace fasaha da ta gabata.",
+    "problemBullet2": "Samun damar amfani da ƙarfi na komfuta shi ne ke ayyana abin da za a iya yi, kuma wannan damar na ƙara raguwa.",
+    "problemBullet3": "Tsammanin tsada na hana masu bincike, ƙananan kamfanoni da al’ummomi shiga.",
+    "problemBullet4": "Matsin lamba na siyasa da ƙa’idoji na barazana ga samun dama a duniya baki ɗaya.",
+    "problemBullet5": "Masu ƙirƙirar samfurai da masu aiki da kayan aiki ba su cika samun rabo daga darajar da suke kunnawa ba.",
+    "opportunityTitle": "Damar",
+    "opportunityIntro": "Amma ana iya samun duniya mai rabewa.",
+    "opportunityBullet1": "Dubban GPU suna zaune ba tare da cikakken amfani ba a ko’ina cikin duniya.",
+    "opportunityBullet2": "Masu aiki suna son lada mai adalci ga ƙarfinsu na komfuta.",
+    "opportunityBullet3": "Masu ci-gaba suna so suga tsarin da ba a rufe ba, kuma mai jure takunkumi.",
+    "opportunityBullet4": "Al’ummomi suna neman iko da ɗorewa cikin tsarin su na dijital.",
+    "opportunityBullet5": "Ci gaban AI ya rigaya ya zarce gajimaren gargajiya — ana buƙatar sabbin siffofi.",
+    "opportunityClosing": "Helexa ita ce lokacin da waɗannan ƙarfi ke haduwa wuri guda."
+  },
+
+  "howItWorks": {
+    "title": "Yadda Cibiyar Ke Samuwa",
+    "operators": {
+      "eyebrow": "Masu aiki na sarrafa nodi",
+      "title": "Kowa na iya bayar da ƙarfi na komfuta.",
+      "body": "Masu aiki suna gudanar da nodi na Helexa. Su ne suke yanke shawarar wane samfurin za su karɓa. Suna ci gaba da riƙe iko da kayan aiki da tattalin arzikinsu. Babu izini na musamman, babu masu tsare ƙofa."
+    },
+    "routing": {
+      "eyebrow": "Cibiyar na tura hankali",
+      "title": "Buƙata na yawo a cikin cibiyar sadarwa.",
+      "body": "Helexa na koya inda ake da isasshen ƙarfi, inda bukata ke ƙaruwa, da wane nodi ya fi dacewa don amsa buƙatu. Cibiyar na daidaitawa a hankali — kamar helix ɗin da ke ci gaba da girma."
+    },
+    "value": {
+      "eyebrow": "Daraja na dawowa baya",
+      "title": "Aikin ya tabbata. Biyan kudi adalci ne.",
+      "body": "Kowane aiki na zuwa da takardar shaidar sirri ta hanyar ƙididdigar tsaro. Masu aiki suna samun kuɗi saboda a cikin hankalin da suka taimaka wajen samarwa. Babu harajin dandali. Babu biyan kudi mai duhu."
+    }
+  },
+
+  "principles": {
+    "title": "An Gina Ta Kan Ka’idoji, Ba Dandali Kawai Ba",
+    "distributed": {
+      "title": "An Rarraba ta Tun Basira",
+      "body": "Babu wuri guda na gazawa. Babu hukuma guda da ke iko. Wani cibiyar sadarwa ce da ke ƙara ƙarfi da kowane sabon mai aiki."
+    },
+    "participation": {
+      "title": "Halarta a Bude",
+      "body": "Idan kana da ikon komfuta, zaka iya bada gudummawa. Cibiyar na maraba da kowa — daga na’urar gefe, zuwa uwar garken gida, zuwa cibiyar bayanai."
+    },
+    "fairness": {
+      "title": "Adalci da Bayyanawa",
+      "body": "Samun riba ya dogara ne ga aiki na gaskiya, wanda aka tabbatar da shi ta hanyar sirrin ƙididdiga. Babu “akwatu baƙaƙe”. Babu ɓoyayyun kuɗaɗe."
+    },
+    "evolving": {
+      "title": "Hankali Mai Ci gaba da Sauyawa",
+      "body": "Cibiyar na koyo daga bukata. Ana sauke samfurori a inda ake buƙatarsu. Hankali na yaduwa ta hanyar haɗin kai."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Me Helexa Ke Nufin Ta Zama",
+    "p1": "Matakin hankali na duniya wanda kowa ke da nasa, ana turawa da helix na nodi da al’ummomi.",
+    "p2": "Cibiyar sadarwa mai jure katsewa, siyasa, mamallaka da gazawa.",
+    "p3": "Sabon tsari na tattalin arziki wanda masu aiki, masu gini da masu amfani duk za su amfana.",
+    "p4": "Muhallin da kirkire‑kirkire ke fitowa daga gefe — ba daga tsakiya ba.",
+    "card": {
+      "eyebrow": "Hoton hangen nesa",
+      "title": "Zuƙowa zuwa wutan hankali da aka raba",
+      "body": "Helexa tana matakin farko. Tunani ya fi girma fiye da abin da aka aiwatar yanzu — kuma hakan a riga aka nufa. Cibiyar zata bunƙasa a hankali, ta hanyar tasirin masu aiki da masu gini."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Mataki na farko",
+    "title": "Cibiyar na Samuwa.",
+    "titleHighlight": "Kuma Kai ma Za ka Iya Zama Cikinta.",
+    "lead": "Ko kana sarrafa kayan aiki ne, kana gina samfurori, ko kuma kawai kana damuwa da yadda ake tafiyar da AI, akwai wuri a cikin wannan cibiyar a gare ka.",
+    "ctaRunNode": "Gudanar da node (nan gaba kadan)",
+    "ctaJoinAnnouncements": "Shiga jerin sanarwar farko",
+    "ctaExploreCode": "Duba lambar tushe",
+    "footer": "Babu lambun da aka kewaye da katanga. Babu mai shi guda. Kawai wutan mutane, kayan aiki da tunani — suna tsara wani irin makomar hankali dabam."
+  }
+}

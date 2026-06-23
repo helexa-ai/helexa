@@ -1,0 +1,9 @@
+{
+  "title": "Samtalsarbetsyta",
+  "badge": "Chat",
+  "lead": "Detta är chattvyn. Koppla in din konversationslogik och dina UI‑komponenter på den här sidan.",
+  "transcriptPlaceholder": "Chattloggen visas här. Visa meddelanden från modellen och användaren i en rullande behållare, eventuellt grupperade per tur.",
+  "inputPlaceholder": "Skriv ett meddelande för att börja chatta…",
+  "send": "Skicka",
+  "clear": "Rensa"
+}

@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Etusivu",
+    "docs": "Dokumentaatio",
+    "chat": "Keskustelu",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Vaihda vaaleaan tilaan",
+      "toDark": "Vaihda tummaan tilaan"
+    }
+  },
+  "lang": {
+    "am": "amhara",
+    "ar": "arabia",
+    "bg": "bulgaria",
+    "da": "tanska",
+    "de": "saksa",
+    "el": "kreikka",
+    "en": "englanti",
+    "es": "espanja",
+    "et": "viro",
+    "fa": "farsi",
+    "fi": "suomi",
+    "fr": "ranska",
+    "ha": "hausa",
+    "he": "heprea",
+    "ig": "igbo",
+    "it": "italia",
+    "ka": "georgia",
+    "kk": "kazakki",
+    "ma": "darija",
+    "nl": "hollanti",
+    "no": "norja",
+    "om": "oromo",
+    "pl": "puola",
+    "pt": "portugali",
+    "ro": "romania",
+    "ru": "venäjä",
+    "so": "somali",
+    "sr": "serbia",
+    "sv": "ruotsi",
+    "sw": "swahili",
+    "ti": "tigrinja",
+    "tr": "turkki",
+    "uk": "ukraina",
+    "uz": "uzbekki",
+    "wo": "wolof",
+    "yo": "joruba",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

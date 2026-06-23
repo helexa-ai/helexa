@@ -1,0 +1,9 @@
+{
+  "title": "Samtalearbejdsområde",
+  "badge": "Chat",
+  "lead": "Dette er chatvisningen. Tilføj din samtalelogik og dine UI‑komponenter til denne side.",
+  "transcriptPlaceholder": "Chattransskriptionen vises her. Gengiv beskeder fra modellen og brugeren i en rullende container, eventuelt grupperet efter tur.",
+  "inputPlaceholder": "Skriv en besked for at starte en chat…",
+  "send": "Send",
+  "clear": "Ryd"
+}

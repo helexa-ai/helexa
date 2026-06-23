@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Início",
+    "docs": "Documentação",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Mudar para modo claro",
+      "toDark": "Mudar para modo escuro"
+    }
+  },
+  "lang": {
+    "bg": "Búlgaro",
+    "de": "Alemão",
+    "el": "Grego",
+    "en": "Inglês",
+    "es": "Espanhol",
+    "et": "Estónio",
+    "fr": "Francês",
+    "he": "Hebraico",
+    "it": "Italiano",
+    "nl": "Neerlandês",
+    "da": "Dinamarquês",
+    "fi": "Finlandês",
+    "no": "Norueguês",
+    "sv": "Sueco",
+    "ar": "Árabe",
+    "fa": "Persa",
+    "sw": "Suaíli",
+    "ha": "Hauçá",
+    "am": "Amárico",
+    "yo": "Iorubá",
+    "zu": "Zulu",
+    "ma": "Darija",
+    "ig": "Igbo",
+    "ka": "Georgiano",
+    "kk": "Cazaque",
+    "om": "Oromo",
+    "so": "Somali",
+    "ti": "Tigrínia",
+    "uz": "Usbeque",
+    "wo": "Uólofe",
+    "pl": "Polaco",
+    "pt": "Português",
+    "ro": "Romeno",
+    "ru": "Russo",
+    "sr": "Sérvio",
+    "tr": "Turco",
+    "uk": "Ucraniano"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

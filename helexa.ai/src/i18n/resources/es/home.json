@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Una nueva forma de inteligencia",
+    "title": "Una nueva forma de inteligencia",
+    "lead": "Helexa es una malla de IA autoorganizada impulsada por operadores independientes. Abierta. Distribuida. En evolución.",
+    "ctaJoinMesh": "Únete a la malla",
+    "ctaFollowProject": "Sigue el proyecto",
+    "subcopy": "Construida para operadores, desarrolladores y comunidades que creen que la IA debe ser abierta, resiliente y compartida.",
+    "imageAlt": "Visual de la hélice de Helexa"
+  },
+
+  "intent": {
+    "title": "Por qué existe Helexa",
+    "p1": "La IA se está convirtiendo en la infraestructura más poderosa de la Tierra. Pero hoy, ese poder está concentrado en un puñado de corporaciones, moldeado por prioridades privadas, limitaciones geográficas y economías frágiles.",
+    "p2Intro": "Helexa imagina algo diferente:",
+    "bullet1": "Una inteligencia que crece desde todas partes, no desde un solo lugar.",
+    "bullet2": "Una red donde cualquiera puede contribuir y beneficiarse.",
+    "bullet3": "Un sistema que se adapta a la demanda, no a directivas.",
+    "bullet4": "Tecnología que fortalece a las comunidades en lugar de reemplazarlas.",
+    "closing": "Helexa no es una plataforma. No es una nube.\nEs una malla: una red viva y evolutiva de operadores independientes que forman un nuevo tipo de inteligencia."
+  },
+
+  "whyNow": {
+    "title": "Un punto de inflexión para la IA",
+    "problemTitle": "El problema",
+    "problemBullet1": "La IA se está centralizando más rápido que cualquier tecnología anterior.",
+    "problemBullet2": "El acceso al cómputo define la capacidad, y ese acceso se está reduciendo.",
+    "problemBullet3": "Las barreras de coste excluyen a investigadores, startups y comunidades.",
+    "problemBullet4": "Las presiones geopolíticas y regulatorias amenazan la disponibilidad global.",
+    "problemBullet5": "Los creadores de modelos y los operadores de hardware rara vez comparten el valor que producen.",
+    "opportunityTitle": "La oportunidad",
+    "opportunityIntro": "Pero un mundo distribuido es posible.",
+    "opportunityBullet1": "Miles de GPU ya están subutilizadas en todo el mundo.",
+    "opportunityBullet2": "Los operadores quieren una compensación justa por el cómputo.",
+    "opportunityBullet3": "Los desarrolladores quieren infraestructura abierta y resistente a la censura.",
+    "opportunityBullet4": "Las comunidades quieren soberanía y resiliencia en los sistemas digitales.",
+    "opportunityBullet5": "El crecimiento de la IA ha superado a las nubes tradicionales: se necesitan nuevas formas.",
+    "opportunityClosing": "Helexa es el momento en que estas fuerzas se alinean."
+  },
+
+  "howItWorks": {
+    "title": "Cómo se forma la malla",
+    "operators": {
+      "eyebrow": "Los operadores ejecutan nodos",
+      "title": "Cualquiera puede aportar cómputo.",
+      "body": "Los operadores ejecutan nodos de Helexa. Deciden qué modelos alojar. Mantienen el control de su hardware y su economía. Sin aprobaciones, sin guardianes."
+    },
+    "routing": {
+      "eyebrow": "La malla enruta la inteligencia",
+      "title": "La demanda fluye a través de la red.",
+      "body": "Helexa aprende dónde existe capacidad, dónde está creciendo la demanda y qué nodos están mejor preparados para atender las solicitudes. La malla se adapta de forma orgánica, como una hélice en crecimiento."
+    },
+    "value": {
+      "eyebrow": "El valor fluye de vuelta",
+      "title": "El trabajo se prueba. El pago es justo.",
+      "body": "Cada tarea lleva un recibo criptográfico. Los operadores ganan por la inteligencia que ayudan a proporcionar. Sin impuestos de plataforma. Sin facturación opaca."
+    }
+  },
+
+  "principles": {
+    "title": "Basada en principios, no en plataformas",
+    "distributed": {
+      "title": "Distribuida por diseño",
+      "body": "Sin un único punto de fallo. Sin autoridad central. Una red que se fortalece con cada nuevo operador."
+    },
+    "participation": {
+      "title": "Participación abierta",
+      "body": "Si tienes cómputo, puedes contribuir. La malla da la bienvenida a todos: edge, servidor doméstico o centro de datos."
+    },
+    "fairness": {
+      "title": "Equidad y transparencia",
+      "body": "Las ganancias se basan en trabajo real, verificado criptográficamente. Sin cajas negras. Sin comisiones ocultas."
+    },
+    "evolving": {
+      "title": "Inteligencia en evolución",
+      "body": "La malla aprende de la demanda. Los modelos se cargan donde se necesitan. La inteligencia se extiende mediante la cooperación."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Lo que Helexa aspira a ser",
+    "p1": "Una capa de inteligencia global que pertenece a todos, impulsada por una hélice de nodos y comunidades.",
+    "p2": "Una red resiliente frente a cortes, política, monopolios y fallos.",
+    "p3": "Un nuevo modelo económico donde operadores, constructores y usuarios se benefician por igual.",
+    "p4": "Un ecosistema donde la innovación crece desde los bordes, no desde el centro.",
+    "card": {
+      "eyebrow": "Instantánea de la visión",
+      "title": "Hacia una malla de inteligencia compartida",
+      "body": "Helexa está en una fase temprana. Las ideas son más grandes que la implementación, y eso es intencional. La red crecerá de forma iterativa, con operadores y desarrolladores dando forma a su evolución."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Fase inicial",
+    "title": "La malla se está formando.",
+    "titleHighlight": "Tú puedes ser parte de ella.",
+    "lead": "Tanto si gestionas hardware, construyes modelos o simplemente te importa cómo se gobierna la IA, hay un lugar para ti en la malla.",
+    "ctaRunNode": "Ejecutar un nodo (pronto)",
+    "ctaJoinAnnouncements": "Únete a los anuncios iniciales",
+    "ctaExploreCode": "Explora el código",
+    "footer": "Sin jardines amurallados. Sin un único propietario. Solo una malla de personas, hardware e ideas que componen un futuro distinto para la inteligencia."
+  }
+}

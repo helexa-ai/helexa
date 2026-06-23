@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Uus intelligentsuse vorm",
+    "title": "Uus intelligentsuse vorm",
+    "lead": "Helexa on iseorganiseeruv tehisintellekti võrk, mida juhivad sõltumatud operaatorid. Avatud. Hajutatud. Arenev.",
+    "ctaJoinMesh": "Liitu võrgustikuga",
+    "ctaFollowProject": "Jälgi projekti",
+    "subcopy": "Loodud operaatoritele, ehitajatele ja kogukondadele, kes usuvad, et tehisintellekt peab olema avatud, vastupidav ja jagatud.",
+    "imageAlt": "Helexa heeliksi visuaal"
+  },
+
+  "intent": {
+    "title": "Miks Helexa olemas on",
+    "p1": "Tehisintellektist saab Maa võimsaim taristu. Kuid täna on see jõud koondunud väheste korporatsioonide kätte, mida kujundavad eraeesmärgid, geograafilised piirangud ja habras majandus.",
+    "p2Intro": "Helexa kujutab ette midagi teistsugust:",
+    "bullet1": "Intelligents, mis kasvab igalt poolt, mitte ühest kohast.",
+    "bullet2": "Võrk, kus igaüks saab panustada ja kasu saada.",
+    "bullet3": "Süsteem, mis kohaneb nõudluse, mitte korralduste järgi.",
+    "bullet4": "Tehnoloogia, mis tugevdab kogukondi, mitte ei asenda neid.",
+    "closing": "Helexa ei ole platvorm. See ei ole pilv.\nSee on võrk — elav, arenev iseseisvate operaatorite võrgustik, mis loob uutmoodi intelligentsi."
+  },
+
+  "whyNow": {
+    "title": "Pöördepunkt tehisintellekti jaoks",
+    "problemTitle": "Probleem",
+    "problemBullet1": "Tehisintellekt tsentraliseerub kiiremini kui ükski varasem tehnoloogia.",
+    "problemBullet2": "Arvutusvõimsuse kättesaadavus määrab võimekuse ja ligipääs kitseneb.",
+    "problemBullet3": "Kulubarjäärid jätavad kõrvale uurijad, idufirmad ja kogukonnad.",
+    "problemBullet4": "Geopoliitiline ja regulatiivne surve ohustab globaalset kättesaadavust.",
+    "problemBullet5": "Mudeliloojatel ja riistvara operaatoritel on harva osa väärtusest, mille nad loovad.",
+    "opportunityTitle": "Võimalus",
+    "opportunityIntro": "Kuid hajutatud maailm on võimalik.",
+    "opportunityBullet1": "Tuhanded GPU-d on juba täna üle maailma alakasutatud.",
+    "opportunityBullet2": "Operaatorid soovivad arvutusvõimsuse eest õiglast tasu.",
+    "opportunityBullet3": "Arendajad tahavad avatud, tsensuurikindlat infrastruktuuri.",
+    "opportunityBullet4": "Kogukonnad soovivad suveräänsust ja vastupidavust digitaalsüsteemides.",
+    "opportunityBullet5": "Tehisintellekti kasv on traditsioonilisi pilvi edestanud — vaja on uusi vorme.",
+    "opportunityClosing": "Helexa on hetk, mil need jõud joondavad end."
+  },
+
+  "howItWorks": {
+    "title": "Kuidas võrk kujuneb",
+    "operators": {
+      "eyebrow": "Operaatorid käitavad sõlmi",
+      "title": "Igaüks saab panustada arvutusvõimsusega.",
+      "body": "Operaatorid käitavad Helexa sõlmi. Nad otsustavad, milliseid mudeleid hostida. Nad jäävad kontrollima oma riistvara ja oma majandust. Ilma kinnitusteta, ilma väravavahtideta."
+    },
+    "routing": {
+      "eyebrow": "Võrk suunab intelligentsi",
+      "title": "Nõudlus liigub läbi võrgustiku.",
+      "body": "Helexa õpib, kus on vaba võimsust, kus nõudlus kasvab ja millised sõlmed sobivad päringutele kõige paremini. Võrk kohaneb orgaaniliselt — nagu kasvav spiraal."
+    },
+    "value": {
+      "eyebrow": "Väärtus voolab tagasi",
+      "title": "Töö on tõendatav. Tasustamine on õiglane.",
+      "body": "Iga tööülesanne kannab endas krüptograafilist kviitungit. Operaatorid teenivad intelligentsi eest, mille loomises nad osalevad. Ilma platvormimaksuta. Ilma läbipaistmatu arvelduseta."
+    }
+  },
+
+  "principles": {
+    "title": "Ehitame põhimõtete, mitte platvormide peale",
+    "distributed": {
+      "title": "Hajutatud juba disainist",
+      "body": "Ei mingeid üksikuid tõrkepunkte. Ei mingit keskust. Võrk, mis muutub iga uue operaatoriga tugevamaks."
+    },
+    "participation": {
+      "title": "Avatud osalus",
+      "body": "Kui sul on arvutusressursse, saad panustada. Võrk tervitab kõiki — servaseadmeid, koduservereid ja andmekeskusi."
+    },
+    "fairness": {
+      "title": "Õiglus ja läbipaistvus",
+      "body": "Tulu põhineb tegelikul, krüptograafiliselt tõendatud tööl. Ei mingeid musti kaste. Ei mingeid varjatud tasusid."
+    },
+    "evolving": {
+      "title": "Arenev intelligentsus",
+      "body": "Võrk õpib nõudlusest. Mudeleid laetakse sinna, kus neid on vaja. Intelligentsus levib koostöö kaudu."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Milleks Helexa pürgib",
+    "p1": "Globaalne intelligentsuskiht, mis kuulub kõigile, mida kannab sõlmede ja kogukondade heeliks.",
+    "p2": "Võrk, mis on vastupidav katkestustele, poliitikale, monopooliale ja riketele.",
+    "p3": "Uus majandusmudel, kus operaatorid, loojad ja kasutajad võidavad koos.",
+    "p4": "Ökosüsteem, kus uuendused kasvavad servast — mitte keskmest.",
+    "card": {
+      "eyebrow": "Visiooni hetkeseis",
+      "title": "Teel jagatud intelligentsusvõrguni",
+      "body": "Helexa on algusjärgus. Ideed on suuremad kui praegune teostus — ja see on taotluslik. Võrk kasvab järk-järgult, kujundatuna operaatorite ja ehitajate poolt."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Varajane etapp",
+    "title": "Võrk on kujunemas.",
+    "titleHighlight": "Sina võid olla selle osa.",
+    "lead": "Olenemata sellest, kas haldad riistvara, ehitad mudeleid või hoolid lihtsalt sellest, kuidas tehisintellekti juhitakse, sinu jaoks on võrgus koht.",
+    "ctaRunNode": "Käivita sõlm (varsti)",
+    "ctaJoinAnnouncements": "Liitu varajaste teadetega",
+    "ctaExploreCode": "Uuri koodi",
+    "footer": "Ilma suletud aedadeta. Ilma ühe omanikuta. Vaid võrk inimestest, riistvarast ja ideedest — mis koos loovad teistsuguse tuleviku intelligentsusele."
+  }
+}

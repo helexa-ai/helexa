@@ -1,0 +1,411 @@
+:root {
+    --color-bg: #f5f7fb;
+    --color-bg-elevated: #ffffff;
+    --color-bg-subtle: #eef1f7;
+    --color-border-subtle: rgba(15, 23, 42, 0.12);
+    --color-text: #020617;
+    --color-text-muted: #64748b;
+    --color-accent: #22d3ee;
+    --color-accent-hot: #ec4899;
+    --color-accent-soft: rgba(34, 211, 238, 0.12);
+    --color-navbar-bg: rgba(255, 255, 255, 0.85);
+    --color-footer-bg: rgba(255, 255, 255, 0.9);
+    --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+    --transition-fast: 150ms ease-out;
+}
+
+/* Dark theme overrides, driven by ThemeProvider via [data-theme] */
+:root[data-theme="dark"] {
+    --color-bg: #000618;
+    --color-bg-elevated: #020617;
+    --color-bg-subtle: #020617;
+    --color-border-subtle: rgba(148, 163, 184, 0.24);
+    --color-text: #e2e8f0;
+    --color-text-muted: #cbd5f5;
+    --color-accent: #22d3ee;
+    --color-accent-soft: rgba(34, 211, 238, 0.18);
+    --color-navbar-bg: rgba(2, 6, 23, 0.92);
+    --color-footer-bg: rgba(2, 6, 23, 0.96);
+    --shadow-soft: 0 22px 55px rgba(15, 23, 42, 0.8);
+}
+
+/* Global base styles */
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Text",
+        "Segoe UI",
+        sans-serif;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Basic RTL reset: when the root document is RTL, ensure logical direction */
+html[dir="rtl"] body {
+    direction: rtl;
+}
+
+.app-root {
+    min-height: 100vh;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    transition:
+        background-color var(--transition-fast),
+        color var(--transition-fast);
+}
+
+/* Typography helpers */
+
+.app-main h1,
+.app-main h2,
+.app-main h3,
+.app-main h4,
+.app-main h5 {
+    letter-spacing: 0.02em;
+}
+
+.app-main p.lead {
+    color: var(--color-text-muted);
+}
+
+/* Hot pink accent utility for occasional emphasis */
+.text-hot-pink {
+    color: var(--color-accent-hot) !important;
+}
+
+/* Header / Navbar */
+
+.app-header {
+    background-color: var(--color-navbar-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 1px 0 var(--color-border-subtle);
+    transition:
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+.app-header .navbar-brand {
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    color: var(--color-text);
+}
+
+.app-header .navbar-brand:hover {
+    color: var(--color-accent);
+}
+
+.app-header .nav-link {
+    color: var(--color-text-muted);
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition:
+        color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+
+.app-header .nav-link:hover,
+.app-header .nav-link:focus {
+    color: var(--color-accent);
+    background-color: transparent;
+}
+
+.app-header .nav-link.active {
+    color: var(--color-accent);
+}
+
+.app-header .btn.btn-outline-secondary {
+    --bs-btn-color: var(--color-text-muted);
+    --bs-btn-border-color: var(--color-border-subtle);
+    --bs-btn-hover-bg: var(--color-accent-soft);
+    --bs-btn-hover-border-color: var(--color-accent);
+    --bs-btn-hover-color: var(--color-accent);
+    --bs-btn-focus-shadow-rgb: 34, 211, 238;
+    padding-inline: 0.55rem;
+    padding-block: 0.3rem;
+    border-radius: 999px;
+}
+
+/* Language dropdown: theme-aware styling */
+.app-header .dropdown-menu-dark {
+    --bs-dropdown-bg: var(--color-bg-elevated);
+    --bs-dropdown-link-color: var(--color-text);
+    --bs-dropdown-link-hover-bg: var(--color-accent-soft);
+    --bs-dropdown-link-hover-color: var(--color-accent);
+    --bs-dropdown-link-active-bg: var(--color-accent-soft);
+    --bs-dropdown-link-active-color: var(--color-accent);
+    --bs-dropdown-border-color: var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+    border-color: var(--color-border-subtle);
+    color: var(--color-text);
+}
+
+/* Prevent language dropdown from overflowing off-screen in RTL */
+html[dir="rtl"] .app-header .dropdown-menu-end {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+.app-header .dropdown-menu-dark .dropdown-item.active,
+.app-header .dropdown-menu-dark .dropdown-item:active {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+}
+
+.app-header .dropdown-menu-dark-context .dropdown-toggle.btn-secondary {
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: var(--color-border-subtle);
+    --bs-btn-color: var(--color-text-muted);
+    --bs-btn-hover-bg: var(--color-accent-soft);
+    --bs-btn-hover-border-color: var(--color-accent);
+    --bs-btn-hover-color: var(--color-accent);
+    --bs-btn-focus-shadow-rgb: 34, 211, 238;
+}
+
+.app-header .btn.btn-outline-secondary svg {
+    display: block;
+}
+
+/* Generic helper class for mirroring directional icons in RTL.
+   Used by DirectionalIcon when `mirrorInRtl` is enabled. */
+html[dir="rtl"] .diricon-mirror-rtl {
+    transform: scaleX(-1);
+}
+
+/* Provide a visible toggler icon when using default Bootstrap styles */
+.navbar-toggler {
+    border-color: var(--color-border-subtle);
+}
+
+.navbar-toggler-icon {
+    background-image: none;
+    position: relative;
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.navbar-toggler-icon::before,
+.navbar-toggler-icon::after,
+.navbar-toggler-icon span {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    border-radius: 999px;
+    background-color: var(--color-text);
+    transition:
+        transform 150ms ease-out,
+        opacity 150ms ease-out;
+}
+
+.navbar-toggler-icon::before {
+    top: 0.25rem;
+}
+
+.navbar-toggler-icon::after {
+    bottom: 0.25rem;
+}
+
+/* Footer */
+
+.app-footer {
+    background-color: var(--color-footer-bg);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 -1px 0 var(--color-border-subtle);
+    transition:
+        background-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        border-color var(--transition-fast);
+}
+
+/* Main content layout */
+
+.app-main {
+    max-width: 1120px;
+}
+
+/* When in RTL mode, flip common flex directions and alignment where needed */
+html[dir="rtl"] .app-root {
+    direction: rtl;
+    text-align: right;
+}
+
+html[dir="rtl"] .app-header .navbar-brand {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .app-header .nav-link {
+    text-align: right;
+}
+
+html[dir="rtl"] .app-header .d-flex.align-items-center.gap-2 {
+    flex-direction: row-reverse;
+}
+
+html[dir="rtl"] .app-main .card-body {
+    text-align: right;
+}
+
+/* Ensure footer content also respects RTL direction */
+html[dir="rtl"] .app-footer {
+    direction: rtl;
+    text-align: right;
+}
+
+.app-main .card,
+.app-main .card-body {
+    background-color: var(--color-bg-elevated);
+    border-color: var(--color-border-subtle);
+}
+
+/* Generic utility styles */
+
+.surface-elevated {
+    background-color: var(--color-bg-elevated);
+    border-radius: 1rem;
+    border: 1px solid var(--color-border-subtle);
+    box-shadow: var(--shadow-soft);
+}
+
+/* Mesh / principle icon containers */
+.mesh-icon,
+.principle-icon {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border-subtle);
+    background: radial-gradient(
+        circle,
+        var(--color-accent-soft),
+        transparent 60%
+    );
+    color: var(--color-accent);
+    margin-bottom: 0.35rem;
+    flex-shrink: 0;
+}
+
+.principle-icon {
+    width: 2rem;
+    height: 2rem;
+}
+
+/* CTA background texture */
+.join-mesh-cta {
+    background:
+        radial-gradient(
+            circle at top,
+            rgba(34, 211, 238, 0.18),
+            transparent 60%
+        ),
+        url("/bg-logo-right.png") center/cover no-repeat,
+        var(--color-bg-elevated);
+    background-blend-mode: screen, normal;
+}
+
+.badge-accent {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+    border-radius: 999px;
+    padding: 0.1rem 0.55rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+}
+
+/* Ensure muted text uses our theme variable instead of Bootstrap defaults */
+.text-muted,
+small {
+    color: var(--color-text-muted) !important;
+}
+
+/* Small cyan dot used inside hero and CTA badges */
+.bg-cyan-500-dot {
+    display: inline-block;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: radial-gradient(
+        circle,
+        var(--color-accent) 0%,
+        transparent 65%
+    );
+}
+
+/* Links */
+
+a {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--color-accent);
+    text-decoration: underline;
+}
+
+/* Scrollbar theming (WebKit) */
+
+*::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.6);
+    border-radius: 999px;
+}
+
+:root[data-theme="dark"] *::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.8);
+}
+
+/* Code blocks / preformatted text placeholders */
+
+pre,
+code {
+    font-family:
+        ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+}
+
+pre {
+    background-color: var(--color-bg-subtle);
+    border-radius: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--color-border-subtle);
+    overflow-x: auto;
+}
+
+/* Small-screen adjustments */
+
+@media (max-width: 576px) {
+    .app-main {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    .app-header .navbar-brand {
+        font-size: 0.8rem;
+    }
+}

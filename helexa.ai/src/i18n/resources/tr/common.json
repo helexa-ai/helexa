@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Ana sayfa",
+    "docs": "Dokümantasyon",
+    "chat": "Sohbet",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Açık moduna geç",
+      "toDark": "Koyu moduna geç"
+    }
+  },
+  "lang": {
+    "am": "Amharca",
+    "ar": "Arapça",
+    "bg": "Bulgarca",
+    "da": "Danca",
+    "de": "Almanca",
+    "el": "Yunanca",
+    "en": "İngilizce",
+    "es": "İspanyolca",
+    "et": "Estonca",
+    "fa": "Farsça",
+    "fi": "Fince",
+    "fr": "Fransızca",
+    "ha": "Hausa",
+    "he": "İbranice",
+    "ig": "İgbo",
+    "it": "İtalyanca",
+    "ka": "Gürcüce",
+    "kk": "Kazakça",
+    "ma": "Darija",
+    "nl": "Felemenkçe",
+    "no": "Norveççe",
+    "om": "Oromo",
+    "pl": "Lehçe",
+    "pt": "Portekizce",
+    "ro": "Romence",
+    "ru": "Rusça",
+    "so": "Somalice",
+    "sr": "Sırpça",
+    "sv": "İsveççe",
+    "sw": "Svahili",
+    "ti": "Tigrinya",
+    "tr": "Türkçe",
+    "uk": "Ukraynaca",
+    "uz": "Özbekçe",
+    "wo": "Wolofça",
+    "yo": "Yorubaca",
+    "zu": "Zuluca"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

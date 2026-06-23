@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Yeni bir zeka biçimi",
+    "title": "Yeni Bir Zeka Biçimi",
+    "lead": "Helexa, bağımsız operatörler tarafından güçlendirilen, kendi kendini örgütleyen bir yapay zeka ağıdır. Açık. Dağıtık. Evrilen.",
+    "ctaJoinMesh": "Ağa katıl",
+    "ctaFollowProject": "Projeyi takip et",
+    "subcopy": "Yapay zekanın açık, dayanıklı ve paylaşılan olması gerektiğine inanan operatörler, geliştiriciler ve topluluklar için tasarlandı.",
+    "imageAlt": "Helexa helezon görseli"
+  },
+
+  "intent": {
+    "title": "Helexa Neden Var?",
+    "p1": "Yapay zeka, dünyadaki en güçlü altyapı hâline geliyor. Ancak bugün bu güç, özel öncelikler, coğrafi kısıtlar ve kırılgan ekonomi modelleriyle şekillenen, az sayıda şirketin elinde toplanmış durumda.",
+    "p2Intro": "Helexa farklı bir şey hayal ediyor:",
+    "bullet1": "Tek bir yerden değil, her yerden büyüyen bir zeka.",
+    "bullet2": "Herkesin katkı sunabildiği ve faydalanabildiği bir ağ.",
+    "bullet3": "Emirlere değil, talebe uyum sağlayan bir sistem.",
+    "bullet4": "Toplulukları yerine koymak yerine güçlendiren teknoloji.",
+    "closing": "Helexa bir platform değil. Bir bulut da değil.\nBağımsız operatörlerin oluşturduğu, yaşayan ve evrilen bir örgü — yeni bir zeka biçimi."
+  },
+
+  "whyNow": {
+    "title": "Yapay Zeka İçin Bir Dönüm Noktası",
+    "problemTitle": "Sorun",
+    "problemBullet1": "Yapay zeka, kendisinden önceki tüm teknolojilerden daha hızlı merkezileşiyor.",
+    "problemBullet2": "Hesaplama gücüne erişim, yeteneği belirliyor ve bu erişim giderek daralıyor.",
+    "problemBullet3": "Maliyet bariyerleri; araştırmacıları, girişimleri ve toplulukları dışarıda bırakıyor.",
+    "problemBullet4": "Jeopolitik ve düzenleyici baskılar, küresel erişilebilirliği tehdit ediyor.",
+    "problemBullet5": "Model üretenler ve altyapıyı işletenler, ürettikleri değerden nadiren pay alıyor.",
+    "opportunityTitle": "Fırsat",
+    "opportunityIntro": "Oysa dağıtık bir dünya mümkün.",
+    "opportunityBullet1": "Dünyanın dört bir yanında, binlerce GPU hâlihazırda atıl duruyor.",
+    "opportunityBullet2": "Operatörler, sağladıkları hesaplama gücü için adil bir karşılık istiyor.",
+    "opportunityBullet3": "Geliştiriciler, açık ve sansüre dirençli altyapı arıyor.",
+    "opportunityBullet4": "Topluluklar, dijital sistemlerde egemenlik ve dayanıklılık talep ediyor.",
+    "opportunityBullet5": "Yapay zekanın büyümesi, geleneksel bulutları geride bıraktı — yeni biçimlere ihtiyaç var.",
+    "opportunityClosing": "Helexa, tüm bu güçlerin kesiştiği an."
+  },
+
+  "howItWorks": {
+    "title": "Ağ Nasıl Oluşuyor?",
+    "operators": {
+      "eyebrow": "Operatörler Düğümleri Çalıştırır",
+      "title": "Herkes hesaplama gücü sağlayabilir.",
+      "body": "Operatörler Helexa düğümlerini çalıştırır. Hangi modelleri barındıracaklarına kendileri karar verir. Donanımlarının ve ekonomilerinin kontrolü onlardadır. Onay süreçleri yok, aracı kapı bekçileri yok."
+    },
+    "routing": {
+      "eyebrow": "Ağ Zekayı Yönlendirir",
+      "title": "Talep ağın içinde akıp gider.",
+      "body": "Helexa, nerede kapasite olduğunu, talebin nerede arttığını ve hangi düğümlerin istekleri karşılamaya en uygun olduğunu öğrenir. Ağ, büyüyen bir helezon gibi, kendiliğinden ve organik biçimde uyum sağlar."
+    },
+    "value": {
+      "eyebrow": "Değer Geri Akıyor",
+      "title": "İş kanıtlanır. Ödeme adildir.",
+      "body": "Her iş, kriptografik bir makbuz taşır. Operatörler, sağlanmasına yardımcı oldukları zekâ üzerinden gelir elde eder. Platform vergisi yok. Opak faturalandırma yok."
+    }
+  },
+
+  "principles": {
+    "title": "Platformlara Değil, İlkelere Dayalı",
+    "distributed": {
+      "title": "Tasarım Gereği Dağıtık",
+      "body": "Tek bir arıza noktası yok. Merkezi bir otorite yok. Her yeni operatörle güçlenen bir ağ."
+    },
+    "participation": {
+      "title": "Açık Katılım",
+      "body": "Hesaplama gücün varsa, katkı sunabilirsin. Ağ; uç cihaz, ev sunucusu ya da veri merkezi fark etmeksizin herkesi karşılar."
+    },
+    "fairness": {
+      "title": "Adalet ve Şeffaflık",
+      "body": "Kazançlar, kriptografik olarak doğrulanmış gerçek işe dayanır. Kara kutu yok. Gizli ücret yok."
+    },
+    "evolving": {
+      "title": "Evrilen Zekâ",
+      "body": "Ağ, talepten öğrenir. Modeller ihtiyaç duyulan yerlere yüklenir. Zekâ, iş birliğiyle yayılır."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Helexa’nın Olmayı Hedeflediği Şey",
+    "p1": "Herkese ait olan, düğümlerin ve toplulukların oluşturduğu bir helezon tarafından güçlendirilen küresel bir zekâ katmanı.",
+    "p2": "Kesintilere, siyasete, tekele ve arızalara karşı dayanıklı bir ağ.",
+    "p3": "Operatörlerin, geliştiricilerin ve kullanıcıların birlikte kazandığı yeni bir ekonomik model.",
+    "p4": "Yeniliğin merkezden değil, ağın kenarlarından filizlendiği bir ekosistem.",
+    "card": {
+      "eyebrow": "Vizyona kısa bakış",
+      "title": "Paylaşılan Bir Zekâ Ağına Doğru",
+      "body": "Helexa henüz çok erken aşamada. Fikirler, mevcut uygulamadan kasıtlı olarak daha büyük. Ağ; operatörler ve geliştiricilerle birlikte, adım adım büyüyecek ve evrilecek."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Erken faz",
+    "title": "Ağ Oluşuyor.",
+    "titleHighlight": "Parçası Olabilirsin.",
+    "lead": "İster donanım işlet, ister modeller inşa et, ister yalnızca yapay zekânın nasıl yönetildiğine önem ver; bu ağda senin için bir yer var.",
+    "ctaRunNode": "Bir düğüm çalıştır (yakında)",
+    "ctaJoinAnnouncements": "Erken duyurulara katıl",
+    "ctaExploreCode": "Kodu keşfet",
+    "footer": "Duvarlarla çevrili bahçeler yok. Tek bir sahip yok. Yalnızca insanlar, donanım ve fikirlerden oluşan — zekâ için bambaşka bir gelecek tasarlayan bir ağ."
+  }
+}

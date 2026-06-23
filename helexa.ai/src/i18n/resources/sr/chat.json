@@ -1,0 +1,9 @@
+{
+  "title": "Prostor za razgovor",
+  "badge": "Ćaskanje",
+  "lead": "Ovo je prikaz ćaskanja. Poveži svoju konverzacionu logiku i UI komponente sa ovom stranicom.",
+  "transcriptPlaceholder": "Transkript ćaskanja će se pojaviti ovde. Prikaži poruke modela i korisnika u kliznom kontejneru, po želji grupisane po toku razgovora.",
+  "inputPlaceholder": "Unesi poruku da započneš razgovor…",
+  "send": "Pošalji",
+  "clear": "Obriši"
+}

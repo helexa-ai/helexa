@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Bosh sahifa",
+    "docs": "Hujjatlar",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Yorugʻ rejimga oʻtish",
+      "toDark": "Qorongʻi rejimga oʻtish"
+    }
+  },
+  "lang": {
+    "bg": "Bolgar tili",
+    "de": "Nemis tili",
+    "el": "Yunon tili",
+    "en": "Ingliz tili",
+    "es": "Ispan tili",
+    "et": "Eston tili",
+    "fr": "Fransuz tili",
+    "he": "Ivrit",
+    "it": "Italyan tili",
+    "nl": "Golland tili",
+    "da": "Daniy tili",
+    "fi": "Fin tili",
+    "no": "Norveg tili",
+    "sv": "Shved tili",
+    "ar": "Arab tili",
+    "fa": "Fors tili",
+    "sw": "Suahili tili",
+    "ha": "Xausa tili",
+    "am": "Amxar tili",
+    "yo": "Yoruba tili",
+    "zu": "Zulu tili",
+    "ma": "Darija",
+    "ig": "Igbo tili",
+    "ka": "Gruzin tili",
+    "kk": "Qozoq tili",
+    "om": "Oromo tili",
+    "so": "Somali tili",
+    "ti": "Tigrinya tili",
+    "uz": "Oʻzbek tili",
+    "wo": "Volof tili",
+    "pl": "Polyak tili",
+    "pt": "Portugal tili",
+    "ro": "Rumin tili",
+    "ru": "Rus tili",
+    "sr": "Serb tili",
+    "tr": "Turk tili",
+    "uk": "Ukrain tili"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

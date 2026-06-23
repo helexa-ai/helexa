@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Een nieuwe vorm van intelligentie",
+    "title": "Een nieuwe vorm van intelligentie",
+    "lead": "Helexa is een zelforganiserend AI‑netwerk, aangedreven door onafhankelijke operators. Open. Gedistribueerd. Evoluerend.",
+    "ctaJoinMesh": "Sluit je aan bij het netwerk",
+    "ctaFollowProject": "Volg het project",
+    "subcopy": "Gebouwd voor operators, bouwers en communities die geloven dat AI open, veerkrachtig en gedeeld moet zijn.",
+    "imageAlt": "Helexa‑helix visualisatie"
+  },
+
+  "intent": {
+    "title": "Waarom Helexa bestaat",
+    "p1": "AI wordt de krachtigste infrastructuur op aarde. Maar vandaag is die macht geconcentreerd in de handen van een paar bedrijven, gevormd door private prioriteiten, geografische beperkingen en kwetsbare economieën.",
+    "p2Intro": "Helexa ziet het anders voor zich:",
+    "bullet1": "Intelligentie die overal kan groeien, niet op één plek.",
+    "bullet2": "Een netwerk waarin iedereen kan bijdragen en profiteren.",
+    "bullet3": "Een systeem dat zich aanpast aan vraag, niet aan bevelen.",
+    "bullet4": "Technologie die gemeenschappen versterkt in plaats van ze te vervangen.",
+    "closing": "Helexa is geen platform. Het is geen cloud.\nHet is een netwerk — een levend, zich ontwikkelend weefsel van onafhankelijke operators dat een nieuw soort intelligentie vormt."
+  },
+
+  "whyNow": {
+    "title": "Een kantelpunt voor AI",
+    "problemTitle": "Het probleem",
+    "problemBullet1": "AI centraliseert sneller dan welke technologie ook vóór haar.",
+    "problemBullet2": "Toegang tot rekenkracht bepaalt het vermogen, en die toegang wordt schaarser.",
+    "problemBullet3": "Kostenbarrières sluiten onderzoekers, startups en gemeenschappen uit.",
+    "problemBullet4": "Geopolitieke en regelgevende druk bedreigen de wereldwijde beschikbaarheid.",
+    "problemBullet5": "Makers van modellen en beheerders van hardware delen zelden in de waarde die zij creëren.",
+    "opportunityTitle": "De kans",
+    "opportunityIntro": "Maar een gedistribueerde wereld is mogelijk.",
+    "opportunityBullet1": "Duizenden GPU’s staan wereldwijd al onderbenut.",
+    "opportunityBullet2": "Operators willen eerlijke vergoeding voor rekenkracht.",
+    "opportunityBullet3": "Developers willen open, censuurbestendige infrastructuur.",
+    "opportunityBullet4": "Gemeenschappen willen soevereiniteit en veerkracht in digitale systemen.",
+    "opportunityBullet5": "De groei van AI is sneller dan die van traditionele clouds — er zijn nieuwe vormen nodig.",
+    "opportunityClosing": "Helexa is het moment waarop deze krachten samenkomen."
+  },
+
+  "howItWorks": {
+    "title": "Hoe het netwerk ontstaat",
+    "operators": {
+      "eyebrow": "Operators draaien nodes",
+      "title": "Iedereen kan rekenkracht bijdragen.",
+      "body": "Operators draaien Helexa‑nodes. Zij beslissen welke modellen ze hosten. Ze houden de controle over hun hardware en hun economie. Geen goedkeuringen, geen poortwachters."
+    },
+    "routing": {
+      "eyebrow": "Het netwerk routeert intelligentie",
+      "title": "Vraag stroomt door het netwerk.",
+      "body": "Helexa leert waar capaciteit beschikbaar is, waar de vraag toeneemt en welke nodes het best geschikt zijn om verzoeken te bedienen. Het netwerk past zich organisch aan — als een groeiende helix."
+    },
+    "value": {
+      "eyebrow": "Waarde stroomt terug",
+      "title": "Werk is aantoonbaar. Betaling is eerlijk.",
+      "body": "Elke taak draagt een cryptografisch ontvangstbewijs. Operators verdienen aan de intelligentie die zij helpen leveren. Geen platformbelasting. Geen ondoorzichtige facturatie."
+    }
+  },
+
+  "principles": {
+    "title": "Gebouwd op principes, niet op platforms",
+    "distributed": {
+      "title": "Gedistribueerd by design",
+      "body": "Geen single point of failure. Geen centrale autoriteit. Een netwerk dat met elke nieuwe operator sterker wordt."
+    },
+    "participation": {
+      "title": "Open participatie",
+      "body": "Als je rekenkracht hebt, kun je bijdragen. Het netwerk verwelkomt iedereen — edge, thuisserver, datacenter."
+    },
+    "fairness": {
+      "title": "Eerlijkheid en transparantie",
+      "body": "Inkomsten zijn gebaseerd op echt werk, cryptografisch geverifieerd. Geen black boxes. Geen verborgen kosten."
+    },
+    "evolving": {
+      "title": "Evoluerende intelligentie",
+      "body": "Het netwerk leert van de vraag. Modellen worden geladen waar ze nodig zijn. Intelligentie verspreidt zich door samenwerking."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Wat Helexa wil worden",
+    "p1": "Een wereldwijde intelligentielaag die van iedereen is, aangedreven door een helix van nodes en communities.",
+    "p2": "Een netwerk dat bestand is tegen storingen, politiek, monopolies en uitval.",
+    "p3": "Een nieuw economisch model waarin operators, bouwers en gebruikers allemaal profiteren.",
+    "p4": "Een ecosysteem waarin innovatie groeit vanuit de randen — niet vanuit het centrum.",
+    "card": {
+      "eyebrow": "Momentopname van de visie",
+      "title": "Op weg naar een gedeeld intelligentienetwerk",
+      "body": "Helexa staat nog aan het begin. De ideeën zijn groter dan de implementatie — en dat is bewust zo. Het netwerk zal iteratief groeien, terwijl operators en bouwers de evolutie vormgeven."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Vroege fase",
+    "title": "Het netwerk vormt zich.",
+    "titleHighlight": "Jij kunt er deel van uitmaken.",
+    "lead": "Of je nu hardware runt, modellen bouwt of je simpelweg bekommert om de governance van AI — er is een plek voor jou in het netwerk.",
+    "ctaRunNode": "Draai een node (binnenkort)",
+    "ctaJoinAnnouncements": "Sluit je aan bij vroege aankondigingen",
+    "ctaExploreCode": "Verken de code",
+    "footer": "Geen ommuurde tuinen. Geen enkele eigenaar. Alleen een netwerk van mensen, hardware en ideeën — dat een ander toekomstbeeld voor intelligentie componeert."
+  }
+}

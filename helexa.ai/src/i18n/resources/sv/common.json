@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Hem",
+    "docs": "Dokumentation",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Byt till ljust läge",
+      "toDark": "Byt till mörkt läge"
+    }
+  },
+  "lang": {
+    "am": "Amhariska",
+    "ar": "Arabiska",
+    "bg": "Bulgariska",
+    "da": "Danska",
+    "de": "Tyska",
+    "el": "Grekiska",
+    "en": "Engelska",
+    "es": "Spanska",
+    "et": "Estniska",
+    "fa": "Persiska",
+    "fi": "Finska",
+    "fr": "Franska",
+    "ha": "Hausa",
+    "he": "Hebreiska",
+    "ig": "Igbo",
+    "it": "Italienska",
+    "ka": "Georgiska",
+    "kk": "Kazakiska",
+    "ma": "Darija",
+    "nl": "Nederländska",
+    "no": "Norska",
+    "om": "Oromo",
+    "pl": "Polska",
+    "pt": "Portugisiska",
+    "ro": "Rumänska",
+    "ru": "Ryska",
+    "so": "Somaliska",
+    "sr": "Serbiska",
+    "sv": "Svenska",
+    "sw": "Swahili",
+    "ti": "Tigrinja",
+    "tr": "Turkiska",
+    "uk": "Ukrainska",
+    "uz": "Uzbekiska",
+    "wo": "Wolof",
+    "yo": "Yoruba",
+    "zu": "Zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

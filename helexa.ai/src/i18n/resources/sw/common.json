@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Nyumbani",
+    "docs": "Nyaraka",
+    "chat": "Soga",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Badili kwenda muonekano wa mwanga",
+      "toDark": "Badili kwenda muonekano wa giza"
+    }
+  },
+  "lang": {
+    "am": "Kiamhariki",
+    "ar": "Kiarabu",
+    "bg": "Kibulgaria",
+    "da": "Kidenmaki",
+    "de": "Kijerumani",
+    "el": "Kigiriki",
+    "en": "Kiingereza",
+    "es": "Kihispania",
+    "et": "Kiestonia",
+    "fa": "Kiajemi",
+    "fi": "Kifinlandi",
+    "fr": "Kifaransa",
+    "ha": "Kihausa",
+    "he": "Kiebrania",
+    "ig": "Kiigbo",
+    "it": "Kiitaliano",
+    "ka": "Kijiojia",
+    "kk": "Kikazaki",
+    "ma": "Kidarija",
+    "nl": "Kiholanzi",
+    "no": "Kinorwe",
+    "om": "Kioromo",
+    "pl": "Kipolandi",
+    "pt": "Kireno",
+    "ro": "Kiromania",
+    "ru": "Kirusi",
+    "so": "Kisomali",
+    "sr": "Kiserbia",
+    "sv": "Kiswidi",
+    "sw": "Kiswahili",
+    "ti": "Kitigrinya",
+    "tr": "Kituruki",
+    "uk": "Kiukraine",
+    "uz": "Kiuzbeki",
+    "wo": "Kiwolof",
+    "yo": "Kiyoruba",
+    "zu": "Kizulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

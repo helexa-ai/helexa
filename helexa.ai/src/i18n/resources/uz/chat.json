@@ -1,0 +1,9 @@
+{
+  "title": "Suhbat ish maydoni",
+  "badge": "Chat",
+  "lead": "Bu — chat oynasi. Ushbu sahifaga oʻz suhbat mantiqingizni va UI komponentalaringizni ulab chiqing.",
+  "transcriptPlaceholder": "Chat tarixlari shu yerda koʻrinadi. Model va foydalanuvchi xabarlarini aylanuvchi konteynerda, zarur boʻlsa navbatlar boʻyicha guruhlab tasvirlang.",
+  "inputPlaceholder": "Chatni boshlash uchun xabar yozing…",
+  "send": "Yuborish",
+  "clear": "Tozalash"
+}

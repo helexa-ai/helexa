@@ -1,0 +1,9 @@
+{
+  "title": "Przestrzeń rozmowy",
+  "badge": "Czat",
+  "lead": "To jest widok czatu. Podłącz do tej strony swoją logikę konwersacyjną i komponenty interfejsu użytkownika.",
+  "transcriptPlaceholder": "Transkrypcja czatu pojawi się tutaj. Renderuj wiadomości modelu i użytkownika w przewijanym kontenerze, opcjonalnie pogrupowane według tur.",
+  "inputPlaceholder": "Napisz wiadomość, aby rozpocząć rozmowę…",
+  "send": "Wyślij",
+  "clear": "Wyczyść"
+}
