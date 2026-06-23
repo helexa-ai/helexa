@@ -3,6 +3,7 @@ import { Alert, Badge, Button, Container, Form, Modal, Table } from "react-boots
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/context";
 import { accountApi } from "../../api/account";
+import { db } from "../../data/db";
 import { ApiError, type ApiKeySummary, type CreatedKey } from "../../api/types";
 
 type LimitKind = "percent" | "hardcap";
@@ -19,6 +20,7 @@ export default function ApiKeys() {
   const [limitValue, setLimitValue] = useState(100);
   const [created, setCreated] = useState<CreatedKey | null>(null);
   const [copied, setCopied] = useState(false);
+  const [usedForChat, setUsedForChat] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -152,6 +154,20 @@ export default function ApiKeys() {
               {copied ? t("keys.copied") : t("keys.copy")}
             </Button>
           </div>
+          {/* Store the raw key locally (this browser only) so the chat can
+              use it as your bearer — consistent with no server-side secrets. */}
+          <Button
+            variant="link"
+            className="px-0 mt-2"
+            onClick={async () => {
+              if (!created) return;
+              await db.meta.put({ key: "chatApiKey", value: created.key });
+              await db.meta.put({ key: "chatApiKeyId", value: created.id });
+              setUsedForChat(true);
+            }}
+          >
+            {usedForChat ? t("keys.usedForChat") : t("keys.useForChat")}
+          </Button>
         </Modal.Body>
       </Modal>
     </Container>

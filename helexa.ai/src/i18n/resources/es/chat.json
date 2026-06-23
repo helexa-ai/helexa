@@ -13,5 +13,9 @@
   "emptyState": "Start a conversation. Your history stays in this browser.",
   "anonBanner": "You have reached the anonymous limit. Sign up for a free allocation.",
   "signUp": "Sign up",
-  "stop": "Stop"
+  "stop": "Stop",
+  "topUp": "Top up",
+  "rateLimited": "Rate limited — wait a moment and retry.",
+  "needsKey": "Create an API key and enable it for chat to send as yourself.",
+  "manageKeysLink": "Manage keys"
 }

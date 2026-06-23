@@ -3,6 +3,8 @@ import { createContext, useContext } from "react";
 export interface AuthContextValue {
   token: string | null;
   email: string | null;
+  /** The signed-in account id (for the Dexie owner + usage queries). */
+  accountId: string | null;
   status: "anon" | "authed";
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -12,6 +14,7 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue>({
   token: null,
   email: null,
+  accountId: null,
   status: "anon",
   login: async () => {},
   register: async () => {},
