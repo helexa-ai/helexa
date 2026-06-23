@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Umbo jipya la akili",
+    "title": "Umbo Jipya la Akili",
+    "lead": "Helexa ni wavu wa AI unaojiandaa wenyewe unaoendeshwa na waendeshaji huru. Wazi. Uliosambazwa. Unaobadilika.",
+    "ctaJoinMesh": "Jiunge na wavu",
+    "ctaFollowProject": "Fuata mradi",
+    "subcopy": "Imetengenezwa kwa ajili ya waendeshaji, wajenzi na jamii zinazoiamini kuwa AI inapaswa kuwa wazi, thabiti na inayoshirikiwa.",
+    "imageAlt": "Taswira ya heliksi ya Helexa"
+  },
+
+  "intent": {
+    "title": "Kwa Nini Helexa Ipo",
+    "p1": "AI inageuka kuwa miundombinu yenye nguvu zaidi duniani. Lakini leo, nguvu hiyo imeshikiliwa na mashirika machache, ikiumbwa na vipaumbele binafsi, mipaka ya kijiografia na uchumi dhaifu.",
+    "p2Intro": "Helexa inawaza kitu tofauti:",
+    "bullet1": "Akili inayokua kutoka kila mahali, si mahali pamoja.",
+    "bullet2": "Mtandao ambao mtu yeyote anaweza kuchangia na kunufaika nao.",
+    "bullet3": "Mfumo unaojibadilisha kulingana na mahitaji, si maagizo.",
+    "bullet4": "Teknolojia inayotia nguvu jamii badala ya kuziacha kando.",
+    "closing": "Helexa si jukwaa. Si \"wingu\" pia.\nNi wavu — mtandao hai, unaobadilika wa waendeshaji huru unaounda aina mpya ya akili."
+  },
+
+  "whyNow": {
+    "title": "Kipindi cha Mabadiliko kwa AI",
+    "problemTitle": "Tatizo",
+    "problemBullet1": "AI inajikita katikati kwa kasi kuliko teknolojia yoyote iliyotangulia.",
+    "problemBullet2": "Upatikanaji wa rasilimali za kompyuta ndio unaoamua uwezo, na upatikanaji huo unazidi kupungua.",
+    "problemBullet3": "Vizuizi vya gharama vinawaondoa watafiti, kampuni changa na jamii.",
+    "problemBullet4": "Misukumo ya kisiasa na ya kisheria inatishia upatikanaji wa kimataifa.",
+    "problemBullet5": "Watengenezaji wa miundo na waendeshaji wa vifaa mara chache hushiriki katika thamani wanayoiumba.",
+    "opportunityTitle": "Fursa",
+    "opportunityIntro": "Lakini dunia iliyo sambamba inawezekana.",
+    "opportunityBullet1": "Maelfu ya GPU tayari zipo na hazitumiki kikamilifu kote duniani.",
+    "opportunityBullet2": "Waendeshaji wanataka malipo ya haki kwa kompyuta wanayotoa.",
+    "opportunityBullet3": "Watengenezaji wanataka miundombinu iliyo wazi na isiyodhibitiwa kwa urahisi.",
+    "opportunityBullet4": "Jamii zinahitaji mamlaka na uimara katika mifumo yao ya kidijitali.",
+    "opportunityBullet5": "Ukuaji wa AI umeizidi kasi miundombinu ya jadi ya wingu — miundo mipya inahitajika.",
+    "opportunityClosing": "Helexa ndiyo wakati ambapo nguvu hizi zinajipanga pamoja."
+  },
+
+  "howItWorks": {
+    "title": "Wavu Unavyoundwa",
+    "operators": {
+      "eyebrow": "Waendeshaji Huwasha Nodi",
+      "title": "Mtu yeyote anaweza kuchangia nguvu ya kompyuta.",
+      "body": "Waendeshaji huendesha nodi za Helexa. Wao huamua ni miundo gani ya kuikaribisha. Wanasalia na udhibiti wa vifaa vyao na uchumi wao. Hakuna vibali, hakuna walinzi wa lango."
+    },
+    "routing": {
+      "eyebrow": "Wavu Huelekeza Akili",
+      "title": "Mahitaji hupita kwenye mtandao.",
+      "body": "Helexa hujifunza ni wapi kuna uwezo, wapi mahitaji yanaongezeka, na ni nodi zipi zinafaa zaidi kuhudumia maombi. Wavu hubadilika kiasili — kama heliksi inayokua."
+    },
+    "value": {
+      "eyebrow": "Thamani Hurudi Nyuma",
+      "title": "Kazi inathibitishwa. Malipo ni ya haki.",
+      "body": "Kila kazi hubeba risiti ya kriptografia. Waendeshaji hupata kipato kutokana na akili wanayosaidia kutoa. Hakuna ushuru wa jukwaa. Hakuna bili zisizo wazi."
+    }
+  },
+
+  "principles": {
+    "title": "Imejengwa juu ya Kanuni, Siyo Majukwaa",
+    "distributed": {
+      "title": "Imesambazwa kwa Muundo",
+      "body": "Hakuna sehemu moja ya kushindwa. Hakuna mamlaka ya kati. Mtandao unaokuwa imara zaidi kwa kila mwendeshaji mpya."
+    },
+    "participation": {
+      "title": "Ushiriki Wazi",
+      "body": "Kama una kompyuta, unaweza kuchangia. Wavu unamkaribisha kila mtu — kutoka kwenye vifaa vya ukingo, seva za nyumbani hadi vituo vya data."
+    },
+    "fairness": {
+      "title": "Uadilifu na Uwazi",
+      "body": "Mapato yanategemea kazi halisi, iliyothibitishwa kwa kriptografia. Hakuna visanduku vyeusi. Hakuna ada zilizofichwa."
+    },
+    "evolving": {
+      "title": "Akili Inayobadilika",
+      "body": "Wavu hujifunza kutokana na mahitaji. Miundo hupakiwa pale inapohitajika. Akili huenea kupitia ushirikiano."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Helexa Inalenga Kuwa Nini",
+    "p1": "Tabaka la akili ya kimataifa linalomilikiwa na kila mtu, likiendeshwa na heliksi ya nodi na jamii.",
+    "p2": "Mtandao wenye ustahimilivu dhidi ya hitilafu, siasa, ukiritimba na kushindwa.",
+    "p3": "Mfumo mpya wa kiuchumi ambapo waendeshaji, wajenzi na watumiaji wote hunufaika.",
+    "p4": "Mfumo ikolojia ambamo ubunifu unakua kutoka pembezoni — si katikati.",
+    "card": {
+      "eyebrow": "Muhtasari wa maono",
+      "title": "Kuelekea wavu wa akili ya pamoja",
+      "body": "Helexa bado ipo hatua za awali. Mawazo ni makubwa kuliko utekelezaji wa sasa — na hilo limekusudiwa. Mtandao utakua hatua kwa hatua, ukiundwa na maoni ya waendeshaji na wajenzi."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Hatua ya mwanzo",
+    "title": "Wavu Unaundwa.",
+    "titleHighlight": "Unaweza Kuwa Sehemu Yake.",
+    "lead": "Ikiwa unaendesha vifaa, unajenga miundo, au unajali tu jinsi AI inavyoendeshwa, kuna nafasi yako ndani ya wavu.",
+    "ctaRunNode": "Endesha nodi (hivi karibuni)",
+    "ctaJoinAnnouncements": "Jiunge na tangazo za mwanzo",
+    "ctaExploreCode": "Chunguza msimbo",
+    "footer": "Hakuna bustani za uzio. Hakuna mmiliki mmoja. Ni wavu wa watu, vifaa na mawazo — unaoumba mustakabali tofauti wa akili."
+  }
+}

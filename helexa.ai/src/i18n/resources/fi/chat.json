@@ -1,0 +1,9 @@
+{
+  "title": "Keskustelutila",
+  "badge": "Keskustelu",
+  "lead": "Tämä on keskustelunäkymä. Liitä oma keskustelulogiikkasi ja käyttöliittymäkomponenttisi tälle sivulle.",
+  "transcriptPlaceholder": "Keskusteluloki näkyy tässä. Näytä mallin ja käyttäjän viestit vieritettävässä säiliössä, halutessasi vuoroittain ryhmiteltynä.",
+  "inputPlaceholder": "Kirjoita viesti aloittaaksesi keskustelun…",
+  "send": "Lähetä",
+  "clear": "Tyhjennä"
+}

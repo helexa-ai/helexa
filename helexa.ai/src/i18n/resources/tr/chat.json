@@ -1,0 +1,9 @@
+{
+  "title": "Sohbet alanı",
+  "badge": "Sohbet",
+  "lead": "Burası sohbet görünümü. Sohbet mantığınızı ve arayüz bileşenlerinizi bu sayfaya bağlayın.",
+  "transcriptPlaceholder": "Sohbet geçmişi burada görünecek. Modelden ve kullanıcıdan gelen mesajları, isterseniz turlara göre gruplayarak, kaydırılabilir bir alanda gösterin.",
+  "inputPlaceholder": "Sohbete başlamak için bir mesaj yazın…",
+  "send": "Gönder",
+  "clear": "Temizle"
+}

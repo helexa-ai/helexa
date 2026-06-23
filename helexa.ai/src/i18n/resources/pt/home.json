@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Uma nova forma de inteligência",
+    "title": "Uma nova forma de inteligência",
+    "lead": "Helexa é uma malha de IA auto-organizada, alimentada por operadores independentes. Aberta. Distribuída. Em evolução.",
+    "ctaJoinMesh": "Juntar-se à malha",
+    "ctaFollowProject": "Acompanhar o projeto",
+    "subcopy": "Criada para operadores, builders e comunidades que acreditam que a IA deve ser aberta, resiliente e partilhada.",
+    "imageAlt": "Visual da hélice Helexa"
+  },
+
+  "intent": {
+    "title": "Porque é que a Helexa existe",
+    "p1": "A IA está a tornar-se a infraestrutura mais poderosa da Terra. Mas hoje esse poder está concentrado num pequeno número de empresas, moldado por prioridades privadas, limitações geográficas e economias frágeis.",
+    "p2Intro": "A Helexa imagina algo diferente:",
+    "bullet1": "Uma inteligência que cresce a partir de qualquer lugar, não de um único ponto.",
+    "bullet2": "Uma rede onde qualquer pessoa pode contribuir e beneficiar.",
+    "bullet3": "Um sistema que se adapta à procura, não a diretivas.",
+    "bullet4": "Tecnologia que fortalece as comunidades em vez de as substituir.",
+    "closing": "A Helexa não é uma plataforma. Não é uma cloud.\nÉ uma malha — uma rede viva e em evolução de operadores independentes que formam um novo tipo de inteligência."
+  },
+
+  "whyNow": {
+    "title": "Um ponto de viragem para a IA",
+    "problemTitle": "O problema",
+    "problemBullet1": "A IA está a centralizar-se mais depressa do que qualquer tecnologia antes dela.",
+    "problemBullet2": "O acesso a computação define a capacidade, e esse acesso está a estreitar-se.",
+    "problemBullet3": "As barreiras de custo excluem investigadores, startups e comunidades.",
+    "problemBullet4": "Pressões geopolíticas e regulatórias ameaçam a disponibilidade global.",
+    "problemBullet5": "Os criadores de modelos e os operadores de hardware raramente partilham o valor que produzem.",
+    "opportunityTitle": "A oportunidade",
+    "opportunityIntro": "Mas um mundo distribuído é possível.",
+    "opportunityBullet1": "Milhares de GPUs já estão subutilizadas em todo o mundo.",
+    "opportunityBullet2": "Os operadores querem compensação justa pela computação.",
+    "opportunityBullet3": "Os developers querem infraestrutura aberta e resistente à censura.",
+    "opportunityBullet4": "As comunidades querem soberania e resiliência nos sistemas digitais.",
+    "opportunityBullet5": "O crescimento da IA ultrapassou as clouds tradicionais — são necessárias novas formas.",
+    "opportunityClosing": "A Helexa é o momento em que estas forças se alinham."
+  },
+
+  "howItWorks": {
+    "title": "Como a malha se forma",
+    "operators": {
+      "eyebrow": "Operadores executam nós",
+      "title": "Qualquer pessoa pode contribuir com computação.",
+      "body": "Os operadores executam nós Helexa. Eles decidem que modelos alojar. Mantêm o controlo sobre o seu hardware e sobre a sua economia. Sem aprovações, sem gatekeepers."
+    },
+    "routing": {
+      "eyebrow": "A malha encaminha a inteligência",
+      "title": "A procura flui pela rede.",
+      "body": "A Helexa aprende onde existe capacidade, onde a procura está a crescer e que nós estão melhor posicionados para servir pedidos. A malha adapta-se de forma orgânica — como uma hélice em crescimento."
+    },
+    "value": {
+      "eyebrow": "O valor flui de volta",
+      "title": "O trabalho é comprovado. O pagamento é justo.",
+      "body": "Cada tarefa traz um recibo criptográfico. Os operadores ganham pela inteligência que ajudam a fornecer. Sem taxação de plataforma. Sem faturação opaca."
+    }
+  },
+
+  "principles": {
+    "title": "Assente em princípios, não em plataformas",
+    "distributed": {
+      "title": "Distribuída por desenho",
+      "body": "Sem ponto único de falha. Sem autoridade central. Uma rede que fica mais forte com cada novo operador."
+    },
+    "participation": {
+      "title": "Participação aberta",
+      "body": "Se tens computação, podes contribuir. A malha recebe todos — edge, servidor doméstico ou datacenter."
+    },
+    "fairness": {
+      "title": "Equidade e transparência",
+      "body": "Os ganhos baseiam-se em trabalho real, verificado criptograficamente. Sem caixas‑pretas. Sem taxas escondidas."
+    },
+    "evolving": {
+      "title": "Inteligência em evolução",
+      "body": "A malha aprende com a procura. Os modelos carregam onde são necessários. A inteligência espalha-se através da cooperação."
+    }
+  },
+
+  "roadAhead": {
+    "title": "O que a Helexa pretende tornar-se",
+    "p1": "Uma camada de inteligência global que pertence a todos, alimentada por uma hélice de nós e comunidades.",
+    "p2": "Uma rede resiliente a falhas, política, monopólios e quebras.",
+    "p3": "Um novo modelo económico em que operadores, builders e utilizadores beneficiam em conjunto.",
+    "p4": "Um ecossistema onde a inovação cresce a partir das pontas — não do centro.",
+    "card": {
+      "eyebrow": "Instantâneo da visão",
+      "title": "Rumo a uma malha de inteligência partilhada",
+      "body": "A Helexa está no início. As ideias são maiores do que a implementação — e isso é intencional. A rede irá crescer de forma iterativa, com operadores e builders a moldarem a sua evolução."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Fase inicial",
+    "title": "A malha está a formar-se.",
+    "titleHighlight": "Podes fazer parte dela.",
+    "lead": "Quer executes hardware, construas modelos ou simplesmente te importes com a governação da IA, há um lugar para ti na malha.",
+    "ctaRunNode": "Executar um nó (em breve)",
+    "ctaJoinAnnouncements": "Juntar-se aos anúncios iniciais",
+    "ctaExploreCode": "Explorar o código",
+    "footer": "Sem jardins murados. Sem um único proprietário. Apenas uma malha de pessoas, hardware e ideias — a compor um futuro diferente para a inteligência."
+  }
+}

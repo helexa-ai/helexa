@@ -1,0 +1,9 @@
+{
+  "title": "Vestluse tööruum",
+  "badge": "Vestlus",
+  "lead": "See on vestlusvaade. Siia saad ühendada oma vestlusloogika ja kasutajaliidese komponendid.",
+  "transcriptPlaceholder": "Vestluse logi kuvatakse siin. Esita mudeli ja kasutaja sõnumeid keritavas konteineris, soovi korral sammude kaupa rühmitatuna.",
+  "inputPlaceholder": "Alusta vestlust, kirjutades siia sõnumi…",
+  "send": "Saada",
+  "clear": "Tühjenda"
+}

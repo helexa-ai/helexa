@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Avaleht",
+    "docs": "Dokumentatsioon",
+    "chat": "Vestlus",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Lülita heledale teemale",
+      "toDark": "Lülita tumedale teemale"
+    }
+  },
+  "lang": {
+    "bg": "bulgaaria",
+    "de": "saksa",
+    "el": "kreeka",
+    "en": "inglise",
+    "es": "hispaania",
+    "et": "eesti",
+    "fr": "prantsuse",
+    "he": "heebrea",
+    "it": "itaalia",
+    "nl": "hollandi",
+    "da": "taani",
+    "fi": "soome",
+    "no": "norra",
+    "sv": "rootsi",
+    "ar": "araabia",
+    "fa": "pärsia",
+    "sw": "suahiili",
+    "ha": "hausa",
+    "am": "amhara",
+    "yo": "joruba",
+    "zu": "isuulu",
+    "ma": "darija",
+    "ig": "igbo",
+    "ka": "gruusia",
+    "kk": "kasahhi",
+    "om": "oromo",
+    "so": "soomeeli",
+    "ti": "tigrinja",
+    "uz": "usbeki",
+    "wo": "wolofi",
+    "pl": "poola",
+    "pt": "portugali",
+    "ro": "rumeenia",
+    "ru": "vene",
+    "sr": "serbia",
+    "tr": "türgi",
+    "uk": "ukraina"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

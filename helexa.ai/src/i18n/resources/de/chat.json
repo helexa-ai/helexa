@@ -1,0 +1,9 @@
+{
+  "title": "Konversationsbereich",
+  "badge": "Chat",
+  "lead": "Dies ist die Chat-Ansicht. Binde hier deine Konversationslogik und UI-Komponenten ein.",
+  "transcriptPlaceholder": "Das Chat-Protokoll erscheint hier. Rendern die Nachrichten des Modells und der Nutzerin bzw. des Nutzers in einem scrollbaren Container, optional nach Gesprächsrunden gruppiert.",
+  "inputPlaceholder": "Schreibe eine Nachricht, um mit dem Chat zu beginnen…",
+  "send": "Senden",
+  "clear": "Leeren"
+}

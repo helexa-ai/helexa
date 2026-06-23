@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Startseite",
+    "docs": "Dokumentation",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "In den hellen Modus wechseln",
+      "toDark": "In den dunklen Modus wechseln"
+    }
+  },
+  "lang": {
+    "bg": "Bulgarisch",
+    "de": "Deutsch",
+    "el": "Griechisch",
+    "en": "Englisch",
+    "es": "Spanisch",
+    "et": "Estnisch",
+    "fr": "Französisch",
+    "he": "Hebräisch",
+    "it": "Italienisch",
+    "nl": "Niederländisch",
+    "da": "Dänisch",
+    "fi": "Finnisch",
+    "no": "Norwegisch",
+    "sv": "Schwedisch",
+    "ar": "Arabisch",
+    "fa": "Persisch",
+    "sw": "Suaheli",
+    "ha": "Hausa",
+    "am": "Amharisch",
+    "yo": "Yoruba",
+    "zu": "Zulu",
+    "ma": "Darija",
+    "ig": "Igbo",
+    "ka": "Georgisch",
+    "kk": "Kasachisch",
+    "om": "Oromo",
+    "so": "Somali",
+    "ti": "Tigrinya",
+    "uz": "Usbekisch",
+    "wo": "Wolof",
+    "pl": "Polnisch",
+    "pt": "Portugiesisch",
+    "ro": "Rumänisch",
+    "ru": "Russisch",
+    "sr": "Serbisch",
+    "tr": "Türkisch",
+    "uk": "Ukrainisch"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

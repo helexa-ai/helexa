@@ -1,0 +1,9 @@
+{
+  "title": "Conversation workspace",
+  "badge": "Chat",
+  "lead": "This is the chat view. Plug your conversational logic and UI components into this page.",
+  "transcriptPlaceholder": "Chat transcript will appear here. Render messages from the model and user in a scrolling container, optionally grouped by turn.",
+  "inputPlaceholder": "Type a message to start chatting…",
+  "send": "Send",
+  "clear": "Clear"
+}

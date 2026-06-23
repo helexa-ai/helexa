@@ -1,0 +1,9 @@
+{
+  "title": "Spațiu de conversație",
+  "badge": "Chat",
+  "lead": "Aceasta este vizualizarea de chat. Conectează aici logica ta conversațională și componentele de interfață.",
+  "transcriptPlaceholder": "Transcrierea conversației va apărea aici. Afișează mesajele modelului și ale utilizatorului într-un container derulant, opțional grupate pe rânduri de dialog.",
+  "inputPlaceholder": "Scrie un mesaj pentru a începe conversația…",
+  "send": "Trimite",
+  "clear": "Curăță"
+}

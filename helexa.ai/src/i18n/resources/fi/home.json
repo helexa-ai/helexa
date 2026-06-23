@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Uudenlainen älykkyys",
+    "title": "Uudenlainen älykkyys",
+    "lead": "Helexa on itseorganisoituva AI‑verkko, jota pyörittävät riippumattomat operaattorit. Avoin. Hajautettu. Jatkuvasti kehittyvä.",
+    "ctaJoinMesh": "Liity verkkoon",
+    "ctaFollowProject": "Seuraa projektia",
+    "subcopy": "Rakennettu operaattoreille, rakentajille ja yhteisöille, jotka uskovat, että tekoälyn tulee olla avointa, kestävää ja jaettua.",
+    "imageAlt": "Helexa‑heliksin visualisointi"
+  },
+
+  "intent": {
+    "title": "Miksi Helexa on olemassa",
+    "p1": "Tekoälystä on tulossa maailman voimakkain infrastruktuuri. Tällä hetkellä valta on kuitenkin keskittynyt harvoille yrityksille, joita ohjaavat yksityiset intressit, maantieteelliset rajoitteet ja hauras talous.",
+    "p2Intro": "Helexa kuvittelee jotain muuta:",
+    "bullet1": "Älykkyys, joka kasvaa kaikkialta – ei yhdestä paikasta.",
+    "bullet2": "Verkko, johon kuka tahansa voi osallistua ja josta kuka tahansa voi hyötyä.",
+    "bullet3": "Järjestelmä, joka mukautuu kysyntään, ei käskyihin.",
+    "bullet4": "Teknologia, joka vahvistaa yhteisöjä sen sijaan, että korvaisi ne.",
+    "closing": "Helexa ei ole alusta. Se ei ole pilvi.\nSe on verkko – elävä, kehittyvä kudelma riippumattomia operaattoreita, jotka muodostavat uudenlaisen älykkyyden."
+  },
+
+  "whyNow": {
+    "title": "Käännekohta tekoälylle",
+    "problemTitle": "Ongelma",
+    "problemBullet1": "Tekoäly keskittyy nopeammin kuin mikään aiempi teknologia.",
+    "problemBullet2": "Laskentateho määrittää kyvykkyyden, ja siihen pääsy kapenee.",
+    "problemBullet3": "Kustannuskynnykset sulkevat ulos tutkijoita, startup‑yrityksiä ja yhteisöjä.",
+    "problemBullet4": "Geopoliittiset ja sääntelyyn liittyvät paineet uhkaavat globaalia saatavuutta.",
+    "problemBullet5": "Mallien kehittäjät ja laitteiston operaattorit pääsevät harvoin osallisiksi arvosta, jonka he luovat.",
+    "opportunityTitle": "Mahdollisuus",
+    "opportunityIntro": "Mutta hajautettu maailma on mahdollinen.",
+    "opportunityBullet1": "Tuhannet GPU:t ovat jo nyt vajaakäytöllä ympäri maailmaa.",
+    "opportunityBullet2": "Operaattorit haluavat reilun korvauksen laskentatehostaan.",
+    "opportunityBullet3": "Kehittäjät kaipaavat avointa, sensuurinkestävää infrastruktuuria.",
+    "opportunityBullet4": "Yhteisöt haluavat itsemääräämisoikeutta ja joustavuutta digitaalisiin järjestelmiin.",
+    "opportunityBullet5": "Tekoälyn kasvu on ohittanut perinteiset pilvet – tarvitaan uudenlaisia rakenteita.",
+    "opportunityClosing": "Helexa on hetki, jolloin nämä voimat kohtaavat."
+  },
+
+  "howItWorks": {
+    "title": "Näin verkko muodostuu",
+    "operators": {
+      "eyebrow": "Operaattorit ajavat solmuja",
+      "title": "Kuka tahansa voi tarjota laskentatehoa.",
+      "body": "Operaattorit ajavat Helexa‑solmuja. He päättävät, mitä malleja ajetaan. He pitävät hallinnan omasta laitteistostaan ja taloudestaan. Ei hyväksyntäprosesseja, ei portinvartijoita."
+    },
+    "routing": {
+      "eyebrow": "Verkko ohjaa älykkyyttä",
+      "title": "Kysyntä virtaa verkon läpi.",
+      "body": "Helexa oppii, missä kapasiteettia on, missä kysyntä kasvaa ja mitkä solmut sopivat parhaiten pyyntöjen käsittelyyn. Verkko mukautuu orgaanisesti – kuin kasvava heliksi."
+    },
+    "value": {
+      "eyebrow": "Arvo virtaa takaisin",
+      "title": "Työ todistetaan. Korvaus on reilu.",
+      "body": "Jokaisella tehtävällä on kryptografinen kuitti. Operaattorit saavat tuloa siitä älykkyydestä, jonka tuottamiseen he osallistuvat. Ei alustaveroa. Ei läpinäkymäistä laskutusta."
+    }
+  },
+
+  "principles": {
+    "title": "Rakennettu periaatteiden, ei alustojen varaan",
+    "distributed": {
+      "title": "Hajautettu suunnittelusta lähtien",
+      "body": "Ei yhtä kriittistä vikaantumispistettä. Ei keskitettyä auktoriteettia. Verkko, joka vahvistuu jokaisen uuden operaattorin myötä."
+    },
+    "participation": {
+      "title": "Avoin osallistuminen",
+      "body": "Jos sinulla on laskentatehoa, voit osallistua. Verkko toivottaa tervetulleeksi kaikki – reunalaitteet, kotipalvelimet ja konesalit."
+    },
+    "fairness": {
+      "title": "Reiluus ja läpinäkyvyys",
+      "body": "Tulot perustuvat todelliseen työhön, kryptografisesti varmennettuna. Ei mustia laatikoita. Ei piilokuluja."
+    },
+    "evolving": {
+      "title": "Kehittyvä älykkyys",
+      "body": "Verkko oppii kysynnästä. Malit latautuvat sinne, missä niitä tarvitaan. Älykkyys leviää yhteistyön kautta."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Mihin Helexa pyrkii",
+    "p1": "Globaali älykkyyskerros, joka kuuluu kaikille ja jota pyörittää solmujen ja yhteisöjen heliksi.",
+    "p2": "Verkko, joka kestää katkoksia, politiikkaa, monopoleja ja virheitä.",
+    "p3": "Uusi taloudellinen malli, jossa operaattorit, rakentajat ja käyttäjät hyötyvät kaikki.",
+    "p4": "Ekosysteemi, jossa innovaatio kasvaa reunoilta – ei keskuksesta.",
+    "card": {
+      "eyebrow": "Vision yhteenveto",
+      "title": "Kohti jaettua älyverkkoa",
+      "body": "Helexa on varhaisessa vaiheessa. Ideat ovat suurempia kuin toteutus – ja se on tarkoituksellista. Verkko kasvaa vaiheittain, kun operaattorit ja rakentajat muovaavat sen kehitystä yhdessä."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Varhainen vaihe",
+    "title": "Verkko on muodostumassa.",
+    "titleHighlight": "Voit olla osa sitä.",
+    "lead": "Olipa roolisi laitteiston ylläpitäjänä, mallien rakentajana tai vain tekoälyn hallinnasta kiinnostuneena, sinulle on paikka verkossa.",
+    "ctaRunNode": "Aja solmu (tulossa pian)",
+    "ctaJoinAnnouncements": "Liity varhaisiin ilmoituksiin",
+    "ctaExploreCode": "Tutustu koodiin",
+    "footer": "Ei suljettuja puutarhoja. Ei yhtä omistajaa. Vain verkko ihmisiä, laitteistoa ja ideoita – rakentamassa erilaista tulevaisuutta älykkyydelle."
+  }
+}

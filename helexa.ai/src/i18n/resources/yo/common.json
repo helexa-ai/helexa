@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Ojú-ìwé àkọ́kọ́",
+    "docs": "Ìwé ìtọná",
+    "chat": "Ìjíròrò",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Yí padà sí àwò ìmọ́lẹ̀",
+      "toDark": "Yí padà sí àwò òkùnkùn"
+    }
+  },
+  "lang": {
+    "am": "Amhárìkì",
+    "ar": "Árábì",
+    "bg": "Bùlùgáríà",
+    "da": "Dáníìṣì",
+    "de": "Jámánì",
+    "el": "Gíríìkì",
+    "en": "Gẹ̀ẹ́sì",
+    "es": "Sípáníìṣì",
+    "et": "Èstóníà",
+    "fa": "Fásì",
+    "fi": "Fínìṣì",
+    "fr": "Fáránsé",
+    "ha": "Hàúsà",
+    "he": "Hébérù",
+    "ig": "Ìgbò",
+    "it": "Ìtálì",
+    "ka": "Jɔ́jíànì",
+    "kk": "Kázáàkì",
+    "ma": "Darija",
+    "nl": "Dọ́ọ̀ṣì",
+    "no": "Nɔ́rúwèjì",
+    "om": "Ọ́rọ́mò",
+    "pl": "Pólándì",
+    "pt": "Pótúgí",
+    "ro": "Romani",
+    "ru": "Rọ́ṣíà",
+    "so": "Sómálì",
+    "sr": "Ṣébíà",
+    "sv": "Swídíìṣì",
+    "sw": "Kiswahili",
+    "ti": "Tígrínénìyà",
+    "tr": "Tọ́kì",
+    "uk": "Yúkaréníà",
+    "uz": "Úzbékì",
+    "wo": "Wólọ́fù",
+    "yo": "Yorùbá",
+    "zu": "isiZulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

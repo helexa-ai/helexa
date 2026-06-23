@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Home",
+    "docs": "Docs",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Switch to light mode",
+      "toDark": "Switch to dark mode"
+    }
+  },
+  "lang": {
+    "bg": "Bulgarian",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "et": "Estonian",
+    "fr": "French",
+    "he": "Hebrew",
+    "it": "Italian",
+    "nl": "Dutch",
+    "da": "Danish",
+    "fi": "Finnish",
+    "no": "Norwegian",
+    "sv": "Swedish",
+    "ar": "Arabic",
+    "fa": "Persian",
+    "sw": "Swahili",
+    "ha": "Hausa",
+    "am": "Amharic",
+    "yo": "Yoruba",
+    "zu": "Zulu",
+    "ma": "Darija",
+    "ig": "Igbo",
+    "ka": "Georgian",
+    "kk": "Kazakh",
+    "om": "Oromo",
+    "so": "Somali",
+    "ti": "Tigrinya",
+    "uz": "Uzbek",
+    "wo": "Wolof",
+    "pl": "Polish",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "sr": "Serbian",
+    "tr": "Turkish",
+    "uk": "Ukrainian"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

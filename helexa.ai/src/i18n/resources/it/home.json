@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Una nuova forma di intelligenza",
+    "title": "Una nuova forma di intelligenza",
+    "lead": "Helexa è una mesh di IA auto‑organizzata alimentata da operatori indipendenti. Aperta. Distribuita. In evoluzione.",
+    "ctaJoinMesh": "Unisciti alla mesh",
+    "ctaFollowProject": "Segui il progetto",
+    "subcopy": "Creata per operatori, builder e comunità che credono che l’IA debba essere aperta, resiliente e condivisa.",
+    "imageAlt": "Visuale dell’elica Helexa"
+  },
+
+  "intent": {
+    "title": "Perché esiste Helexa",
+    "p1": "L’IA sta diventando l’infrastruttura più potente sulla Terra. Ma oggi questo potere è concentrato in poche aziende, modellato da priorità private, limiti geografici ed economie fragili.",
+    "p2Intro": "Helexa immagina qualcosa di diverso:",
+    "bullet1": "Un’intelligenza che cresce da ovunque, non da un solo luogo.",
+    "bullet2": "Una rete in cui chiunque può contribuire e trarre beneficio.",
+    "bullet3": "Un sistema che si adatta alla domanda, non alle direttive.",
+    "bullet4": "Tecnologia che rafforza le comunità invece di sostituirle.",
+    "closing": "Helexa non è una piattaforma. Non è un cloud.\nÈ una mesh — una trama viva ed evolutiva di operatori indipendenti che formano un nuovo tipo di intelligenza."
+  },
+
+  "whyNow": {
+    "title": "Un punto di svolta per l’IA",
+    "problemTitle": "Il problema",
+    "problemBullet1": "L’IA si sta centralizzando più velocemente di qualsiasi tecnologia precedente.",
+    "problemBullet2": "L’accesso al calcolo definisce le capacità, e questo accesso si sta restringendo.",
+    "problemBullet3": "Le barriere di costo escludono ricercatori, startup e comunità.",
+    "problemBullet4": "Pressioni geopolitiche e normative minacciano la disponibilità globale.",
+    "problemBullet5": "I creatori di modelli e gli operatori dell’hardware raramente condividono il valore che producono.",
+    "opportunityTitle": "L’opportunità",
+    "opportunityIntro": "Ma un mondo distribuito è possibile.",
+    "opportunityBullet1": "Migliaia di GPU sono già sotto‑utilizzate, in tutto il mondo.",
+    "opportunityBullet2": "Gli operatori vogliono una compensazione equa per il calcolo.",
+    "opportunityBullet3": "Gli sviluppatori vogliono un’infrastruttura aperta e resistente alla censura.",
+    "opportunityBullet4": "Le comunità vogliono sovranità e resilienza nei sistemi digitali.",
+    "opportunityBullet5": "La crescita dell’IA ha superato i cloud tradizionali — servono nuove forme.",
+    "opportunityClosing": "Helexa è il momento in cui queste forze si allineano."
+  },
+
+  "howItWorks": {
+    "title": "Come si forma la mesh",
+    "operators": {
+      "eyebrow": "Gli operatori eseguono i nodi",
+      "title": "Chiunque può contribuire con calcolo.",
+      "body": "Gli operatori eseguono nodi Helexa. Decidono quali modelli ospitare. Mantengono il controllo del proprio hardware e della propria economia. Nessuna approvazione, nessun gatekeeper."
+    },
+    "routing": {
+      "eyebrow": "La mesh instrada l’intelligenza",
+      "title": "La domanda scorre attraverso la rete.",
+      "body": "Helexa impara dove esiste capacità, dove la domanda sta crescendo e quali nodi sono più adatti a servire le richieste. La mesh si adatta in modo organico — come un’elica in crescita."
+    },
+    "value": {
+      "eyebrow": "Il valore ritorna indietro",
+      "title": "Il lavoro è dimostrabile. Il pagamento è equo.",
+      "body": "Ogni job porta con sé una ricevuta crittografica. Gli operatori guadagnano per l’intelligenza che contribuiscono a fornire. Nessuna tassazione di piattaforma. Nessuna fatturazione opaca."
+    }
+  },
+
+  "principles": {
+    "title": "Costruita su principi, non su piattaforme",
+    "distributed": {
+      "title": "Distribuita per progettazione",
+      "body": "Nessun singolo punto di fallimento. Nessuna autorità centrale. Una rete che diventa più forte con ogni nuovo operatore."
+    },
+    "participation": {
+      "title": "Partecipazione aperta",
+      "body": "Se hai capacità di calcolo, puoi contribuire. La mesh accoglie tutti — edge, server domestico, data center."
+    },
+    "fairness": {
+      "title": "Equità e trasparenza",
+      "body": "I guadagni si basano su lavoro reale, verificato crittograficamente. Niente scatole nere. Nessun costo nascosto."
+    },
+    "evolving": {
+      "title": "Intelligenza in evoluzione",
+      "body": "La mesh impara dalla domanda. I modelli vengono caricati dove servono. L’intelligenza si diffonde attraverso la cooperazione."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Cosa aspira a diventare Helexa",
+    "p1": "Un livello di intelligenza globale che appartiene a tutti, alimentato da un’elica di nodi e comunità.",
+    "p2": "Una rete resiliente a interruzioni, politica, monopoli e guasti.",
+    "p3": "Un nuovo modello economico in cui operatori, builder e utenti traggono tutti beneficio.",
+    "p4": "Un ecosistema in cui l’innovazione cresce dai bordi — non dal centro.",
+    "card": {
+      "eyebrow": "Istantanea della visione",
+      "title": "Verso una mesh di intelligenza condivisa",
+      "body": "Helexa è agli inizi. Le idee sono più grandi dell’implementazione — e questo è intenzionale. La rete crescerà in modo iterativo, con operatori e builder che ne plasmeranno l’evoluzione."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Fase iniziale",
+    "title": "La mesh si sta formando.",
+    "titleHighlight": "Puoi farne parte.",
+    "lead": "Che tu gestisca hardware, costruisca modelli o ti interessi semplicemente a come viene governata l’IA, nella mesh c’è un posto per te.",
+    "ctaRunNode": "Esegui un nodo (presto)",
+    "ctaJoinAnnouncements": "Unisciti agli annunci iniziali",
+    "ctaExploreCode": "Esplora il codice",
+    "footer": "Niente giardini recintati. Nessun unico proprietario. Solo una mesh di persone, hardware e idee — che compone un futuro diverso per l’intelligenza."
+  }
+}

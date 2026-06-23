@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Strona główna",
+    "docs": "Dokumentacja",
+    "chat": "Czat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Przełącz na tryb jasny",
+      "toDark": "Przełącz na tryb ciemny"
+    }
+  },
+  "lang": {
+    "am": "amharski",
+    "ar": "arabski",
+    "bg": "bułgarski",
+    "da": "duński",
+    "de": "niemiecki",
+    "el": "grecki",
+    "en": "angielski",
+    "es": "hiszpański",
+    "et": "estoński",
+    "fa": "perski",
+    "fi": "fiński",
+    "fr": "francuski",
+    "ha": "hausa",
+    "he": "hebrajski",
+    "ig": "igbo",
+    "it": "włoski",
+    "ka": "gruziński",
+    "kk": "kazachski",
+    "ma": "darija",
+    "nl": "niderlandzki",
+    "no": "norweski",
+    "om": "oromo",
+    "pl": "polski",
+    "pt": "portugalski",
+    "ro": "rumuński",
+    "ru": "rosyjski",
+    "so": "somalijski",
+    "sr": "serbski",
+    "sv": "szwedzki",
+    "sw": "suahili",
+    "ti": "tigrinia",
+    "tr": "turecki",
+    "uk": "ukraiński",
+    "uz": "uzbecki",
+    "wo": "wolof",
+    "yo": "joruba",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

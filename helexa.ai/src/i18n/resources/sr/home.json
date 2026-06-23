@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Novi oblik inteligencije",
+    "title": "Novi oblik inteligencije",
+    "lead": "Helexa je samoorganizujuća AI mreža koju pokreću nezavisni operateri. Otvorena. Distribuirana. U razvoju.",
+    "ctaJoinMesh": "Pridruži se mreži",
+    "ctaFollowProject": "Prati projekat",
+    "subcopy": "Napravljen za operatere, buildere i zajednice koje veruju da veštačka inteligencija treba da bude otvorena, otporna i zajednička.",
+    "imageAlt": "Vizuelni prikaz Helexa heliksa"
+  },
+
+  "intent": {
+    "title": "Zašto Helexa postoji",
+    "p1": "AI postaje najmoćnija infrastruktura na Zemlji. Ali danas je ta moć koncentrisana u rukama nekoliko korporacija, oblikovana privatnim prioritetima, geografskim ograničenjima i krhkom ekonomijom.",
+    "p2Intro": "Helexa zamišlja nešto drugačije:",
+    "bullet1": "Inteligenciju koja raste sa svih strana, a ne sa jednog mesta.",
+    "bullet2": "Mrežu u kojoj svako može da doprinese i da ima korist.",
+    "bullet3": "Sistem koji se prilagođava potražnji, a ne direktivama.",
+    "bullet4": "Tehnologiju koja jača zajednice umesto da ih zamenjuje.",
+    "closing": "Helexa nije platforma. Nije ni cloud.\nTo je mreža — živa, evoluirajuća rešetka nezavisnih operatera koja oblikuje novu vrstu inteligencije."
+  },
+
+  "whyNow": {
+    "title": "Prelomni trenutak za AI",
+    "problemTitle": "Problem",
+    "problemBullet1": "AI se centralizuje brže nego ijedna tehnologija pre nje.",
+    "problemBullet2": "Pristup računarskim resursima definiše mogućnosti, a taj pristup se sužava.",
+    "problemBullet3": "Troškovi isključuju istraživače, startape i zajednice.",
+    "problemBullet4": "Geopolitički i regulatorni pritisci prete globalnoj dostupnosti.",
+    "problemBullet5": "Tvorci modela i operateri hardvera retko učestvuju u vrednosti koju stvaraju.",
+    "opportunityTitle": "Prilika",
+    "opportunityIntro": "Ali distribuirani svet je moguć.",
+    "opportunityBullet1": "Hiljade GPU‑ova već danas stoje nedovoljno iskorišćene širom sveta.",
+    "opportunityBullet2": "Operateri žele poštenu nadoknadu za računske resurse.",
+    "opportunityBullet3": "Programeri žele otvorenu, na cenzuru otpornu infrastrukturu.",
+    "opportunityBullet4": "Zajednice žele suverenitet i otpornost u digitalnim sistemima.",
+    "opportunityBullet5": "Rast AI je prevazišao tradicionalne cloud‑ove — potrebni su novi oblici.",
+    "opportunityClosing": "Helexa je trenutak u kom se sve te sile poravnavaju."
+  },
+
+  "howItWorks": {
+    "title": "Kako se mreža formira",
+    "operators": {
+      "eyebrow": "Operateri pokreću nodove",
+      "title": "Svako može da doprinese računanjem.",
+      "body": "Operateri pokreću Helexa nodove. Oni odlučuju koje modele će hostovati. Ostaju u potpunoj kontroli nad svojim hardverom i ekonomijom. Bez odobrenja, bez čuvara kapija."
+    },
+    "routing": {
+      "eyebrow": "Mreža usmerava inteligenciju",
+      "title": "Potražnja teče kroz mrežu.",
+      "body": "Helexa uči gde postoji kapacitet, gde potražnja raste i koji nodovi su najpogodniji da odgovore na zahteve. Mreža se prilagođava organski — poput heliksa koji raste."
+    },
+    "value": {
+      "eyebrow": "Vrednost se vraća nazad",
+      "title": "Rad je dokazan. Plaćanje je pošteno.",
+      "body": "Svaki zadatak nosi kriptografski račun. Operateri zarađuju od inteligencije koju pomažu da se pruži. Nema platformskog poreza. Nema nejasnog obračuna."
+    }
+  },
+
+  "principles": {
+    "title": "Zasnovano na principima, ne na platformama",
+    "distributed": {
+      "title": "Distribuirano po dizajnu",
+      "body": "Nema jedne tačke pada. Nema centralnog autoriteta. Mreža koja postaje snažnija sa svakim novim operaterom."
+    },
+    "participation": {
+      "title": "Otvoreno učešće",
+      "body": "Ako imaš računarsku snagu, možeš da doprineseš. Mreža dočekuje sve — edge uređaje, kućne servere, datacentre."
+    },
+    "fairness": {
+      "title": "Pravednost i transparentnost",
+      "body": "Zarada se zasniva na stvarnom radu, kriptografski verifikovanom. Nema crnih kutija. Nema skrivenih naknada."
+    },
+    "evolving": {
+      "title": "Evoluirajuća inteligencija",
+      "body": "Mreža uči iz potražnje. Modeli se učitavaju tamo gde su potrebni. Inteligencija se širi kroz saradnju."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Kuda Helexa želi da stigne",
+    "p1": "Globalni sloj inteligencije koji pripada svima, pokretan heliksom nodova i zajednica.",
+    "p2": "Mreža otporna na prekide, politiku, monopole i kvarove.",
+    "p3": "Novi ekonomski model u kom operateri, graditelji i korisnici svi zajedno imaju koristi.",
+    "p4": "Ekosistem u kom inovacija raste sa ivica — ne iz centra.",
+    "card": {
+      "eyebrow": "Kratak pregled vizije",
+      "title": "Ka deljenoj mreži inteligencije",
+      "body": "Helexa je u ranoj fazi. Ideje su veće od trenutne implementacije — i to namerno. Mreža će rasti iterativno, dok operateri i graditelji oblikuju njen razvoj."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Rana faza",
+    "title": "Mreža se formira.",
+    "titleHighlight": "Možeš biti njen deo.",
+    "lead": "Bilo da pokrećeš hardver, gradiš modele ili ti je jednostavno stalo do toga kako se AI upravlja, u ovoj mreži postoji mesto za tebe.",
+    "ctaRunNode": "Pokreni nod (uskoro)",
+    "ctaJoinAnnouncements": "Prijavi se za rana obaveštenja",
+    "ctaExploreCode": "Istraži kod",
+    "footer": "Bez ograđenih vrtova. Bez jednog vlasnika. Samo mreža ljudi, hardvera i ideja — koja sklapa drugačiju budućnost za inteligenciju."
+  }
+}

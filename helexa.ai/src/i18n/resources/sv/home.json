@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "En ny form av intelligens",
+    "title": "En ny form av intelligens",
+    "lead": "Helexa är ett självorganiserande AI‑nätverk drivet av oberoende operatörer. Öppet. Distribuerat. Under utveckling.",
+    "ctaJoinMesh": "Gå med i nätverket",
+    "ctaFollowProject": "Följ projektet",
+    "subcopy": "Byggt för operatörer, utvecklare och gemenskaper som anser att AI ska vara öppet, robust och delat.",
+    "imageAlt": "Helexa‑helixvisualisering"
+  },
+
+  "intent": {
+    "title": "Varför Helexa finns",
+    "p1": "AI håller på att bli den mest kraftfulla infrastrukturen på jorden. Men idag är den makten koncentrerad till ett fåtal företag, formad av privata prioriteringar, geografiska begränsningar och skör ekonomi.",
+    "p2Intro": "Helexa föreställer sig något annat:",
+    "bullet1": "Intelligens som växer fram överallt, inte på ett enda ställe.",
+    "bullet2": "Ett nätverk där alla kan bidra och dra nytta.",
+    "bullet3": "Ett system som anpassar sig efter efterfrågan, inte direktiv.",
+    "bullet4": "Teknik som stärker gemenskaper istället för att ersätta dem.",
+    "closing": "Helexa är inte en plattform. Det är inte ett moln.\nDet är ett nätverk – ett levande, utvecklande gitter av oberoende operatörer som formar en ny typ av intelligens."
+  },
+
+  "whyNow": {
+    "title": "En vändpunkt för AI",
+    "problemTitle": "Problemet",
+    "problemBullet1": "AI centraliseras snabbare än någon tidigare teknologi.",
+    "problemBullet2": "Tillgång till beräkningskraft avgör kapacitet, och tillgången blir allt snävare.",
+    "problemBullet3": "Kostnadströsklar utesluter forskare, startups och gemenskaper.",
+    "problemBullet4": "Geopolitiska och regulatoriska påtryckningar hotar global tillgänglighet.",
+    "problemBullet5": "Skapare av modeller och operatörer av hårdvara får sällan ta del av värdet de genererar.",
+    "opportunityTitle": "Möjligheten",
+    "opportunityIntro": "Men en distribuerad värld är möjlig.",
+    "opportunityBullet1": "Tusentals GPU:er står redan outnyttjade världen över.",
+    "opportunityBullet2": "Operatörer vill ha rättvis ersättning för beräkningskraft.",
+    "opportunityBullet3": "Utvecklare vill ha öppen, censurresistent infrastruktur.",
+    "opportunityBullet4": "Gemenskaper vill ha suveränitet och robusthet i digitala system.",
+    "opportunityBullet5": "AI:s tillväxt har sprungit om traditionella moln – nya former behövs.",
+    "opportunityClosing": "Helexa är ögonblicket då dessa krafter möts."
+  },
+
+  "howItWorks": {
+    "title": "Hur nätverket formas",
+    "operators": {
+      "eyebrow": "Operatörer kör noder",
+      "title": "Alla kan bidra med beräkningskraft.",
+      "body": "Operatörer kör Helexa‑noder. De bestämmer vilka modeller som ska köras. De behåller kontrollen över sin hårdvara och sin ekonomi. Inga godkännanden, inga grindvakter."
+    },
+    "routing": {
+      "eyebrow": "Nätverket dirigerar intelligens",
+      "title": "Efterfrågan flödar genom nätet.",
+      "body": "Helexa lär sig var kapacitet finns, var efterfrågan ökar och vilka noder som bäst kan hantera förfrågningar. Nätverket anpassar sig organiskt – som en växande helix."
+    },
+    "value": {
+      "eyebrow": "Värdet flödar tillbaka",
+      "title": "Arbetet bevisas. Ersättningen är rättvis.",
+      "body": "Varje jobb bär ett kryptografiskt kvitto. Operatörer tjänar på den intelligens de hjälper till att leverera. Ingen plattformsbeskattning. Ingen ogenomskinlig fakturering."
+    }
+  },
+
+  "principles": {
+    "title": "Byggt på principer, inte plattformar",
+    "distributed": {
+      "title": "Distribuerat från början",
+      "body": "Ingen enskild felpunkt. Ingen central auktoritet. Ett nätverk som blir starkare för varje ny operatör."
+    },
+    "participation": {
+      "title": "Öppet deltagande",
+      "body": "Om du har beräkningskraft kan du bidra. Nätverket välkomnar alla – edge, hemmaserver, datacenter."
+    },
+    "fairness": {
+      "title": "Rättvisa och transparens",
+      "body": "Intäkter baseras på verkligt arbete, kryptografiskt verifierat. Inga svarta lådor. Inga dolda avgifter."
+    },
+    "evolving": {
+      "title": "Utvecklande intelligens",
+      "body": "Nätverket lär sig av efterfrågan. Modeller laddas där de behövs. Intelligens sprids genom samarbete."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Vad Helexa strävar efter att bli",
+    "p1": "Ett globalt intelligenslager som tillhör alla, drivet av en helix av noder och gemenskaper.",
+    "p2": "Ett nätverk som är robust mot avbrott, politik, monopol och fel.",
+    "p3": "En ny ekonomisk modell där operatörer, byggare och användare alla gynnas.",
+    "p4": "Ett ekosystem där innovation växer från kanterna – inte från centrum.",
+    "card": {
+      "eyebrow": "Visionsöversikt",
+      "title": "Mot ett delat intelligensnät",
+      "body": "Helexa är i ett tidigt skede. Idéerna är större än implementationen – och det är medvetet. Nätverket kommer att växa iterativt, där operatörer och byggare tillsammans formar dess utveckling."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Tidigt skede",
+    "title": "Nätverket håller på att ta form.",
+    "titleHighlight": "Du kan vara en del av det.",
+    "lead": "Oavsett om du driver hårdvara, bygger modeller eller bara bryr dig om hur AI styrs, finns det en plats för dig i nätverket.",
+    "ctaRunNode": "Kör en nod (snart)",
+    "ctaJoinAnnouncements": "Gå med i tidiga utskick",
+    "ctaExploreCode": "Utforska koden",
+    "footer": "Inga inhägnade trädgårdar. Ingen enda ägare. Bara ett nätverk av människor, hårdvara och idéer – som tillsammans formar en annan framtid för intelligens."
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Gida",
+    "docs": "Takardu",
+    "chat": "Tattaunawa",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Canjawa zuwa yanayin haske",
+      "toDark": "Canjawa zuwa yanayin duhu"
+    }
+  },
+  "lang": {
+    "bg": "Bulgarian",
+    "de": "Jamusanci",
+    "el": "Girkanci",
+    "en": "Turanci",
+    "es": "Ispaniyanci",
+    "et": "Estonian",
+    "fr": "Faransanci",
+    "he": "Ibrananci",
+    "it": "Italiyanci",
+    "nl": "Holandanci",
+    "am": "Amharic",
+    "ar": "Larabci",
+    "da": "Danish",
+    "fa": "Farsanci",
+    "fi": "Finnish",
+    "ha": "Hausa",
+    "ig": "Igbo",
+    "ka": "Georgian",
+    "kk": "Kazakh",
+    "ma": "Darija",
+    "no": "Norwegian",
+    "om": "Oromo",
+    "pl": "Polish",
+    "pt": "Fotugis",
+    "ro": "Romaniyanci",
+    "ru": "Rashanci",
+    "so": "Somali",
+    "sr": "Serbian",
+    "sv": "Swedish",
+    "sw": "Kiswahili",
+    "ti": "Tigrinya",
+    "tr": "Turkish",
+    "uk": "Ukrainian",
+    "uz": "Uzbek",
+    "wo": "Wolof",
+    "yo": "Yorùbá",
+    "zu": "isiZulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

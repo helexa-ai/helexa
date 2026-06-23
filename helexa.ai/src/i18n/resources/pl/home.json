@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Nowa forma inteligencji",
+    "title": "Nowa forma inteligencji",
+    "lead": "Helexa to samoorganizująca się sieć SI zasilana przez niezależnych operatorów. Otwarta. Rozproszona. Ewoluująca.",
+    "ctaJoinMesh": "Dołącz do sieci",
+    "ctaFollowProject": "Śledź projekt",
+    "subcopy": "Zbudowana dla operatorów, twórców i społeczności, które wierzą, że SI powinna być otwarta, odporna i współdzielona.",
+    "imageAlt": "Wizualizacja helisy Helexa"
+  },
+
+  "intent": {
+    "title": "Dlaczego istnieje Helexa",
+    "p1": "Sztuczna inteligencja staje się najpotężniejszą infrastrukturą na Ziemi. Dziś jednak ta moc jest skoncentrowana w rękach kilku korporacji, kształtowana przez prywatne priorytety, ograniczenia geograficzne i kruche modele gospodarcze.",
+    "p2Intro": "Helexa wyobraża sobie coś innego:",
+    "bullet1": "Inteligencję, która wyrasta z wielu miejsc, a nie z jednego centrum.",
+    "bullet2": "Sieć, w której każdy może wnieść swój wkład i czerpać korzyści.",
+    "bullet3": "System, który dostosowuje się do popytu, a nie do odgórnych dyrektyw.",
+    "bullet4": "Technologię, która wzmacnia społeczności zamiast je zastępować.",
+    "closing": "Helexa nie jest platformą. Nie jest chmurą.\nTo sieć — żywa, ewoluująca struktura niezależnych operatorów, tworząca nowy rodzaj inteligencji."
+  },
+
+  "whyNow": {
+    "title": "Punkt zwrotny dla SI",
+    "problemTitle": "Problem",
+    "problemBullet1": "SI centralizuje się szybciej niż jakakolwiek wcześniejsza technologia.",
+    "problemBullet2": "Dostęp do mocy obliczeniowej definiuje możliwości, a ten dostęp się zawęża.",
+    "problemBullet3": "Bariery kosztowe wykluczają badaczy, startupy i społeczności.",
+    "problemBullet4": "Napięcia geopolityczne i regulacyjne zagrażają globalnej dostępności.",
+    "problemBullet5": "Twórcy modeli i operatorzy sprzętu rzadko dzielą się wartością, którą współtworzą.",
+    "opportunityTitle": "Szansa",
+    "opportunityIntro": "Ale rozproszony świat jest możliwy.",
+    "opportunityBullet1": "Tysiące GPU na całym świecie jest już dziś niedostatecznie wykorzystywanych.",
+    "opportunityBullet2": "Operatorzy chcą uczciwego wynagrodzenia za moc obliczeniową.",
+    "opportunityBullet3": "Deweloperzy potrzebują otwartej infrastruktury odpornej na cenzurę.",
+    "opportunityBullet4": "Społeczności oczekują suwerenności i odporności w systemach cyfrowych.",
+    "opportunityBullet5": "Wzrost SI wyprzedził tradycyjne chmury — potrzebne są nowe kształty.",
+    "opportunityClosing": "Helexa jest momentem, w którym te siły się spotykają."
+  },
+
+  "howItWorks": {
+    "title": "Jak formuje się sieć",
+    "operators": {
+      "eyebrow": "Operatorzy uruchamiają węzły",
+      "title": "Każdy może wnieść moc obliczeniową.",
+      "body": "Operatorzy uruchamiają węzły Helexa. Sami decydują, jakie modele hostować. Zachowują kontrolę nad swoim sprzętem i ekonomią. Bez zgód z góry, bez strażników przy bramie."
+    },
+    "routing": {
+      "eyebrow": "Sieć routuje inteligencję",
+      "title": "Popyt przepływa przez całą sieć.",
+      "body": "Helexa uczy się, gdzie istnieją zasoby, gdzie rośnie zapotrzebowanie i które węzły najlepiej nadają się do obsługi żądań. Sieć dostosowuje się organicznie — jak rosnąca helisa."
+    },
+    "value": {
+      "eyebrow": "Wartość wraca z powrotem",
+      "title": "Praca jest udowodniona. Wynagrodzenie jest uczciwe.",
+      "body": "Każde zadanie posiada kryptograficzny paragon. Operatorzy zarabiają na inteligencji, w tworzeniu której pomagają. Bez podatku platformowego. Bez nieprzejrzystego rozliczania."
+    }
+  },
+
+  "principles": {
+    "title": "Zbudowana na zasadach, nie na platformach",
+    "distributed": {
+      "title": "Rozproszona z założenia",
+      "body": "Brak pojedynczego punktu awarii. Brak centralnego organu. Sieć, która z każdym nowym operatorem staje się silniejsza."
+    },
+    "participation": {
+      "title": "Otwarta partycypacja",
+      "body": "Jeśli masz moc obliczeniową, możesz ją wnieść. Sieć wita wszystkich — od edge, przez serwery domowe, po centra danych."
+    },
+    "fairness": {
+      "title": "Sprawiedliwość i transparentność",
+      "body": "Zyski opierają się na realnej pracy, kryptograficznie weryfikowanej. Bez czarnych skrzynek. Bez ukrytych opłat."
+    },
+    "evolving": {
+      "title": "Ewoluująca inteligencja",
+      "body": "Sieć uczy się z popytu. Modele są ładowane tam, gdzie są potrzebne. Inteligencja rozprzestrzenia się dzięki współpracy."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Czym Helexa chce się stać",
+    "p1": "Globalną warstwą inteligencji, która należy do wszystkich, napędzaną przez helisę węzłów i społeczności.",
+    "p2": "Siecią odporną na awarie, politykę, monopole i błędy.",
+    "p3": "Nowym modelem ekonomicznym, w którym operatorzy, twórcy i użytkownicy wspólnie korzystają z wytworzonej wartości.",
+    "p4": "Ekosystemem, w którym innowacja wyrasta z obrzeży — a nie z centrum.",
+    "card": {
+      "eyebrow": "Migawka wizji",
+      "title": "W stronę współdzielonej sieci inteligencji",
+      "body": "Helexa jest na wczesnym etapie. Idee są większe niż obecna implementacja — i to celowe. Sieć będzie rosła iteracyjnie, a jej ewolucję będą kształtować operatorzy i twórcy."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Wczesna faza",
+    "title": "Sieć właśnie się formuje.",
+    "titleHighlight": "Możesz być jej częścią.",
+    "lead": "Niezależnie od tego, czy zarządzasz sprzętem, budujesz modele, czy po prostu zależy Ci na tym, jak zarządza się SI — w tej sieci jest dla Ciebie miejsce.",
+    "ctaRunNode": "Uruchom węzeł (wkrótce)",
+    "ctaJoinAnnouncements": "Dołącz do wczesnych ogłoszeń",
+    "ctaExploreCode": "Poznaj kod",
+    "footer": "Bez zamkniętych ogrodów. Bez jednego właściciela. Tylko sieć ludzi, sprzętu i idei — tworząca inną przyszłość dla inteligencji."
+  }
+}

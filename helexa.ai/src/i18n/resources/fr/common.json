@@ -1,0 +1,63 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Accueil",
+    "docs": "Documentation",
+    "chat": "Chat",
+    "mission": "Mission",
+    "login": "Sign in",
+    "register": "Sign up",
+    "account": "Account",
+    "logout": "Sign out"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Passer en mode clair",
+      "toDark": "Passer en mode sombre"
+    }
+  },
+  "lang": {
+    "bg": "Bulgare",
+    "de": "Allemand",
+    "el": "Grec",
+    "en": "Anglais",
+    "es": "Espagnol",
+    "et": "Estonien",
+    "fr": "Français",
+    "he": "Hébreu",
+    "it": "Italien",
+    "nl": "Néerlandais",
+    "da": "Danois",
+    "fi": "Finnois",
+    "no": "Norvégien",
+    "sv": "Suédois",
+    "ar": "Arabe",
+    "fa": "Persan",
+    "sw": "Swahili",
+    "ha": "Haoussa",
+    "am": "Amharique",
+    "yo": "Yorouba",
+    "zu": "Zoulou",
+    "ma": "Darija",
+    "ig": "Igbo",
+    "ka": "Géorgien",
+    "kk": "Kazakh",
+    "om": "Oromo",
+    "so": "Somali",
+    "ti": "Tigrigna",
+    "uz": "Ouzbek",
+    "wo": "Wolof",
+    "pl": "Polonais",
+    "pt": "Portugais",
+    "ro": "Roumain",
+    "ru": "Russe",
+    "sr": "Serbe",
+    "tr": "Turc",
+    "uk": "Ukrainien"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai"
+  }
+}

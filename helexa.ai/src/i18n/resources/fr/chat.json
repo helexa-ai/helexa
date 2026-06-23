@@ -1,0 +1,9 @@
+{
+  "title": "Espace de conversation",
+  "badge": "Chat",
+  "lead": "Ceci est la vue de chat. Branchez ici votre logique conversationnelle et vos composants d’interface.",
+  "transcriptPlaceholder": "La transcription du chat apparaîtra ici. Affichez les messages du modèle et de l’utilisateur dans un conteneur défilant, éventuellement groupés par tour.",
+  "inputPlaceholder": "Tapez un message pour commencer à discuter…",
+  "send": "Envoyer",
+  "clear": "Effacer"
+}
