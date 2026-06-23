@@ -34,13 +34,16 @@ async fn spawn_or_skip(test: &str) -> Option<(String, PgPool)> {
         abuse: Default::default(),
         client_auth: Default::default(),
         authz: Default::default(),
+        auth: Default::default(),
+        email: Default::default(),
     };
     config.client_auth.tokens.push(ClientToken {
         token: CLIENT_TOKEN.into(),
         operator_id: "op-test".into(),
     });
 
-    let state = AppState::new(pool.clone(), config);
+    let email = helexa_upstream::email::EmailSender::from_config(&config.email).unwrap();
+    let state = AppState::new(pool.clone(), config, email);
     let app = helexa_upstream::build_app(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

@@ -44,6 +44,16 @@ sqlx = { version = "0.8", default-features = false, features = [
 uuid = { version = "1", features = ["v4", "serde"] }
 sha2 = "0.10"
 subtle = "2.6"
+# Web auth (B4): argon2id password hashing, JWT sessions, CSPRNG secrets,
+# transactional email.
+argon2 = "0.5"
+jsonwebtoken = "9"
+rand = "0.8"
+lettre = { version = "0.11", default-features = false, features = [
+    "tokio1-rustls-tls",
+    "smtp-transport",
+    "builder",
+] }
 
 # cortex-core for the shared #63 OpenAiError envelope on the authz surface.
 cortex-core = { workspace = true }

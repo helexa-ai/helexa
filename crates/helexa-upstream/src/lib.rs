@@ -16,15 +16,19 @@ pub mod authz;
 pub mod config;
 pub mod crypto;
 pub mod db;
+pub mod email;
 pub mod error;
 pub mod handlers;
 pub mod ledger;
 pub mod state;
+pub mod web;
 
 use anyhow::Result;
 use config::UpstreamConfig;
+use email::EmailSender;
 use state::AppState;
 use std::time::Duration;
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
 /// Build the axum application.
@@ -32,6 +36,11 @@ pub fn build_app(state: AppState) -> axum::Router {
     axum::Router::new()
         .merge(handlers::routes())
         .merge(authz::router(&state))
+        .merge(web::router(&state))
+        // The /web/v1 surface is called cross-origin by the browser SPA in
+        // dev; same-origin behind nginx in prod. Permissive is fine — these
+        // endpoints authenticate via bearer/JWT, not cookies.
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -40,8 +49,9 @@ pub fn build_app(state: AppState) -> axum::Router {
 /// reservation sweeper, bind the listener.
 pub async fn run(config: UpstreamConfig) -> Result<()> {
     let pool = db::connect_and_migrate(&config.db.url, config.db.max_connections).await?;
+    let email = EmailSender::from_config(&config.email)?;
     let listen = config.server.listen.clone();
-    let state = AppState::new(pool, config);
+    let state = AppState::new(pool, config, email);
 
     if state.config.client_auth.tokens.is_empty() {
         tracing::warn!(

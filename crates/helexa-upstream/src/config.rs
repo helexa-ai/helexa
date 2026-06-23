@@ -22,6 +22,64 @@ pub struct UpstreamConfig {
     pub client_auth: ClientAuthSettings,
     #[serde(default)]
     pub authz: AuthzSettings,
+    #[serde(default)]
+    pub auth: AuthSettings,
+    #[serde(default)]
+    pub email: EmailSettings,
+}
+
+/// `[auth]` — web-session signing + token lifetimes (B4). Web sessions are
+/// JWTs, distinct from inference API keys.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthSettings {
+    /// HMAC secret for signing session JWTs. MUST be overridden in prod
+    /// (env `UPSTREAM_AUTH__JWT_SECRET`); the default is dev-only.
+    #[serde(default = "default_jwt_secret")]
+    pub jwt_secret: String,
+    /// Session token lifetime (seconds).
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_secs: u64,
+    /// Email verification / password-reset token lifetime (seconds).
+    #[serde(default = "default_email_token_ttl")]
+    pub email_token_ttl_secs: u64,
+    /// Public base URL of the frontend, used to build verify/reset links.
+    #[serde(default = "default_app_base_url")]
+    pub app_base_url: String,
+}
+
+impl Default for AuthSettings {
+    fn default() -> Self {
+        Self {
+            jwt_secret: default_jwt_secret(),
+            session_ttl_secs: default_session_ttl(),
+            email_token_ttl_secs: default_email_token_ttl(),
+            app_base_url: default_app_base_url(),
+        }
+    }
+}
+
+/// `[email]` — transactional email transport for verify/reset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailSettings {
+    /// `"log"` (dev — logs the link) or `"smtp"`.
+    #[serde(default = "default_email_provider")]
+    pub provider: String,
+    /// SMTP relay URL (e.g. "smtp://user:pass@host:587") when provider=smtp.
+    #[serde(default)]
+    pub smtp_url: Option<String>,
+    /// `From:` address.
+    #[serde(default = "default_from_addr")]
+    pub from_addr: String,
+}
+
+impl Default for EmailSettings {
+    fn default() -> Self {
+        Self {
+            provider: default_email_provider(),
+            smtp_url: None,
+            from_addr: default_from_addr(),
+        }
+    }
 }
 
 /// `[client_auth]` — credentials operators' cortexes present to `/authz/v1`.
@@ -141,6 +199,24 @@ fn default_reservation_ttl() -> u64 {
 }
 fn default_sweep_interval() -> u64 {
     60
+}
+fn default_jwt_secret() -> String {
+    "dev-insecure-change-me".into()
+}
+fn default_session_ttl() -> u64 {
+    7 * 24 * 3600
+}
+fn default_email_token_ttl() -> u64 {
+    24 * 3600
+}
+fn default_app_base_url() -> String {
+    "http://localhost:5173".into()
+}
+fn default_email_provider() -> String {
+    "log".into()
+}
+fn default_from_addr() -> String {
+    "helexa <no-reply@helexa.ai>".into()
 }
 
 impl UpstreamConfig {

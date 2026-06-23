@@ -35,3 +35,18 @@ url = "postgres://helexa:helexa@localhost/helexa_upstream"
 # reservation whose settle/release from a cortex was lost.
 # reservation_ttl_secs = 120
 # sweep_interval_secs = 60
+
+[auth]
+# HMAC secret for signing web-session JWTs. MUST be overridden in prod via
+# UPSTREAM_AUTH__JWT_SECRET; the built-in default is dev-only.
+# jwt_secret = "change-me"
+# session_ttl_secs = 604800        # 7 days
+# email_token_ttl_secs = 86400     # 24 hours
+# Frontend base URL used to build verify/reset links in emails.
+app_base_url = "https://helexa.ai"
+
+[email]
+# "log" (dev: logs the link) or "smtp".
+provider = "log"
+# smtp_url = "smtp://user:pass@smtp.example.com:587"
+from_addr = "helexa <no-reply@helexa.ai>"
