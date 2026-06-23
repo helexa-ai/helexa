@@ -430,6 +430,7 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
         }],
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));

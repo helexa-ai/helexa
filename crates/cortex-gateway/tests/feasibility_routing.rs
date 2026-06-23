@@ -74,6 +74,7 @@ async fn fleet_with(big_healthy: bool, big_devices: usize) -> Arc<CortexState> {
         ],
         models_config: cat.to_string_lossy().into_owned(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
     let fleet = Arc::new(CortexState::from_config(&config));
     {

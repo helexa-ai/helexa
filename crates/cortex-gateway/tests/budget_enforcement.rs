@@ -81,6 +81,7 @@ async fn spawn_gateway(neuron_url: &str, key: ApiKeyConfig) -> (Arc<CortexState>
             require_auth: true,
             keys: vec![key],
         },
+        upstream: Default::default(),
     };
     let fleet = Arc::new(CortexState::from_config(&config));
     {

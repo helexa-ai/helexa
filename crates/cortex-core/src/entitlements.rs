@@ -81,12 +81,19 @@ pub struct BudgetSnapshot {
     pub reserved: u64,
 }
 
-/// Authentication failure — the bearer key could not be resolved. Maps to
-/// `401 invalid_api_key` (#49/#63).
+/// Authentication failure — the bearer key could not be resolved.
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
+    /// The key is genuinely unknown → `401 invalid_api_key` (#49/#63).
     #[error("invalid or unknown API key")]
     InvalidKey,
+    /// The authority that could resolve the key is unreachable (e.g. the
+    /// helexa-upstream client failed, #57). Fail **closed** but distinctly:
+    /// a transient outage must surface as `503 service_unavailable` +
+    /// `Retry-After`, never `401` — a real key must not be rejected as
+    /// invalid during an upstream blip.
+    #[error("entitlement authority unavailable; retry in {retry_after_secs}s")]
+    Unavailable { retry_after_secs: u64 },
 }
 
 /// Why a reservation was refused. Carries enough for the caller to build the
