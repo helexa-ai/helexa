@@ -72,6 +72,7 @@ fn make_fleet(endpoint: &str, defrag_after: u32) -> Arc<CortexState> {
         }],
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
     Arc::new(CortexState::from_config(&config))
 }

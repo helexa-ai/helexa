@@ -75,6 +75,7 @@ async fn spawn_gateway(neuron: &str, context: usize) -> String {
         }],
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
     let fleet = Arc::new(CortexState::from_config(&config));
     {

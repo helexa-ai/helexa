@@ -22,6 +22,36 @@ pub struct GatewayConfig {
     /// setups keep working until keys are configured.
     #[serde(default)]
     pub entitlements: EntitlementsConfig,
+    /// helexa-upstream client (#57). When enabled, keys not found in the
+    /// local `[entitlements]` config are validated against the mesh
+    /// authority, and budget is reserved/settled there. Disabled by default
+    /// — a single operator runs purely local.
+    #[serde(default)]
+    pub upstream: UpstreamClientConfig,
+}
+
+/// `[upstream]` — the helexa-upstream authority client (#57). Locally
+/// unrecognised bearer keys are resolved against `url`'s `/authz/v1` surface
+/// (mesh accounts); local keys (operator + infra) never leave the process.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpstreamClientConfig {
+    /// Enable the upstream fallthrough. Off → purely local entitlements.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Base URL of helexa-upstream (e.g. "https://upstream.helexa.ai").
+    #[serde(default)]
+    pub url: String,
+    /// Shared client bearer this cortex presents to `/authz/v1` (maps to an
+    /// operator_id upstream). Sent as `Authorization: Bearer <bearer>`.
+    #[serde(default)]
+    pub bearer: String,
+    /// Per-call timeout (seconds) to upstream.
+    #[serde(default = "default_upstream_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_upstream_timeout() -> u64 {
+    5
 }
 
 /// `[entitlements]` — the local/static [`crate::entitlements::EntitlementProvider`]
@@ -129,6 +159,7 @@ impl Default for GatewayConfig {
             neurons: vec![],
             models_config: default_models_path(),
             entitlements: EntitlementsConfig::default(),
+            upstream: UpstreamClientConfig::default(),
         }
     }
 }

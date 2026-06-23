@@ -90,3 +90,18 @@ account_id = "operator"
 key_id = "infra"
 # No hard_cap → uncapped operator infra key (own fleet, own use). Still
 # metered for visibility.
+
+# -- Upstream (helexa mesh) entitlements client (#57) --------------------
+# When enabled, a bearer key NOT found in [[entitlements.keys]] above is
+# validated against the helexa-upstream authority (mesh accounts), and its
+# budget is reserved/settled there. Operator-local keys (incl. the infra
+# key) never leave this process. Fail-closed: if upstream is unreachable a
+# request is refused (503 + Retry-After), never served un-authorized.
+# Disabled by default — a standalone operator runs purely local.
+[upstream]
+enabled = false
+# url = "https://upstream.helexa.ai"
+# Shared client bearer this cortex presents (maps to an operator_id
+# upstream). Override via CORTEX_UPSTREAM__BEARER in prod.
+# bearer = "replace-with-operator-client-secret"
+# timeout_secs = 5

@@ -22,7 +22,7 @@ use axum::http::header::AUTHORIZATION;
 use axum::http::{HeaderMap, HeaderValue};
 use axum::middleware::Next;
 use axum::response::Response;
-use cortex_core::entitlements::{HEADER_ACCOUNT_ID, HEADER_KEY_ID};
+use cortex_core::entitlements::{AuthError, HEADER_ACCOUNT_ID, HEADER_KEY_ID};
 use cortex_core::error_envelope::OpenAiError;
 use std::sync::Arc;
 
@@ -83,14 +83,25 @@ pub async fn require_principal(
                 req.extensions_mut().insert(principal);
                 next.run(req).await
             }
-            // An unrecognized key only hard-fails when auth is *required*.
-            // In allow-anonymous mode (the default) we must IGNORE it and
-            // serve the request unauthenticated — otherwise the placeholder
-            // keys that OpenAI-compatible clients send by default (opencode,
-            // Open WebUI, Agent Zero, litellm) would all break, even though
-            // the operator never opted into auth. Pre-#49 the bearer was
-            // never inspected at all; this preserves that for require_auth=false.
-            Err(_) => {
+            // The entitlement authority is unreachable (upstream client
+            // blip, #57). Fail **closed but distinct**: a transient outage
+            // must not reject a real key as `401 invalid_api_key` — it's a
+            // retryable `503`. This holds regardless of require_auth: we
+            // can't safely serve a key we couldn't authorize.
+            Err(AuthError::Unavailable { retry_after_secs }) => {
+                envelope_response(OpenAiError::service_unavailable(
+                    "entitlement authority temporarily unavailable",
+                    Some(retry_after_secs),
+                ))
+            }
+            // A genuinely unrecognized key only hard-fails when auth is
+            // *required*. In allow-anonymous mode (the default) we IGNORE it
+            // and serve unauthenticated — otherwise the placeholder keys that
+            // OpenAI-compatible clients send by default (opencode, Open WebUI,
+            // Agent Zero, litellm) would all break though the operator never
+            // opted into auth. Pre-#49 the bearer was never inspected; this
+            // preserves that for require_auth=false.
+            Err(AuthError::InvalidKey) => {
                 if fleet.require_auth {
                     unauthorized("invalid API key")
                 } else {

@@ -1,4 +1,6 @@
+use crate::entitlements_chain::ChainedEntitlementProvider;
 use crate::entitlements_local::LocalEntitlementProvider;
+use crate::entitlements_upstream::UpstreamEntitlementProvider;
 use cortex_core::catalogue::ModelCatalogue;
 use cortex_core::config::{EvictionSettings, GatewayConfig, NeuronEndpoint};
 use cortex_core::entitlements::EntitlementProvider;
@@ -45,8 +47,20 @@ impl CortexState {
 
         let catalogue = ModelCatalogue::load(&config.models_config);
 
-        let entitlements: Arc<dyn EntitlementProvider> =
-            Arc::new(LocalEntitlementProvider::from_config(&config.entitlements));
+        // Local provider always handles operator + infra keys. When the
+        // upstream client is enabled (#57), wrap it in the chain so locally
+        // unknown keys fall through to the mesh authority; otherwise stay
+        // purely local.
+        let local = LocalEntitlementProvider::from_config(&config.entitlements);
+        let entitlements: Arc<dyn EntitlementProvider> = if config.upstream.enabled {
+            tracing::info!(url = %config.upstream.url, "upstream entitlement client enabled");
+            Arc::new(ChainedEntitlementProvider::new(
+                local,
+                UpstreamEntitlementProvider::new(&config.upstream),
+            ))
+        } else {
+            Arc::new(local)
+        };
 
         Self {
             nodes: RwLock::new(nodes),

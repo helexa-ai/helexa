@@ -89,6 +89,7 @@ async fn error_response_no_healthy_nodes() {
         }],
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
 
     let fleet = Arc::new(cortex_gateway::state::CortexState::from_config(&config));

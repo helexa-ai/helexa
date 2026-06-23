@@ -66,6 +66,7 @@ harness = "candle"
         }],
         models_config: cat_path.to_string_lossy().into_owned(),
         entitlements: Default::default(),
+        upstream: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
