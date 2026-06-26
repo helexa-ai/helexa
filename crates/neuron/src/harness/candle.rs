@@ -23,7 +23,7 @@ use candle_transformers::models::qwen3_moe as qwen3_moe_dense;
 use cortex_core::harness::{Harness, HarnessHealth, ModelInfo, ModelSpec};
 use cortex_core::openai::{
     ChatCompletionChoice, ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse,
-    ChatMessage, MessageContent, Usage,
+    ChatMessage, CompletionTokensDetails, MessageContent, Usage,
 };
 
 use crate::wire::{
@@ -782,6 +782,39 @@ impl ModelArch {
             ),
         }
     }
+}
+
+/// Split a non-streaming completion's generated tokens into the
+/// visible answer and the leading reasoning span.
+///
+/// Reasoning models (Qwen3 `<think>`, DeepSeek-R1, …) emit their
+/// chain-of-thought *before* the answer, and the chat template injects
+/// the **opening** marker into the prompt — so the generated tokens look
+/// like `…reasoning… </think> …answer…` with no opening marker present
+/// in the output. The streaming path drops reasoning as
+/// [`InferenceEvent::ReasoningDelta`]; the non-streaming path has to do
+/// the equivalent post-hoc or the chain-of-thought leaks into the
+/// assistant `content` (which broke agent-zero v2.0, whose parser
+/// expected the bare JSON answer, not a `<think>` preamble).
+///
+/// Returns `(content_ids, reasoning_token_count)`. Strategy: if the model
+/// declares a reasoning marker pair and its **close** token appears in
+/// `generated_ids`, everything up to and including the last close token is
+/// reasoning and only the tail is the answer. Otherwise (non-reasoning
+/// model, thinking disabled, or a generation truncated mid-reasoning) the
+/// tokens are returned unchanged. Splitting on the token id — not a
+/// decoded `</think>` string — keeps this robust against tokenizer
+/// byte-fallback and special-token handling.
+fn split_off_reasoning<'a>(
+    generated_ids: &'a [u32],
+    reasoning: Option<&ReasoningTokenPair>,
+) -> (&'a [u32], u64) {
+    if let Some(pair) = reasoning
+        && let Some(idx) = generated_ids.iter().rposition(|&t| t == pair.close_id)
+    {
+        return (&generated_ids[idx + 1..], (idx + 1) as u64);
+    }
+    (generated_ids, 0)
 }
 
 /// Squeeze any leading singleton dims off the logits tensor so the
@@ -2454,20 +2487,32 @@ impl CandleHarness {
                 )));
             };
 
+            // Strip the leading `<think>` span so the chain-of-thought
+            // doesn't leak into `content` (the streaming path drops it
+            // as ReasoningDelta; this is the non-streaming equivalent).
+            let (content_ids, reasoning_tokens) =
+                split_off_reasoning(&generated_ids, loaded.reasoning_tokens.as_ref());
             let completion_text = loaded
                 .tokenizer
-                .decode(&generated_ids, true)
+                .decode(content_ids, true)
                 .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e}")))?;
+            // The first answer token after `</think>` is usually a
+            // newline pair; trim it so `content` starts at the answer.
+            let completion_text = if reasoning_tokens > 0 {
+                completion_text.trim_start().to_string()
+            } else {
+                completion_text
+            };
 
             let usage = Usage {
                 prompt_tokens: prompt_len as u64,
                 completion_tokens: generated_ids.len() as u64,
                 total_tokens: (prompt_len + generated_ids.len()) as u64,
-                // Reasoning accounting is streaming-only: the
-                // non-streaming path doesn't track `in_reasoning`
-                // (would require post-hoc <think> span parsing).
-                // Deferred — see #64.
-                completion_tokens_details: None,
+                // `reasoning_tokens` is an additive sub-count of
+                // `completion_tokens` (which still counts every
+                // generated token, reasoning included).
+                completion_tokens_details: (reasoning_tokens > 0)
+                    .then_some(CompletionTokensDetails { reasoning_tokens }),
                 prompt_tokens_details: None,
             };
 
@@ -4722,18 +4767,27 @@ async fn chat_completion_tp_inner(
     }
     drop(pool);
 
+    // Strip the leading `<think>` span (see `split_off_reasoning` and the
+    // single-GPU path) so the chain-of-thought doesn't leak into `content`.
+    let (content_ids, reasoning_tokens) =
+        split_off_reasoning(&generated, tp.reasoning_tokens.as_ref());
     let completion_text = tp
         .tokenizer
-        .decode(&generated, true)
+        .decode(content_ids, true)
         .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e}")))?;
+    let completion_text = if reasoning_tokens > 0 {
+        completion_text.trim_start().to_string()
+    } else {
+        completion_text
+    };
 
     let usage = Usage {
         prompt_tokens: prompt_len as u64,
         completion_tokens: generated.len() as u64,
         total_tokens: (prompt_len + generated.len()) as u64,
-        // Reasoning accounting is streaming-only (non-streaming TP path
-        // doesn't track `in_reasoning`). Deferred — see #64.
-        completion_tokens_details: None,
+        // `reasoning_tokens` is an additive sub-count of `completion_tokens`.
+        completion_tokens_details: (reasoning_tokens > 0)
+            .then_some(CompletionTokensDetails { reasoning_tokens }),
         prompt_tokens_details: None,
     };
 
@@ -6504,6 +6558,60 @@ mod tests {
     use super::*;
 
     const IM_START: u32 = 999;
+
+    fn think_pair() -> ReasoningTokenPair {
+        ReasoningTokenPair {
+            open_id: 100,
+            close_id: 200,
+            open_text: "<think>".into(),
+            close_text: "</think>".into(),
+        }
+    }
+
+    #[test]
+    fn split_off_reasoning_strips_up_to_close_marker() {
+        // [reasoning_a, reasoning_b, </think>, answer_x, answer_y]
+        let ids = [10, 11, 200, 42, 43];
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        assert_eq!(content, &[42, 43]);
+        assert_eq!(reasoning, 3); // two reasoning tokens + the close marker
+    }
+
+    #[test]
+    fn split_off_reasoning_no_close_marker_returns_all() {
+        // Thinking disabled / model never closed the span: return as-is.
+        let ids = [42, 43, 44];
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        assert_eq!(content, &ids);
+        assert_eq!(reasoning, 0);
+    }
+
+    #[test]
+    fn split_off_reasoning_no_marker_pair_is_noop() {
+        let ids = [1, 2, 3];
+        let (content, reasoning) = split_off_reasoning(&ids, None);
+        assert_eq!(content, &ids);
+        assert_eq!(reasoning, 0);
+    }
+
+    #[test]
+    fn split_off_reasoning_close_at_end_yields_empty_content() {
+        // All reasoning, answer truncated to nothing after the marker.
+        let ids = [10, 11, 200];
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        assert!(content.is_empty());
+        assert_eq!(reasoning, 3);
+    }
+
+    #[test]
+    fn split_off_reasoning_splits_on_last_close_marker() {
+        // Defensive: if the model emits its own <think></think> pair plus
+        // the prompt-injected one, split on the LAST close marker.
+        let ids = [200, 10, 200, 42];
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        assert_eq!(content, &[42]);
+        assert_eq!(reasoning, 3);
+    }
 
     #[test]
     fn stable_snapshot_cut_lands_after_last_im_start() {
