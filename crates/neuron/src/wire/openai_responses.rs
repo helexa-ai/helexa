@@ -29,9 +29,9 @@
 
 use cortex_core::openai::{ChatCompletionRequest, ChatMessage, MessageContent};
 use cortex_core::responses::{
-    OutputTokensDetails, ResponsesContentPart, ResponsesInput, ResponsesInputItem,
-    ResponsesMessageContent, ResponsesOutputContent, ResponsesOutputItem, ResponsesRequest,
-    ResponsesResponse, ResponsesUsage, events,
+    OutputTokensDetails, ResponsesContentPart, ResponsesInput, ResponsesInputElement,
+    ResponsesInputItem, ResponsesMessageContent, ResponsesOutputContent, ResponsesOutputItem,
+    ResponsesRequest, ResponsesResponse, ResponsesUsage, events,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -109,8 +109,26 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
             });
         }
         ResponsesInput::Items(items) => {
-            for item in items {
-                if let Some(msg) = input_item_to_chat(item) {
+            for element in items {
+                let msg = match element {
+                    ResponsesInputElement::Typed(item) => input_item_to_chat(item),
+                    // Bare `{role, content}` (OpenAI EasyInputMessage —
+                    // what litellm/agent-zero emit). `content: null`
+                    // (e.g. an assistant turn carrying only tool calls)
+                    // collapses to an empty string so the turn is kept.
+                    ResponsesInputElement::EasyMessage { role, content } => Some(ChatMessage {
+                        role,
+                        content: content
+                            .map(message_content_to_chat)
+                            .unwrap_or_else(|| MessageContent::Text(String::new())),
+                        extra: Value::Object(Default::default()),
+                    }),
+                    // Forward-compat: an item shape we don't model.
+                    // Dropped rather than rejected (see
+                    // `ResponsesInputElement::Other`).
+                    ResponsesInputElement::Other(_) => None,
+                };
+                if let Some(msg) = msg {
                     messages.push(msg);
                 }
             }
@@ -159,11 +177,18 @@ fn input_item_to_chat(item: ResponsesInputItem) -> Option<ChatMessage> {
             })
         }
         ResponsesInputItem::FunctionCallOutput { call_id, output } => {
+            // `output` is either a plain string or an array of content
+            // parts. Render a string as-is; anything else to compact
+            // JSON so the tool result text reaches the model intact.
+            let output_text = match output {
+                Value::String(s) => s,
+                other => other.to_string(),
+            };
             let mut extra = serde_json::Map::new();
             extra.insert("tool_call_id".into(), Value::String(call_id));
             Some(ChatMessage {
                 role: "tool".into(),
-                content: MessageContent::Text(output),
+                content: MessageContent::Text(output_text),
                 extra: Value::Object(extra),
             })
         }
@@ -192,7 +217,9 @@ fn message_content_to_chat(content: ResponsesMessageContent) -> MessageContent {
                     .filter_map(|p| match p {
                         ResponsesContentPart::InputText { text }
                         | ResponsesContentPart::OutputText { text, .. } => Some(text),
-                        ResponsesContentPart::InputImage { .. } => None,
+                        ResponsesContentPart::InputImage { .. } | ResponsesContentPart::Unknown => {
+                            None
+                        }
                     })
                     .collect::<Vec<_>>()
                     .join("\n\n");
@@ -211,6 +238,7 @@ fn message_content_to_chat(content: ResponsesMessageContent) -> MessageContent {
                             "image_url": { "url": image_url },
                         }));
                     }
+                    ResponsesContentPart::Unknown => {}
                 }
             }
             MessageContent::Parts(out)
@@ -535,6 +563,18 @@ mod tests {
     use super::*;
     use cortex_core::openai::MessageContent;
 
+    /// Wrap typed items as `input` elements. Most translator tests
+    /// exercise the typed path; the bare easy-message and unknown-item
+    /// paths have dedicated tests below.
+    fn typed_items(items: Vec<ResponsesInputItem>) -> ResponsesInput {
+        ResponsesInput::Items(
+            items
+                .into_iter()
+                .map(ResponsesInputElement::Typed)
+                .collect(),
+        )
+    }
+
     fn meta() -> ResponseMeta {
         ResponseMeta {
             response_id: "resp_1".into(),
@@ -614,7 +654,7 @@ mod tests {
     fn translates_input_items_to_chat_messages() {
         let req = ResponsesRequest {
             model: "m".into(),
-            input: ResponsesInput::Items(vec![
+            input: typed_items(vec![
                 ResponsesInputItem::Message {
                     role: "user".into(),
                     content: ResponsesMessageContent::Text("first".into()),
@@ -646,7 +686,7 @@ mod tests {
     fn image_input_translates_to_chat_parts_array() {
         let req = ResponsesRequest {
             model: "m".into(),
-            input: ResponsesInput::Items(vec![ResponsesInputItem::Message {
+            input: typed_items(vec![ResponsesInputItem::Message {
                 role: "user".into(),
                 content: ResponsesMessageContent::Parts(vec![
                     ResponsesContentPart::InputText {
@@ -687,7 +727,7 @@ mod tests {
         // it's dropped — but it must not break translation.
         let req = ResponsesRequest {
             model: "m".into(),
-            input: ResponsesInput::Items(vec![ResponsesInputItem::Message {
+            input: typed_items(vec![ResponsesInputItem::Message {
                 role: "user".into(),
                 content: ResponsesMessageContent::Parts(vec![
                     ResponsesContentPart::InputText {
@@ -729,7 +769,7 @@ mod tests {
     fn text_only_parts_collapse_to_string() {
         let req = ResponsesRequest {
             model: "m".into(),
-            input: ResponsesInput::Items(vec![ResponsesInputItem::Message {
+            input: typed_items(vec![ResponsesInputItem::Message {
                 role: "user".into(),
                 content: ResponsesMessageContent::Parts(vec![
                     ResponsesContentPart::InputText {
@@ -759,7 +799,7 @@ mod tests {
     fn reasoning_items_are_silently_dropped() {
         let req = ResponsesRequest {
             model: "m".into(),
-            input: ResponsesInput::Items(vec![
+            input: typed_items(vec![
                 ResponsesInputItem::Reasoning { content: vec![] },
                 ResponsesInputItem::Message {
                     role: "user".into(),
@@ -777,6 +817,74 @@ mod tests {
         let chat = request_to_chat(req).unwrap();
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].role, "user");
+    }
+
+    #[test]
+    fn bare_easy_messages_translate_like_typed_messages() {
+        // The agent-zero / litellm shape: bare `{role, content}` items
+        // with no `type`. Deserialize from raw JSON (not hand-built)
+        // so this exercises the real parse path end to end.
+        let raw = r#"{
+            "model": "Qwen/Qwen3.6-27B",
+            "store": true,
+            "input": [
+                {"role": "system", "content": "be terse"},
+                {"role": "assistant", "content": "{\"tool_name\":\"response\"}"},
+                {"role": "user", "content": "alpha"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let chat = request_to_chat(req).unwrap();
+        let roles: Vec<&str> = chat.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, vec!["system", "assistant", "user"]);
+        assert!(matches!(
+            &chat.messages[2].content,
+            MessageContent::Text(t) if t == "alpha"
+        ));
+    }
+
+    #[test]
+    fn null_content_and_unknown_items_survive_translation() {
+        // An assistant turn with `content: null` is kept (empty text);
+        // an unmodeled item type is dropped, not rejected.
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"role": "assistant", "content": null},
+                {"type": "item_reference", "id": "x"},
+                {"role": "user", "content": "go"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let chat = request_to_chat(req).unwrap();
+        // assistant(null) kept, item_reference dropped, user kept.
+        let roles: Vec<&str> = chat.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, vec!["assistant", "user"]);
+        assert!(matches!(
+            &chat.messages[0].content,
+            MessageContent::Text(t) if t.is_empty()
+        ));
+    }
+
+    #[test]
+    fn function_call_output_array_renders_to_text() {
+        // OpenAI allows `function_call_output.output` to be an array of
+        // content parts; the tool result must reach the model as text.
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"type": "function_call_output", "call_id": "c1",
+                 "output": [{"type": "output_text", "text": "42"}]}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let chat = request_to_chat(req).unwrap();
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].role, "tool");
+        match &chat.messages[0].content {
+            MessageContent::Text(t) => assert!(t.contains("42"), "got {t:?}"),
+            other => panic!("expected text, got {other:?}"),
+        }
     }
 
     // ── streaming projector ─────────────────────────────────────────
