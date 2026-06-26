@@ -66,14 +66,48 @@ pub struct ResponsesRequest {
     pub extra: Value,
 }
 
-/// `input` is either a single string or an array of typed items.
+/// `input` is either a single string or an array of items.
 /// `#[serde(untagged)]` so the wire shape `"input": "hi"` and
 /// `"input": [{...}]` both deserialize.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ResponsesInput {
     Text(String),
-    Items(Vec<ResponsesInputItem>),
+    Items(Vec<ResponsesInputElement>),
+}
+
+/// One element of an `input` array.
+///
+/// OpenAI's Responses API accepts three shapes here, and real clients
+/// use all of them — most notably agent-zero (via litellm), which
+/// sends the bare "easy message" form. We must tolerate every shape,
+/// because `input` is an `#[serde(untagged)]` array: a single element
+/// that matches no variant fails the *entire* request with a 422
+/// (`did not match any variant of untagged enum ResponsesInput`).
+///
+/// 1. [`Self::Typed`] — an item carrying an explicit `"type"`
+///    discriminant (`message`, `function_call`, `function_call_output`,
+///    `reasoning`).
+/// 2. [`Self::EasyMessage`] — a bare `{role, content}` with **no**
+///    `type` field. This is OpenAI's `EasyInputMessage` and what
+///    litellm emits for every turn. `content` is optional so an
+///    assistant turn carrying only tool calls (`content: null`) still
+///    parses.
+/// 3. [`Self::Other`] — anything else, captured as raw JSON and
+///    dropped during translation. This is the forward-compat escape
+///    hatch that mirrors [`ResponsesRequest::extra`] at the item
+///    level: an unmodeled item type can never again reject the whole
+///    request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ResponsesInputElement {
+    Typed(ResponsesInputItem),
+    EasyMessage {
+        role: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        content: Option<ResponsesMessageContent>,
+    },
+    Other(Value),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +125,11 @@ pub enum ResponsesInputItem {
         name: String,
         arguments: String,
     },
-    /// User is feeding a tool result back into the model.
-    FunctionCallOutput { call_id: String, output: String },
+    /// User is feeding a tool result back into the model. `output`
+    /// is a `Value` because OpenAI allows it to be either a plain
+    /// string or an array of content parts; the translator renders
+    /// either form to text rather than losing the tool result.
+    FunctionCallOutput { call_id: String, output: Value },
     /// Reasoning items emitted by o-series models. Accepted but
     /// not forwarded to the model — neuron's candle path doesn't
     /// surface reasoning separately yet.
@@ -132,6 +169,11 @@ pub enum ResponsesContentPart {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         annotations: Vec<Value>,
     },
+    /// Any content-part type we don't model (e.g. `refusal`, audio).
+    /// Captured as a unit so an unknown part can't reject the whole
+    /// request; dropped during translation.
+    #[serde(other)]
+    Unknown,
 }
 
 // ── Response (non-streaming) ─────────────────────────────────────────
@@ -277,18 +319,114 @@ mod tests {
             ResponsesInput::Items(items) => {
                 assert_eq!(items.len(), 1);
                 match &items[0] {
-                    ResponsesInputItem::Message { role, content } => {
+                    ResponsesInputElement::Typed(ResponsesInputItem::Message { role, content }) => {
                         assert_eq!(role, "user");
                         match content {
                             ResponsesMessageContent::Text(t) => assert_eq!(t, "hi"),
                             other => panic!("expected Text content, got {other:?}"),
                         }
                     }
-                    other => panic!("expected Message item, got {other:?}"),
+                    other => panic!("expected typed Message item, got {other:?}"),
                 }
             }
             other => panic!("expected Items, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn deserialises_bare_easy_message_without_type() {
+        // The shape agent-zero (via litellm) actually sends: `input`
+        // items are bare `{role, content}` with NO `type` field. This
+        // is the exact payload that was returning 422.
+        let raw = r#"{
+            "model": "Qwen/Qwen3.6-27B",
+            "store": true,
+            "tools": [{"type": "function", "name": "x", "description": "d", "parameters": {}}],
+            "input": [
+                {"role": "system", "content": "you are helpful"},
+                {"role": "assistant", "content": "{\"tool_name\":\"response\"}"},
+                {"role": "user", "content": "hi"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let items = match req.input {
+            ResponsesInput::Items(i) => i,
+            other => panic!("expected Items, got {other:?}"),
+        };
+        assert_eq!(items.len(), 3);
+        for el in &items {
+            assert!(
+                matches!(el, ResponsesInputElement::EasyMessage { .. }),
+                "expected EasyMessage, got {el:?}"
+            );
+        }
+        // `tools` / `store` ride through `extra`, not `input`.
+        assert!(req.extra.get("tools").is_some());
+        assert_eq!(req.extra.get("store"), Some(&Value::Bool(true)));
+    }
+
+    #[test]
+    fn tolerates_null_content_and_unknown_item_types() {
+        // An assistant turn carrying only tool calls has `content: null`;
+        // and a future/unmodeled item type must not 422 the request.
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"role": "assistant", "content": null},
+                {"type": "item_reference", "id": "abc"},
+                {"type": "function_call_output", "call_id": "c1",
+                 "output": [{"type": "output_text", "text": "result"}]},
+                {"role": "user", "content": "go"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let items = match req.input {
+            ResponsesInput::Items(i) => i,
+            other => panic!("expected Items, got {other:?}"),
+        };
+        assert_eq!(items.len(), 4);
+        assert!(matches!(
+            &items[0],
+            ResponsesInputElement::EasyMessage { content: None, .. }
+        ));
+        assert!(matches!(&items[1], ResponsesInputElement::Other(_)));
+        assert!(matches!(
+            &items[2],
+            ResponsesInputElement::Typed(ResponsesInputItem::FunctionCallOutput { .. })
+        ));
+        assert!(matches!(
+            &items[3],
+            ResponsesInputElement::EasyMessage { .. }
+        ));
+    }
+
+    #[test]
+    fn tolerates_unknown_content_part_type() {
+        // A `refusal` (or any unmodeled) content part must parse, not 422.
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"role": "assistant", "content": [
+                    {"type": "refusal", "refusal": "no"},
+                    {"type": "output_text", "text": "ok"}
+                ]}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let items = match req.input {
+            ResponsesInput::Items(i) => i,
+            other => panic!("expected Items, got {other:?}"),
+        };
+        let parts = match &items[0] {
+            ResponsesInputElement::EasyMessage {
+                content: Some(ResponsesMessageContent::Parts(p)),
+                ..
+            } => p,
+            other => panic!("expected EasyMessage with Parts, got {other:?}"),
+        };
+        assert_eq!(parts.len(), 2);
+        assert!(matches!(&parts[0], ResponsesContentPart::Unknown));
+        assert!(matches!(&parts[1], ResponsesContentPart::OutputText { .. }));
     }
 
     #[test]
@@ -308,10 +446,10 @@ mod tests {
             other => panic!("expected Items, got {other:?}"),
         };
         let parts = match &items[0] {
-            ResponsesInputItem::Message {
+            ResponsesInputElement::Typed(ResponsesInputItem::Message {
                 content: ResponsesMessageContent::Parts(p),
                 ..
-            } => p,
+            }) => p,
             other => panic!("expected Parts, got {other:?}"),
         };
         assert_eq!(parts.len(), 2);
