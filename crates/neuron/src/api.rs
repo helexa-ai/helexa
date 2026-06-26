@@ -16,7 +16,7 @@ use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::entitlements::{HEADER_ACCOUNT_ID, HEADER_KEY_ID};
 use cortex_core::harness::ModelSpec;
 use cortex_core::openai::{ChatCompletionRequest, MessageContent};
-use cortex_core::responses::{ResponsesRequest, ResponsesUsage};
+use cortex_core::responses::{OutputTokensDetails, ResponsesRequest, ResponsesUsage};
 use futures::stream::{self, StreamExt};
 use serde_json::{Value, json};
 use std::convert::Infallible;
@@ -418,8 +418,14 @@ async fn responses(
                     input_tokens: u.prompt_tokens,
                     output_tokens: u.completion_tokens,
                     total_tokens: u.prompt_tokens + u.completion_tokens,
-                    // Non-streaming reasoning accounting deferred (#64).
-                    output_tokens_details: None,
+                    // Carry the reasoning sub-count through from the chat
+                    // usage — the non-streaming path now splits off the
+                    // `<think>` span and counts it (see `split_off_reasoning`).
+                    output_tokens_details: u.completion_tokens_details.as_ref().map(|d| {
+                        OutputTokensDetails {
+                            reasoning_tokens: d.reasoning_tokens,
+                        }
+                    }),
                     input_tokens_details: None,
                 });
                 let meta = openai_responses::ResponseMeta {
