@@ -89,6 +89,8 @@ fn config_for(endpoint: String, db_path: String) -> BenchConfig {
         scenarios: ScenarioConfig {
             prompt_sizes: vec![128], // single scenario keeps assertions simple
             max_tokens: 16,
+            concurrency_levels: Vec::new(),
+            concurrency_prompt_tokens: 512,
         },
         api: Default::default(),
         targets: vec![TargetConfig {

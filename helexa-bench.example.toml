@@ -25,6 +25,12 @@ db_path = "/var/lib/helexa-bench/bench.sqlite"
 # One chat-latency scenario is generated per size (chat:128, chat:4096).
 prompt_sizes = [128, 4096]
 max_tokens = 256
+# Concurrency / agentic-load scenarios (#89): one concurrency:<n> scenario
+# per level, each firing N simultaneous streams to characterize the real
+# a0/hermes/opencode fan-out. Empty by default — enable deliberately, since
+# a burst puts genuine simultaneous load on the serving fleet.
+# concurrency_levels = [2, 4, 8]
+# concurrency_prompt_tokens = 512
 
 # Read-only JSON API (consumed by the bench UI + programmatic access),
 # served alongside the sweep loop by `run` (or standalone via `serve`).

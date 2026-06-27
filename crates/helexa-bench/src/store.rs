@@ -62,6 +62,12 @@ pub struct RunRecord {
     pub vram_used_mb: Option<u64>,
     pub gpu_util_pct: Option<u32>,
     pub gpu_temp_c: Option<u32>,
+    // concurrency / agentic-load burst metrics (#89), null for single-request
+    // scenarios. For a burst, ttft_s/decode_tps/total_s carry the aggregate.
+    pub concurrency: Option<u32>,
+    pub ttft_p95_s: Option<f64>,
+    pub queue_wait_ms: Option<f64>,
+    pub rejected: Option<u32>,
     // outcome
     pub ok: bool,
     pub error: Option<String>,
@@ -140,6 +146,10 @@ impl Store {
                 vram_used_mb         INTEGER,
                 gpu_util_pct         INTEGER,
                 gpu_temp_c           INTEGER,
+                concurrency          INTEGER,
+                ttft_p95_s           REAL,
+                queue_wait_ms        REAL,
+                rejected             INTEGER,
                 ok                   INTEGER NOT NULL,
                 error                TEXT
             );
@@ -165,6 +175,10 @@ impl Store {
                 ("vram_used_mb", "INTEGER"),
                 ("gpu_util_pct", "INTEGER"),
                 ("gpu_temp_c", "INTEGER"),
+                ("concurrency", "INTEGER"),
+                ("ttft_p95_s", "REAL"),
+                ("queue_wait_ms", "REAL"),
+                ("rejected", "INTEGER"),
             ],
         )?;
         Ok(())
@@ -221,6 +235,7 @@ impl Store {
                 ttft_s, decode_tps, total_s, completion_tokens,
                 prefill_ms, decode_ms, prefill_tokens,
                 vram_used_mb, gpu_util_pct, gpu_temp_c,
+                concurrency, ttft_p95_s, queue_wait_ms, rejected,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -233,7 +248,8 @@ impl Store {
                 ?28, ?29, ?30, ?31,
                 ?32, ?33, ?34,
                 ?35, ?36, ?37,
-                ?38, ?39
+                ?38, ?39, ?40, ?41,
+                ?42, ?43
             )",
             params![
                 r.ts,
@@ -273,6 +289,10 @@ impl Store {
                 r.vram_used_mb,
                 r.gpu_util_pct,
                 r.gpu_temp_c,
+                r.concurrency,
+                r.ttft_p95_s,
+                r.queue_wait_ms,
+                r.rejected,
                 r.ok as i64,
                 r.error,
             ],
@@ -289,7 +309,8 @@ impl Store {
             "SELECT target_name, model_id, scenario_id, prompt_size_approx, git_sha,
                     ttft_s, decode_tps, total_s, prompt_tokens_actual, gpus_json,
                     prefill_ms, decode_ms, prefill_tokens,
-                    vram_used_mb, gpu_util_pct, gpu_temp_c
+                    vram_used_mb, gpu_util_pct, gpu_temp_c,
+                    concurrency, ttft_p95_s, queue_wait_ms, rejected
              FROM runs
              WHERE ok=1
              ORDER BY target_name, model_id, scenario_id, id",
@@ -312,6 +333,10 @@ impl Store {
                 vram_used_mb: row.get(13)?,
                 gpu_util_pct: row.get(14)?,
                 gpu_temp_c: row.get(15)?,
+                concurrency: row.get(16)?,
+                ttft_p95_s: row.get(17)?,
+                queue_wait_ms: row.get(18)?,
+                rejected: row.get(19)?,
             })
         })?;
         let raws: Vec<RawRow> = rows.collect::<rusqlite::Result<_>>()?;
@@ -451,7 +476,8 @@ impl Store {
                     model_id, harness, scenario_id, prompt_size_approx, prompt_tokens_actual,
                     max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error,
                     gpus_json, prefill_ms, decode_ms, prefill_tokens,
-                    vram_used_mb, gpu_util_pct, gpu_temp_c
+                    vram_used_mb, gpu_util_pct, gpu_temp_c,
+                    concurrency, ttft_p95_s, queue_wait_ms, rejected
              FROM runs",
         );
         let mut conds: Vec<String> = Vec::new();
@@ -513,6 +539,10 @@ impl Store {
                     vram_used_mb: r.get(23)?,
                     gpu_util_pct: r.get(24)?,
                     gpu_temp_c: r.get(25)?,
+                    concurrency: r.get(26)?,
+                    ttft_p95_s: r.get(27)?,
+                    queue_wait_ms: r.get(28)?,
+                    rejected: r.get(29)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -638,6 +668,10 @@ pub struct RunRow {
     pub vram_used_mb: Option<u64>,
     pub gpu_util_pct: Option<u64>,
     pub gpu_temp_c: Option<u64>,
+    pub concurrency: Option<u64>,
+    pub ttft_p95_s: Option<f64>,
+    pub queue_wait_ms: Option<f64>,
+    pub rejected: Option<u64>,
     pub ok: bool,
     pub error: Option<String>,
 }
@@ -659,6 +693,10 @@ struct RawRow {
     vram_used_mb: Option<u64>,
     gpu_util_pct: Option<u64>,
     gpu_temp_c: Option<u64>,
+    concurrency: Option<u64>,
+    ttft_p95_s: Option<f64>,
+    queue_wait_ms: Option<f64>,
+    rejected: Option<u64>,
 }
 
 /// An aggregated cell ready for the report table.
@@ -694,6 +732,14 @@ pub struct ReportRow {
     pub vram_total_mb: Option<u64>,
     pub gpu_util_pct_median: Option<f64>,
     pub gpu_temp_c_median: Option<f64>,
+    /// Concurrency / agentic-load burst metrics (#89). `concurrency` is the
+    /// burst width (constant per cell). `ttft_p95_load_s` is the within-burst
+    /// TTFT tail; `queue_wait_ms_median` the admission wait; `rejected_median`
+    /// the per-burst shed count. All `None` for non-concurrency scenarios.
+    pub concurrency: Option<u64>,
+    pub ttft_p95_load_s: Option<f64>,
+    pub queue_wait_ms_median: Option<f64>,
+    pub rejected_median: Option<f64>,
     pub samples: usize,
     /// Public-facing resource name (the host's GPU(s)), e.g. "2× RTX 5090".
     pub gpu: Option<String>,
@@ -754,6 +800,10 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
                 cell.iter().filter_map(|r| r.gpu_util_pct.map(|v| v as f64)),
             ),
             gpu_temp_c_median: median(cell.iter().filter_map(|r| r.gpu_temp_c.map(|v| v as f64))),
+            concurrency: cell.iter().find_map(|r| r.concurrency),
+            ttft_p95_load_s: median(cell.iter().filter_map(|r| r.ttft_p95_s)),
+            queue_wait_ms_median: median(cell.iter().filter_map(|r| r.queue_wait_ms)),
+            rejected_median: median(cell.iter().filter_map(|r| r.rejected.map(|v| v as f64))),
             samples: cell.len(),
             gpu: cell
                 .iter()
@@ -885,6 +935,10 @@ mod tests {
             vram_used_mb: Some(42000),
             gpu_util_pct: Some(88),
             gpu_temp_c: Some(64),
+            concurrency: None,
+            ttft_p95_s: None,
+            queue_wait_ms: None,
+            rejected: None,
             ok,
             error: if ok { None } else { Some("boom".into()) },
         }
@@ -966,6 +1020,30 @@ mod tests {
         assert_eq!(row.vram_total_mb, Some(64000)); // 2× 32000
         assert_eq!(row.gpu_util_pct_median, Some(90.0));
         assert_eq!(row.gpu_temp_c_median, Some(66.0));
+    }
+
+    #[test]
+    fn report_surfaces_concurrency_burst_metrics() {
+        let s = Store::open_in_memory().unwrap();
+        // Two concurrency:8 burst-runs with shed load and a queue-wait tail.
+        for (qw, rej) in [(120.0, 1u32), (180.0, 3u32)] {
+            let mut r = rec("beast", "sha", "m", "concurrency:8", true);
+            r.concurrency = Some(8);
+            r.ttft_p95_s = Some(0.9);
+            r.queue_wait_ms = Some(qw);
+            r.rejected = Some(rej);
+            s.insert_run(&r).unwrap();
+        }
+        let row = s
+            .report_rows()
+            .unwrap()
+            .into_iter()
+            .find(|r| r.scenario_id == "concurrency:8")
+            .unwrap();
+        assert_eq!(row.concurrency, Some(8));
+        assert_eq!(row.queue_wait_ms_median, Some(150.0)); // median(120,180)
+        assert_eq!(row.rejected_median, Some(2.0)); // median(1,3)
+        assert_eq!(row.ttft_p95_load_s, Some(0.9));
     }
 
     #[test]

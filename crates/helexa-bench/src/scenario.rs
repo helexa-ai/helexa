@@ -72,6 +72,27 @@ pub struct ScenarioMetrics {
     pub decode_ms: Option<u64>,
     /// Tokens submitted to prefill — the denominator for prefill tok/s.
     pub prefill_tokens: Option<u64>,
+    // ── Concurrency / agentic-load fields (#89) ──────────────────────────
+    // Set only by the concurrency scenario, which fans out N simultaneous
+    // streams to characterize the real a0/hermes/opencode workload that
+    // batch-1 single-request measurement can't see. `None` for single
+    // requests. For a concurrency burst, the inherited fields carry the
+    // aggregate: `ttft_s` = median TTFT across streams, `decode_tps` = node
+    // throughput (total tokens / burst window), `total_s` = burst wall-clock,
+    // `completion_tokens` = total across streams.
+    /// Number of simultaneous streams in the burst (the cell dimension).
+    pub concurrency: Option<u32>,
+    /// p95 of per-stream TTFT within the burst — the tail under simultaneous
+    /// load, where batch-1 serialization actually hurts.
+    pub ttft_p95_s: Option<f64>,
+    /// Median per-stream admission queue-wait (ms), approximated as
+    /// `ttft − prefill_ms` (#85): on a batch-1 server, later streams wait for
+    /// earlier ones, so TTFT inflates while server prefill stays constant —
+    /// the gap is the wait. `None` if streams didn't report `helexa_timing`.
+    pub queue_wait_ms_median: Option<f64>,
+    /// Streams shed by admission control (HTTP 429/503) during the burst —
+    /// honest backpressure, not silent failures.
+    pub rejected: Option<u32>,
 }
 
 #[async_trait]
@@ -95,10 +116,13 @@ pub trait Scenario: Send + Sync {
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics>;
 }
 
-/// Build the active scenario set from config. One chat-latency scenario
-/// per configured prompt size.
+/// Build the active scenario set from config: one chat-latency scenario per
+/// prompt size, plus one concurrency scenario per configured level (#89).
+/// Concurrency levels default to empty (opt-in), since a burst puts real
+/// simultaneous load on a serving fleet — operators enable it deliberately.
 pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
-    cfg.prompt_sizes
+    let mut scenarios: Vec<Box<dyn Scenario>> = cfg
+        .prompt_sizes
         .iter()
         .map(|&size| {
             Box::new(ChatLatencyScenario {
@@ -106,7 +130,28 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
                 approx_prompt_tokens: size,
             }) as Box<dyn Scenario>
         })
-        .collect()
+        .collect();
+    for &n in &cfg.concurrency_levels {
+        scenarios.push(Box::new(ConcurrencyScenario {
+            id: format!("concurrency:{n}"),
+            concurrency: n,
+            approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+        }) as Box<dyn Scenario>);
+    }
+    scenarios
+}
+
+/// The chat-completions request body shared by the latency and concurrency
+/// scenarios — streamed, deterministic (temperature 0), usage included.
+fn chat_payload(ctx: &RunCtx, prompt: &str) -> serde_json::Value {
+    json!({
+        "model": ctx.model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": ctx.max_tokens,
+        "temperature": 0,
+        "stream": true,
+        "stream_options": {"include_usage": true},
+    })
 }
 
 /// Streamed single-request chat-completions latency probe — the batch-1
@@ -128,20 +173,132 @@ impl Scenario for ChatLatencyScenario {
 
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
         let prompt = build_prompt(self.approx_prompt_tokens);
-        let payload = json!({
-            "model": ctx.model_id,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": ctx.max_tokens,
-            "temperature": 0,
-            "stream": true,
-            "stream_options": {"include_usage": true},
-        });
-
+        let payload = chat_payload(ctx, &prompt);
         let fut = stream_and_measure(ctx, &payload);
         tokio::time::timeout(ctx.timeout, fut)
             .await
             .map_err(|_| anyhow!("request timed out after {:?}", ctx.timeout))?
     }
+}
+
+/// Fan-out load probe: fire `concurrency` identical streams at once and
+/// measure how the fleet behaves under simultaneous pressure (#89). This is
+/// the only scenario that exercises the real a0/hermes/opencode pattern —
+/// many agentic requests per user turn — which batch-1 single-request
+/// timing cannot characterize. On a batch-1 serialized server, aggregate
+/// throughput stays ~flat while TTFT/queue-wait inflate with `concurrency`;
+/// that gap is the evidence for/against continuous batching.
+pub struct ConcurrencyScenario {
+    id: String,
+    concurrency: u32,
+    approx_prompt_tokens: u32,
+}
+
+#[async_trait]
+impl Scenario for ConcurrencyScenario {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn prompt_size(&self) -> u32 {
+        self.approx_prompt_tokens
+    }
+
+    async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
+        let prompt = build_prompt(self.approx_prompt_tokens);
+        let payload = chat_payload(ctx, &prompt);
+
+        // Fire all streams at once; each is independently timed and capped by
+        // the per-request timeout so one hung stream can't stall the burst.
+        let burst_start = Instant::now();
+        let futs = (0..self.concurrency).map(|_| async {
+            tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload)).await
+        });
+        let results = futures::future::join_all(futs).await;
+        let burst_window = burst_start.elapsed().as_secs_f64();
+
+        let mut streams: Vec<ScenarioMetrics> = Vec::new();
+        let mut rejected: u32 = 0;
+        for r in results {
+            match r {
+                Ok(Ok(m)) => streams.push(m),
+                // Admission backpressure (429/503) is shed load, counted
+                // separately from genuine failures/timeouts.
+                Ok(Err(e)) if is_admission_reject(&e) => rejected += 1,
+                Ok(Err(_)) | Err(_) => {}
+            }
+        }
+        if streams.is_empty() {
+            return Err(anyhow!(
+                "all {} concurrent streams failed ({rejected} shed by admission)",
+                self.concurrency
+            ));
+        }
+
+        let total_tokens: u64 = streams.iter().map(|m| m.completion_tokens).sum();
+        let ttfts: Vec<f64> = streams.iter().map(|m| m.ttft_s).collect();
+        // queue-wait ≈ TTFT − server prefill (#85); only for streams that
+        // reported helexa_timing.
+        let queue_waits: Vec<f64> = streams
+            .iter()
+            .filter_map(|m| {
+                m.prefill_ms
+                    .map(|p| (m.ttft_s * 1000.0 - p as f64).max(0.0))
+            })
+            .collect();
+        // Aggregate decode throughput across the whole node for the burst.
+        let aggregate_tps = if burst_window > 0.0 {
+            Some(total_tokens as f64 / burst_window)
+        } else {
+            None
+        };
+
+        Ok(ScenarioMetrics {
+            ttft_s: median(&ttfts).unwrap_or(0.0),
+            decode_tps: aggregate_tps,
+            total_s: burst_window,
+            prompt_tokens: streams.iter().find_map(|m| m.prompt_tokens),
+            completion_tokens: total_tokens,
+            prefill_ms: None,
+            decode_ms: None,
+            prefill_tokens: None,
+            concurrency: Some(self.concurrency),
+            ttft_p95_s: percentile(&ttfts, 95.0),
+            queue_wait_ms_median: median(&queue_waits),
+            rejected: Some(rejected),
+        })
+    }
+}
+
+/// Whether a stream error was admission backpressure (HTTP 429/503) rather
+/// than a genuine failure. `stream_and_measure` renders the upstream status
+/// into the error string, so a substring check is sufficient.
+fn is_admission_reject(e: &anyhow::Error) -> bool {
+    let s = e.to_string();
+    s.contains("429") || s.contains("503")
+}
+
+/// Median of a slice (sorted copy). `None` if empty.
+fn median(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut v = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo = (v.len() - 1) / 2;
+    let hi = v.len() / 2;
+    Some((v[lo] + v[hi]) / 2.0)
+}
+
+/// Nearest-rank percentile of a slice (`p` in 0..=100). `None` if empty.
+fn percentile(values: &[f64], p: f64) -> Option<f64> {
+    if values.is_empty() {
+        return None;
+    }
+    let mut v = values.to_vec();
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let rank = (p / 100.0 * v.len() as f64).ceil() as usize;
+    Some(v[rank.clamp(1, v.len()) - 1])
 }
 
 /// The SSE-timing core, ported from `bench.py::one_run`. Kept free of the
@@ -233,6 +390,12 @@ async fn stream_and_measure(
         prefill_ms,
         decode_ms,
         prefill_tokens,
+        // Concurrency fields unset on the single-request path; the
+        // concurrency scenario builds its own aggregate (#89).
+        concurrency: None,
+        ttft_p95_s: None,
+        queue_wait_ms_median: None,
+        rejected: None,
     })
 }
 
@@ -248,6 +411,48 @@ mod tests {
         // ~4 chars/token + the trailing question.
         assert!(small.len() >= 128 * 4);
         assert!(small.ends_with("/no_think"));
+    }
+
+    #[test]
+    fn median_and_percentile_basics() {
+        assert_eq!(median(&[3.0, 1.0, 2.0]), Some(2.0));
+        assert_eq!(median(&[]), None);
+        let v = [1.0, 2.0, 3.0, 4.0, 5.0];
+        assert_eq!(percentile(&v, 50.0), Some(3.0));
+        assert_eq!(percentile(&v, 95.0), Some(5.0)); // nearest-rank → max with n=5
+        assert_eq!(percentile(&[], 95.0), None);
+    }
+
+    #[test]
+    fn admission_rejects_detected_by_status() {
+        assert!(is_admission_reject(&anyhow!(
+            "upstream returned 429 Too Many Requests"
+        )));
+        assert!(is_admission_reject(&anyhow!(
+            "upstream returned 503 Service Unavailable"
+        )));
+        assert!(!is_admission_reject(&anyhow!(
+            "upstream returned 500 Internal"
+        )));
+        assert!(!is_admission_reject(&anyhow!("connection refused")));
+    }
+
+    #[test]
+    fn concurrency_scenarios_built_from_config() {
+        use crate::config::ScenarioConfig;
+        let cfg = ScenarioConfig {
+            prompt_sizes: vec![128],
+            max_tokens: 64,
+            concurrency_levels: vec![2, 8],
+            concurrency_prompt_tokens: 512,
+        };
+        let ids: Vec<String> = build_scenarios(&cfg)
+            .iter()
+            .map(|s| s.id().to_string())
+            .collect();
+        assert!(ids.contains(&"chat:128".to_string()));
+        assert!(ids.contains(&"concurrency:2".to_string()));
+        assert!(ids.contains(&"concurrency:8".to_string()));
     }
 
     #[test]

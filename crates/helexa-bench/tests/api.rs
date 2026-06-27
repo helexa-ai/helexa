@@ -52,6 +52,10 @@ fn rec(
         vram_used_mb: if ok { Some(42000) } else { None },
         gpu_util_pct: if ok { Some(85) } else { None },
         gpu_temp_c: if ok { Some(63) } else { None },
+        concurrency: None,
+        ttft_p95_s: None,
+        queue_wait_ms: None,
+        rejected: None,
         ok,
         error: if ok { None } else { Some("boom".into()) },
     }
