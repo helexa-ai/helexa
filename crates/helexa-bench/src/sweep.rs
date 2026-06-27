@@ -9,7 +9,7 @@
 
 use crate::client::TargetClient;
 use crate::config::{BenchConfig, TargetConfig, TargetKind};
-use crate::scenario::{RunCtx, build_scenarios};
+use crate::scenario::{RunCtx, ScenarioMetrics, build_scenarios};
 use crate::store::{RunRecord, Store};
 use anyhow::Result;
 use cortex_core::build_info::BuildInfo;
@@ -187,18 +187,11 @@ impl Sweeper {
         prompt_size: u32,
         result: Result<&crate::scenario::ScenarioMetrics, &str>,
     ) -> RunRecord {
-        let (ok, error, ttft, decode, total, prompt_tokens, completion) = match result {
-            Ok(m) => (
-                true,
-                None,
-                Some(m.ttft_s),
-                m.decode_tps,
-                Some(m.total_s),
-                m.prompt_tokens,
-                Some(m.completion_tokens),
-            ),
-            Err(e) => (false, Some(e.to_string()), None, None, None, None, None),
+        let (m, error): (Option<&ScenarioMetrics>, Option<String>) = match result {
+            Ok(m) => (Some(m), None),
+            Err(e) => (None, Some(e.to_string())),
         };
+        let ok = m.is_some();
 
         RunRecord {
             ts: chrono::Utc::now().to_rfc3339(),
@@ -230,12 +223,15 @@ impl Sweeper {
                 .unwrap_or_else(|_| "[]".to_string()),
             scenario_id: scenario_id.to_string(),
             prompt_size_approx: prompt_size,
-            prompt_tokens_actual: prompt_tokens,
+            prompt_tokens_actual: m.and_then(|m| m.prompt_tokens),
             max_tokens: self.cfg.scenarios.max_tokens,
-            ttft_s: ttft,
-            decode_tps: decode,
-            total_s: total,
-            completion_tokens: completion,
+            ttft_s: m.map(|m| m.ttft_s),
+            decode_tps: m.and_then(|m| m.decode_tps),
+            total_s: m.map(|m| m.total_s),
+            completion_tokens: m.map(|m| m.completion_tokens),
+            prefill_ms: m.and_then(|m| m.prefill_ms),
+            decode_ms: m.and_then(|m| m.decode_ms),
+            prefill_tokens: m.and_then(|m| m.prefill_tokens),
             ok,
             error,
         }

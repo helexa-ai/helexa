@@ -62,6 +62,16 @@ pub struct ScenarioMetrics {
     pub prompt_tokens: Option<u64>,
     /// Completion tokens: from `usage` when present, else content-chunk count.
     pub completion_tokens: u64,
+    /// Server-measured prefill duration (ms), from the `usage.helexa_timing`
+    /// extension (#85). `None` when the server didn't emit it (external
+    /// engines, non-instrumented paths). The honest prefill-phase number,
+    /// distinct from client-observed `ttft_s` which also includes request
+    /// setup + first-byte network latency.
+    pub prefill_ms: Option<u64>,
+    /// Server-measured decode duration (ms), from `usage.helexa_timing`.
+    pub decode_ms: Option<u64>,
+    /// Tokens submitted to prefill — the denominator for prefill tok/s.
+    pub prefill_tokens: Option<u64>,
 }
 
 #[async_trait]
@@ -160,6 +170,9 @@ async fn stream_and_measure(
     let mut chunk_count: u64 = 0;
     let mut prompt_tokens: Option<u64> = None;
     let mut completion_tokens: Option<u64> = None;
+    let mut prefill_ms: Option<u64> = None;
+    let mut decode_ms: Option<u64> = None;
+    let mut prefill_tokens: Option<u64> = None;
 
     while let Some(event) = stream.next().await {
         let event = event.context("reading SSE stream")?;
@@ -188,6 +201,11 @@ async fn stream_and_measure(
         if let Some(usage) = chunk.usage {
             prompt_tokens = Some(usage.prompt_tokens);
             completion_tokens = Some(usage.completion_tokens);
+            if let Some(t) = usage.helexa_timing {
+                prefill_ms = Some(t.prefill_ms);
+                decode_ms = Some(t.decode_ms);
+                prefill_tokens = Some(t.prefill_tokens);
+            }
         }
     }
     let end = Instant::now();
@@ -212,6 +230,9 @@ async fn stream_and_measure(
         total_s: (end - start).as_secs_f64(),
         prompt_tokens,
         completion_tokens: tokens,
+        prefill_ms,
+        decode_ms,
+        prefill_tokens,
     })
 }
 
