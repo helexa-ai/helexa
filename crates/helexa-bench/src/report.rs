@@ -10,16 +10,16 @@ pub fn render_markdown(rows: &[ReportRow]) -> String {
     let mut out = String::new();
     out.push_str(
         "| engine | model | prompt tok | prefill tok/s | TTFT (s) | TTFT p95 | \
-         decode tok/s | total (s) | total p95 | VRAM (GB) | build | n |\n",
+         decode tok/s | total (s) | total p95 | VRAM (GB) | conc | queue ms | rej | build | n |\n",
     );
-    out.push_str("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|\n");
+    out.push_str("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|\n");
     for r in rows {
         let ptok = r
             .prompt_tokens
             .map(|t| t.to_string())
             .unwrap_or_else(|| format!("~{}", r.prompt_size_approx));
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
             r.target_name,
             r.model_id,
             ptok,
@@ -30,6 +30,9 @@ pub fn render_markdown(rows: &[ReportRow]) -> String {
             fmt_opt(r.total_s_median, 3),
             fmt_opt(r.total_s_p95, 3),
             fmt_vram(r.vram_used_mb_median, r.vram_total_mb),
+            fmt_u64(r.concurrency),
+            fmt_opt(r.queue_wait_ms_median, 0),
+            fmt_opt(r.rejected_median, 0),
             r.git_sha,
             r.samples,
         ));
@@ -61,6 +64,10 @@ pub fn render_json(rows: &[ReportRow]) -> Result<String> {
                 "vram_total_mb": r.vram_total_mb,
                 "gpu_util_pct_median": r.gpu_util_pct_median,
                 "gpu_temp_c_median": r.gpu_temp_c_median,
+                "concurrency": r.concurrency,
+                "ttft_p95_load_s": r.ttft_p95_load_s,
+                "queue_wait_ms_median": r.queue_wait_ms_median,
+                "rejected_median": r.rejected_median,
                 "git_sha": r.git_sha,
                 "samples": r.samples,
                 "gpu": r.gpu,
@@ -73,6 +80,14 @@ pub fn render_json(rows: &[ReportRow]) -> Result<String> {
 fn fmt_opt(v: Option<f64>, places: usize) -> String {
     match v {
         Some(x) => format!("{x:.places$}"),
+        None => "—".to_string(),
+    }
+}
+
+/// Integer cell (concurrency width); `—` when unset (non-concurrency rows).
+fn fmt_u64(v: Option<u64>) -> String {
+    match v {
+        Some(x) => x.to_string(),
         None => "—".to_string(),
     }
 }
@@ -114,6 +129,10 @@ mod tests {
             vram_total_mb: Some(65536),
             gpu_util_pct_median: Some(89.0),
             gpu_temp_c_median: Some(64.0),
+            concurrency: None,
+            ttft_p95_load_s: None,
+            queue_wait_ms_median: None,
+            rejected_median: None,
             samples: 5,
             gpu: Some("2× RTX 5090".into()),
         }];
@@ -121,6 +140,7 @@ mod tests {
         assert!(md.contains("| engine |"));
         assert!(md.contains("prefill tok/s"));
         assert!(md.contains("VRAM (GB)"));
+        assert!(md.contains("conc"));
         assert!(md.contains("beast"));
         assert!(md.contains("`30d50d6`"));
         assert!(md.contains("0.123"));
@@ -153,6 +173,10 @@ mod tests {
             vram_total_mb: None,
             gpu_util_pct_median: None,
             gpu_temp_c_median: None,
+            concurrency: None,
+            ttft_p95_load_s: None,
+            queue_wait_ms_median: None,
+            rejected_median: None,
             samples: 1,
             gpu: None,
         }];

@@ -104,6 +104,15 @@ pub struct ScenarioConfig {
     /// Max generated tokens per request.
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u64,
+    /// Concurrency levels (#89): one `concurrency:<n>` scenario per entry,
+    /// each firing N simultaneous streams. Defaults to empty (opt-in) — a
+    /// burst puts real load on a serving fleet, so operators enable it
+    /// deliberately, e.g. `concurrency_levels = [2, 4, 8]`.
+    #[serde(default)]
+    pub concurrency_levels: Vec<u32>,
+    /// Approximate prompt size (tokens) used by the concurrency scenarios.
+    #[serde(default = "default_concurrency_prompt_tokens")]
+    pub concurrency_prompt_tokens: u32,
 }
 
 impl Default for ScenarioConfig {
@@ -111,6 +120,8 @@ impl Default for ScenarioConfig {
         ScenarioConfig {
             prompt_sizes: default_prompt_sizes(),
             max_tokens: default_max_tokens(),
+            concurrency_levels: Vec::new(),
+            concurrency_prompt_tokens: default_concurrency_prompt_tokens(),
         }
     }
 }
@@ -186,6 +197,9 @@ fn default_prompt_sizes() -> Vec<u32> {
 }
 fn default_max_tokens() -> u64 {
     256
+}
+fn default_concurrency_prompt_tokens() -> u32 {
+    512
 }
 
 #[cfg(test)]

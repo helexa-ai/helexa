@@ -277,6 +277,10 @@ impl Sweeper {
             vram_used_mb: health.map(|h| h.vram_used_mb),
             gpu_util_pct: health.map(|h| h.gpu_util_pct),
             gpu_temp_c: health.map(|h| h.gpu_temp_c),
+            concurrency: m.and_then(|m| m.concurrency),
+            ttft_p95_s: m.and_then(|m| m.ttft_p95_s),
+            queue_wait_ms: m.and_then(|m| m.queue_wait_ms_median),
+            rejected: m.and_then(|m| m.rejected),
             ok,
             error,
         }
