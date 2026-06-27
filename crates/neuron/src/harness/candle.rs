@@ -27,7 +27,7 @@ use cortex_core::openai::{
 };
 
 use crate::wire::{
-    FinishReason, InferenceEvent, ReasoningTokenPair, ToolCallTokenPair,
+    FinishReason, FinishTiming, InferenceEvent, ReasoningTokenPair, ToolCallTokenPair,
     detect_reasoning_token_pair, detect_tool_call_token_pair, openai_chat as wire_chat,
 };
 use std::collections::HashMap;
@@ -2514,6 +2514,9 @@ impl CandleHarness {
                 completion_tokens_details: (reasoning_tokens > 0)
                     .then_some(CompletionTokensDetails { reasoning_tokens }),
                 prompt_tokens_details: None,
+                // Non-streaming path: prefill/decode split is only
+                // surfaced on the streaming Finish event today (#85).
+                helexa_timing: None,
             };
 
             tracing::info!(
@@ -4129,14 +4132,15 @@ impl CandleHarness {
                             break 'work;
                         }
                     };
+                    let prefill_elapsed = prefill_start.elapsed();
                     tp_for_task
                         .prefill_rate
-                        .record(prompt_len, prefill_start.elapsed());
+                        .record(prompt_len, prefill_elapsed);
                     let (post_prefill_vram_free_mb, _) = tp_for_task.query_vram().await;
                     tracing::info!(
                         model = %model_id,
                         prompt_len,
-                        prefill_ms = prefill_start.elapsed().as_millis(),
+                        prefill_ms = prefill_elapsed.as_millis(),
                         vram_free_mb = post_prefill_vram_free_mb,
                         "TP chat_completion (stream): prefill complete"
                     );
@@ -4161,6 +4165,8 @@ impl CandleHarness {
                                 break 'work;
                             }
                         };
+                    // Decode-phase timer for the Finish prefill/decode split (#85).
+                    let decode_start = std::time::Instant::now();
 
                     if Some(next_token) == eos_id {
                         finish_reason = FinishReason::Stop;
@@ -4438,6 +4444,11 @@ impl CandleHarness {
                             prompt_tokens: prompt_len as u32,
                             completion_tokens: all_tokens.len() as u32,
                             reasoning_tokens: reasoning_token_count,
+                            timing: Some(FinishTiming {
+                                prefill_ms: prefill_elapsed.as_millis() as u32,
+                                decode_ms: decode_start.elapsed().as_millis() as u32,
+                                prefill_tokens: prompt_len as u32,
+                            }),
                         })
                         .await;
                 }
@@ -4789,6 +4800,9 @@ async fn chat_completion_tp_inner(
         completion_tokens_details: (reasoning_tokens > 0)
             .then_some(CompletionTokensDetails { reasoning_tokens }),
         prompt_tokens_details: None,
+        // Non-streaming path: prefill/decode split is only surfaced on
+        // the streaming Finish event today (#85).
+        helexa_timing: None,
     };
 
     tracing::info!(
@@ -6118,7 +6132,8 @@ async fn stream_inference_via_worker(
             }
         }
     };
-    prefill_rate.record(prefill_prompt_len, prefill_start.elapsed());
+    let prefill_elapsed = prefill_start.elapsed();
+    prefill_rate.record(prefill_prompt_len, prefill_elapsed);
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
         Ok(t) => t,
@@ -6131,6 +6146,8 @@ async fn stream_inference_via_worker(
             return Err(e);
         }
     };
+    // Decode-phase timer for the Finish prefill/decode split (#85).
+    let decode_start = std::time::Instant::now();
 
     // Per-token routing. `tokenizers::DecodeStream` carries five
     // generic parameters (`M, N, PT, PP, D`) which makes naming
@@ -6275,6 +6292,11 @@ async fn stream_inference_via_worker(
             prompt_tokens: prompt_tokens.len() as u32,
             completion_tokens: all_tokens.len() as u32,
             reasoning_tokens: reasoning_token_count,
+            timing: Some(FinishTiming {
+                prefill_ms: prefill_elapsed.as_millis() as u32,
+                decode_ms: decode_start.elapsed().as_millis() as u32,
+                prefill_tokens: prefill_prompt_len as u32,
+            }),
         })
         .await;
 
@@ -6409,6 +6431,10 @@ fn run_inference_streaming(
     // See `inference_tp_stream`: promotes finish_reason to ToolCalls.
     let mut emitted_tool_call = false;
 
+    // Time prefill and decode separately so the Finish event can carry
+    // a server-measured prefill/decode split (#85) instead of leaving
+    // the client to infer both from SSE chunk arrival.
+    let prefill_start = std::time::Instant::now();
     let reused = restore_or_clear_local(arch, prefix_cache, prompt_tokens)?;
     // Two-stage prefill around the retokenization-stable snapshot
     // boundary — see `run_inference_via_worker`.
@@ -6427,6 +6453,8 @@ fn run_inference_streaming(
         None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
     };
     let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
+    let prefill_elapsed = prefill_start.elapsed();
+    let decode_start = std::time::Instant::now();
 
     // Per-token routing block, used at both the prefill-sample
     // tail and the decode loop. Macros are ugly but Rust's
@@ -6535,6 +6563,11 @@ fn run_inference_streaming(
         prompt_tokens: prompt_tokens.len() as u32,
         completion_tokens: all_tokens.len() as u32,
         reasoning_tokens: reasoning_token_count,
+        timing: Some(FinishTiming {
+            prefill_ms: prefill_elapsed.as_millis() as u32,
+            decode_ms: decode_start.elapsed().as_millis() as u32,
+            prefill_tokens: prompt_tokens.len() as u32,
+        }),
     });
     Ok(())
 }

@@ -84,7 +84,36 @@ pub enum InferenceEvent {
         /// `output_tokens_details.reasoning_tokens` (responses).
         /// Zero for non-reasoning models.
         reasoning_tokens: u32,
+        /// Server-measured prefill/decode timing for the request, or
+        /// `None` on paths that don't measure it (CPU fallback that
+        /// doesn't instrument, tests). Streaming projectors surface
+        /// this as a `helexa_timing` extension on the OpenAI `usage`
+        /// object so the bench harness can compute true prefill vs
+        /// decode tok/s instead of inferring both from client-side
+        /// SSE arrival (#85).
+        timing: Option<FinishTiming>,
     },
+}
+
+/// Server-measured timing for one completed inference, attached to
+/// [`InferenceEvent::Finish`]. The whole point is to separate the two
+/// phases the client cannot tell apart from chunk-arrival timing:
+/// prefill (tokenize + prompt forward pass, ending at the first
+/// sampled token) and decode (every subsequent token through EOS /
+/// `max_tokens`).
+#[derive(Debug, Clone, Copy)]
+pub struct FinishTiming {
+    /// Wall-clock of the prefill phase in milliseconds: from the start
+    /// of the prompt forward pass(es) to the first sampled token.
+    pub prefill_ms: u32,
+    /// Wall-clock of the decode phase in milliseconds: from the first
+    /// sampled token to stream end.
+    pub decode_ms: u32,
+    /// Prompt tokens submitted to the prefill forward pass — the
+    /// denominator for prefill tok/s. With prefix-KV-cache hits (#11)
+    /// the elapsed `prefill_ms` drops while this stays the full prompt
+    /// length, so a high implied rate is itself the cache-hit signal.
+    pub prefill_tokens: u32,
 }
 
 /// Why a stream stopped. Stays small on purpose — anything that

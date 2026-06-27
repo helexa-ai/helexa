@@ -400,6 +400,7 @@ pub fn openai_to_anthropic(resp: ChatCompletionResponse) -> MessagesResponse {
         total_tokens: 0,
         completion_tokens_details: None,
         prompt_tokens_details: None,
+        helexa_timing: None,
     });
 
     MessagesResponse {
@@ -772,6 +773,7 @@ mod stream_tests {
             total_tokens: 267,
             completion_tokens_details: None,
             prompt_tokens_details: None,
+            helexa_timing: None,
         });
         t.on_chunk(&usage_chunk);
         let fin = t.finish();
