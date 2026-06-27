@@ -51,6 +51,11 @@ pub struct RunRecord {
     pub decode_tps: Option<f64>,
     pub total_s: Option<f64>,
     pub completion_tokens: Option<u64>,
+    // server-measured prefill/decode split (#85), null on engines/paths
+    // that don't emit `usage.helexa_timing`.
+    pub prefill_ms: Option<u64>,
+    pub decode_ms: Option<u64>,
+    pub prefill_tokens: Option<u64>,
     // outcome
     pub ok: bool,
     pub error: Option<String>,
@@ -123,6 +128,9 @@ impl Store {
                 decode_tps           REAL,
                 total_s              REAL,
                 completion_tokens    INTEGER,
+                prefill_ms           INTEGER,
+                decode_ms            INTEGER,
+                prefill_tokens       INTEGER,
                 ok                   INTEGER NOT NULL,
                 error                TEXT
             );
@@ -133,6 +141,39 @@ impl Store {
             "#,
         )
         .context("initialising sqlite schema")?;
+        // Additive migrations for DBs created before a column existed.
+        // `CREATE TABLE IF NOT EXISTS` above only seeds fresh DBs; existing
+        // ones need the columns backfilled (as NULL) so older rows coexist
+        // with new metrics. There is no migration framework — each entry is
+        // an idempotent "add if missing".
+        Self::ensure_columns(
+            conn,
+            "runs",
+            &[
+                ("prefill_ms", "INTEGER"),
+                ("decode_ms", "INTEGER"),
+                ("prefill_tokens", "INTEGER"),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Add any of `columns` that the table is missing (`ALTER TABLE ADD
+    /// COLUMN`). Idempotent: existing columns are read from
+    /// `PRAGMA table_info` and skipped, so this is safe to run on every open.
+    fn ensure_columns(conn: &Connection, table: &str, columns: &[(&str, &str)]) -> Result<()> {
+        let mut existing = std::collections::HashSet::new();
+        let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        for name in names {
+            existing.insert(name?);
+        }
+        for (name, ty) in columns {
+            if !existing.contains(*name) {
+                conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {name} {ty};"))
+                    .with_context(|| format!("adding column {table}.{name}"))?;
+            }
+        }
         Ok(())
     }
 
@@ -166,6 +207,7 @@ impl Store {
                 model_id, harness, capabilities_json, devices_json,
                 scenario_id, prompt_size_approx, prompt_tokens_actual, max_tokens,
                 ttft_s, decode_tps, total_s, completion_tokens,
+                prefill_ms, decode_ms, prefill_tokens,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -176,7 +218,8 @@ impl Store {
                 ?20, ?21, ?22, ?23,
                 ?24, ?25, ?26, ?27,
                 ?28, ?29, ?30, ?31,
-                ?32, ?33
+                ?32, ?33, ?34,
+                ?35, ?36
             )",
             params![
                 r.ts,
@@ -210,6 +253,9 @@ impl Store {
                 r.decode_tps,
                 r.total_s,
                 r.completion_tokens,
+                r.prefill_ms,
+                r.decode_ms,
+                r.prefill_tokens,
                 r.ok as i64,
                 r.error,
             ],
@@ -224,7 +270,8 @@ impl Store {
         // successful run, then median that SHA's samples.
         let mut stmt = self.conn.prepare(
             "SELECT target_name, model_id, scenario_id, prompt_size_approx, git_sha,
-                    ttft_s, decode_tps, total_s, prompt_tokens_actual, gpus_json
+                    ttft_s, decode_tps, total_s, prompt_tokens_actual, gpus_json,
+                    prefill_ms, decode_ms, prefill_tokens
              FROM runs
              WHERE ok=1
              ORDER BY target_name, model_id, scenario_id, id",
@@ -241,6 +288,9 @@ impl Store {
                 total_s: row.get(7)?,
                 prompt_tokens_actual: row.get(8)?,
                 gpus_json: row.get(9)?,
+                prefill_ms: row.get(10)?,
+                decode_ms: row.get(11)?,
+                prefill_tokens: row.get(12)?,
             })
         })?;
         let raws: Vec<RawRow> = rows.collect::<rusqlite::Result<_>>()?;
@@ -379,7 +429,7 @@ impl Store {
             "SELECT id, ts, target_name, hostname, git_sha, build_timestamp, package_version,
                     model_id, harness, scenario_id, prompt_size_approx, prompt_tokens_actual,
                     max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error,
-                    gpus_json
+                    gpus_json, prefill_ms, decode_ms, prefill_tokens
              FROM runs",
         );
         let mut conds: Vec<String> = Vec::new();
@@ -435,6 +485,9 @@ impl Store {
                     completion_tokens: r.get(16)?,
                     ok: r.get::<_, i64>(17)? != 0,
                     error: r.get(18)?,
+                    prefill_ms: r.get(20)?,
+                    decode_ms: r.get(21)?,
+                    prefill_tokens: r.get(22)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -554,6 +607,9 @@ pub struct RunRow {
     pub decode_tps: Option<f64>,
     pub total_s: Option<f64>,
     pub completion_tokens: Option<u64>,
+    pub prefill_ms: Option<u64>,
+    pub decode_ms: Option<u64>,
+    pub prefill_tokens: Option<u64>,
     pub ok: bool,
     pub error: Option<String>,
 }
@@ -569,6 +625,9 @@ struct RawRow {
     total_s: Option<f64>,
     prompt_tokens_actual: Option<u64>,
     gpus_json: Option<String>,
+    prefill_ms: Option<u64>,
+    decode_ms: Option<u64>,
+    prefill_tokens: Option<u64>,
 }
 
 /// An aggregated cell ready for the report table.
@@ -583,6 +642,19 @@ pub struct ReportRow {
     pub ttft_s_median: Option<f64>,
     pub decode_tps_median: Option<f64>,
     pub total_s_median: Option<f64>,
+    /// Latency tail percentiles — where batch-1 pain actually shows up, and
+    /// invisible behind a bare median. p95/p99 nearest-rank; with few
+    /// samples they collapse toward the max (honest, not interpolated).
+    pub ttft_s_p95: Option<f64>,
+    pub ttft_s_p99: Option<f64>,
+    pub total_s_p95: Option<f64>,
+    pub total_s_p99: Option<f64>,
+    /// Server-measured prefill/decode split (#85). `prefill_tps_median` is
+    /// the true prompt-encoding rate (prefill_tokens / prefill_ms),
+    /// complementing `decode_tps_median` (the generation rate).
+    pub prefill_ms_median: Option<f64>,
+    pub decode_ms_median: Option<f64>,
+    pub prefill_tps_median: Option<f64>,
     pub samples: usize,
     /// Public-facing resource name (the host's GPU(s)), e.g. "2× RTX 5090".
     pub gpu: Option<String>,
@@ -611,6 +683,11 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
         let latest_sha = rows.last().map(|r| r.git_sha.clone()).unwrap_or_default();
         let cell: Vec<&RawRow> = rows.iter().filter(|r| r.git_sha == latest_sha).collect();
         let prompt_size_approx = cell.first().map(|r| r.prompt_size_approx).unwrap_or(0);
+        // Per-row prefill tok/s, derived from the server-measured split.
+        let prefill_tps = |r: &&RawRow| match (r.prefill_tokens, r.prefill_ms) {
+            (Some(tok), Some(ms)) if ms > 0 => Some(tok as f64 * 1000.0 / ms as f64),
+            _ => None,
+        };
         out.push(ReportRow {
             target_name,
             model_id,
@@ -621,6 +698,13 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
             ttft_s_median: median(cell.iter().filter_map(|r| r.ttft_s)),
             decode_tps_median: median(cell.iter().filter_map(|r| r.decode_tps)),
             total_s_median: median(cell.iter().filter_map(|r| r.total_s)),
+            ttft_s_p95: percentile(cell.iter().filter_map(|r| r.ttft_s), 95.0),
+            ttft_s_p99: percentile(cell.iter().filter_map(|r| r.ttft_s), 99.0),
+            total_s_p95: percentile(cell.iter().filter_map(|r| r.total_s), 95.0),
+            total_s_p99: percentile(cell.iter().filter_map(|r| r.total_s), 99.0),
+            prefill_ms_median: median(cell.iter().filter_map(|r| r.prefill_ms.map(|m| m as f64))),
+            decode_ms_median: median(cell.iter().filter_map(|r| r.decode_ms.map(|m| m as f64))),
+            prefill_tps_median: median(cell.iter().filter_map(prefill_tps)),
             samples: cell.len(),
             gpu: cell
                 .iter()
@@ -680,6 +764,22 @@ fn median(values: impl Iterator<Item = f64>) -> Option<f64> {
     Some((v[lo] + v[hi]) / 2.0)
 }
 
+/// Nearest-rank percentile (`p` in 0..=100). Chosen over interpolation
+/// because bench cells hold only a handful of samples: with n=5, p95/p99
+/// resolve to the max, which honestly says "this is the worst we saw"
+/// rather than inventing a value between samples we never observed.
+fn percentile(values: impl Iterator<Item = f64>, p: f64) -> Option<f64> {
+    let mut v: Vec<f64> = values.collect();
+    if v.is_empty() {
+        return None;
+    }
+    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // rank = ceil(p/100 * n), clamped to [1, n]; index is rank-1.
+    let rank = (p / 100.0 * v.len() as f64).ceil() as usize;
+    let idx = rank.clamp(1, v.len()) - 1;
+    Some(v[idx])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -717,6 +817,9 @@ mod tests {
             decode_tps: Some(50.0),
             total_s: Some(1.0),
             completion_tokens: Some(50),
+            prefill_ms: Some(200),
+            decode_ms: Some(1000),
+            prefill_tokens: Some(130),
             ok,
             error: if ok { None } else { Some("boom".into()) },
         }
@@ -753,6 +856,66 @@ mod tests {
         assert_eq!(rows[0].git_sha, "new");
         assert_eq!(rows[0].samples, 2);
         assert!((rows[0].ttft_s_median.unwrap() - 0.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn report_surfaces_percentiles_and_prefill_split() {
+        let s = Store::open_in_memory().unwrap();
+        // Five samples on one cell with spread TTFT so percentiles differ
+        // from the median, plus a server-measured prefill/decode split.
+        for (i, ttft) in [0.10, 0.12, 0.14, 0.16, 0.50].iter().enumerate() {
+            let mut r = rec("beast", "sha", "m", "chat:128", true);
+            r.ttft_s = Some(*ttft);
+            r.total_s = Some(ttft + 1.0);
+            r.prefill_ms = Some(200 + i as u64);
+            r.prefill_tokens = Some(400);
+            s.insert_run(&r).unwrap();
+        }
+        let rows = s.report_rows().unwrap();
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.samples, 5);
+        // p50 is the middle value; p95/p99 (nearest-rank, n=5) hit the max.
+        assert!((row.ttft_s_median.unwrap() - 0.14).abs() < 1e-9);
+        assert!((row.ttft_s_p95.unwrap() - 0.50).abs() < 1e-9);
+        assert!((row.ttft_s_p99.unwrap() - 0.50).abs() < 1e-9);
+        // prefill tok/s = 400 tok / ~0.2 s ≈ 2000 tok/s.
+        assert!(row.prefill_tps_median.unwrap() > 1900.0);
+        assert!(row.prefill_ms_median.is_some());
+    }
+
+    #[test]
+    fn percentile_nearest_rank() {
+        let vals = || [1.0, 2.0, 3.0, 4.0, 5.0].into_iter();
+        assert_eq!(percentile(vals(), 50.0), Some(3.0));
+        assert_eq!(percentile(vals(), 95.0), Some(5.0));
+        assert_eq!(percentile(vals(), 99.0), Some(5.0));
+        assert_eq!(percentile(std::iter::empty(), 95.0), None);
+    }
+
+    #[test]
+    fn migration_is_idempotent_and_backfills() {
+        // A DB whose `runs` table predates the prefill columns: create the
+        // pre-#85 shape, insert a row, then run ensure_columns twice.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE runs (id INTEGER PRIMARY KEY, ttft_s REAL);
+             INSERT INTO runs (ttft_s) VALUES (0.1);",
+        )
+        .unwrap();
+        for _ in 0..2 {
+            Store::ensure_columns(
+                &conn,
+                "runs",
+                &[("prefill_ms", "INTEGER"), ("decode_ms", "INTEGER")],
+            )
+            .unwrap();
+        }
+        // Columns now exist and the old row reads them back as NULL.
+        let got: Option<i64> = conn
+            .query_row("SELECT prefill_ms FROM runs", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(got, None);
     }
 
     #[test]

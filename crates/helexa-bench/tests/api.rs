@@ -46,6 +46,9 @@ fn rec(
         decode_tps: if ok { Some(30.0) } else { None },
         total_s: if ok { Some(2.0) } else { None },
         completion_tokens: if ok { Some(60) } else { None },
+        prefill_ms: if ok { Some(150) } else { None },
+        decode_ms: if ok { Some(1800) } else { None },
+        prefill_tokens: if ok { Some(130) } else { None },
         ok,
         error: if ok { None } else { Some("boom".into()) },
     }

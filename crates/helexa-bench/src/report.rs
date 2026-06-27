@@ -9,22 +9,26 @@ use anyhow::Result;
 pub fn render_markdown(rows: &[ReportRow]) -> String {
     let mut out = String::new();
     out.push_str(
-        "| engine | model | prompt tok | TTFT (s) | decode tok/s | total (s) | build | n |\n",
+        "| engine | model | prompt tok | prefill tok/s | TTFT (s) | TTFT p95 | \
+         decode tok/s | total (s) | total p95 | build | n |\n",
     );
-    out.push_str("|---|---|---:|---:|---:|---:|---|---:|\n");
+    out.push_str("|---|---|---:|---:|---:|---:|---:|---:|---:|---|---:|\n");
     for r in rows {
         let ptok = r
             .prompt_tokens
             .map(|t| t.to_string())
             .unwrap_or_else(|| format!("~{}", r.prompt_size_approx));
         out.push_str(&format!(
-            "| {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
+            "| {} | {} | {} | {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
             r.target_name,
             r.model_id,
             ptok,
+            fmt_opt(r.prefill_tps_median, 1),
             fmt_opt(r.ttft_s_median, 3),
+            fmt_opt(r.ttft_s_p95, 3),
             fmt_opt(r.decode_tps_median, 1),
             fmt_opt(r.total_s_median, 3),
+            fmt_opt(r.total_s_p95, 3),
             r.git_sha,
             r.samples,
         ));
@@ -43,8 +47,15 @@ pub fn render_json(rows: &[ReportRow]) -> Result<String> {
                 "prompt_size_approx": r.prompt_size_approx,
                 "prompt_tokens": r.prompt_tokens,
                 "ttft_s_median": r.ttft_s_median,
+                "ttft_s_p95": r.ttft_s_p95,
+                "ttft_s_p99": r.ttft_s_p99,
                 "decode_tps_median": r.decode_tps_median,
                 "total_s_median": r.total_s_median,
+                "total_s_p95": r.total_s_p95,
+                "total_s_p99": r.total_s_p99,
+                "prefill_ms_median": r.prefill_ms_median,
+                "decode_ms_median": r.decode_ms_median,
+                "prefill_tps_median": r.prefill_tps_median,
                 "git_sha": r.git_sha,
                 "samples": r.samples,
                 "gpu": r.gpu,
@@ -77,14 +88,24 @@ mod tests {
             ttft_s_median: Some(0.123),
             decode_tps_median: Some(45.6),
             total_s_median: Some(1.234),
+            ttft_s_p95: Some(0.222),
+            ttft_s_p99: Some(0.250),
+            total_s_p95: Some(1.5),
+            total_s_p99: Some(1.6),
+            prefill_ms_median: Some(120.0),
+            decode_ms_median: Some(1100.0),
+            prefill_tps_median: Some(1066.7),
             samples: 5,
             gpu: Some("2× RTX 5090".into()),
         }];
         let md = render_markdown(&rows);
         assert!(md.contains("| engine |"));
+        assert!(md.contains("prefill tok/s"));
         assert!(md.contains("beast"));
         assert!(md.contains("`30d50d6`"));
         assert!(md.contains("0.123"));
+        // p95 column rendered.
+        assert!(md.contains("0.222"));
     }
 
     #[test]
@@ -99,6 +120,13 @@ mod tests {
             ttft_s_median: Some(0.1),
             decode_tps_median: None,
             total_s_median: Some(0.5),
+            ttft_s_p95: Some(0.1),
+            ttft_s_p99: Some(0.1),
+            total_s_p95: Some(0.5),
+            total_s_p99: Some(0.5),
+            prefill_ms_median: None,
+            decode_ms_median: None,
+            prefill_tps_median: None,
             samples: 1,
             gpu: None,
         }];
