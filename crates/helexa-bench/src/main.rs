@@ -43,6 +43,14 @@ enum Command {
         #[arg(short, long, default_value = "helexa-bench.toml")]
         config: String,
     },
+    /// Measure cold-load / model-swap cost (#90): for each neuron target's
+    /// warm models, unload → time reload → time a cold first request, recorded
+    /// under scenario "swap". DELIBERATE — takes each model offline for its
+    /// reload, so run it in a maintenance window, not against live traffic.
+    SwapCost {
+        #[arg(short, long, default_value = "helexa-bench.toml")]
+        config: String,
+    },
     /// Render recorded results. Uses `--db` if given, else the db_path
     /// from `--config`.
     Report {
@@ -59,6 +67,10 @@ enum Command {
         /// results table (#88).
         #[arg(long)]
         scaling: bool,
+        /// Render the cold-load / model-swap cost view (#90) instead of the
+        /// flat results table.
+        #[arg(long)]
+        swap: bool,
     },
 }
 
@@ -127,18 +139,41 @@ async fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
+        Command::SwapCost { config } => {
+            let cfg = load_config(&config)?;
+            require_targets(&cfg)?;
+            let sweeper = Sweeper::new(cfg)?;
+            tracing::warn!(
+                "swap-cost: cycling each warm model (unload → reload → cold request); models go offline during reload"
+            );
+            let summary = sweeper.swap_cost_once().await?;
+            tracing::info!(
+                measured = summary.measured,
+                failed = summary.failed,
+                unreachable = summary.targets_unreachable,
+                "swap-cost measurement complete"
+            );
+            Ok(())
+        }
         Command::Report {
             config,
             db,
             format,
             scaling,
+            swap,
         } => {
             let db_path = match db {
                 Some(p) => p,
                 None => load_config(&config)?.bench.db_path,
             };
             let store = Store::open(&db_path)?;
-            let rendered = if scaling {
+            let rendered = if swap {
+                let costs = store.swap_costs()?;
+                match format {
+                    Format::Md => report::render_swap_markdown(&costs),
+                    Format::Json => report::render_swap_json(&costs)?,
+                }
+            } else if scaling {
                 let curves = store.scaling()?;
                 match format {
                     Format::Md => report::render_scaling_markdown(&curves),

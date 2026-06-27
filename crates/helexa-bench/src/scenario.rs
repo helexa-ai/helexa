@@ -141,6 +141,17 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
     scenarios
 }
 
+/// A single small streamed request, timed like a chat-latency run. Used by
+/// the swap-cost measurement (#90) to capture the cold first-request latency
+/// straight after a reload. Reuses the shared SSE-timing core.
+pub async fn cold_probe(ctx: &RunCtx<'_>) -> Result<ScenarioMetrics> {
+    let prompt = build_prompt(128);
+    let payload = chat_payload(ctx, &prompt);
+    tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload))
+        .await
+        .map_err(|_| anyhow!("cold probe timed out after {:?}", ctx.timeout))?
+}
+
 /// The chat-completions request body shared by the latency and concurrency
 /// scenarios — streamed, deterministic (temperature 0), usage included.
 fn chat_payload(ctx: &RunCtx, prompt: &str) -> serde_json::Value {
