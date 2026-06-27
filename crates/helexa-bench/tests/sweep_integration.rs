@@ -91,6 +91,7 @@ fn config_for(endpoint: String, db_path: String) -> BenchConfig {
             max_tokens: 16,
             concurrency_levels: Vec::new(),
             concurrency_prompt_tokens: 512,
+            capability_probes: Vec::new(),
         },
         api: Default::default(),
         targets: vec![TargetConfig {

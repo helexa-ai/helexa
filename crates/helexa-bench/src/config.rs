@@ -113,6 +113,28 @@ pub struct ScenarioConfig {
     /// Approximate prompt size (tokens) used by the concurrency scenarios.
     #[serde(default = "default_concurrency_prompt_tokens")]
     pub concurrency_prompt_tokens: u32,
+    /// Capability probes (#91): one `capability:<name>` scenario per entry,
+    /// each running a fixed prompt and storing the full output artifact for
+    /// quality scoring (manual now, LLM-judge later). Defaults to empty
+    /// (opt-in) — these generate long outputs and exist to compare reasoning
+    /// quality across models, not to run on every sweep by default.
+    #[serde(default)]
+    pub capability_probes: Vec<CapabilityProbe>,
+}
+
+/// One capability probe: a named prompt whose output is stored and scored
+/// for quality (#91). The probe is deterministic (temperature 0) so the
+/// same model+build produces a stable artifact to score.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityProbe {
+    /// Stable id fragment — the scenario becomes `capability:<name>`.
+    pub name: String,
+    /// The prompt sent verbatim as the user message.
+    pub prompt: String,
+    /// Generation budget for the probe (planning answers are long; the
+    /// default 256 is too small). Defaults to 2048.
+    #[serde(default = "default_capability_max_tokens")]
+    pub max_tokens: u64,
 }
 
 impl Default for ScenarioConfig {
@@ -122,6 +144,7 @@ impl Default for ScenarioConfig {
             max_tokens: default_max_tokens(),
             concurrency_levels: Vec::new(),
             concurrency_prompt_tokens: default_concurrency_prompt_tokens(),
+            capability_probes: Vec::new(),
         }
     }
 }
@@ -200,6 +223,9 @@ fn default_max_tokens() -> u64 {
 }
 fn default_concurrency_prompt_tokens() -> u32 {
     512
+}
+fn default_capability_max_tokens() -> u64 {
+    2048
 }
 
 #[cfg(test)]
