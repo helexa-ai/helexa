@@ -35,6 +35,7 @@ pub fn api_routes(state: ApiState) -> Router {
         .route("/api/health", get(health))
         .route("/api/dimensions", get(dimensions))
         .route("/api/summary", get(summary))
+        .route("/api/scaling", get(scaling))
         .route("/api/series", get(series))
         .route("/api/runs", get(runs))
         .layer(CorsLayer::permissive())
@@ -71,6 +72,15 @@ async fn summary(
 ) -> Result<Json<Vec<crate::store::ReportRow>>, ApiError> {
     let store = s.lock().await;
     store.summary().map(Json).map_err(err500)
+}
+
+/// Context-length scaling curves per (target, model) — prefill & decode
+/// tok/s vs context, with decode-flatness (#88).
+async fn scaling(
+    State(s): State<ApiState>,
+) -> Result<Json<Vec<crate::store::ScalingCurve>>, ApiError> {
+    let store = s.lock().await;
+    store.scaling().map(Json).map_err(err500)
 }
 
 #[derive(Debug, Deserialize)]

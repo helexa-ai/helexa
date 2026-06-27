@@ -54,6 +54,11 @@ enum Command {
         /// Output format.
         #[arg(long, default_value = "md")]
         format: Format,
+        /// Render the context-length scaling view (prefill & decode tok/s
+        /// vs context per model, with decode-flatness) instead of the flat
+        /// results table (#88).
+        #[arg(long)]
+        scaling: bool,
     },
 }
 
@@ -122,16 +127,29 @@ async fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
-        Command::Report { config, db, format } => {
+        Command::Report {
+            config,
+            db,
+            format,
+            scaling,
+        } => {
             let db_path = match db {
                 Some(p) => p,
                 None => load_config(&config)?.bench.db_path,
             };
             let store = Store::open(&db_path)?;
-            let rows = store.report_rows()?;
-            let rendered = match format {
-                Format::Md => report::render_markdown(&rows),
-                Format::Json => report::render_json(&rows)?,
+            let rendered = if scaling {
+                let curves = store.scaling()?;
+                match format {
+                    Format::Md => report::render_scaling_markdown(&curves),
+                    Format::Json => report::render_scaling_json(&curves)?,
+                }
+            } else {
+                let rows = store.report_rows()?;
+                match format {
+                    Format::Md => report::render_markdown(&rows),
+                    Format::Json => report::render_json(&rows)?,
+                }
             };
             println!("{rendered}");
             Ok(())

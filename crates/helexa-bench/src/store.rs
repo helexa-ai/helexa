@@ -343,6 +343,63 @@ impl Store {
         Ok(aggregate(raws))
     }
 
+    /// Context-length scaling curves (#88): per (target, model), the latest
+    /// build's `chat:<n>` cells pivoted by prompt size into prefill & decode
+    /// tok/s vs context. The headline is `decode_flatness` — decode tok/s at
+    /// the largest context divided by the smallest. Near 1.0 confirms the
+    /// Gated-DeltaNet O(1)-in-sequence-length decode; a sharp drop locates
+    /// where the model stops scaling for free.
+    pub fn scaling(&self) -> Result<Vec<ScalingCurve>> {
+        use std::collections::BTreeMap;
+        // Reuse the already-aggregated report cells; the chat:<n> rows are
+        // exactly the per-context measurement points.
+        let mut by_model: BTreeMap<(String, String), Vec<ReportRow>> = BTreeMap::new();
+        for r in self.report_rows()? {
+            if r.scenario_id.starts_with("chat:") {
+                by_model
+                    .entry((r.target_name.clone(), r.model_id.clone()))
+                    .or_default()
+                    .push(r);
+            }
+        }
+        let mut out = Vec::new();
+        for ((target_name, model_id), mut rows) in by_model {
+            rows.sort_by_key(|r| r.prompt_size_approx);
+            let points: Vec<ScalingPoint> = rows
+                .iter()
+                .map(|r| ScalingPoint {
+                    prompt_size: r.prompt_size_approx,
+                    prompt_tokens: r.prompt_tokens,
+                    prefill_tps: r.prefill_tps_median,
+                    decode_tps: r.decode_tps_median,
+                    samples: r.samples,
+                })
+                .collect();
+            // Flatness across the smallest→largest points that both have a
+            // decode rate (skips cells where the decode window was too short).
+            let with_decode: Vec<&ScalingPoint> =
+                points.iter().filter(|p| p.decode_tps.is_some()).collect();
+            let decode_flatness = match (with_decode.first(), with_decode.last()) {
+                (Some(lo), Some(hi)) if with_decode.len() >= 2 => {
+                    match (lo.decode_tps, hi.decode_tps) {
+                        (Some(a), Some(b)) if a > 0.0 => Some(b / a),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            };
+            out.push(ScalingCurve {
+                target_name,
+                model_id,
+                git_sha: rows.first().map(|r| r.git_sha.clone()).unwrap_or_default(),
+                gpu: rows.iter().find_map(|r| r.gpu.clone()),
+                points,
+                decode_flatness,
+            });
+        }
+        Ok(out)
+    }
+
     // ── Read API surface (consumed by api.rs) ─────────────────────────
 
     /// Total recorded runs (for `/api/health`).
@@ -745,6 +802,31 @@ pub struct ReportRow {
     pub gpu: Option<String>,
 }
 
+/// One context-length scaling curve for a (target, model) at its latest
+/// build — the points ordered by prompt size, plus the decode-flatness
+/// summary (#88).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScalingCurve {
+    pub target_name: String,
+    pub model_id: String,
+    pub git_sha: String,
+    pub gpu: Option<String>,
+    pub points: Vec<ScalingPoint>,
+    /// decode tok/s at the largest context ÷ at the smallest. ~1.0 = flat
+    /// (GDN O(1) decode); <1 quantifies the drop-off. `None` with <2 points.
+    pub decode_flatness: Option<f64>,
+}
+
+/// One point on a [`ScalingCurve`]: the throughput at a given context size.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ScalingPoint {
+    pub prompt_size: u32,
+    pub prompt_tokens: Option<u64>,
+    pub prefill_tps: Option<f64>,
+    pub decode_tps: Option<f64>,
+    pub samples: usize,
+}
+
 /// Group by (target, model, scenario), keep only the latest SHA's rows
 /// (latest = the SHA of the last-inserted row, since input is id-ordered),
 /// and median each metric.
@@ -1044,6 +1126,37 @@ mod tests {
         assert_eq!(row.queue_wait_ms_median, Some(150.0)); // median(120,180)
         assert_eq!(row.rejected_median, Some(2.0)); // median(1,3)
         assert_eq!(row.ttft_p95_load_s, Some(0.9));
+    }
+
+    #[test]
+    fn scaling_pivots_chat_cells_and_computes_flatness() {
+        let s = Store::open_in_memory().unwrap();
+        // Two context points for one model: decode tok/s 50 @128, 45 @4096.
+        let mut small = rec("beast", "sha", "m", "chat:128", true);
+        small.prompt_size_approx = 128;
+        small.decode_tps = Some(50.0);
+        small.prefill_ms = Some(100);
+        small.prefill_tokens = Some(128);
+        s.insert_run(&small).unwrap();
+        let mut big = rec("beast", "sha", "m", "chat:4096", true);
+        big.prompt_size_approx = 4096;
+        big.decode_tps = Some(45.0);
+        big.prefill_ms = Some(1000);
+        big.prefill_tokens = Some(4096);
+        s.insert_run(&big).unwrap();
+        // A concurrency cell must NOT leak into the scaling curve.
+        let mut conc = rec("beast", "sha", "m", "concurrency:8", true);
+        conc.concurrency = Some(8);
+        s.insert_run(&conc).unwrap();
+
+        let curves = s.scaling().unwrap();
+        assert_eq!(curves.len(), 1);
+        let c = &curves[0];
+        assert_eq!(c.points.len(), 2); // only the two chat:<n> points
+        assert_eq!(c.points[0].prompt_size, 128); // ordered ascending
+        assert_eq!(c.points[1].prompt_size, 4096);
+        // flatness = decode@largest / decode@smallest = 45/50 = 0.9
+        assert!((c.decode_flatness.unwrap() - 0.9).abs() < 1e-9);
     }
 
     #[test]
