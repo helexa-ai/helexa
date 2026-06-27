@@ -49,6 +49,9 @@ fn rec(
         prefill_ms: if ok { Some(150) } else { None },
         decode_ms: if ok { Some(1800) } else { None },
         prefill_tokens: if ok { Some(130) } else { None },
+        vram_used_mb: if ok { Some(42000) } else { None },
+        gpu_util_pct: if ok { Some(85) } else { None },
+        gpu_temp_c: if ok { Some(63) } else { None },
         ok,
         error: if ok { None } else { Some("boom".into()) },
     }

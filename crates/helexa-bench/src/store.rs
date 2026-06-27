@@ -56,6 +56,12 @@ pub struct RunRecord {
     pub prefill_ms: Option<u64>,
     pub decode_ms: Option<u64>,
     pub prefill_tokens: Option<u64>,
+    // GPU telemetry sampled from /health around the run (#87), null for
+    // non-neuron targets or when /health was unreachable. vram_used_mb is
+    // the node sum; util/temp are the hottest single device.
+    pub vram_used_mb: Option<u64>,
+    pub gpu_util_pct: Option<u32>,
+    pub gpu_temp_c: Option<u32>,
     // outcome
     pub ok: bool,
     pub error: Option<String>,
@@ -131,6 +137,9 @@ impl Store {
                 prefill_ms           INTEGER,
                 decode_ms            INTEGER,
                 prefill_tokens       INTEGER,
+                vram_used_mb         INTEGER,
+                gpu_util_pct         INTEGER,
+                gpu_temp_c           INTEGER,
                 ok                   INTEGER NOT NULL,
                 error                TEXT
             );
@@ -153,6 +162,9 @@ impl Store {
                 ("prefill_ms", "INTEGER"),
                 ("decode_ms", "INTEGER"),
                 ("prefill_tokens", "INTEGER"),
+                ("vram_used_mb", "INTEGER"),
+                ("gpu_util_pct", "INTEGER"),
+                ("gpu_temp_c", "INTEGER"),
             ],
         )?;
         Ok(())
@@ -208,6 +220,7 @@ impl Store {
                 scenario_id, prompt_size_approx, prompt_tokens_actual, max_tokens,
                 ttft_s, decode_tps, total_s, completion_tokens,
                 prefill_ms, decode_ms, prefill_tokens,
+                vram_used_mb, gpu_util_pct, gpu_temp_c,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -219,7 +232,8 @@ impl Store {
                 ?24, ?25, ?26, ?27,
                 ?28, ?29, ?30, ?31,
                 ?32, ?33, ?34,
-                ?35, ?36
+                ?35, ?36, ?37,
+                ?38, ?39
             )",
             params![
                 r.ts,
@@ -256,6 +270,9 @@ impl Store {
                 r.prefill_ms,
                 r.decode_ms,
                 r.prefill_tokens,
+                r.vram_used_mb,
+                r.gpu_util_pct,
+                r.gpu_temp_c,
                 r.ok as i64,
                 r.error,
             ],
@@ -271,7 +288,8 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT target_name, model_id, scenario_id, prompt_size_approx, git_sha,
                     ttft_s, decode_tps, total_s, prompt_tokens_actual, gpus_json,
-                    prefill_ms, decode_ms, prefill_tokens
+                    prefill_ms, decode_ms, prefill_tokens,
+                    vram_used_mb, gpu_util_pct, gpu_temp_c
              FROM runs
              WHERE ok=1
              ORDER BY target_name, model_id, scenario_id, id",
@@ -291,6 +309,9 @@ impl Store {
                 prefill_ms: row.get(10)?,
                 decode_ms: row.get(11)?,
                 prefill_tokens: row.get(12)?,
+                vram_used_mb: row.get(13)?,
+                gpu_util_pct: row.get(14)?,
+                gpu_temp_c: row.get(15)?,
             })
         })?;
         let raws: Vec<RawRow> = rows.collect::<rusqlite::Result<_>>()?;
@@ -429,7 +450,8 @@ impl Store {
             "SELECT id, ts, target_name, hostname, git_sha, build_timestamp, package_version,
                     model_id, harness, scenario_id, prompt_size_approx, prompt_tokens_actual,
                     max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error,
-                    gpus_json, prefill_ms, decode_ms, prefill_tokens
+                    gpus_json, prefill_ms, decode_ms, prefill_tokens,
+                    vram_used_mb, gpu_util_pct, gpu_temp_c
              FROM runs",
         );
         let mut conds: Vec<String> = Vec::new();
@@ -488,6 +510,9 @@ impl Store {
                     prefill_ms: r.get(20)?,
                     decode_ms: r.get(21)?,
                     prefill_tokens: r.get(22)?,
+                    vram_used_mb: r.get(23)?,
+                    gpu_util_pct: r.get(24)?,
+                    gpu_temp_c: r.get(25)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -610,6 +635,9 @@ pub struct RunRow {
     pub prefill_ms: Option<u64>,
     pub decode_ms: Option<u64>,
     pub prefill_tokens: Option<u64>,
+    pub vram_used_mb: Option<u64>,
+    pub gpu_util_pct: Option<u64>,
+    pub gpu_temp_c: Option<u64>,
     pub ok: bool,
     pub error: Option<String>,
 }
@@ -628,6 +656,9 @@ struct RawRow {
     prefill_ms: Option<u64>,
     decode_ms: Option<u64>,
     prefill_tokens: Option<u64>,
+    vram_used_mb: Option<u64>,
+    gpu_util_pct: Option<u64>,
+    gpu_temp_c: Option<u64>,
 }
 
 /// An aggregated cell ready for the report table.
@@ -655,6 +686,14 @@ pub struct ReportRow {
     pub prefill_ms_median: Option<f64>,
     pub decode_ms_median: Option<f64>,
     pub prefill_tps_median: Option<f64>,
+    /// GPU telemetry sampled from /health around the run (#87). `vram_used_mb`
+    /// is the node sum; `vram_total_mb` (from discovery) lets the report show
+    /// real headroom — the "2/3 used" hunch as a number. util/temp are the
+    /// hottest device. All `None` for non-neuron targets.
+    pub vram_used_mb_median: Option<f64>,
+    pub vram_total_mb: Option<u64>,
+    pub gpu_util_pct_median: Option<f64>,
+    pub gpu_temp_c_median: Option<f64>,
     pub samples: usize,
     /// Public-facing resource name (the host's GPU(s)), e.g. "2× RTX 5090".
     pub gpu: Option<String>,
@@ -705,6 +744,16 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
             prefill_ms_median: median(cell.iter().filter_map(|r| r.prefill_ms.map(|m| m as f64))),
             decode_ms_median: median(cell.iter().filter_map(|r| r.decode_ms.map(|m| m as f64))),
             prefill_tps_median: median(cell.iter().filter_map(prefill_tps)),
+            vram_used_mb_median: median(
+                cell.iter().filter_map(|r| r.vram_used_mb.map(|v| v as f64)),
+            ),
+            vram_total_mb: cell
+                .iter()
+                .find_map(|r| r.gpus_json.as_deref().and_then(gpu_total_vram_mb)),
+            gpu_util_pct_median: median(
+                cell.iter().filter_map(|r| r.gpu_util_pct.map(|v| v as f64)),
+            ),
+            gpu_temp_c_median: median(cell.iter().filter_map(|r| r.gpu_temp_c.map(|v| v as f64))),
             samples: cell.len(),
             gpu: cell
                 .iter()
@@ -712,6 +761,19 @@ fn aggregate(raws: Vec<RawRow>) -> Vec<ReportRow> {
         });
     }
     out
+}
+
+/// Node total VRAM in MB, summed across the devices in a run's stored
+/// `gpus_json` (the discovery `DeviceInfo` list, each with `vram_total_mb`).
+/// Pairs with the sampled `vram_used_mb` to report real headroom (#87).
+/// `None` when empty/absent or no device declares a total.
+fn gpu_total_vram_mb(gpus_json: &str) -> Option<u64> {
+    let devices: Vec<serde_json::Value> = serde_json::from_str(gpus_json).ok()?;
+    let total: u64 = devices
+        .iter()
+        .filter_map(|d| d.get("vram_total_mb").and_then(|v| v.as_u64()))
+        .sum();
+    (total > 0).then_some(total)
 }
 
 /// Compact GPU label from a run's stored `gpus_json` (the discovery device
@@ -820,6 +882,9 @@ mod tests {
             prefill_ms: Some(200),
             decode_ms: Some(1000),
             prefill_tokens: Some(130),
+            vram_used_mb: Some(42000),
+            gpu_util_pct: Some(88),
+            gpu_temp_c: Some(64),
             ok,
             error: if ok { None } else { Some("boom".into()) },
         }
@@ -882,6 +947,33 @@ mod tests {
         // prefill tok/s = 400 tok / ~0.2 s ≈ 2000 tok/s.
         assert!(row.prefill_tps_median.unwrap() > 1900.0);
         assert!(row.prefill_ms_median.is_some());
+    }
+
+    #[test]
+    fn report_surfaces_vram_and_gpu_telemetry() {
+        let s = Store::open_in_memory().unwrap();
+        let mut r = rec("beast", "sha", "m", "chat:128", true);
+        // Node total VRAM from discovery devices → headroom denominator.
+        r.gpus_json =
+            Some(r#"[{"name":"RTX 5090","vram_total_mb":32000},{"name":"RTX 5090","vram_total_mb":32000}]"#.into());
+        r.vram_used_mb = Some(42000);
+        r.gpu_util_pct = Some(90);
+        r.gpu_temp_c = Some(66);
+        s.insert_run(&r).unwrap();
+        let rows = s.report_rows().unwrap();
+        let row = &rows[0];
+        assert_eq!(row.vram_used_mb_median, Some(42000.0));
+        assert_eq!(row.vram_total_mb, Some(64000)); // 2× 32000
+        assert_eq!(row.gpu_util_pct_median, Some(90.0));
+        assert_eq!(row.gpu_temp_c_median, Some(66.0));
+    }
+
+    #[test]
+    fn gpu_total_vram_sums_devices() {
+        let j = r#"[{"vram_total_mb":32000},{"vram_total_mb":32000}]"#;
+        assert_eq!(gpu_total_vram_mb(j), Some(64000));
+        assert_eq!(gpu_total_vram_mb("[]"), None);
+        assert_eq!(gpu_total_vram_mb("not json"), None);
     }
 
     #[test]
