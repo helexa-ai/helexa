@@ -4005,6 +4005,11 @@ impl CandleHarness {
                 // call — promotes the terminal finish_reason to ToolCalls
                 // so Anthropic clients see stop_reason: tool_use.
                 let mut emitted_tool_call = false;
+                // Prefill/decode split timers (#85). Declared outside 'work
+                // so the terminal Finish — built after the block exits — can
+                // read them; populated at the prefill→decode boundary inside.
+                let mut prefill_ms_measured: u32 = 0;
+                let mut decode_start: Option<std::time::Instant> = None;
 
                 'work: {
                     // Prefix-cache decision (#11): vision requests
@@ -4133,6 +4138,7 @@ impl CandleHarness {
                         }
                     };
                     let prefill_elapsed = prefill_start.elapsed();
+                    prefill_ms_measured = prefill_elapsed.as_millis() as u32;
                     tp_for_task
                         .prefill_rate
                         .record(prompt_len, prefill_elapsed);
@@ -4166,7 +4172,7 @@ impl CandleHarness {
                             }
                         };
                     // Decode-phase timer for the Finish prefill/decode split (#85).
-                    let decode_start = std::time::Instant::now();
+                    decode_start = Some(std::time::Instant::now());
 
                     if Some(next_token) == eos_id {
                         finish_reason = FinishReason::Stop;
@@ -4445,8 +4451,10 @@ impl CandleHarness {
                             completion_tokens: all_tokens.len() as u32,
                             reasoning_tokens: reasoning_token_count,
                             timing: Some(FinishTiming {
-                                prefill_ms: prefill_elapsed.as_millis() as u32,
-                                decode_ms: decode_start.elapsed().as_millis() as u32,
+                                prefill_ms: prefill_ms_measured,
+                                decode_ms: decode_start
+                                    .map(|d| d.elapsed().as_millis() as u32)
+                                    .unwrap_or(0),
                                 prefill_tokens: prompt_len as u32,
                             }),
                         })
