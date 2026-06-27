@@ -68,6 +68,11 @@ pub struct RunRecord {
     pub ttft_p95_s: Option<f64>,
     pub queue_wait_ms: Option<f64>,
     pub rejected: Option<u32>,
+    // cold-load / model-swap cost (#90), set only by the deliberate
+    // `swap-cost` measurement (scenario_id = "swap"). The other metric
+    // fields carry the cold first-request after reload.
+    pub swap_unload_ms: Option<u64>,
+    pub swap_load_ms: Option<u64>,
     // outcome
     pub ok: bool,
     pub error: Option<String>,
@@ -150,6 +155,8 @@ impl Store {
                 ttft_p95_s           REAL,
                 queue_wait_ms        REAL,
                 rejected             INTEGER,
+                swap_unload_ms       INTEGER,
+                swap_load_ms         INTEGER,
                 ok                   INTEGER NOT NULL,
                 error                TEXT
             );
@@ -179,6 +186,8 @@ impl Store {
                 ("ttft_p95_s", "REAL"),
                 ("queue_wait_ms", "REAL"),
                 ("rejected", "INTEGER"),
+                ("swap_unload_ms", "INTEGER"),
+                ("swap_load_ms", "INTEGER"),
             ],
         )?;
         Ok(())
@@ -236,6 +245,7 @@ impl Store {
                 prefill_ms, decode_ms, prefill_tokens,
                 vram_used_mb, gpu_util_pct, gpu_temp_c,
                 concurrency, ttft_p95_s, queue_wait_ms, rejected,
+                swap_unload_ms, swap_load_ms,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -249,7 +259,8 @@ impl Store {
                 ?32, ?33, ?34,
                 ?35, ?36, ?37,
                 ?38, ?39, ?40, ?41,
-                ?42, ?43
+                ?42, ?43,
+                ?44, ?45
             )",
             params![
                 r.ts,
@@ -293,6 +304,8 @@ impl Store {
                 r.ttft_p95_s,
                 r.queue_wait_ms,
                 r.rejected,
+                r.swap_unload_ms,
+                r.swap_load_ms,
                 r.ok as i64,
                 r.error,
             ],
@@ -395,6 +408,69 @@ impl Store {
                 gpu: rows.iter().find_map(|r| r.gpu.clone()),
                 points,
                 decode_flatness,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Cold-load / model-swap costs (#90): per (target, model) at the latest
+    /// build, the median unload→reload latency and the cold first-request
+    /// latency after reload (the `scenario_id = "swap"` rows).
+    pub fn swap_costs(&self) -> Result<Vec<SwapCost>> {
+        use std::collections::BTreeMap;
+        let mut stmt = self.conn.prepare(
+            "SELECT target_name, model_id, git_sha, gpus_json,
+                    swap_unload_ms, swap_load_ms, ttft_s, total_s
+             FROM runs
+             WHERE ok=1 AND scenario_id='swap'
+             ORDER BY target_name, model_id, id",
+        )?;
+        struct Raw {
+            target: String,
+            model: String,
+            sha: String,
+            gpus_json: Option<String>,
+            unload_ms: Option<f64>,
+            load_ms: Option<f64>,
+            ttft_s: Option<f64>,
+            total_s: Option<f64>,
+        }
+        let raws: Vec<Raw> = stmt
+            .query_map([], |r| {
+                Ok(Raw {
+                    target: r.get(0)?,
+                    model: r.get(1)?,
+                    sha: r.get(2)?,
+                    gpus_json: r.get(3)?,
+                    unload_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as f64),
+                    load_ms: r.get::<_, Option<i64>>(5)?.map(|v| v as f64),
+                    ttft_s: r.get(6)?,
+                    total_s: r.get(7)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        let mut by: BTreeMap<(String, String), Vec<Raw>> = BTreeMap::new();
+        for r in raws {
+            by.entry((r.target.clone(), r.model.clone()))
+                .or_default()
+                .push(r);
+        }
+        let mut out = Vec::new();
+        for ((target, model), rows) in by {
+            let latest = rows.last().map(|r| r.sha.clone()).unwrap_or_default();
+            let cell: Vec<&Raw> = rows.iter().filter(|r| r.sha == latest).collect();
+            out.push(SwapCost {
+                target_name: target,
+                model_id: model,
+                git_sha: latest,
+                gpu: cell
+                    .iter()
+                    .find_map(|r| r.gpus_json.as_deref().and_then(gpu_label)),
+                unload_ms_median: median(cell.iter().filter_map(|r| r.unload_ms)),
+                load_ms_median: median(cell.iter().filter_map(|r| r.load_ms)),
+                cold_ttft_s_median: median(cell.iter().filter_map(|r| r.ttft_s)),
+                cold_total_s_median: median(cell.iter().filter_map(|r| r.total_s)),
+                samples: cell.len(),
             });
         }
         Ok(out)
@@ -534,7 +610,8 @@ impl Store {
                     max_tokens, ttft_s, decode_tps, total_s, completion_tokens, ok, error,
                     gpus_json, prefill_ms, decode_ms, prefill_tokens,
                     vram_used_mb, gpu_util_pct, gpu_temp_c,
-                    concurrency, ttft_p95_s, queue_wait_ms, rejected
+                    concurrency, ttft_p95_s, queue_wait_ms, rejected,
+                    swap_unload_ms, swap_load_ms
              FROM runs",
         );
         let mut conds: Vec<String> = Vec::new();
@@ -600,6 +677,8 @@ impl Store {
                     ttft_p95_s: r.get(27)?,
                     queue_wait_ms: r.get(28)?,
                     rejected: r.get(29)?,
+                    swap_unload_ms: r.get(30)?,
+                    swap_load_ms: r.get(31)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -729,6 +808,8 @@ pub struct RunRow {
     pub ttft_p95_s: Option<f64>,
     pub queue_wait_ms: Option<f64>,
     pub rejected: Option<u64>,
+    pub swap_unload_ms: Option<u64>,
+    pub swap_load_ms: Option<u64>,
     pub ok: bool,
     pub error: Option<String>,
 }
@@ -815,6 +896,26 @@ pub struct ScalingCurve {
     /// decode tok/s at the largest context ÷ at the smallest. ~1.0 = flat
     /// (GDN O(1) decode); <1 quantifies the drop-off. `None` with <2 points.
     pub decode_flatness: Option<f64>,
+}
+
+/// Cold-load / model-swap cost for a (target, model) at its latest build
+/// (#90): the reload latency and the cold first-request after it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SwapCost {
+    pub target_name: String,
+    pub model_id: String,
+    pub git_sha: String,
+    pub gpu: Option<String>,
+    /// Time to free the model (`POST /models/unload`), ms.
+    pub unload_ms_median: Option<f64>,
+    /// Time to reload it (`POST /models/load`, synchronous), ms — the
+    /// headline swap cost feeding the vision cold-swap policy (F4e).
+    pub load_ms_median: Option<f64>,
+    /// TTFT of the first request after reload (cold caches), seconds.
+    pub cold_ttft_s_median: Option<f64>,
+    /// Total wall-clock of that cold first request, seconds.
+    pub cold_total_s_median: Option<f64>,
+    pub samples: usize,
 }
 
 /// One point on a [`ScalingCurve`]: the throughput at a given context size.
@@ -1021,6 +1122,8 @@ mod tests {
             ttft_p95_s: None,
             queue_wait_ms: None,
             rejected: None,
+            swap_unload_ms: None,
+            swap_load_ms: None,
             ok,
             error: if ok { None } else { Some("boom".into()) },
         }
@@ -1126,6 +1229,29 @@ mod tests {
         assert_eq!(row.queue_wait_ms_median, Some(150.0)); // median(120,180)
         assert_eq!(row.rejected_median, Some(2.0)); // median(1,3)
         assert_eq!(row.ttft_p95_load_s, Some(0.9));
+    }
+
+    #[test]
+    fn swap_costs_pivots_swap_rows() {
+        let s = Store::open_in_memory().unwrap();
+        for (unload, load) in [(300u64, 24000u64), (340, 26000)] {
+            let mut r = rec("beast", "sha", "m", "swap", true);
+            r.swap_unload_ms = Some(unload);
+            r.swap_load_ms = Some(load);
+            r.ttft_s = Some(2.5); // cold first-request
+            r.total_s = Some(5.0);
+            s.insert_run(&r).unwrap();
+        }
+        // A non-swap row must be ignored by swap_costs.
+        s.insert_run(&rec("beast", "sha", "m", "chat:128", true))
+            .unwrap();
+        let costs = s.swap_costs().unwrap();
+        assert_eq!(costs.len(), 1);
+        let c = &costs[0];
+        assert_eq!(c.unload_ms_median, Some(320.0)); // median(300,340)
+        assert_eq!(c.load_ms_median, Some(25000.0)); // median(24000,26000)
+        assert_eq!(c.cold_ttft_s_median, Some(2.5));
+        assert_eq!(c.samples, 2);
     }
 
     #[test]

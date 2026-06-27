@@ -56,6 +56,8 @@ fn rec(
         ttft_p95_s: None,
         queue_wait_ms: None,
         rejected: None,
+        swap_unload_ms: None,
+        swap_load_ms: None,
         ok,
         error: if ok { None } else { Some("boom".into()) },
     }

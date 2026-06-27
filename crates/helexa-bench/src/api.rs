@@ -36,6 +36,7 @@ pub fn api_routes(state: ApiState) -> Router {
         .route("/api/dimensions", get(dimensions))
         .route("/api/summary", get(summary))
         .route("/api/scaling", get(scaling))
+        .route("/api/swap", get(swap))
         .route("/api/series", get(series))
         .route("/api/runs", get(runs))
         .layer(CorsLayer::permissive())
@@ -81,6 +82,13 @@ async fn scaling(
 ) -> Result<Json<Vec<crate::store::ScalingCurve>>, ApiError> {
     let store = s.lock().await;
     store.scaling().map(Json).map_err(err500)
+}
+
+/// Cold-load / model-swap costs per (target, model) — reload latency + cold
+/// first-request (#90).
+async fn swap(State(s): State<ApiState>) -> Result<Json<Vec<crate::store::SwapCost>>, ApiError> {
+    let store = s.lock().await;
+    store.swap_costs().map(Json).map_err(err500)
 }
 
 #[derive(Debug, Deserialize)]

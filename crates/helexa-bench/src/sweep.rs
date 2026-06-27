@@ -48,6 +48,13 @@ struct HealthAgg {
     gpu_temp_c: u32,
 }
 
+/// Cold-load / model-swap timing for one measure_swap cycle (#90).
+#[derive(Debug, Clone, Copy)]
+struct SwapTiming {
+    unload_ms: u64,
+    load_ms: u64,
+}
+
 impl HealthAgg {
     fn from_health(h: &HealthResponse) -> Self {
         HealthAgg {
@@ -95,6 +102,105 @@ impl Sweeper {
             );
             tokio::time::sleep(self.cfg.bench.sweep_interval()).await;
         }
+    }
+
+    /// Deliberate cold-load / model-swap cost measurement (#90), invoked by
+    /// the `swap-cost` subcommand — **never** the continuous sweep. For each
+    /// neuron target and each currently-warm model: unload it, time the
+    /// reload, then time a cold first request. This takes the model offline
+    /// for the reload, so it is an explicit operator action (maintenance
+    /// window), recorded under `scenario_id = "swap"`.
+    pub async fn swap_cost_once(&self) -> Result<SweepSummary> {
+        let mut summary = SweepSummary::default();
+        for target in &self.cfg.targets {
+            if target.kind != TargetKind::Neuron {
+                continue; // load/unload is a neuron-native operation
+            }
+            let build = match self.client.fetch_version(target).await {
+                Ok(b) => b,
+                Err(e) => {
+                    summary.targets_unreachable += 1;
+                    tracing::warn!(target = %target.name, error = %format!("{e:#}"), "swap: target unreachable");
+                    continue;
+                }
+            };
+            let discovery = self.client.fetch_discovery(target).await.unwrap_or(None);
+            let models = self.client.warm_models(target).await.unwrap_or_default();
+            for model in &models {
+                match self
+                    .measure_swap(target, &build, discovery.as_ref(), model)
+                    .await
+                {
+                    Ok(()) => summary.measured += 1,
+                    Err(e) => {
+                        summary.failed += 1;
+                        tracing::warn!(target = %target.name, model = %model.id, error = %format!("{e:#}"), "swap: measurement failed");
+                    }
+                }
+            }
+        }
+        Ok(summary)
+    }
+
+    /// Unload → timed reload → timed cold first request for one model.
+    async fn measure_swap(
+        &self,
+        target: &TargetConfig,
+        build: &BuildInfo,
+        discovery: Option<&DiscoveryResponse>,
+        model: &ModelInfo,
+    ) -> Result<()> {
+        let spec = TargetClient::spec_from_info(model)?;
+        tracing::warn!(target = %target.name, model = %model.id, "swap: unloading (model goes offline until reload)");
+
+        let t0 = std::time::Instant::now();
+        self.client.unload_model(target, &model.id).await?;
+        let unload_ms = t0.elapsed().as_millis() as u64;
+
+        let t1 = std::time::Instant::now();
+        self.client.load_model(target, &spec).await?;
+        let load_ms = t1.elapsed().as_millis() as u64;
+        tracing::info!(target = %target.name, model = %model.id, unload_ms, load_ms, "swap: reloaded; measuring cold first request");
+
+        // Cold first request — caches empty straight after the load.
+        let ctx = RunCtx {
+            client: self.client.http(),
+            chat_url: self.client.chat_url(target),
+            model_id: model.id.clone(),
+            max_tokens: self.cfg.scenarios.max_tokens,
+            timeout: self.cfg.bench.request_timeout(),
+        };
+        let cold = crate::scenario::cold_probe(&ctx).await;
+        let swap = SwapTiming { unload_ms, load_ms };
+        let rec = match &cold {
+            Ok(m) => self.build_record(
+                target,
+                build,
+                discovery,
+                model,
+                "swap",
+                0,
+                Ok(m),
+                None,
+                Some(swap),
+            ),
+            Err(e) => {
+                let msg = format!("{e:#}");
+                self.build_record(
+                    target,
+                    build,
+                    discovery,
+                    model,
+                    "swap",
+                    0,
+                    Err(&msg),
+                    None,
+                    Some(swap),
+                )
+            }
+        };
+        self.store.insert_run(&rec)?;
+        Ok(())
     }
 
     /// One full pass over all targets.
@@ -181,6 +287,7 @@ impl Sweeper {
                                 scenario.prompt_size(),
                                 Ok(&m),
                                 health,
+                                None,
                             );
                             self.store.insert_run(&rec)?;
                             summary.measured += 1;
@@ -201,6 +308,7 @@ impl Sweeper {
                                 scenario.prompt_size(),
                                 Err(&msg),
                                 health,
+                                None,
                             );
                             self.store.insert_run(&rec)?;
                             summary.failed += 1;
@@ -228,6 +336,7 @@ impl Sweeper {
         prompt_size: u32,
         result: Result<&crate::scenario::ScenarioMetrics, &str>,
         health: Option<HealthAgg>,
+        swap: Option<SwapTiming>,
     ) -> RunRecord {
         let (m, error): (Option<&ScenarioMetrics>, Option<String>) = match result {
             Ok(m) => (Some(m), None),
@@ -281,6 +390,8 @@ impl Sweeper {
             ttft_p95_s: m.and_then(|m| m.ttft_p95_s),
             queue_wait_ms: m.and_then(|m| m.queue_wait_ms_median),
             rejected: m.and_then(|m| m.rejected),
+            swap_unload_ms: swap.map(|s| s.unload_ms),
+            swap_load_ms: swap.map(|s| s.load_ms),
             ok,
             error,
         }

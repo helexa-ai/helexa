@@ -3,7 +3,7 @@
 //! doc: engine, model, prompt tok, TTFT (s), decode tok/s, total (s),
 //! plus the build SHA each cell was measured against.
 
-use crate::store::{ReportRow, ScalingCurve};
+use crate::store::{ReportRow, ScalingCurve, SwapCost};
 use anyhow::Result;
 
 pub fn render_markdown(rows: &[ReportRow]) -> String {
@@ -136,6 +136,42 @@ pub fn render_scaling_json(curves: &[ScalingCurve]) -> Result<String> {
     Ok(serde_json::to_string_pretty(curves)?)
 }
 
+/// Cold-load / model-swap cost view (#90): reload latency + cold
+/// first-request per model.
+pub fn render_swap_markdown(costs: &[SwapCost]) -> String {
+    let mut out = String::new();
+    out.push_str(
+        "| engine | model | unload (s) | reload (s) | cold TTFT (s) | cold total (s) | build | n |\n",
+    );
+    out.push_str("|---|---|---:|---:|---:|---:|---|---:|\n");
+    for c in costs {
+        out.push_str(&format!(
+            "| {} | {} | {} | {} | {} | {} | `{}` | {} |\n",
+            c.target_name,
+            c.model_id,
+            fmt_ms_as_s(c.unload_ms_median),
+            fmt_ms_as_s(c.load_ms_median),
+            fmt_opt(c.cold_ttft_s_median, 3),
+            fmt_opt(c.cold_total_s_median, 3),
+            c.git_sha,
+            c.samples,
+        ));
+    }
+    out
+}
+
+pub fn render_swap_json(costs: &[SwapCost]) -> Result<String> {
+    Ok(serde_json::to_string_pretty(costs)?)
+}
+
+/// Milliseconds rendered as seconds (reload costs read naturally in s).
+fn fmt_ms_as_s(ms: Option<f64>) -> String {
+    match ms {
+        Some(x) => format!("{:.2}", x / 1000.0),
+        None => "—".to_string(),
+    }
+}
+
 fn fmt_opt(v: Option<f64>, places: usize) -> String {
     match v {
         Some(x) => format!("{x:.places$}"),
@@ -165,6 +201,26 @@ fn fmt_vram(used_mb: Option<f64>, total_mb: Option<u64>) -> String {
 mod tests {
     use super::*;
     use crate::store::{ScalingCurve, ScalingPoint};
+
+    #[test]
+    fn swap_markdown_renders_reload_and_cold_costs() {
+        let costs = vec![SwapCost {
+            target_name: "beast".into(),
+            model_id: "Qwen/Qwen3.6-27B".into(),
+            git_sha: "abc1234".into(),
+            gpu: Some("2× RTX 5090".into()),
+            unload_ms_median: Some(320.0),
+            load_ms_median: Some(25000.0),
+            cold_ttft_s_median: Some(2.5),
+            cold_total_s_median: Some(5.0),
+            samples: 3,
+        }];
+        let md = render_swap_markdown(&costs);
+        assert!(md.contains("reload (s)"));
+        assert!(md.contains("beast"));
+        assert!(md.contains("25.00")); // 25000 ms → 25.00 s
+        assert!(md.contains("2.500"));
+    }
 
     #[test]
     fn scaling_markdown_renders_curve_and_flatness() {

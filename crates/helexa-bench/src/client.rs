@@ -3,10 +3,10 @@
 //! `openai` targets use the OpenAI-compatible surface (preliminary).
 
 use crate::config::{TargetConfig, TargetKind};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use cortex_core::build_info::BuildInfo;
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
-use cortex_core::harness::ModelInfo;
+use cortex_core::harness::{ModelInfo, ModelSpec};
 use cortex_core::openai::ModelsResponse;
 use std::time::Duration;
 
@@ -118,6 +118,58 @@ impl TargetClient {
             .await
             .context("decoding /health")?;
         Ok(Some(health))
+    }
+
+    /// Unload a model (neuron only): `POST /models/unload {model_id}`.
+    /// Used by the deliberate swap-cost measurement (#90), never the sweep.
+    pub async fn unload_model(&self, target: &TargetConfig, model_id: &str) -> Result<()> {
+        let base = target.endpoint.trim_end_matches('/');
+        self.http
+            .post(format!("{base}/models/unload"))
+            .json(&serde_json::json!({ "model_id": model_id }))
+            .send()
+            .await
+            .context("POST /models/unload")?
+            .error_for_status()
+            .context("POST /models/unload status")?;
+        Ok(())
+    }
+
+    /// Load a model from a spec (neuron only): `POST /models/load`. neuron
+    /// returns synchronously once loaded, so the call duration is the reload
+    /// cost the swap-cost measurement records (#90).
+    pub async fn load_model(&self, target: &TargetConfig, spec: &ModelSpec) -> Result<()> {
+        let base = target.endpoint.trim_end_matches('/');
+        self.http
+            .post(format!("{base}/models/load"))
+            .json(spec)
+            // A cold load can take tens of seconds; use the full request
+            // timeout rather than the short metadata one.
+            .send()
+            .await
+            .context("POST /models/load")?
+            .error_for_status()
+            .context("POST /models/load status")?;
+        Ok(())
+    }
+
+    /// Reconstruct a reload [`ModelSpec`] from a model's `/models` entry.
+    /// Tensor-parallel is inferred from the device count; `quant` is left
+    /// `None` for neuron to resolve from the catalogue / its prior load.
+    pub fn spec_from_info(info: &ModelInfo) -> Result<ModelSpec> {
+        if info.devices.is_empty() {
+            return Err(anyhow!(
+                "model '{}' reports no devices; cannot reconstruct a load spec",
+                info.id
+            ));
+        }
+        Ok(ModelSpec {
+            model_id: info.id.clone(),
+            harness: info.harness.clone(),
+            quant: None,
+            tensor_parallel: (info.devices.len() > 1).then_some(info.devices.len() as u32),
+            devices: Some(info.devices.clone()),
+        })
     }
 
     /// Warm models — those ready to serve without a cold load.
