@@ -3,7 +3,7 @@
 //! doc: engine, model, prompt tok, TTFT (s), decode tok/s, total (s),
 //! plus the build SHA each cell was measured against.
 
-use crate::store::ReportRow;
+use crate::store::{ReportRow, ScalingCurve};
 use anyhow::Result;
 
 pub fn render_markdown(rows: &[ReportRow]) -> String {
@@ -77,6 +77,65 @@ pub fn render_json(rows: &[ReportRow]) -> Result<String> {
     Ok(serde_json::to_string_pretty(&arr)?)
 }
 
+/// Context-length scaling view (#88): one block per (target, model) with
+/// prefill & decode tok/s vs context, then the decode-flatness verdict.
+pub fn render_scaling_markdown(curves: &[ScalingCurve]) -> String {
+    let mut out = String::new();
+    for c in curves {
+        let gpu = c.gpu.as_deref().unwrap_or("");
+        out.push_str(&format!(
+            "### {} · {}  (`{}`{})\n\n",
+            c.target_name,
+            c.model_id,
+            c.git_sha,
+            if gpu.is_empty() {
+                String::new()
+            } else {
+                format!(", {gpu}")
+            },
+        ));
+        out.push_str("| ctx tok | prefill tok/s | decode tok/s | n |\n");
+        out.push_str("|---:|---:|---:|---:|\n");
+        for p in &c.points {
+            let ctx = p
+                .prompt_tokens
+                .map(|t| t.to_string())
+                .unwrap_or_else(|| format!("~{}", p.prompt_size));
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                ctx,
+                fmt_opt(p.prefill_tps, 1),
+                fmt_opt(p.decode_tps, 1),
+                p.samples,
+            ));
+        }
+        match c.decode_flatness {
+            Some(f) => out.push_str(&format!(
+                "\ndecode flatness: {f:.2} — decode tok/s {} across the context range \
+                 ({})\n\n",
+                if f >= 0.9 {
+                    "holds"
+                } else if f >= 0.7 {
+                    "softens"
+                } else {
+                    "drops sharply"
+                },
+                if f >= 0.9 {
+                    "Gated-DeltaNet O(1) decode confirmed"
+                } else {
+                    "investigate where it breaks"
+                },
+            )),
+            None => out.push_str("\ndecode flatness: — (need ≥2 context points)\n\n"),
+        }
+    }
+    out
+}
+
+pub fn render_scaling_json(curves: &[ScalingCurve]) -> Result<String> {
+    Ok(serde_json::to_string_pretty(curves)?)
+}
+
 fn fmt_opt(v: Option<f64>, places: usize) -> String {
     match v {
         Some(x) => format!("{x:.places$}"),
@@ -105,6 +164,39 @@ fn fmt_vram(used_mb: Option<f64>, total_mb: Option<u64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::{ScalingCurve, ScalingPoint};
+
+    #[test]
+    fn scaling_markdown_renders_curve_and_flatness() {
+        let curves = vec![ScalingCurve {
+            target_name: "beast".into(),
+            model_id: "Qwen/Qwen3.6-27B".into(),
+            git_sha: "abc1234".into(),
+            gpu: Some("2× RTX 5090".into()),
+            points: vec![
+                ScalingPoint {
+                    prompt_size: 128,
+                    prompt_tokens: Some(130),
+                    prefill_tps: Some(900.0),
+                    decode_tps: Some(50.0),
+                    samples: 5,
+                },
+                ScalingPoint {
+                    prompt_size: 4096,
+                    prompt_tokens: Some(4100),
+                    prefill_tps: Some(2800.0),
+                    decode_tps: Some(48.0),
+                    samples: 5,
+                },
+            ],
+            decode_flatness: Some(0.96),
+        }];
+        let md = render_scaling_markdown(&curves);
+        assert!(md.contains("### beast · Qwen/Qwen3.6-27B"));
+        assert!(md.contains("ctx tok"));
+        assert!(md.contains("decode flatness: 0.96"));
+        assert!(md.contains("holds"));
+    }
 
     #[test]
     fn markdown_has_header_and_row() {
