@@ -337,6 +337,9 @@ async fn run_projection(
                 prompt_tokens,
                 completion_tokens,
                 reasoning_tokens,
+                // Responses-side `helexa_timing` surfacing not wired yet;
+                // the bench harness reads timing off the chat path (#85).
+                timing: _,
             } => {
                 finish = Some(reason);
                 // Surface usage on the streaming `response.completed`
@@ -914,6 +917,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -964,6 +968,7 @@ mod tests {
             prompt_tokens: 30,
             completion_tokens: 12,
             reasoning_tokens: 4,
+            timing: None,
         })
         .await
         .unwrap();
@@ -994,6 +999,7 @@ mod tests {
             prompt_tokens: 8,
             completion_tokens: 3,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -1018,6 +1024,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -1064,6 +1071,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();

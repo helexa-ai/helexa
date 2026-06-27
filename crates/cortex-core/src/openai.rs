@@ -116,6 +116,23 @@ pub struct Usage {
     /// prompt caching lands (#11); `None` until then.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    /// helexa extension (non-OpenAI): server-measured prefill/decode
+    /// timing, so the bench harness can compute true prefill vs decode
+    /// tok/s instead of inferring both from client-side SSE arrival
+    /// (#85). Additive and optional — standard OpenAI clients ignore
+    /// it; cortex forwards usage verbatim so it survives proxying.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helexa_timing: Option<HelexaTiming>,
+}
+
+/// helexa extension carried on [`Usage::helexa_timing`]. Mirrors
+/// neuron's internal `FinishTiming`. All fields are server-measured;
+/// `prefill_tokens` is the prefill-rate denominator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HelexaTiming {
+    pub prefill_ms: u64,
+    pub decode_ms: u64,
+    pub prefill_tokens: u64,
 }
 
 /// Sub-counts of `Usage::completion_tokens`.

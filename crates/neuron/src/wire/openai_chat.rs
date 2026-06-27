@@ -26,11 +26,13 @@
 //! producer blocks on its own send. The bounded channels
 //! propagate without us writing any logic.
 
-use cortex_core::openai::{ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, Usage};
+use cortex_core::openai::{
+    ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, HelexaTiming, Usage,
+};
 use serde_json::json;
 use tokio::sync::mpsc;
 
-use super::event::{FinishReason, InferenceEvent, ReasoningTokenPair};
+use super::event::{FinishReason, FinishTiming, InferenceEvent, ReasoningTokenPair};
 
 /// Output channel buffer size. Mirrors the input side's bound; one
 /// event maps to at most one chunk, so equal capacity keeps the
@@ -193,12 +195,14 @@ pub fn project_chat_stream_with(
                     prompt_tokens,
                     completion_tokens,
                     reasoning_tokens,
+                    timing,
                 } => {
                     // The finish_reason chunk, then an OpenAI-style
                     // usage-only chunk (`choices: []`, `usage` populated).
                     // Clients (opencode) read this to track context size;
                     // cortex's Anthropic translator also picks `usage` up
-                    // for its `message_delta`.
+                    // for its `message_delta`. `timing` rides along as the
+                    // `helexa_timing` usage extension for the bench harness (#85).
                     vec![
                         final_chunk(&id, created, &model_id, reason),
                         usage_chunk(
@@ -208,6 +212,7 @@ pub fn project_chat_stream_with(
                             prompt_tokens,
                             completion_tokens,
                             reasoning_tokens,
+                            timing,
                         ),
                     ]
                 }
@@ -334,6 +339,7 @@ fn usage_chunk(
     prompt_tokens: u32,
     completion_tokens: u32,
     reasoning_tokens: u32,
+    timing: Option<FinishTiming>,
 ) -> ChatCompletionChunk {
     ChatCompletionChunk {
         id: id.into(),
@@ -351,6 +357,14 @@ fn usage_chunk(
                 reasoning_tokens: reasoning_tokens as u64,
             }),
             prompt_tokens_details: None,
+            // helexa extension (#85): server-measured prefill/decode
+            // timing for the bench harness. Omitted on paths that don't
+            // measure it so standard clients see unchanged JSON.
+            helexa_timing: timing.map(|t| HelexaTiming {
+                prefill_ms: t.prefill_ms as u64,
+                decode_ms: t.decode_ms as u64,
+                prefill_tokens: t.prefill_tokens as u64,
+            }),
         }),
         extra: serde_json::Value::Object(Default::default()),
     }
@@ -391,6 +405,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -414,6 +429,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn finish_timing_surfaces_on_usage_chunk() {
+        // O1 (#85) wire contract: a Finish carrying FinishTiming must
+        // surface as `usage.helexa_timing` on the trailing usage chunk,
+        // which is what the bench harness reads to compute true prefill
+        // vs decode tok/s. Absent timing must leave it None.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id-1".into(), 1700, "m".into());
+
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 128,
+            completion_tokens: 64,
+            reasoning_tokens: 0,
+            timing: Some(FinishTiming {
+                prefill_ms: 200,
+                decode_ms: 1500,
+                prefill_tokens: 128,
+            }),
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let out = collect(out_rx).await;
+        let usage = out
+            .iter()
+            .find_map(|c| c.usage.as_ref())
+            .expect("usage chunk present");
+        let timing = usage
+            .helexa_timing
+            .as_ref()
+            .expect("helexa_timing populated when Finish carried timing");
+        assert_eq!(timing.prefill_ms, 200);
+        assert_eq!(timing.decode_ms, 1500);
+        assert_eq!(timing.prefill_tokens, 128);
+    }
+
+    #[tokio::test]
     async fn empty_text_delta_is_dropped() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
         let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
@@ -434,6 +488,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -496,6 +551,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -547,6 +603,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -592,6 +649,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -635,6 +693,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
@@ -662,6 +721,7 @@ mod tests {
             prompt_tokens: 42,
             completion_tokens: 5,
             reasoning_tokens: 2,
+            timing: None,
         })
         .await
         .unwrap();
@@ -695,6 +755,7 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 7,
             reasoning_tokens: 0,
+            timing: None,
         })
         .await
         .unwrap();
