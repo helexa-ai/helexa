@@ -13,7 +13,7 @@ use crate::scenario::{RunCtx, ScenarioMetrics, build_scenarios};
 use crate::store::{RunRecord, Store};
 use anyhow::Result;
 use cortex_core::build_info::BuildInfo;
-use cortex_core::discovery::DiscoveryResponse;
+use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
 
 /// helexa-bench's own build version.
@@ -36,6 +36,31 @@ pub struct SweepSummary {
     pub skipped: usize,
     pub failed: usize,
     pub targets_unreachable: usize,
+}
+
+/// Node-level GPU telemetry folded from one `/health` snapshot (#87):
+/// VRAM used summed across the node's devices, and the hottest/busiest
+/// single device for utilization and temperature.
+#[derive(Debug, Clone, Copy)]
+struct HealthAgg {
+    vram_used_mb: u64,
+    gpu_util_pct: u32,
+    gpu_temp_c: u32,
+}
+
+impl HealthAgg {
+    fn from_health(h: &HealthResponse) -> Self {
+        HealthAgg {
+            vram_used_mb: h.devices.iter().map(|d| d.vram_used_mb).sum(),
+            gpu_util_pct: h
+                .devices
+                .iter()
+                .map(|d| d.utilization_pct)
+                .max()
+                .unwrap_or(0),
+            gpu_temp_c: h.devices.iter().map(|d| d.temp_c).max().unwrap_or(0),
+        }
+    }
 }
 
 pub struct Sweeper {
@@ -131,7 +156,21 @@ impl Sweeper {
                 }
 
                 for i in 0..need {
-                    match scenario.run(&ctx).await {
+                    let result = scenario.run(&ctx).await;
+                    // Sample GPU telemetry right after the run, while the
+                    // model is loaded and decode VRAM is at its recent peak
+                    // (#87). neuron's /health is ~5s-cached, so this is a
+                    // coarse high-water proxy, not an instantaneous peak — but
+                    // it's the headroom signal we can read over the wire. A
+                    // flaky /health degrades to None, never a failed run.
+                    let health = self
+                        .client
+                        .fetch_health(target)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|h| HealthAgg::from_health(&h));
+                    match result {
                         Ok(m) => {
                             let rec = self.build_record(
                                 target,
@@ -141,6 +180,7 @@ impl Sweeper {
                                 scenario.id(),
                                 scenario.prompt_size(),
                                 Ok(&m),
+                                health,
                             );
                             self.store.insert_run(&rec)?;
                             summary.measured += 1;
@@ -160,6 +200,7 @@ impl Sweeper {
                                 scenario.id(),
                                 scenario.prompt_size(),
                                 Err(&msg),
+                                health,
                             );
                             self.store.insert_run(&rec)?;
                             summary.failed += 1;
@@ -186,6 +227,7 @@ impl Sweeper {
         scenario_id: &str,
         prompt_size: u32,
         result: Result<&crate::scenario::ScenarioMetrics, &str>,
+        health: Option<HealthAgg>,
     ) -> RunRecord {
         let (m, error): (Option<&ScenarioMetrics>, Option<String>) = match result {
             Ok(m) => (Some(m), None),
@@ -232,6 +274,9 @@ impl Sweeper {
             prefill_ms: m.and_then(|m| m.prefill_ms),
             decode_ms: m.and_then(|m| m.decode_ms),
             prefill_tokens: m.and_then(|m| m.prefill_tokens),
+            vram_used_mb: health.map(|h| h.vram_used_mb),
+            gpu_util_pct: health.map(|h| h.gpu_util_pct),
+            gpu_temp_c: health.map(|h| h.gpu_temp_c),
             ok,
             error,
         }

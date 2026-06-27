@@ -5,7 +5,7 @@
 use crate::config::{TargetConfig, TargetKind};
 use anyhow::{Context, Result};
 use cortex_core::build_info::BuildInfo;
-use cortex_core::discovery::DiscoveryResponse;
+use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
 use cortex_core::openai::ModelsResponse;
 use std::time::Duration;
@@ -92,6 +92,32 @@ impl TargetClient {
             .await
             .context("decoding /discovery")?;
         Ok(Some(disco))
+    }
+
+    /// Runtime device health (neuron only): per-GPU VRAM used/free,
+    /// utilization, and temperature from `GET /health`. Bench samples this
+    /// around each measured run to record VRAM high-water + GPU telemetry
+    /// (#87). Returns `Ok(None)` for non-neuron targets; a soft `Ok(None)`
+    /// (not an error) on transport failure so a flaky `/health` never fails
+    /// a measurement.
+    pub async fn fetch_health(&self, target: &TargetConfig) -> Result<Option<HealthResponse>> {
+        if target.kind != TargetKind::Neuron {
+            return Ok(None);
+        }
+        let base = target.endpoint.trim_end_matches('/');
+        let health = self
+            .http
+            .get(format!("{base}/health"))
+            .timeout(META_TIMEOUT)
+            .send()
+            .await
+            .context("GET /health")?
+            .error_for_status()
+            .context("GET /health status")?
+            .json::<HealthResponse>()
+            .await
+            .context("decoding /health")?;
+        Ok(Some(health))
     }
 
     /// Warm models — those ready to serve without a cold load.
