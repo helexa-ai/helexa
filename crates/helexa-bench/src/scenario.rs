@@ -93,6 +93,10 @@ pub struct ScenarioMetrics {
     /// Streams shed by admission control (HTTP 429/503) during the burst —
     /// honest backpressure, not silent failures.
     pub rejected: Option<u32>,
+    /// Full generated text, captured only by the capability probe (#91) so
+    /// the output can be quality-scored later (manual or LLM-judge). `None`
+    /// for latency/throughput scenarios, which discard the text.
+    pub artifact: Option<String>,
 }
 
 #[async_trait]
@@ -136,6 +140,13 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
             id: format!("concurrency:{n}"),
             concurrency: n,
             approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+        }) as Box<dyn Scenario>);
+    }
+    for probe in &cfg.capability_probes {
+        scenarios.push(Box::new(CapabilityScenario {
+            id: format!("capability:{}", probe.name),
+            prompt: probe.prompt.clone(),
+            max_tokens: probe.max_tokens,
         }) as Box<dyn Scenario>);
     }
     scenarios
@@ -277,7 +288,47 @@ impl Scenario for ConcurrencyScenario {
             ttft_p95_s: percentile(&ttfts, 95.0),
             queue_wait_ms_median: median(&queue_waits),
             rejected: Some(rejected),
+            artifact: None,
         })
+    }
+}
+
+/// Quality probe (#91): runs a fixed prompt and stores the full generated
+/// text as an artifact for later scoring (manual now, LLM-judge later). The
+/// point is to compare reasoning/planning quality across models — the axis
+/// speed-only scenarios miss — so the frontier A/B (F3) picks on capability,
+/// not just throughput.
+pub struct CapabilityScenario {
+    id: String,
+    prompt: String,
+    max_tokens: u64,
+}
+
+#[async_trait]
+impl Scenario for CapabilityScenario {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Capability probes have no synthetic prompt-token target; the cell is
+    /// keyed by the scenario id alone.
+    fn prompt_size(&self) -> u32 {
+        0
+    }
+
+    async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
+        let payload = json!({
+            "model": ctx.model_id,
+            "messages": [{"role": "user", "content": self.prompt}],
+            "max_tokens": self.max_tokens,
+            "temperature": 0,
+            "stream": true,
+            "stream_options": {"include_usage": true},
+        });
+        let fut = stream_and_measure_inner(ctx, &payload, true);
+        tokio::time::timeout(ctx.timeout, fut)
+            .await
+            .map_err(|_| anyhow!("capability probe timed out after {:?}", ctx.timeout))?
     }
 }
 
@@ -318,6 +369,17 @@ async fn stream_and_measure(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
 ) -> Result<ScenarioMetrics> {
+    stream_and_measure_inner(ctx, payload, false).await
+}
+
+/// As [`stream_and_measure`] but accumulates the full visible text when
+/// `capture_text` is set — used by the capability probe (#91) to store the
+/// generated artifact for later quality scoring.
+async fn stream_and_measure_inner(
+    ctx: &RunCtx<'_>,
+    payload: &serde_json::Value,
+    capture_text: bool,
+) -> Result<ScenarioMetrics> {
     let start = Instant::now();
     let resp = ctx
         .client
@@ -341,6 +403,7 @@ async fn stream_and_measure(
     let mut prefill_ms: Option<u64> = None;
     let mut decode_ms: Option<u64> = None;
     let mut prefill_tokens: Option<u64> = None;
+    let mut captured = String::new();
 
     while let Some(event) = stream.next().await {
         let event = event.context("reading SSE stream")?;
@@ -354,17 +417,17 @@ async fn stream_and_measure(
             Err(_) => continue, // tolerate non-JSON keepalive frames
         };
         if let Some(choice) = chunk.choices.first()
-            && choice
-                .delta
-                .get("content")
-                .and_then(|c| c.as_str())
-                .is_some_and(|s| !s.is_empty())
+            && let Some(content) = choice.delta.get("content").and_then(|c| c.as_str())
+            && !content.is_empty()
         {
             if first.is_none() {
                 first = Some(now);
             }
             last = Some(now);
             chunk_count += 1;
+            if capture_text {
+                captured.push_str(content);
+            }
         }
         if let Some(usage) = chunk.usage {
             prompt_tokens = Some(usage.prompt_tokens);
@@ -407,6 +470,7 @@ async fn stream_and_measure(
         ttft_p95_s: None,
         queue_wait_ms_median: None,
         rejected: None,
+        artifact: if capture_text { Some(captured) } else { None },
     })
 }
 
@@ -450,12 +514,17 @@ mod tests {
 
     #[test]
     fn concurrency_scenarios_built_from_config() {
-        use crate::config::ScenarioConfig;
+        use crate::config::{CapabilityProbe, ScenarioConfig};
         let cfg = ScenarioConfig {
             prompt_sizes: vec![128],
             max_tokens: 64,
             concurrency_levels: vec![2, 8],
             concurrency_prompt_tokens: 512,
+            capability_probes: vec![CapabilityProbe {
+                name: "plan".into(),
+                prompt: "Write a plan.".into(),
+                max_tokens: 2048,
+            }],
         };
         let ids: Vec<String> = build_scenarios(&cfg)
             .iter()
@@ -464,6 +533,7 @@ mod tests {
         assert!(ids.contains(&"chat:128".to_string()));
         assert!(ids.contains(&"concurrency:2".to_string()));
         assert!(ids.contains(&"concurrency:8".to_string()));
+        assert!(ids.contains(&"capability:plan".to_string()));
     }
 
     #[test]

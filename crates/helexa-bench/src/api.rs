@@ -37,6 +37,7 @@ pub fn api_routes(state: ApiState) -> Router {
         .route("/api/summary", get(summary))
         .route("/api/scaling", get(scaling))
         .route("/api/swap", get(swap))
+        .route("/api/capability", get(capability))
         .route("/api/series", get(series))
         .route("/api/runs", get(runs))
         .layer(CorsLayer::permissive())
@@ -89,6 +90,14 @@ async fn scaling(
 async fn swap(State(s): State<ApiState>) -> Result<Json<Vec<crate::store::SwapCost>>, ApiError> {
     let store = s.lock().await;
     store.swap_costs().map(Json).map_err(err500)
+}
+
+/// Capability-probe runs — stored artifacts + quality scores (#91).
+async fn capability(
+    State(s): State<ApiState>,
+) -> Result<Json<Vec<crate::store::CapabilityRun>>, ApiError> {
+    let store = s.lock().await;
+    store.capability_runs(false).map(Json).map_err(err500)
 }
 
 #[derive(Debug, Deserialize)]

@@ -37,6 +37,19 @@ max_tokens = 256
 # concurrency_levels = [2, 4, 8]
 # concurrency_prompt_tokens = 512
 
+# Capability probes (#91): each runs a fixed prompt and stores the full
+# output for quality scoring — the reasoning/planning axis the speed
+# scenarios miss. Opt-in (empty by default). After a sweep records them,
+# `helexa-bench report --capability` lists run ids + artifacts; score with
+# `helexa-bench score --id <n> --score <x>` (manual now; LLM-judge later).
+# [[scenarios.capability_probes]]
+# name = "rust-plan"
+# max_tokens = 2048
+# prompt = """
+# Write an implementation plan for adding rate limiting to an Axum service.
+# Honor existing conventions, call out trade-offs, and sequence the work.
+# """
+
 # Read-only JSON API (consumed by the bench UI + programmatic access),
 # served alongside the sweep loop by `run` (or standalone via `serve`).
 [api]

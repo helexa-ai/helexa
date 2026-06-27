@@ -73,6 +73,13 @@ pub struct RunRecord {
     // fields carry the cold first-request after reload.
     pub swap_unload_ms: Option<u64>,
     pub swap_load_ms: Option<u64>,
+    // capability probe (#91): the full generated text (scenario_id =
+    // "capability:<name>"), scored for quality later. `quality_score` /
+    // `scorer` are null at insert — set by `score` (manual) or a future
+    // LLM-judge.
+    pub artifact: Option<String>,
+    pub quality_score: Option<f64>,
+    pub scorer: Option<String>,
     // outcome
     pub ok: bool,
     pub error: Option<String>,
@@ -157,6 +164,9 @@ impl Store {
                 rejected             INTEGER,
                 swap_unload_ms       INTEGER,
                 swap_load_ms         INTEGER,
+                artifact             TEXT,
+                quality_score        REAL,
+                scorer               TEXT,
                 ok                   INTEGER NOT NULL,
                 error                TEXT
             );
@@ -188,6 +198,9 @@ impl Store {
                 ("rejected", "INTEGER"),
                 ("swap_unload_ms", "INTEGER"),
                 ("swap_load_ms", "INTEGER"),
+                ("artifact", "TEXT"),
+                ("quality_score", "REAL"),
+                ("scorer", "TEXT"),
             ],
         )?;
         Ok(())
@@ -246,6 +259,7 @@ impl Store {
                 vram_used_mb, gpu_util_pct, gpu_temp_c,
                 concurrency, ttft_p95_s, queue_wait_ms, rejected,
                 swap_unload_ms, swap_load_ms,
+                artifact, quality_score, scorer,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -260,7 +274,8 @@ impl Store {
                 ?35, ?36, ?37,
                 ?38, ?39, ?40, ?41,
                 ?42, ?43,
-                ?44, ?45
+                ?44, ?45, ?46,
+                ?47, ?48
             )",
             params![
                 r.ts,
@@ -306,6 +321,9 @@ impl Store {
                 r.rejected,
                 r.swap_unload_ms,
                 r.swap_load_ms,
+                r.artifact,
+                r.quality_score,
+                r.scorer,
                 r.ok as i64,
                 r.error,
             ],
@@ -474,6 +492,52 @@ impl Store {
             });
         }
         Ok(out)
+    }
+
+    /// Capability-probe runs (#91): the stored output artifacts and their
+    /// quality scores. `unscored_only` filters to runs awaiting a score —
+    /// the worklist for manual scoring or a future LLM-judge.
+    pub fn capability_runs(&self, unscored_only: bool) -> Result<Vec<CapabilityRun>> {
+        let sql = format!(
+            "SELECT id, ts, target_name, model_id, scenario_id, git_sha,
+                    quality_score, scorer, artifact
+             FROM runs
+             WHERE ok=1 AND scenario_id LIKE 'capability:%'{}
+             ORDER BY id DESC",
+            if unscored_only {
+                " AND quality_score IS NULL"
+            } else {
+                ""
+            },
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(CapabilityRun {
+                    id: r.get(0)?,
+                    ts: r.get(1)?,
+                    target_name: r.get(2)?,
+                    model_id: r.get(3)?,
+                    scenario_id: r.get(4)?,
+                    git_sha: r.get(5)?,
+                    quality_score: r.get(6)?,
+                    scorer: r.get(7)?,
+                    artifact: r.get(8)?,
+                })
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(rows)
+    }
+
+    /// Attach a quality score to one capability run (#91). `scorer` records
+    /// who/what scored it ("manual", "llm:claude-…"). Returns the row count
+    /// updated (0 if the id doesn't exist).
+    pub fn set_score(&self, run_id: i64, score: f64, scorer: &str) -> Result<usize> {
+        let n = self.conn.execute(
+            "UPDATE runs SET quality_score=?1, scorer=?2 WHERE id=?3",
+            params![score, scorer, run_id],
+        )?;
+        Ok(n)
     }
 
     // ── Read API surface (consumed by api.rs) ─────────────────────────
@@ -918,6 +982,21 @@ pub struct SwapCost {
     pub samples: usize,
 }
 
+/// One capability-probe run (#91): the stored output artifact plus its
+/// quality score (null until scored manually or by a future LLM-judge).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CapabilityRun {
+    pub id: i64,
+    pub ts: String,
+    pub target_name: String,
+    pub model_id: String,
+    pub scenario_id: String,
+    pub git_sha: String,
+    pub quality_score: Option<f64>,
+    pub scorer: Option<String>,
+    pub artifact: Option<String>,
+}
+
 /// One point on a [`ScalingCurve`]: the throughput at a given context size.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ScalingPoint {
@@ -1124,6 +1203,9 @@ mod tests {
             rejected: None,
             swap_unload_ms: None,
             swap_load_ms: None,
+            artifact: None,
+            quality_score: None,
+            scorer: None,
             ok,
             error: if ok { None } else { Some("boom".into()) },
         }
@@ -1229,6 +1311,32 @@ mod tests {
         assert_eq!(row.queue_wait_ms_median, Some(150.0)); // median(120,180)
         assert_eq!(row.rejected_median, Some(2.0)); // median(1,3)
         assert_eq!(row.ttft_p95_load_s, Some(0.9));
+    }
+
+    #[test]
+    fn capability_runs_store_artifact_and_accept_scores() {
+        let s = Store::open_in_memory().unwrap();
+        let mut r = rec("beast", "sha", "m", "capability:plan", true);
+        r.artifact = Some("a thorough implementation plan...".into());
+        s.insert_run(&r).unwrap();
+        // A non-capability row must not appear in capability_runs.
+        s.insert_run(&rec("beast", "sha", "m", "chat:128", true))
+            .unwrap();
+
+        let unscored = s.capability_runs(true).unwrap();
+        assert_eq!(unscored.len(), 1);
+        let id = unscored[0].id;
+        assert!(unscored[0].artifact.as_deref().unwrap().contains("plan"));
+        assert!(unscored[0].quality_score.is_none());
+
+        // Score it; it then drops off the unscored worklist.
+        assert_eq!(s.set_score(id, 7.5, "manual").unwrap(), 1);
+        assert!(s.capability_runs(true).unwrap().is_empty());
+        let all = s.capability_runs(false).unwrap();
+        assert_eq!(all[0].quality_score, Some(7.5));
+        assert_eq!(all[0].scorer.as_deref(), Some("manual"));
+        // Unknown id updates nothing.
+        assert_eq!(s.set_score(999_999, 1.0, "manual").unwrap(), 0);
     }
 
     #[test]

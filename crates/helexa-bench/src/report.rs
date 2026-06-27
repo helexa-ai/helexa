@@ -3,7 +3,7 @@
 //! doc: engine, model, prompt tok, TTFT (s), decode tok/s, total (s),
 //! plus the build SHA each cell was measured against.
 
-use crate::store::{ReportRow, ScalingCurve, SwapCost};
+use crate::store::{CapabilityRun, ReportRow, ScalingCurve, SwapCost};
 use anyhow::Result;
 
 pub fn render_markdown(rows: &[ReportRow]) -> String {
@@ -164,6 +164,84 @@ pub fn render_swap_json(costs: &[SwapCost]) -> Result<String> {
     Ok(serde_json::to_string_pretty(costs)?)
 }
 
+/// Capability-probe view (#91): per (model, probe) the median quality score
+/// (the A/B number), then each run's id, score, and an artifact snippet so
+/// unscored runs can be located and scored (`helexa-bench score --id …`).
+pub fn render_capability_markdown(runs: &[CapabilityRun]) -> String {
+    use std::collections::BTreeMap;
+    let mut groups: BTreeMap<(String, String, String), Vec<&CapabilityRun>> = BTreeMap::new();
+    for r in runs {
+        groups
+            .entry((
+                r.target_name.clone(),
+                r.model_id.clone(),
+                r.scenario_id.clone(),
+            ))
+            .or_default()
+            .push(r);
+    }
+    let mut out = String::new();
+    for ((target, model, scenario), rs) in groups {
+        let scores: Vec<f64> = rs.iter().filter_map(|r| r.quality_score).collect();
+        let median = median_slice(&scores);
+        out.push_str(&format!(
+            "### {target} · {model} · {scenario} — median score {} ({}/{} scored)\n\n",
+            median
+                .map(|m| format!("{m:.1}"))
+                .unwrap_or_else(|| "—".into()),
+            scores.len(),
+            rs.len(),
+        ));
+        out.push_str("| run | score | scorer | build | artifact (snippet) |\n");
+        out.push_str("|---:|---:|---|---|---|\n");
+        for r in rs {
+            out.push_str(&format!(
+                "| {} | {} | {} | `{}` | {} |\n",
+                r.id,
+                r.quality_score
+                    .map(|s| format!("{s:.1}"))
+                    .unwrap_or_else(|| "—".into()),
+                r.scorer.as_deref().unwrap_or("—"),
+                r.git_sha,
+                snippet(r.artifact.as_deref()),
+            ));
+        }
+        out.push('\n');
+    }
+    out
+}
+
+pub fn render_capability_json(runs: &[CapabilityRun]) -> Result<String> {
+    Ok(serde_json::to_string_pretty(runs)?)
+}
+
+/// First ~80 chars of an artifact on one line, for the table cell.
+fn snippet(artifact: Option<&str>) -> String {
+    match artifact {
+        Some(a) => {
+            let one_line: String = a.split_whitespace().collect::<Vec<_>>().join(" ");
+            let trimmed: String = one_line.chars().take(80).collect();
+            if one_line.chars().count() > 80 {
+                format!("{trimmed}…")
+            } else {
+                trimmed
+            }
+        }
+        None => "—".to_string(),
+    }
+}
+
+fn median_slice(v: &[f64]) -> Option<f64> {
+    if v.is_empty() {
+        return None;
+    }
+    let mut s = v.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let lo = (s.len() - 1) / 2;
+    let hi = s.len() / 2;
+    Some((s[lo] + s[hi]) / 2.0)
+}
+
 /// Milliseconds rendered as seconds (reload costs read naturally in s).
 fn fmt_ms_as_s(ms: Option<f64>) -> String {
     match ms {
@@ -201,6 +279,39 @@ fn fmt_vram(used_mb: Option<f64>, total_mb: Option<u64>) -> String {
 mod tests {
     use super::*;
     use crate::store::{ScalingCurve, ScalingPoint};
+
+    #[test]
+    fn capability_markdown_groups_with_median_and_snippet() {
+        let runs = vec![
+            CapabilityRun {
+                id: 7,
+                ts: "t".into(),
+                target_name: "beast".into(),
+                model_id: "m".into(),
+                scenario_id: "capability:plan".into(),
+                git_sha: "abc".into(),
+                quality_score: Some(8.0),
+                scorer: Some("manual".into()),
+                artifact: Some("A detailed plan with trade-offs and sequencing.".into()),
+            },
+            CapabilityRun {
+                id: 8,
+                ts: "t".into(),
+                target_name: "beast".into(),
+                model_id: "m".into(),
+                scenario_id: "capability:plan".into(),
+                git_sha: "abc".into(),
+                quality_score: Some(6.0),
+                scorer: Some("manual".into()),
+                artifact: Some("Shorter plan.".into()),
+            },
+        ];
+        let md = render_capability_markdown(&runs);
+        assert!(md.contains("capability:plan"));
+        assert!(md.contains("median score 7.0")); // median(8,6)
+        assert!(md.contains("trade-offs"));
+        assert!(md.contains("| 7 |"));
+    }
 
     #[test]
     fn swap_markdown_renders_reload_and_cold_costs() {

@@ -51,6 +51,25 @@ enum Command {
         #[arg(short, long, default_value = "helexa-bench.toml")]
         config: String,
     },
+    /// Attach a quality score to a capability-probe run (#91). Find run ids
+    /// with `report --capability`. `--scorer` records who scored it
+    /// (defaults to "manual"); a future LLM-judge would set e.g. "llm:…".
+    Score {
+        #[arg(short, long, default_value = "helexa-bench.toml")]
+        config: String,
+        /// Override the SQLite path (skips reading the config file).
+        #[arg(long)]
+        db: Option<String>,
+        /// The run id to score.
+        #[arg(long)]
+        id: i64,
+        /// The quality score to attach (scale is the operator's rubric).
+        #[arg(long)]
+        score: f64,
+        /// Who/what produced the score.
+        #[arg(long, default_value = "manual")]
+        scorer: String,
+    },
     /// Render recorded results. Uses `--db` if given, else the db_path
     /// from `--config`.
     Report {
@@ -71,6 +90,10 @@ enum Command {
         /// flat results table.
         #[arg(long)]
         swap: bool,
+        /// Render the capability-probe view (#91): stored artifacts + quality
+        /// scores, with per-model median.
+        #[arg(long)]
+        capability: bool,
     },
 }
 
@@ -155,19 +178,46 @@ async fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
-        Command::Report {
+        Command::Score {
             config,
             db,
-            format,
-            scaling,
-            swap,
+            id,
+            score,
+            scorer,
         } => {
             let db_path = match db {
                 Some(p) => p,
                 None => load_config(&config)?.bench.db_path,
             };
             let store = Store::open(&db_path)?;
-            let rendered = if swap {
+            match store.set_score(id, score, &scorer)? {
+                0 => anyhow::bail!("no run with id {id}"),
+                _ => {
+                    println!("scored run {id}: {score} ({scorer})");
+                    Ok(())
+                }
+            }
+        }
+        Command::Report {
+            config,
+            db,
+            format,
+            scaling,
+            swap,
+            capability,
+        } => {
+            let db_path = match db {
+                Some(p) => p,
+                None => load_config(&config)?.bench.db_path,
+            };
+            let store = Store::open(&db_path)?;
+            let rendered = if capability {
+                let runs = store.capability_runs(false)?;
+                match format {
+                    Format::Md => report::render_capability_markdown(&runs),
+                    Format::Json => report::render_capability_json(&runs)?,
+                }
+            } else if swap {
                 let costs = store.swap_costs()?;
                 match format {
                     Format::Md => report::render_swap_markdown(&costs),

@@ -58,6 +58,9 @@ fn rec(
         rejected: None,
         swap_unload_ms: None,
         swap_load_ms: None,
+        artifact: None,
+        quality_score: None,
+        scorer: None,
         ok,
         error: if ok { None } else { Some("boom".into()) },
     }

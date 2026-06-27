@@ -392,6 +392,11 @@ impl Sweeper {
             rejected: m.and_then(|m| m.rejected),
             swap_unload_ms: swap.map(|s| s.unload_ms),
             swap_load_ms: swap.map(|s| s.load_ms),
+            // Capability artifact (#91); score/scorer are attached later by
+            // the `score` subcommand or a future LLM-judge.
+            artifact: m.and_then(|m| m.artifact.clone()),
+            quality_score: None,
+            scorer: None,
             ok,
             error,
         }
