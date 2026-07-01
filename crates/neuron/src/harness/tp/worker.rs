@@ -405,8 +405,10 @@ impl WorkerState {
                     }
                 }
             }
-            "qwen3_5" => {
-                let cfg: qwen3_5_arch::Config = match serde_json::from_str(&config_json) {
+            "qwen3_5" | "qwen3_next" => {
+                // `from_config_json` normalises the flat qwen3_next
+                // layout (#92) into the nested qwen3_5 shape.
+                let cfg = match qwen3_5_arch::Config::from_config_json(&config_json) {
                     Ok(c) => c,
                     Err(e) => {
                         return WorkerResponse::Error {
@@ -437,7 +439,8 @@ impl WorkerState {
                 return WorkerResponse::Error {
                     kind: "unsupported_arch".into(),
                     message: format!(
-                        "worker: unsupported model_type '{other}' (supported: qwen3, qwen3_5)"
+                        "worker: unsupported model_type '{other}' \
+                         (supported: qwen3, qwen3_5, qwen3_next)"
                     ),
                 };
             }

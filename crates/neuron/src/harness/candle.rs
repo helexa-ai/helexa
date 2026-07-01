@@ -894,7 +894,8 @@ const REPEAT_LAST_N: usize = 64;
 /// value. New entries land alongside a new `ModelArch` variant + a
 /// dispatch branch in `load_arch_dense` (plus, for TP, a parallel
 /// pattern in `tp_qwen3.rs`).
-const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &["llama", "qwen3", "qwen3_5", "qwen3_moe"];
+const DENSE_SUPPORTED_MODEL_TYPES: &[&str] =
+    &["llama", "qwen3", "qwen3_5", "qwen3_moe", "qwen3_next"];
 
 /// Pre-flight check the operator's `config.json` against the set of
 /// architectures the dense path actually knows how to build. Surfaces
@@ -949,7 +950,7 @@ pub(crate) fn check_dense_config_supported(config_json: &str, model_id: &str) ->
 /// families than the TP path because each TP-aware module is a real
 /// chunk of work (`tp_qwen3.rs` is the only one shipped today).
 #[cfg(feature = "cuda")]
-const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3", "qwen3_5"];
+const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3", "qwen3_5", "qwen3_next"];
 
 /// TP-side counterpart to `check_dense_config_supported`. Gates the
 /// `load_tp` path on a narrower architecture set: even though the
@@ -2054,14 +2055,16 @@ impl CandleHarness {
                         device: device_for_load,
                     })))
                 }
-                "qwen3_5" => {
+                "qwen3_5" | "qwen3_next" => {
                     // Qwen3-Next needs a ShardedVarBuilder because its
                     // load functions use the sharded backend (so they
                     // can be reused unchanged by the future TP variant).
                     // With world_size=1 the backend falls through to
                     // the unsharded path, so there is no per-load cost.
-                    let cfg: super::arch::qwen3_5::Config = serde_json::from_str(&cfg_text)
-                        .context("parse Qwen3-Next (qwen3_5) config.json")?;
+                    // `from_config_json` normalises the flat qwen3_next
+                    // layout (#92) into the nested qwen3_5 shape.
+                    let cfg = super::arch::qwen3_5::Config::from_config_json(&cfg_text)
+                        .context("parse Qwen3-Next (qwen3_5/qwen3_next) config.json")?;
                     let sharded_vb = unsafe {
                         candle_nn::var_builder::ShardedSafeTensors::var_builder(
                             &safetensors_paths,
@@ -6727,6 +6730,20 @@ mod tests {
         }"#;
         check_dense_config_supported(cfg, "Qwen/Qwen3.6-27B")
             .expect("qwen3_5 should be in the supported set as of Stage 8c scaffold");
+    }
+
+    #[test]
+    fn check_dense_config_accepts_qwen3_next() {
+        // The MoE sibling family (Qwen3-Next-80B-A3B, #92) routes into
+        // the same qwen3_5 arch module via Config::from_config_json.
+        let cfg = r#"{
+            "model_type": "qwen3_next",
+            "architectures": ["Qwen3NextForCausalLM"],
+            "hidden_size": 2048,
+            "num_experts": 512
+        }"#;
+        check_dense_config_supported(cfg, "Qwen/Qwen3-Next-80B-A3B-Instruct")
+            .expect("qwen3_next should be in the supported set (#92)");
     }
 
     #[test]
