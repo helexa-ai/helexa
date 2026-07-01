@@ -39,6 +39,9 @@ fn model_entry(loaded: bool, feasible: bool) -> CortexModelEntry {
         cost: None,
         tool_call: false,
         reasoning: false,
+        max_model_len: None,
+        max_input_tokens: None,
+        max_output_tokens: None,
     }
 }
 

@@ -147,6 +147,39 @@ pub struct CortexModelEntry {
     /// `true` when any neuron reports this model supports reasoning tokens.
     #[serde(default)]
     pub reasoning: bool,
+    // ── Flat ecosystem context-window fields (issue #78) ──────
+    // Duplicates of `limit` under the flat, vLLM-convention key names
+    // (`max_model_len` et al.) that OpenAI-ecosystem clients (Hermes
+    // Agent, vLLM tooling) probe for — they cannot see `limit.context`.
+    // Additive: `limit` stays the opencode-oriented source of truth.
+    // Derived, never set directly — call [`sync_flat_limit`] after the
+    // final `limit` value is known. Omitted (not `0`) when the window
+    // is unknown; absent-vs-zero is load-bearing, as with `cost`.
+    //
+    // [`sync_flat_limit`]: CortexModelEntry::sync_flat_limit
+    /// Served max-seq-len in tokens — mirrors `limit.context`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_model_len: Option<usize>,
+    /// Usable input budget — mirrors `limit.input` when present.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_input_tokens: Option<usize>,
+    /// Maximum generation tokens — mirrors `limit.output`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<usize>,
+}
+
+impl CortexModelEntry {
+    /// Re-derive the flat ecosystem fields (#78) from `limit`.
+    ///
+    /// Must run after the final `limit` is known (post merge/tightening),
+    /// immediately before serialization. Fully overwrites: a `None` limit
+    /// clears the flat fields, so stale values can't survive a merge that
+    /// dropped the limit.
+    pub fn sync_flat_limit(&mut self) {
+        self.max_model_len = self.limit.as_ref().map(|l| l.context);
+        self.max_input_tokens = self.limit.as_ref().and_then(|l| l.input);
+        self.max_output_tokens = self.limit.as_ref().map(|l| l.output);
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
