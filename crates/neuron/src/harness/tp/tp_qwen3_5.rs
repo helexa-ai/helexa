@@ -174,21 +174,88 @@ impl TpQwen3_5GatedDeltaNet {
         // source on consumer GPUs near their VRAM ceiling.
         let dtype = vb.dtype();
         let device = vb.device().clone();
-        let in_proj_qkv_name = format!("{}.in_proj_qkv.weight", vb.prefix());
-        let in_proj_qkv_weight = super::fused_load::load_fused_qkv_2d(
-            mmap,
-            &in_proj_qkv_name,
-            hidden_size,
-            key_dim,
-            value_dim,
-            rank,
-            world_size,
-            dtype,
-            &device,
-        )?;
-        let in_proj_qkv =
-            super::tp_linear::MaybeQuantLinear::from_weight(in_proj_qkv_weight, quant)
-                .with_context(|| format!("wrap fused in_proj_qkv for '{}'", vb.prefix()))?;
+
+        // Two checkpoint layouts (#92, mirroring the single-GPU loader):
+        // - Qwen3.6: separate `in_proj_qkv` ([Q|K|V] contiguous) +
+        //   `in_proj_z`/`in_proj_b`/`in_proj_a` — per-region mmap
+        //   slicing for qkv, uniform column-parallel for the rest.
+        // - Qwen3-Next 80B-A3B: fused `in_proj_qkvz` + `in_proj_ba`,
+        //   interleaved per key-head group. K- and V-heads shard
+        //   uniformly together, so each rank owns a CONTIGUOUS span of
+        //   whole groups — a uniform dim-0 shard of the fused tensor is
+        //   exactly the rank's groups, and the per-rank de-interleave
+        //   (`split_fused_qkvz`/`split_fused_ba` with per-rank head
+        //   counts) restores the contiguous [Q|K|V] + Z / B + A layout
+        //   the forward path expects.
+        let (in_proj_qkv, in_proj_z, in_proj_b, in_proj_a) =
+            if vb.contains_tensor("in_proj_qkvz.weight") {
+                let qkvz_slice = vb
+                    .pp("in_proj_qkvz")
+                    .get_with_hints((), "weight", super::tp_linear::shard(0, rank, world_size))
+                    .with_context(|| format!("load '{}/in_proj_qkvz' rank slice", vb.prefix()))?;
+                let ba_slice = vb
+                    .pp("in_proj_ba")
+                    .get_with_hints((), "weight", super::tp_linear::shard(0, rank, world_size))
+                    .with_context(|| format!("load '{}/in_proj_ba' rank slice", vb.prefix()))?;
+                let (qkv_w, z_w) = crate::harness::arch::qwen3_5::linear_attn::split_fused_qkvz(
+                    &qkvz_slice,
+                    per_rank_num_k_heads,
+                    per_rank_num_v_heads,
+                    head_k_dim,
+                    head_v_dim,
+                )
+                .with_context(|| format!("de-interleave '{}/in_proj_qkvz'", vb.prefix()))?;
+                let (b_w, a_w) = crate::harness::arch::qwen3_5::linear_attn::split_fused_ba(
+                    &ba_slice,
+                    per_rank_num_k_heads,
+                    per_rank_num_v_heads,
+                )
+                .with_context(|| format!("de-interleave '{}/in_proj_ba'", vb.prefix()))?;
+                (
+                    super::tp_linear::MaybeQuantLinear::from_weight(qkv_w, quant)
+                        .with_context(|| format!("wrap fused in_proj_qkv '{}'", vb.prefix()))?,
+                    ColumnParallelLinear::from_weight(z_w, quant)?,
+                    ColumnParallelLinear::from_weight(b_w, quant)?,
+                    ColumnParallelLinear::from_weight(a_w, quant)?,
+                )
+            } else {
+                let in_proj_qkv_name = format!("{}.in_proj_qkv.weight", vb.prefix());
+                let in_proj_qkv_weight = super::fused_load::load_fused_qkv_2d(
+                    mmap,
+                    &in_proj_qkv_name,
+                    hidden_size,
+                    key_dim,
+                    value_dim,
+                    rank,
+                    world_size,
+                    dtype,
+                    &device,
+                )?;
+                (
+                    super::tp_linear::MaybeQuantLinear::from_weight(in_proj_qkv_weight, quant)
+                        .with_context(|| format!("wrap fused in_proj_qkv for '{}'", vb.prefix()))?,
+                    // in_proj_z: hidden → value_dim, sharded along value_dim
+                    // (V-head); in_proj_b / in_proj_a: hidden → num_v_heads.
+                    ColumnParallelLinear::load_with_quant(
+                        &vb.pp("in_proj_z"),
+                        rank,
+                        world_size,
+                        quant,
+                    )?,
+                    ColumnParallelLinear::load_with_quant(
+                        &vb.pp("in_proj_b"),
+                        rank,
+                        world_size,
+                        quant,
+                    )?,
+                    ColumnParallelLinear::load_with_quant(
+                        &vb.pp("in_proj_a"),
+                        rank,
+                        world_size,
+                        quant,
+                    )?,
+                )
+            };
 
         let conv1d_name = format!("{}.conv1d.weight", vb.prefix());
         let conv1d_weight = super::fused_load::load_fused_qkv_3d(
@@ -203,16 +270,6 @@ impl TpQwen3_5GatedDeltaNet {
             dtype,
             &device,
         )?;
-
-        // ----- Uniformly-sharded projections (along output dim 0). -----
-        // in_proj_z: hidden → value_dim, sharded along value_dim (V-head).
-        let in_proj_z =
-            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_z"), rank, world_size, quant)?;
-        // in_proj_b, in_proj_a: hidden → num_v_heads, sharded along output.
-        let in_proj_b =
-            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_b"), rank, world_size, quant)?;
-        let in_proj_a =
-            ColumnParallelLinear::load_with_quant(&vb.pp("in_proj_a"), rank, world_size, quant)?;
 
         // ----- Per-V-head 1D params (sharded uniformly). -----
         let a_log = vb
@@ -735,6 +792,240 @@ impl Module for TpQwen3_5MLP {
     }
 }
 
+// ─── MoE FFN (qwen3_next 80B-A3B, #92) ──────────────────────────────
+
+/// One routed expert's per-rank slice: `gate_proj`/`up_proj`
+/// column-sharded along `moe_intermediate_size`, `down_proj`
+/// input-sharded — `forward_partial` yields a PARTIAL hidden output.
+///
+/// Deliberately NOT built from [`RowParallelLinear`]: that embeds an
+/// AllReduce per call, which with top-10 routing would mean ten
+/// collectives per layer. Partial sums from every selected expert and
+/// the shared expert add linearly, so the whole MoE block needs
+/// exactly ONE AllReduce at the end — preserving the existing
+/// one-reduce-per-FFN pattern.
+struct TpExpert {
+    gate_proj: super::tp_linear::MaybeQuantLinear,
+    up_proj: super::tp_linear::MaybeQuantLinear,
+    down_proj: super::tp_linear::MaybeQuantLinear,
+}
+
+impl TpExpert {
+    fn load(
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> Result<Self> {
+        let col = |name: &str| -> Result<super::tp_linear::MaybeQuantLinear> {
+            let w = vb
+                .pp(name)
+                .get_with_hints((), "weight", super::tp_linear::shard(0, rank, world_size))
+                .with_context(|| format!("load expert '{}/{name}'", vb.prefix()))?;
+            super::tp_linear::MaybeQuantLinear::from_weight(w, quant)
+        };
+        let gate_proj = col("gate_proj")?;
+        let up_proj = col("up_proj")?;
+        let down_w = vb
+            .pp("down_proj")
+            .get_with_hints((), "weight", super::tp_linear::shard(1, rank, world_size))
+            .with_context(|| format!("load expert '{}/down_proj'", vb.prefix()))?;
+        let down_proj = super::tp_linear::MaybeQuantLinear::from_weight(down_w, quant)?;
+        Ok(Self {
+            gate_proj,
+            up_proj,
+            down_proj,
+        })
+    }
+
+    /// SwiGLU over this rank's intermediate slice; the output is a
+    /// partial sum awaiting the block-end AllReduce.
+    fn forward_partial(&self, x: &Tensor) -> candle_core::Result<Tensor> {
+        let lhs = candle_nn::ops::silu(&self.gate_proj.forward(x)?)?;
+        let rhs = self.up_proj.forward(x)?;
+        self.down_proj.forward(&(lhs * rhs)?)
+    }
+}
+
+/// TP counterpart of `arch::qwen3_5::moe::Qwen3_5MoeBlock`. The router
+/// and the shared-expert sigmoid gate are replicated (tiny; every rank
+/// computes identical routing with zero communication); expert FFNs
+/// shard per-expert along the intermediate dim; one AllReduce at block
+/// end recovers the full activation.
+pub(crate) struct TpQwen3_5MoeBlock {
+    gate: candle_nn::Linear,
+    experts: Vec<TpExpert>,
+    shared_expert: Option<TpExpert>,
+    shared_expert_gate: Option<candle_nn::Linear>,
+    num_experts_per_tok: usize,
+    norm_topk_prob: bool,
+    #[cfg(feature = "cuda")]
+    all_reduce: super::all_reduce::AllReduce,
+    needs_reduce: bool,
+}
+
+impl TpQwen3_5MoeBlock {
+    fn check_and_gate(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        world_size: u32,
+    ) -> Result<candle_nn::Linear> {
+        let ws = world_size as usize;
+        if !cfg.moe_intermediate_size.is_multiple_of(ws) {
+            bail!(
+                "moe_intermediate_size {} not divisible by world_size {ws}",
+                cfg.moe_intermediate_size
+            );
+        }
+        if cfg.shared_expert_intermediate_size > 0
+            && !cfg.shared_expert_intermediate_size.is_multiple_of(ws)
+        {
+            bail!(
+                "shared_expert_intermediate_size {} not divisible by world_size {ws}",
+                cfg.shared_expert_intermediate_size
+            );
+        }
+        let gate_w = load_replicated(&vb.pp("gate"), (cfg.num_experts, cfg.hidden_size), "weight")?;
+        Ok(candle_nn::Linear::new(gate_w, None))
+    }
+
+    fn load_experts_and_shared(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> Result<(Vec<TpExpert>, Option<TpExpert>, Option<candle_nn::Linear>)> {
+        let experts_vb = vb.pp("experts");
+        let mut experts = Vec::with_capacity(cfg.num_experts);
+        for i in 0..cfg.num_experts {
+            experts.push(
+                TpExpert::load(&experts_vb.pp(i), rank, world_size, quant)
+                    .with_context(|| format!("load TP expert {i}"))?,
+            );
+        }
+        let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {
+            let shared = TpExpert::load(&vb.pp("shared_expert"), rank, world_size, quant)
+                .context("load TP shared_expert")?;
+            let gate_w =
+                load_replicated(&vb.pp("shared_expert_gate"), (1, cfg.hidden_size), "weight")?;
+            (Some(shared), Some(candle_nn::Linear::new(gate_w, None)))
+        } else {
+            (None, None)
+        };
+        Ok((experts, shared_expert, shared_expert_gate))
+    }
+
+    #[cfg(feature = "cuda")]
+    pub fn load(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        comm: Arc<Comm>,
+        quant: Option<GgmlDType>,
+    ) -> Result<Self> {
+        let gate = Self::check_and_gate(cfg, vb, world_size)?;
+        let (experts, shared_expert, shared_expert_gate) =
+            Self::load_experts_and_shared(cfg, vb, rank, world_size, quant)?;
+        Ok(Self {
+            gate,
+            experts,
+            shared_expert,
+            shared_expert_gate,
+            num_experts_per_tok: cfg.num_experts_per_tok,
+            norm_topk_prob: cfg.norm_topk_prob,
+            all_reduce: super::all_reduce::AllReduce::new(comm),
+            needs_reduce: world_size > 1,
+        })
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    pub fn load(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> Result<Self> {
+        let gate = Self::check_and_gate(cfg, vb, world_size)?;
+        let (experts, shared_expert, shared_expert_gate) =
+            Self::load_experts_and_shared(cfg, vb, rank, world_size, quant)?;
+        Ok(Self {
+            gate,
+            experts,
+            shared_expert,
+            shared_expert_gate,
+            num_experts_per_tok: cfg.num_experts_per_tok,
+            norm_topk_prob: cfg.norm_topk_prob,
+            needs_reduce: world_size > 1,
+        })
+    }
+}
+
+impl Module for TpQwen3_5MoeBlock {
+    /// Same routing + scatter as the single-GPU block (shared
+    /// `route_scatter`), but every expert contribution is a partial
+    /// sum; one AllReduce at the end recovers the full activation.
+    /// The shared expert's per-token sigmoid mix is a replicated
+    /// scalar, so scaling the partial slice commutes with the reduce.
+    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
+        let (b, l, hidden) = xs.dims3()?;
+        let xs_flat = xs.reshape(((), hidden))?;
+
+        let (tokens_for, weights_for) = crate::harness::arch::qwen3_5::moe::route_scatter(
+            &self.gate,
+            &xs_flat,
+            self.experts.len(),
+            self.num_experts_per_tok,
+            self.norm_topk_prob,
+        )?;
+
+        let mut ys = xs_flat.zeros_like()?;
+        for (e, expert) in self.experts.iter().enumerate() {
+            if tokens_for[e].is_empty() {
+                continue;
+            }
+            let rows = Tensor::new(tokens_for[e].as_slice(), xs.device())?;
+            let picked = xs_flat.index_select(&rows, 0)?;
+            let out = expert.forward_partial(&picked)?;
+            let w = Tensor::new(weights_for[e].as_slice(), xs.device())?
+                .to_dtype(out.dtype())?
+                .reshape(((), 1))?;
+            ys = ys.index_add(&rows, &out.broadcast_mul(&w)?, 0)?;
+        }
+
+        if let (Some(shared), Some(gate)) = (&self.shared_expert, &self.shared_expert_gate) {
+            let mix = candle_nn::ops::sigmoid(&gate.forward(&xs_flat)?)?;
+            let shared_out = shared.forward_partial(&xs_flat)?.broadcast_mul(&mix)?;
+            ys = (ys + shared_out)?;
+        }
+
+        #[cfg(feature = "cuda")]
+        if self.needs_reduce {
+            ys = ys.apply_op1_no_bwd(&self.all_reduce)?;
+        }
+        let _ = self.needs_reduce;
+        ys.reshape((b, l, hidden))
+    }
+}
+
+/// The FFN slot: dense SwiGLU (Qwen3.6) or the sharded MoE block
+/// (qwen3_next 80B-A3B, #92) — mirrors the single-GPU `MlpKind`.
+enum TpMlpKind {
+    Dense(TpQwen3_5MLP),
+    Moe(TpQwen3_5MoeBlock),
+}
+
+impl Module for TpMlpKind {
+    fn forward(&self, x: &Tensor) -> candle_core::Result<Tensor> {
+        match self {
+            TpMlpKind::Dense(mlp) => mlp.forward(x),
+            TpMlpKind::Moe(moe) => moe.forward(x),
+        }
+    }
+}
+
 // ─── decoder layer ──────────────────────────────────────────────────
 
 enum TpAttentionKind {
@@ -745,7 +1036,7 @@ enum TpAttentionKind {
 pub struct TpQwen3_5DecoderLayer {
     input_layernorm: Qwen3_5RmsNorm,
     post_attention_layernorm: Qwen3_5RmsNorm,
-    mlp: TpQwen3_5MLP,
+    mlp: TpMlpKind,
     attention: TpAttentionKind,
 }
 
@@ -789,7 +1080,25 @@ impl TpQwen3_5DecoderLayer {
             )?),
             other => bail!("unknown layer_type '{other}' for layer {layer_idx}"),
         };
-        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size, comm, quant)?;
+        let mlp = if cfg.layer_uses_moe(layer_idx) {
+            TpMlpKind::Moe(TpQwen3_5MoeBlock::load(
+                cfg,
+                &vb.pp("mlp"),
+                rank,
+                world_size,
+                comm,
+                quant,
+            )?)
+        } else {
+            TpMlpKind::Dense(TpQwen3_5MLP::load(
+                cfg,
+                &vb.pp("mlp"),
+                rank,
+                world_size,
+                comm,
+                quant,
+            )?)
+        };
         let input_layernorm =
             Qwen3_5RmsNorm::load(&vb.pp("input_layernorm"), cfg.hidden_size, cfg.rms_norm_eps)?;
         let post_attention_layernorm = Qwen3_5RmsNorm::load(
@@ -841,7 +1150,23 @@ impl TpQwen3_5DecoderLayer {
             )?),
             other => bail!("unknown layer_type '{other}' for layer {layer_idx}"),
         };
-        let mlp = TpQwen3_5MLP::load(cfg, &vb.pp("mlp"), rank, world_size, quant)?;
+        let mlp = if cfg.layer_uses_moe(layer_idx) {
+            TpMlpKind::Moe(TpQwen3_5MoeBlock::load(
+                cfg,
+                &vb.pp("mlp"),
+                rank,
+                world_size,
+                quant,
+            )?)
+        } else {
+            TpMlpKind::Dense(TpQwen3_5MLP::load(
+                cfg,
+                &vb.pp("mlp"),
+                rank,
+                world_size,
+                quant,
+            )?)
+        };
         let input_layernorm =
             Qwen3_5RmsNorm::load(&vb.pp("input_layernorm"), cfg.hidden_size, cfg.rms_norm_eps)?;
         let post_attention_layernorm = Qwen3_5RmsNorm::load(
@@ -946,10 +1271,11 @@ impl TpQwen3_5Model {
         world_size: u32,
         comm: Arc<Comm>,
         quant: Option<GgmlDType>,
+        text_prefix: &str,
     ) -> Result<Self> {
         let dtype = vb.dtype();
         let device = vb.device().clone();
-        let text_vb = vb.pp("model.language_model");
+        let text_vb = vb.pp(text_prefix);
 
         let embed_weight = load_replicated(
             &text_vb.pp("embed_tokens"),
@@ -965,17 +1291,6 @@ impl TpQwen3_5Model {
                 "layer_types must have num_hidden_layers ({}) entries; got {}",
                 cfg.num_hidden_layers,
                 cfg.layer_types.len()
-            );
-        }
-
-        // TP MoE FFN wiring (expert sharding) is F1 (#92) slice 3 — fail
-        // with a clear message rather than a missing-tensor error from
-        // the dense TpQwen3_5MLP loader.
-        if cfg.num_experts > 0 {
-            bail!(
-                "config declares a MoE FFN (num_experts={}) but TP expert sharding \
-                 is not implemented yet (#92); only dense-FFN checkpoints load",
-                cfg.num_experts
             );
         }
 
@@ -1040,10 +1355,11 @@ impl TpQwen3_5Model {
         rank: u32,
         world_size: u32,
         quant: Option<GgmlDType>,
+        text_prefix: &str,
     ) -> Result<Self> {
         let dtype = vb.dtype();
         let device = vb.device().clone();
-        let text_vb = vb.pp("model.language_model");
+        let text_vb = vb.pp(text_prefix);
 
         let embed_weight = load_replicated(
             &text_vb.pp("embed_tokens"),
@@ -1296,7 +1612,8 @@ impl TpQwen3_5ForCausalLM {
         quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm, quant)?;
+        let text_prefix = crate::harness::arch::qwen3_5::text_weight_prefix(&config.model_type);
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, comm, quant, text_prefix)?;
         let lm_head = build_lm_head(cfg, vb, &base, quant)?;
         let vision = load_replicated_vision_tower(&config, vb)?;
         let image_token_id = config.image_token_id;
@@ -1320,7 +1637,8 @@ impl TpQwen3_5ForCausalLM {
         quant: Option<GgmlDType>,
     ) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, quant)?;
+        let text_prefix = crate::harness::arch::qwen3_5::text_weight_prefix(&config.model_type);
+        let base = TpQwen3_5Model::load(cfg, vb, mmap, rank, world_size, quant, text_prefix)?;
         let lm_head = build_lm_head(cfg, vb, &base, quant)?;
         let vision = load_replicated_vision_tower(&config, vb)?;
         let image_token_id = config.image_token_id;
@@ -1704,4 +2022,209 @@ fn log_construction_complete(
         kv_bytes_per_token,
         "Qwen3-Next model construction complete"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(not(feature = "cuda"))]
+    use crate::harness::arch::qwen3_5::moe::Qwen3_5MoeBlock;
+    #[cfg(not(feature = "cuda"))]
+    use std::collections::HashMap;
+
+    /// Write a tiny MoE-block checkpoint (router + experts + shared
+    /// expert) and return a ShardedVarBuilder over it plus the config.
+    /// Non-cuda only: the cuda `TpQwen3_5MoeBlock::load` takes an NCCL
+    /// `Comm`, which tests cannot construct — the CPU Test job covers
+    /// this; the CUDA job type-checks the cuda variants.
+    #[cfg(not(feature = "cuda"))]
+    fn tiny_moe_fixture(dir: &std::path::Path) -> (TextConfig, std::path::PathBuf) {
+        let dev = Device::Cpu;
+        let randn = |shape: &[usize]| Tensor::randn(0f32, 0.3f32, shape, &dev).unwrap();
+        let (h, inter, n_exp) = (8usize, 4usize, 6usize);
+
+        let mut t: HashMap<String, Tensor> = HashMap::new();
+        t.insert("mlp.gate.weight".into(), randn(&[n_exp, h]));
+        for e in 0..n_exp {
+            t.insert(
+                format!("mlp.experts.{e}.gate_proj.weight"),
+                randn(&[inter, h]),
+            );
+            t.insert(
+                format!("mlp.experts.{e}.up_proj.weight"),
+                randn(&[inter, h]),
+            );
+            t.insert(
+                format!("mlp.experts.{e}.down_proj.weight"),
+                randn(&[h, inter]),
+            );
+        }
+        t.insert(
+            "mlp.shared_expert.gate_proj.weight".into(),
+            randn(&[inter, h]),
+        );
+        t.insert(
+            "mlp.shared_expert.up_proj.weight".into(),
+            randn(&[inter, h]),
+        );
+        t.insert(
+            "mlp.shared_expert.down_proj.weight".into(),
+            randn(&[h, inter]),
+        );
+        t.insert("mlp.shared_expert_gate.weight".into(), randn(&[1, h]));
+
+        let path = dir.join("moe.safetensors");
+        candle_core::safetensors::save(&t, &path).expect("save moe safetensors");
+
+        // Minimal TextConfig via the flat-config parser: only the MoE
+        // fields matter for the block loaders.
+        let cfg = Config::from_config_json(
+            r#"{
+                "model_type": "qwen3_next",
+                "vocab_size": 16, "hidden_size": 8, "intermediate_size": 16,
+                "num_hidden_layers": 1, "num_attention_heads": 2,
+                "num_key_value_heads": 1, "head_dim": 4,
+                "max_position_embeddings": 32, "rms_norm_eps": 1e-6,
+                "num_experts": 6, "num_experts_per_tok": 2,
+                "moe_intermediate_size": 4,
+                "shared_expert_intermediate_size": 4,
+                "norm_topk_prob": true
+            }"#,
+        )
+        .expect("parse tiny moe config")
+        .text_config;
+        (cfg, path)
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn vb_over(path: &std::path::Path) -> ShardedVarBuilder {
+        // SAFETY: mmap of a file the test just wrote; nothing mutates it.
+        unsafe {
+            candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                std::slice::from_ref(&path.to_path_buf()),
+                DType::F32,
+                &Device::Cpu,
+            )
+            .expect("build ShardedVarBuilder")
+        }
+    }
+
+    /// world_size = 2 on CPU: the block-end AllReduce is elided, so
+    /// each rank's forward returns its PARTIAL output. Summing the two
+    /// ranks' partials must reproduce the single-GPU output — this
+    /// pins the expert slicing (column gate/up, row down), the
+    /// replicated routing, and the shared-expert partial scaling,
+    /// i.e. everything the real AllReduce would combine.
+    #[cfg(not(feature = "cuda"))]
+    #[test]
+    fn tp_moe_ws2_partials_sum_to_single_gpu_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (cfg, path) = tiny_moe_fixture(dir.path());
+
+        let single =
+            Qwen3_5MoeBlock::load(&cfg, &vb_over(&path).pp("mlp")).expect("single-GPU load");
+        let rank0 = TpQwen3_5MoeBlock::load(&cfg, &vb_over(&path).pp("mlp"), 0, 2, None)
+            .expect("TP rank 0 load");
+        let rank1 = TpQwen3_5MoeBlock::load(&cfg, &vb_over(&path).pp("mlp"), 1, 2, None)
+            .expect("TP rank 1 load");
+
+        let xs = Tensor::randn(0f32, 1.0f32, (1, 4, 8), &Device::Cpu).unwrap();
+        let full: Vec<f32> = single
+            .forward(&xs)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        let p0 = rank0.forward(&xs).unwrap();
+        let p1 = rank1.forward(&xs).unwrap();
+        let summed: Vec<f32> = (p0 + p1).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        for (i, (x, y)) in full.iter().zip(&summed).enumerate() {
+            assert!(
+                (x - y).abs() < 1e-4,
+                "dim {i}: single {x} vs summed partials {y}"
+            );
+        }
+    }
+
+    /// Per-rank fused-qkvz de-interleave: sharding the fused tensor by
+    /// whole k-head groups and then splitting with per-rank head counts
+    /// must equal the corresponding row-ranges of the full split.
+    #[test]
+    fn per_rank_qkvz_split_matches_full_split_slices() {
+        use crate::harness::arch::qwen3_5::linear_attn::{split_fused_ba, split_fused_qkvz};
+        let dev = Device::Cpu;
+        let (num_k, num_v, head_k, head_v, hidden) = (4usize, 8usize, 3usize, 2usize, 5usize);
+        let r = num_v / num_k;
+        let stride = 2 * head_k + 2 * head_v * r;
+        let fused = Tensor::randn(0f32, 1.0f32, (num_k * stride, hidden), &dev).unwrap();
+        let ba = Tensor::randn(0f32, 1.0f32, (2 * num_v, hidden), &dev).unwrap();
+
+        let (full_qkv, full_z) = split_fused_qkvz(&fused, num_k, num_v, head_k, head_v).unwrap();
+        let (full_b, full_a) = split_fused_ba(&ba, num_k, num_v).unwrap();
+        let key_dim = num_k * head_k;
+
+        let ws = 2usize;
+        for rank in 0..ws {
+            let (pk, pv) = (num_k / ws, num_v / ws);
+            let group_rows = pk * stride;
+            let rank_fused = fused.narrow(0, rank * group_rows, group_rows).unwrap();
+            let (qkv, z) = split_fused_qkvz(&rank_fused, pk, pv, head_k, head_v).unwrap();
+
+            // Expected: the rank's row-ranges of the full [Q|K|V] and Z.
+            let (prk, prv) = (pk * head_k, pv * head_v);
+            let expect_qkv = Tensor::cat(
+                &[
+                    full_qkv.narrow(0, rank * prk, prk).unwrap(),
+                    full_qkv.narrow(0, key_dim + rank * prk, prk).unwrap(),
+                    full_qkv.narrow(0, 2 * key_dim + rank * prv, prv).unwrap(),
+                ],
+                0,
+            )
+            .unwrap();
+            let expect_z = full_z.narrow(0, rank * prv, prv).unwrap();
+            let d1: f32 = (qkv - expect_qkv)
+                .unwrap()
+                .abs()
+                .unwrap()
+                .max_all()
+                .unwrap()
+                .to_scalar()
+                .unwrap();
+            let d2: f32 = (z - expect_z)
+                .unwrap()
+                .abs()
+                .unwrap()
+                .max_all()
+                .unwrap()
+                .to_scalar()
+                .unwrap();
+            assert_eq!(d1, 0.0, "rank {rank} qkv slice mismatch");
+            assert_eq!(d2, 0.0, "rank {rank} z slice mismatch");
+
+            // ba: rank's groups are 2r rows each.
+            let rank_ba = ba.narrow(0, rank * pk * 2 * r, pk * 2 * r).unwrap();
+            let (b, a) = split_fused_ba(&rank_ba, pk, pv).unwrap();
+            let expect_b = full_b.narrow(0, rank * pv, pv).unwrap();
+            let expect_a = full_a.narrow(0, rank * pv, pv).unwrap();
+            let d3: f32 = (b - expect_b)
+                .unwrap()
+                .abs()
+                .unwrap()
+                .max_all()
+                .unwrap()
+                .to_scalar()
+                .unwrap();
+            let d4: f32 = (a - expect_a)
+                .unwrap()
+                .abs()
+                .unwrap()
+                .max_all()
+                .unwrap()
+                .to_scalar()
+                .unwrap();
+            assert_eq!(d3, 0.0, "rank {rank} b slice mismatch");
+            assert_eq!(d4, 0.0, "rank {rank} a slice mismatch");
+        }
+    }
 }

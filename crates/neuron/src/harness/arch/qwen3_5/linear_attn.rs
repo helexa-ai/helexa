@@ -932,7 +932,7 @@ fn load_linear_no_bias(
 /// `(num_k_heads, 2*head_k + 2*head_v*num_v/num_k)`. Concatenating the
 /// per-group regions restores the global-contiguous layout the rest of
 /// this module (incl. the conv over `[Q|K|V]` channels) expects.
-fn split_fused_qkvz(
+pub(crate) fn split_fused_qkvz(
     qkvz: &Tensor,
     num_k_heads: usize,
     num_v_heads: usize,
@@ -959,7 +959,11 @@ fn split_fused_qkvz(
 /// into per-v-head `b` (beta) and `a` (decay) weights. Same per-key-head
 /// grouping as [`split_fused_qkvz`]: each group holds `[b (r) | a (r)]`
 /// rows, `r = num_v_heads / num_k_heads`.
-fn split_fused_ba(ba: &Tensor, num_k_heads: usize, num_v_heads: usize) -> Result<(Tensor, Tensor)> {
+pub(crate) fn split_fused_ba(
+    ba: &Tensor,
+    num_k_heads: usize,
+    num_v_heads: usize,
+) -> Result<(Tensor, Tensor)> {
     let r = num_v_heads / num_k_heads;
     let (mut bs, mut r#as) = (Vec::new(), Vec::new());
     for g in 0..num_k_heads {
