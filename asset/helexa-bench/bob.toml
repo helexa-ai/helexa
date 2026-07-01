@@ -18,6 +18,35 @@ db_path = "/var/lib/helexa-bench/bench.sqlite"
 [scenarios]
 prompt_sizes = [128, 4096]
 max_tokens = 256
+# Concurrency / agentic-load scenarios (#89), enabled so the 27B baseline
+# carries p95-under-concurrency data before the F3 A/B gate (#94) needs
+# it for comparison. Levels mirror the real a0/hermes/opencode fan-out.
+concurrency_levels = [2, 4, 8]
+concurrency_prompt_tokens = 512
+
+# Capability probes (#91) — the reasoning/planning axis the speed
+# scenarios miss; scored manually via `helexa-bench score` (O7). Enabled
+# for the same reason: the F3 gate compares 80B-A3B variants against the
+# 27B on planning quality, so the 27B needs scored artifacts first.
+[[scenarios.capability_probes]]
+name = "rust-plan"
+max_tokens = 2048
+prompt = """
+Write an implementation plan for adding rate limiting to an Axum service.
+Honor existing conventions, call out trade-offs, and sequence the work.
+"""
+
+[[scenarios.capability_probes]]
+name = "debug-reason"
+max_tokens = 2048
+prompt = """
+A Rust axum server streams SSE responses through a reverse proxy. Clients
+report that streams stall for exactly 60 seconds and then resume, but only
+when response chunks are small and infrequent. Curling the backend directly
+never stalls. List the most likely causes in order of probability, explain
+the mechanism behind each, and describe the smallest experiment that would
+confirm or eliminate each cause.
+"""
 
 # Read-only JSON API consumed by the bench UI (hosted separately) and for
 # programmatic access. Served alongside the sweep loop.
