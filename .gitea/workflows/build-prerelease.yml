@@ -87,7 +87,14 @@ jobs:
           # rpmvercmp ranks digit-prefixed segments above alpha ones.
           # The SHA stays only as a debug identifier; sort order is
           # decided entirely by the timestamp.
-          COMMIT_TIMESTAMP=$(git log -1 --format=%cd --date=format:%Y%m%d%H%M%S HEAD)
+          # format-local + TZ=UTC0 renders the stamp in UTC regardless
+          # of the committer's recorded timezone. Plain `format:` uses
+          # each commit's own TZ offset — local commits (UTC+3) and
+          # Gitea server-side merge commits (UTC) interleaved
+          # non-monotonically, letting an older build out-rank newer
+          # ones in RPM EVR comparison (the 2026-07-01 "235959" stamp
+          # that froze the fleet on a stale build).
+          COMMIT_TIMESTAMP=$(TZ=UTC0 git log -1 --format=%cd --date=format-local:%Y%m%d%H%M%S HEAD)
           RELEASE="0.1.${COMMIT_TIMESTAMP}.git${SHORT_SHA}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "release=${RELEASE}" >> "$GITHUB_OUTPUT"
