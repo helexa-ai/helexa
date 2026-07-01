@@ -8,8 +8,11 @@
 //!   - `cost` from the catalogue profile (operator-set pricing).
 //!   - `tool_call` / `reasoning` from the neuron's runtime detection (OR-ed in)
 //!
-//! Also a regression guard for the removal of `max_model_len` — the misnamed,
-//! unconsumed vLLM-ism that this contract replaces.
+//! Also asserts the flat, vLLM-convention duplicates (`max_model_len`,
+//! `max_input_tokens`, `max_output_tokens`) mirror `limit` (#78): the
+//! earlier removal of `max_model_len` as "unconsumed" was wrong — Hermes
+//! Agent (and the wider OpenAI client ecosystem) probes those flat keys
+//! and cannot see `limit.context`.
 
 use cortex_core::config::{
     EvictionSettings, EvictionStrategy, GatewayConfig, GatewaySettings, NeuronEndpoint,
@@ -85,6 +88,21 @@ capabilities = ["text"]
                 }),
             },
         );
+        // A model with no derivable limit: the flat #78 fields must be
+        // OMITTED (absent-vs-zero is load-bearing), never 0 or a guess.
+        node.models.insert(
+            "no-limit-model".into(),
+            ModelEntry {
+                id: "no-limit-model".into(),
+                status: ModelStatus::Loaded,
+                last_accessed: None,
+                vram_estimate_mb: None,
+                capabilities: vec!["text".into()],
+                tool_call: false,
+                reasoning: false,
+                limit: None,
+            },
+        );
     }
 
     let app = cortex_gateway::build_app(Arc::clone(&fleet));
@@ -123,11 +141,26 @@ capabilities = ["text"]
     assert_eq!(entry["tool_call"], true);
     assert_eq!(entry["reasoning"], true);
 
-    // Regression guard: the removed, unconsumed vLLM-ism must not reappear.
-    assert!(
-        entry.get("max_model_len").is_none(),
-        "max_model_len was removed; /v1/models must not advertise it"
-    );
+    // Flat ecosystem duplicates (#78) mirror the advertised `limit` so
+    // vLLM-convention probes (Hermes Agent) auto-detect the window.
+    assert_eq!(entry["max_model_len"], 49152);
+    assert_eq!(entry["max_input_tokens"], 40960);
+    assert_eq!(entry["max_output_tokens"], 8192);
+
+    // No limit → flat fields omitted entirely, never 0 or a guess.
+    let unknown = body["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["id"] == "no-limit-model")
+        .expect("no-limit-model present in /v1/models");
+    assert!(unknown.get("limit").is_none());
+    for key in ["max_model_len", "max_input_tokens", "max_output_tokens"] {
+        assert!(
+            unknown.get(key).is_none(),
+            "{key} must be omitted when the window is unknown"
+        );
+    }
 
     let _ = std::fs::remove_file(&cat_path);
 }

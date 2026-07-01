@@ -55,6 +55,12 @@ pub fn aggregate_models(topology: &HashMap<String, CortexTopology>) -> Vec<Corte
 
     let mut out: Vec<CortexModelEntry> = merged.into_values().collect();
     out.sort_by(|a, b| a.id.cmp(&b.id));
+    // Re-derive the flat ecosystem fields (#78) from the merged (tightest)
+    // limit — the values deserialized from each cortex are per-operator and
+    // may not match the federation-wide merge.
+    for e in &mut out {
+        e.sync_flat_limit();
+    }
     out
 }
 
@@ -74,6 +80,10 @@ fn router_entry(cortex: &str, e: &CortexModelEntry) -> CortexModelEntry {
         cost: e.cost.clone(),
         tool_call: e.tool_call,
         reasoning: e.reasoning,
+        // Derived from `limit` by the final sync pass in aggregate_models.
+        max_model_len: None,
+        max_input_tokens: None,
+        max_output_tokens: None,
     }
 }
 
@@ -151,6 +161,9 @@ mod tests {
             cost: None,
             tool_call: false,
             reasoning: false,
+            max_model_len: None,
+            max_input_tokens: None,
+            max_output_tokens: None,
         }
     }
 
@@ -239,5 +252,9 @@ mod tests {
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].limit.as_ref().unwrap().context, 16_384);
         assert_eq!(out[0].cost.as_ref().unwrap().input, 0.20);
+        // Flat #78 fields re-derived from the merged (tightest) limit.
+        assert_eq!(out[0].max_model_len, Some(16_384));
+        assert_eq!(out[0].max_input_tokens, None);
+        assert_eq!(out[0].max_output_tokens, Some(4096));
     }
 }

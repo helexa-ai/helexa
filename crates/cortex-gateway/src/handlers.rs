@@ -581,6 +581,11 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 // Runtime-detected — will be OR-ed in Pass 2 from neuron data.
                 tool_call: false,
                 reasoning: false,
+                // Flat #78 fields are derived from `limit` in the final
+                // sync pass, once merging is done.
+                max_model_len: None,
+                max_input_tokens: None,
+                max_output_tokens: None,
             },
         );
     }
@@ -638,6 +643,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     cost: None,
                     tool_call: entry.tool_call,
                     reasoning: entry.reasoning,
+                    max_model_len: None,
+                    max_input_tokens: None,
+                    max_output_tokens: None,
                 });
         }
     }
@@ -694,6 +702,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     cost: None,
                     tool_call: false,
                     reasoning: false,
+                    max_model_len: None,
+                    max_input_tokens: None,
+                    max_output_tokens: None,
                 });
         }
     }
@@ -728,11 +739,24 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 cost: target_entry.cost.clone(),
                 tool_call: target_entry.tool_call,
                 reasoning: target_entry.reasoning,
+                max_model_len: None,
+                max_input_tokens: None,
+                max_output_tokens: None,
             },
         );
     }
 
-    let data: Vec<Value> = entries.values().map(|e| json!(e)).collect();
+    // Final pass: derive the flat ecosystem context-window fields (#78)
+    // from each entry's now-settled `limit`, so vLLM-convention clients
+    // (Hermes Agent et al.) can read the window without knowing helexa's
+    // `limit` schema.
+    let data: Vec<Value> = entries
+        .values_mut()
+        .map(|e| {
+            e.sync_flat_limit();
+            json!(e)
+        })
+        .collect();
     Json(json!({
         "object": "list",
         "data": data,
