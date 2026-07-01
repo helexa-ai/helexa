@@ -2027,11 +2027,17 @@ fn log_construction_complete(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(feature = "cuda"))]
     use crate::harness::arch::qwen3_5::moe::Qwen3_5MoeBlock;
+    #[cfg(not(feature = "cuda"))]
     use std::collections::HashMap;
 
     /// Write a tiny MoE-block checkpoint (router + experts + shared
     /// expert) and return a ShardedVarBuilder over it plus the config.
+    /// Non-cuda only: the cuda `TpQwen3_5MoeBlock::load` takes an NCCL
+    /// `Comm`, which tests cannot construct — the CPU Test job covers
+    /// this; the CUDA job type-checks the cuda variants.
+    #[cfg(not(feature = "cuda"))]
     fn tiny_moe_fixture(dir: &std::path::Path) -> (TextConfig, std::path::PathBuf) {
         let dev = Device::Cpu;
         let randn = |shape: &[usize]| Tensor::randn(0f32, 0.3f32, shape, &dev).unwrap();
@@ -2090,6 +2096,7 @@ mod tests {
         (cfg, path)
     }
 
+    #[cfg(not(feature = "cuda"))]
     fn vb_over(path: &std::path::Path) -> ShardedVarBuilder {
         // SAFETY: mmap of a file the test just wrote; nothing mutates it.
         unsafe {
@@ -2108,6 +2115,7 @@ mod tests {
     /// pins the expert slicing (column gate/up, row down), the
     /// replicated routing, and the shared-expert partial scaling,
     /// i.e. everything the real AllReduce would combine.
+    #[cfg(not(feature = "cuda"))]
     #[test]
     fn tp_moe_ws2_partials_sum_to_single_gpu_output() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -2154,7 +2162,7 @@ mod tests {
 
         let (full_qkv, full_z) = split_fused_qkvz(&fused, num_k, num_v, head_k, head_v).unwrap();
         let (full_b, full_a) = split_fused_ba(&ba, num_k, num_v).unwrap();
-        let (key_dim, value_dim) = (num_k * head_k, num_v * head_v);
+        let key_dim = num_k * head_k;
 
         let ws = 2usize;
         for rank in 0..ws {
