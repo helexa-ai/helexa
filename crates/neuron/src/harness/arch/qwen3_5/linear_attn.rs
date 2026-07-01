@@ -139,10 +139,42 @@ impl GatedDeltaNet {
         let conv_dim = key_dim * 2 + value_dim;
 
         // ----- Linear projections (all `bias=False` in the reference). -----
-        let in_proj_qkv = load_linear_no_bias(vb, "in_proj_qkv", cfg.hidden_size, conv_dim)?;
-        let in_proj_z = load_linear_no_bias(vb, "in_proj_z", cfg.hidden_size, value_dim)?;
-        let in_proj_b = load_linear_no_bias(vb, "in_proj_b", cfg.hidden_size, num_v_heads)?;
-        let in_proj_a = load_linear_no_bias(vb, "in_proj_a", cfg.hidden_size, num_v_heads)?;
+        // Two checkpoint layouts exist for the input projections:
+        // - Qwen3.6 (qwen3_5): separate `in_proj_qkv` / `in_proj_z` /
+        //   `in_proj_b` / `in_proj_a`, with qkv stored as contiguous
+        //   [Q | K | V] blocks — loads directly.
+        // - Qwen3-Next 80B-A3B (qwen3_next, #92): fused `in_proj_qkvz`
+        //   + `in_proj_ba`, **interleaved per key-head group** (see
+        //   `split_fused_qkvz`/`split_fused_ba`) — de-interleaved once
+        //   at load into the same contiguous layout, so the forward
+        //   path (incl. the conv over [Q|K|V] channels) is unchanged.
+        let (in_proj_qkv, in_proj_z, in_proj_b, in_proj_a) =
+            if vb.contains_tensor("in_proj_qkvz.weight") {
+                let qkvz = vb
+                    .pp("in_proj_qkvz")
+                    .get((2 * key_dim + 2 * value_dim, cfg.hidden_size), "weight")
+                    .with_context(|| format!("load '{}/in_proj_qkvz/weight'", vb.prefix()))?;
+                let ba = vb
+                    .pp("in_proj_ba")
+                    .get((2 * num_v_heads, cfg.hidden_size), "weight")
+                    .with_context(|| format!("load '{}/in_proj_ba/weight'", vb.prefix()))?;
+                let (qkv_w, z_w) =
+                    split_fused_qkvz(&qkvz, num_k_heads, num_v_heads, head_k_dim, head_v_dim)?;
+                let (b_w, a_w) = split_fused_ba(&ba, num_k_heads, num_v_heads)?;
+                (
+                    Linear::new(qkv_w, None),
+                    Linear::new(z_w, None),
+                    Linear::new(b_w, None),
+                    Linear::new(a_w, None),
+                )
+            } else {
+                (
+                    load_linear_no_bias(vb, "in_proj_qkv", cfg.hidden_size, conv_dim)?,
+                    load_linear_no_bias(vb, "in_proj_z", cfg.hidden_size, value_dim)?,
+                    load_linear_no_bias(vb, "in_proj_b", cfg.hidden_size, num_v_heads)?,
+                    load_linear_no_bias(vb, "in_proj_a", cfg.hidden_size, num_v_heads)?,
+                )
+            };
         let out_proj = load_linear_no_bias(vb, "out_proj", value_dim, cfg.hidden_size)?;
 
         // ----- Conv1d weight (depthwise, bias=False). -----
@@ -889,6 +921,57 @@ fn load_linear_no_bias(
     Ok(Linear::new(weight, None))
 }
 
+/// De-interleave a fused `in_proj_qkvz.weight` (qwen3_next layout, #92)
+/// into a contiguous `[Q | K | V]` qkv weight plus a `Z` weight.
+///
+/// The fused rows are grouped **per key head**: for each of the
+/// `num_k_heads` groups (`r = num_v_heads / num_k_heads`, group stride
+/// `s = 2*head_k + 2*head_v*r`), the group holds
+/// `[q (head_k) | k (head_k) | v (head_v*r) | z (head_v*r)]` — the
+/// reshape in upstream `fix_query_key_value_ordering`
+/// `(num_k_heads, 2*head_k + 2*head_v*num_v/num_k)`. Concatenating the
+/// per-group regions restores the global-contiguous layout the rest of
+/// this module (incl. the conv over `[Q|K|V]` channels) expects.
+fn split_fused_qkvz(
+    qkvz: &Tensor,
+    num_k_heads: usize,
+    num_v_heads: usize,
+    head_k_dim: usize,
+    head_v_dim: usize,
+) -> Result<(Tensor, Tensor)> {
+    let r = num_v_heads / num_k_heads;
+    let stride = 2 * head_k_dim + 2 * head_v_dim * r;
+    let (mut qs, mut ks, mut vs, mut zs) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for g in 0..num_k_heads {
+        let base = g * stride;
+        qs.push(qkvz.narrow(0, base, head_k_dim)?);
+        ks.push(qkvz.narrow(0, base + head_k_dim, head_k_dim)?);
+        vs.push(qkvz.narrow(0, base + 2 * head_k_dim, head_v_dim * r)?);
+        zs.push(qkvz.narrow(0, base + 2 * head_k_dim + head_v_dim * r, head_v_dim * r)?);
+    }
+    let parts: Vec<Tensor> = qs.into_iter().chain(ks).chain(vs).collect();
+    let qkv = Tensor::cat(&parts, 0)?.contiguous()?;
+    let z = Tensor::cat(&zs, 0)?.contiguous()?;
+    Ok((qkv, z))
+}
+
+/// De-interleave a fused `in_proj_ba.weight` (qwen3_next layout, #92)
+/// into per-v-head `b` (beta) and `a` (decay) weights. Same per-key-head
+/// grouping as [`split_fused_qkvz`]: each group holds `[b (r) | a (r)]`
+/// rows, `r = num_v_heads / num_k_heads`.
+fn split_fused_ba(ba: &Tensor, num_k_heads: usize, num_v_heads: usize) -> Result<(Tensor, Tensor)> {
+    let r = num_v_heads / num_k_heads;
+    let (mut bs, mut r#as) = (Vec::new(), Vec::new());
+    for g in 0..num_k_heads {
+        let base = g * 2 * r;
+        bs.push(ba.narrow(0, base, r)?);
+        r#as.push(ba.narrow(0, base + r, r)?);
+    }
+    let b = Tensor::cat(&bs, 0)?.contiguous()?;
+    let a = Tensor::cat(&r#as, 0)?.contiguous()?;
+    Ok((b, a))
+}
+
 /// Numerically-stable `softplus(x) = ln(1 + exp(x))`. Matches PyTorch's
 /// `F.softplus` default (beta=1, threshold=20: for large positive x,
 /// returns x as-is to avoid overflow in the exp).
@@ -1185,5 +1268,116 @@ mod tests {
         // poisoning from the f32 promotions.
         let v: Vec<f32> = y.flatten_all().unwrap().to_vec1().unwrap();
         assert!(v.iter().all(|x| x.is_finite()));
+    }
+
+    /// Interleave known per-head Q/K/V/Z (and B/A) rows into the fused
+    /// qwen3_next layout, split, and expect the original contiguous
+    /// blocks back. Layout under test: per key-head group g,
+    /// `[q_g | k_g | v_g | z_g]` with r = num_v/num_k value heads per
+    /// group (upstream `fix_query_key_value_ordering`).
+    #[test]
+    fn split_fused_qkvz_and_ba_roundtrip() {
+        let dev = Device::Cpu;
+        let (num_k, num_v, head_k, head_v, hidden) = (2usize, 4usize, 3usize, 2usize, 5usize);
+        let r = num_v / num_k;
+
+        // Distinct constant per logical row so any mis-slicing shows.
+        let row = |tag: f32| Tensor::full(tag, (1, hidden), &dev).unwrap();
+        let mut fused_rows: Vec<Tensor> = Vec::new();
+        let (mut q_rows, mut k_rows, mut v_rows, mut z_rows) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for g in 0..num_k {
+            let base = 1000.0 * (g as f32 + 1.0);
+            for i in 0..head_k {
+                let t = row(base + i as f32);
+                fused_rows.push(t.clone());
+                q_rows.push(t);
+            }
+            for i in 0..head_k {
+                let t = row(base + 100.0 + i as f32);
+                fused_rows.push(t.clone());
+                k_rows.push(t);
+            }
+            for i in 0..head_v * r {
+                let t = row(base + 200.0 + i as f32);
+                fused_rows.push(t.clone());
+                v_rows.push(t);
+            }
+            for i in 0..head_v * r {
+                let t = row(base + 300.0 + i as f32);
+                fused_rows.push(t.clone());
+                z_rows.push(t);
+            }
+        }
+        let fused = Tensor::cat(&fused_rows, 0).unwrap();
+        let expected_qkv = Tensor::cat(
+            &q_rows
+                .iter()
+                .chain(k_rows.iter())
+                .chain(v_rows.iter())
+                .cloned()
+                .collect::<Vec<_>>(),
+            0,
+        )
+        .unwrap();
+        let expected_z = Tensor::cat(&z_rows, 0).unwrap();
+
+        let (qkv, z) = split_fused_qkvz(&fused, num_k, num_v, head_k, head_v).unwrap();
+        assert_eq!(qkv.dims(), &[2 * num_k * head_k + num_v * head_v, hidden]);
+        let diff_qkv: f32 = (qkv - expected_qkv)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap()
+            .to_scalar()
+            .unwrap();
+        let diff_z: f32 = (z - expected_z)
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap()
+            .to_scalar()
+            .unwrap();
+        assert_eq!(diff_qkv, 0.0);
+        assert_eq!(diff_z, 0.0);
+
+        // ba: per group, [b (r rows) | a (r rows)].
+        let mut ba_rows = Vec::new();
+        let (mut b_rows, mut a_rows) = (Vec::new(), Vec::new());
+        for g in 0..num_k {
+            let base = 10.0 * (g as f32 + 1.0);
+            for i in 0..r {
+                let t = row(base + i as f32);
+                ba_rows.push(t.clone());
+                b_rows.push(t);
+            }
+            for i in 0..r {
+                let t = row(base + 5.0 + i as f32);
+                ba_rows.push(t.clone());
+                a_rows.push(t);
+            }
+        }
+        let ba = Tensor::cat(&ba_rows, 0).unwrap();
+        let (b, a) = split_fused_ba(&ba, num_k, num_v).unwrap();
+        let diff_b: f32 = (b - Tensor::cat(&b_rows, 0).unwrap())
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap()
+            .to_scalar()
+            .unwrap();
+        let diff_a: f32 = (a - Tensor::cat(&a_rows, 0).unwrap())
+            .unwrap()
+            .abs()
+            .unwrap()
+            .max_all()
+            .unwrap()
+            .to_scalar()
+            .unwrap();
+        assert_eq!(diff_b, 0.0);
+        assert_eq!(diff_a, 0.0);
     }
 }

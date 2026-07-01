@@ -17,12 +17,32 @@ pub struct Qwen3_5MLP {
 }
 
 impl Qwen3_5MLP {
+    /// Construct directly from pre-built projections (MoE-block tests).
+    #[cfg(test)]
+    pub(crate) fn from_weights(gate_proj: Linear, up_proj: Linear, down_proj: Linear) -> Self {
+        Self {
+            gate_proj,
+            up_proj,
+            down_proj,
+        }
+    }
+
     pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
-        let h = cfg.hidden_size;
-        let i = cfg.intermediate_size;
-        let gate_proj = load_linear_no_bias(vb, "gate_proj", h, i)?;
-        let up_proj = load_linear_no_bias(vb, "up_proj", h, i)?;
-        let down_proj = load_linear_no_bias(vb, "down_proj", i, h)?;
+        Self::load_with_dims(vb, cfg.hidden_size, cfg.intermediate_size)
+    }
+
+    /// Load with explicit dims — the MoE block (#92) reuses this SwiGLU
+    /// shape for routed experts (`moe_intermediate_size`) and the shared
+    /// expert (`shared_expert_intermediate_size`), both narrower than
+    /// the dense `intermediate_size`.
+    pub fn load_with_dims(
+        vb: &ShardedVarBuilder,
+        hidden: usize,
+        intermediate: usize,
+    ) -> Result<Self> {
+        let gate_proj = load_linear_no_bias(vb, "gate_proj", hidden, intermediate)?;
+        let up_proj = load_linear_no_bias(vb, "up_proj", hidden, intermediate)?;
+        let down_proj = load_linear_no_bias(vb, "down_proj", intermediate, hidden)?;
         Ok(Self {
             gate_proj,
             up_proj,

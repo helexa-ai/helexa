@@ -22,6 +22,7 @@ use super::TextConfig;
 use super::full_attn::Qwen3_5Attention;
 use super::linear_attn::GatedDeltaNet;
 use super::mlp::Qwen3_5MLP;
+use super::moe::Qwen3_5MoeBlock;
 use super::rmsnorm::Qwen3_5RmsNorm;
 use super::rope::RotaryEmbedding;
 use super::snapshot::LayerKvSnapshot;
@@ -35,10 +36,27 @@ enum AttentionKind {
     Linear(GatedDeltaNet),
 }
 
+/// The FFN slot: dense SwiGLU (Qwen3.6) or the high-sparsity MoE block
+/// (qwen3_next 80B-A3B family, #92), selected per layer by
+/// [`TextConfig::layer_uses_moe`].
+enum MlpKind {
+    Dense(Qwen3_5MLP),
+    Moe(Qwen3_5MoeBlock),
+}
+
+impl Module for MlpKind {
+    fn forward(&self, x: &Tensor) -> candle_core::Result<Tensor> {
+        match self {
+            MlpKind::Dense(mlp) => mlp.forward(x),
+            MlpKind::Moe(moe) => moe.forward(x),
+        }
+    }
+}
+
 pub struct Qwen3_5DecoderLayer {
     input_layernorm: Qwen3_5RmsNorm,
     post_attention_layernorm: Qwen3_5RmsNorm,
-    mlp: Qwen3_5MLP,
+    mlp: MlpKind,
     attention: AttentionKind,
 }
 
@@ -73,7 +91,11 @@ impl Qwen3_5DecoderLayer {
             ),
         };
 
-        let mlp = Qwen3_5MLP::load(cfg, &vb.pp("mlp"))?;
+        let mlp = if cfg.layer_uses_moe(layer_idx) {
+            MlpKind::Moe(Qwen3_5MoeBlock::load(cfg, &vb.pp("mlp"))?)
+        } else {
+            MlpKind::Dense(Qwen3_5MLP::load(cfg, &vb.pp("mlp"))?)
+        };
         let input_layernorm =
             Qwen3_5RmsNorm::load(&vb.pp("input_layernorm"), cfg.hidden_size, cfg.rms_norm_eps)?;
         let post_attention_layernorm = Qwen3_5RmsNorm::load(

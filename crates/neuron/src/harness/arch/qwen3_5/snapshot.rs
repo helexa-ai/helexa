@@ -208,7 +208,7 @@ mod tests {
             )
             .expect("build ShardedVarBuilder")
         };
-        Qwen3_5Model::load(cfg, &vb).expect("load tiny qwen3_5 model")
+        Qwen3_5Model::load(cfg, &vb, "model.language_model").expect("load tiny qwen3_5 model")
     }
 
     fn forward_tokens(model: &mut Qwen3_5Model, tokens: &[u32], offset: usize) -> Vec<f32> {

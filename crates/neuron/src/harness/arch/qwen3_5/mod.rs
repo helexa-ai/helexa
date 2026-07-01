@@ -76,6 +76,7 @@ pub mod decoder;
 pub mod full_attn;
 pub mod linear_attn;
 pub mod mlp;
+pub mod moe;
 pub mod rmsnorm;
 pub mod rope;
 pub mod snapshot;
@@ -460,17 +461,20 @@ pub struct Qwen3_5Model {
 }
 
 impl Qwen3_5Model {
-    pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
+    /// `text_prefix` is where the text core lives in the checkpoint:
+    /// - Qwen3.6 (multimodal, `model_type = "qwen3_5"`):
+    ///   `model.language_model` — sibling to `model.visual.*` (the
+    ///   vision tower) and top-level `lm_head` / `mtp.*`.
+    /// - Qwen3-Next-80B-A3B (text-only, `model_type = "qwen3_next"`):
+    ///   plain `model`.
+    ///
+    /// [`Qwen3_5ForCausalLM::new`] picks by `Config::model_type` via
+    /// [`text_weight_prefix`].
+    pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder, text_prefix: &str) -> Result<Self> {
         let dtype = vb.dtype();
         let device = vb.device().clone();
 
-        // Qwen3-Next is a multimodal architecture whose text core lives
-        // under `model.language_model.*` — sibling to `model.visual.*`
-        // (the vision tower) and to top-level `lm_head` / `mtp.*`.
-        // Every text-side tensor in the safetensors files is under
-        // this prefix; we ignore the vision and MTP weights for
-        // language-model inference.
-        let text_vb = vb.pp("model.language_model");
+        let text_vb = vb.pp(text_prefix);
 
         let embed_vb = text_vb.pp("embed_tokens");
         let embed_weight = embed_vb
@@ -486,17 +490,6 @@ impl Qwen3_5Model {
                  got {}",
                 cfg.num_hidden_layers,
                 cfg.layer_types.len()
-            );
-        }
-
-        // MoE FFN wiring is F1 (#92) slice 2 — fail with a clear message
-        // rather than a cryptic missing-tensor error from the dense MLP
-        // loader ('mlp.gate_proj/weight not found').
-        if cfg.num_experts > 0 {
-            anyhow::bail!(
-                "config declares a MoE FFN (num_experts={}) but the qwen3_5 MoE \
-                 block is not implemented yet (#92); only dense-FFN checkpoints load",
-                cfg.num_experts
             );
         }
 
@@ -746,10 +739,20 @@ pub struct Qwen3_5ForCausalLM {
     image_token_id: Option<u32>,
 }
 
+/// Checkpoint prefix of the text core for a given `model_type` — see
+/// [`Qwen3_5Model::load`].
+pub fn text_weight_prefix(model_type: &str) -> &'static str {
+    if model_type == MODEL_TYPE_NEXT {
+        "model"
+    } else {
+        "model.language_model"
+    }
+}
+
 impl Qwen3_5ForCausalLM {
     pub fn new(config: Config, vb: ShardedVarBuilder) -> Result<Self> {
         let cfg = &config.text_config;
-        let base = Qwen3_5Model::load(cfg, &vb)?;
+        let base = Qwen3_5Model::load(cfg, &vb, text_weight_prefix(&config.model_type))?;
         let lm_head = if cfg.tie_word_embeddings {
             Linear::new(base.embed_weight().clone(), None)
         } else {
@@ -1135,6 +1138,129 @@ mod tests {
         // decoder_sparse_step 1 + empty mlp_only_layers → every layer MoE.
         assert!(t.layer_uses_moe(0));
         assert!(t.layer_uses_moe(47));
+    }
+
+    /// End-to-end structural check for the qwen3_next path (#92): a
+    /// tiny random-weight checkpoint in the **flat** layout (`model.*`
+    /// prefix, fused `in_proj_qkvz`/`in_proj_ba`, per-expert MoE
+    /// tensors, shared expert) loads through `Config::from_config_json`
+    /// and `Qwen3_5ForCausalLM::new`, producing finite logits of the
+    /// right shape. Numerical parity vs HF is pinned separately by the
+    /// `qwen3_next_parity` fixture test.
+    #[test]
+    fn tiny_qwen3_next_checkpoint_loads_and_forwards() {
+        use candle_core::Device;
+        use std::collections::HashMap;
+
+        let raw = r#"{
+            "model_type": "qwen3_next",
+            "vocab_size": 32, "hidden_size": 8, "intermediate_size": 16,
+            "num_hidden_layers": 2, "num_attention_heads": 2,
+            "num_key_value_heads": 1, "head_dim": 4,
+            "max_position_embeddings": 64, "rms_norm_eps": 1e-6,
+            "full_attention_interval": 2,
+            "linear_num_value_heads": 4, "linear_num_key_heads": 2,
+            "linear_key_head_dim": 4, "linear_value_head_dim": 4,
+            "linear_conv_kernel_dim": 4,
+            "num_experts": 4, "num_experts_per_tok": 2,
+            "moe_intermediate_size": 4,
+            "shared_expert_intermediate_size": 4,
+            "norm_topk_prob": true
+        }"#;
+        let cfg = Config::from_config_json(raw).expect("parse tiny qwen3_next config");
+        assert_eq!(cfg.text_config.layer_types[0], "linear_attention");
+        assert_eq!(cfg.text_config.layer_types[1], "full_attention");
+
+        let dev = Device::Cpu;
+        let randn = |shape: &[usize]| Tensor::randn(0f32, 0.1f32, shape, &dev).unwrap();
+        let ones = |shape: &[usize]| Tensor::ones(shape, DType::F32, &dev).unwrap();
+        let mut t: HashMap<String, Tensor> = HashMap::new();
+
+        let (h, vocab) = (8usize, 32usize);
+        t.insert("model.embed_tokens.weight".into(), randn(&[vocab, h]));
+        t.insert("lm_head.weight".into(), randn(&[vocab, h]));
+        t.insert("model.norm.weight".into(), ones(&[h]));
+
+        let moe = |t: &mut HashMap<String, Tensor>, p: &str| {
+            t.insert(format!("{p}.gate.weight"), randn(&[4, h]));
+            for e in 0..4 {
+                t.insert(format!("{p}.experts.{e}.gate_proj.weight"), randn(&[4, h]));
+                t.insert(format!("{p}.experts.{e}.up_proj.weight"), randn(&[4, h]));
+                t.insert(format!("{p}.experts.{e}.down_proj.weight"), randn(&[h, 4]));
+            }
+            t.insert(
+                format!("{p}.shared_expert.gate_proj.weight"),
+                randn(&[4, h]),
+            );
+            t.insert(format!("{p}.shared_expert.up_proj.weight"), randn(&[4, h]));
+            t.insert(
+                format!("{p}.shared_expert.down_proj.weight"),
+                randn(&[h, 4]),
+            );
+            t.insert(format!("{p}.shared_expert_gate.weight"), randn(&[1, h]));
+        };
+
+        // Layer 0: linear_attention with the FUSED qwen3_next input
+        // projections. key_dim = 2*4 = 8, value_dim = 4*4 = 16 →
+        // qkvz rows = 2*8 + 2*16 = 48, ba rows = 2*4 = 8, conv_dim = 32.
+        let l0 = "model.layers.0";
+        t.insert(
+            format!("{l0}.linear_attn.in_proj_qkvz.weight"),
+            randn(&[48, h]),
+        );
+        t.insert(
+            format!("{l0}.linear_attn.in_proj_ba.weight"),
+            randn(&[8, h]),
+        );
+        t.insert(
+            format!("{l0}.linear_attn.conv1d.weight"),
+            randn(&[32, 1, 4]),
+        );
+        t.insert(format!("{l0}.linear_attn.dt_bias"), randn(&[4]));
+        t.insert(format!("{l0}.linear_attn.A_log"), randn(&[4]));
+        t.insert(format!("{l0}.linear_attn.norm.weight"), ones(&[4]));
+        t.insert(format!("{l0}.linear_attn.out_proj.weight"), randn(&[h, 16]));
+        t.insert(format!("{l0}.input_layernorm.weight"), ones(&[h]));
+        t.insert(format!("{l0}.post_attention_layernorm.weight"), ones(&[h]));
+        moe(&mut t, &format!("{l0}.mlp"));
+
+        // Layer 1: full_attention (output-gated: q_proj is 2×).
+        let l1 = "model.layers.1";
+        t.insert(
+            format!("{l1}.self_attn.q_proj.weight"),
+            randn(&[2 * 2 * 4, h]),
+        );
+        t.insert(format!("{l1}.self_attn.k_proj.weight"), randn(&[4, h]));
+        t.insert(format!("{l1}.self_attn.v_proj.weight"), randn(&[4, h]));
+        t.insert(format!("{l1}.self_attn.o_proj.weight"), randn(&[h, 8]));
+        t.insert(format!("{l1}.self_attn.q_norm.weight"), ones(&[4]));
+        t.insert(format!("{l1}.self_attn.k_norm.weight"), ones(&[4]));
+        t.insert(format!("{l1}.input_layernorm.weight"), ones(&[h]));
+        t.insert(format!("{l1}.post_attention_layernorm.weight"), ones(&[h]));
+        moe(&mut t, &format!("{l1}.mlp"));
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("model.safetensors");
+        candle_core::safetensors::save(&t, &path).expect("save safetensors");
+        // SAFETY: mmap of a file this test just wrote; nothing mutates it.
+        let vb = unsafe {
+            candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                std::slice::from_ref(&path),
+                DType::F32,
+                &dev,
+            )
+            .expect("build ShardedVarBuilder")
+        };
+
+        let mut model = Qwen3_5ForCausalLM::new(cfg, vb).expect("load tiny qwen3_next checkpoint");
+        let input = Tensor::new(&[1u32, 5, 9], &dev)
+            .unwrap()
+            .unsqueeze(0)
+            .unwrap();
+        let logits = model.forward(&input, 0).expect("forward");
+        assert_eq!(logits.dims(), &[1, 1, vocab]);
+        let v: Vec<f32> = logits.flatten_all().unwrap().to_vec1().unwrap();
+        assert!(v.iter().all(|x| x.is_finite()), "logits must be finite");
     }
 
     /// `mlp_only_layers` and `decoder_sparse_step` gate `layer_uses_moe`
