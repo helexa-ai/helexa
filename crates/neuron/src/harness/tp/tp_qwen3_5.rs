@@ -968,6 +968,17 @@ impl TpQwen3_5Model {
             );
         }
 
+        // TP MoE FFN wiring (expert sharding) is F1 (#92) slice 3 — fail
+        // with a clear message rather than a missing-tensor error from
+        // the dense TpQwen3_5MLP loader.
+        if cfg.num_experts > 0 {
+            bail!(
+                "config declares a MoE FFN (num_experts={}) but TP expert sharding \
+                 is not implemented yet (#92); only dense-FFN checkpoints load",
+                cfg.num_experts
+            );
+        }
+
         let vb_l = text_vb.pp("layers");
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         log_vram(&device, rank, "before layer 0");

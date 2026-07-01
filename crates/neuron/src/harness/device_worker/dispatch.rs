@@ -804,9 +804,11 @@ fn load_dense_inner(
                 ),
             )))
         }
-        "qwen3_5" => {
-            let cfg: crate::harness::arch::qwen3_5::Config = serde_json::from_str(&cfg_text)
-                .context("parse Qwen3-Next (qwen3_5) config.json")?;
+        "qwen3_5" | "qwen3_next" => {
+            // `from_config_json` normalises the flat qwen3_next layout
+            // (#92) into the nested qwen3_5 shape.
+            let cfg = crate::harness::arch::qwen3_5::Config::from_config_json(&cfg_text)
+                .context("parse Qwen3-Next (qwen3_5/qwen3_next) config.json")?;
             let sharded_vb = unsafe {
                 candle_nn::var_builder::ShardedSafeTensors::var_builder(
                     safetensors_paths,
@@ -873,8 +875,8 @@ fn tp_load_shard_inner(
                 &cfg, &vb, 0, world_size, comm,
             )?)
         }
-        "qwen3_5" => {
-            let cfg: crate::harness::tp::tp_qwen3_5::Config = serde_json::from_str(config_json)
+        "qwen3_5" | "qwen3_next" => {
+            let cfg = crate::harness::tp::tp_qwen3_5::Config::from_config_json(config_json)
                 .context("parse Qwen3-Next Config JSON for leader load")?;
             let quant_dtype = crate::harness::tp::worker::parse_quant_string(quant)?;
             TpLeaderModel::Qwen3_5(crate::harness::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
@@ -888,7 +890,8 @@ fn tp_load_shard_inner(
             )?)
         }
         other => anyhow::bail!(
-            "TP dispatch: unsupported model_type '{other}' on leader (supported: qwen3, qwen3_5)"
+            "TP dispatch: unsupported model_type '{other}' on leader \
+             (supported: qwen3, qwen3_5, qwen3_next)"
         ),
     };
 

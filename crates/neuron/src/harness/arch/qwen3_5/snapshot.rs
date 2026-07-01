@@ -119,6 +119,13 @@ mod tests {
             linear_key_head_dim: 4,
             linear_value_head_dim: 4,
             linear_conv_kernel_dim: 4,
+            num_experts: 0,
+            num_experts_per_tok: 0,
+            moe_intermediate_size: 0,
+            shared_expert_intermediate_size: 0,
+            decoder_sparse_step: 1,
+            mlp_only_layers: Vec::new(),
+            norm_topk_prob: false,
         }
     }
 

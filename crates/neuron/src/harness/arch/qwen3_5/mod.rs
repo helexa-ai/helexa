@@ -90,6 +90,13 @@ use rope::RotaryEmbedding;
 /// magic strings.
 pub const MODEL_TYPE: &str = "qwen3_5";
 
+/// `model_type` of the MoE sibling family (Qwen3-Next-80B-A3B /
+/// Qwen3-Coder-Next): the same Gated DeltaNet hybrid layer stack with
+/// a high-sparsity MoE FFN per layer. Served by this same arch module —
+/// [`Config::from_config_json`] normalises the flat qwen3_next
+/// `config.json` layout into the nested shape used here.
+pub const MODEL_TYPE_NEXT: &str = "qwen3_next";
+
 /// Top-level shape of Qwen3-Next's `config.json`. The real
 /// hyperparameters live in `text_config`; the rest is multimodal /
 /// tokeniser glue we don't need for the language-model forward.
@@ -115,6 +122,79 @@ pub struct Config {
     /// in `VisionTower::forward` output. `None` for text-only models.
     #[serde(default)]
     pub image_token_id: Option<u32>,
+}
+
+impl Config {
+    /// Parse a `config.json` for either family this arch serves,
+    /// normalising layout differences (#92):
+    ///
+    /// - `model_type == "qwen3_5"` (Qwen3.6): hyperparameters nested
+    ///   under `text_config`, RoPE nested under `rope_parameters` —
+    ///   deserialises directly.
+    /// - `model_type == "qwen3_next"` (Qwen3-Next-80B-A3B family):
+    ///   **flat** layout — hyperparameters at the top level,
+    ///   `rope_theta`/`partial_rotary_factor` flat, no vision block.
+    ///   Wrapped into the nested shape here. The output gate on full
+    ///   attention is unconditional in the upstream qwen3_next
+    ///   implementation (the config carries no flag), so
+    ///   `attn_output_gate` is forced on.
+    ///
+    /// Both variants may omit `layer_types` (qwen3_next always does);
+    /// it is derived from `full_attention_interval` using the upstream
+    /// convention: layer `i` is `full_attention` iff
+    /// `(i + 1) % interval == 0`, else `linear_attention`.
+    pub fn from_config_json(json: &str) -> Result<Self> {
+        let v: serde_json::Value =
+            serde_json::from_str(json).context("parse config.json as JSON")?;
+        let model_type = v
+            .get("model_type")
+            .and_then(|m| m.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        let mut cfg: Config = if model_type == MODEL_TYPE_NEXT {
+            let mut text = v.clone();
+            if text.get("rope_parameters").is_none() {
+                let mut rope = serde_json::Map::new();
+                for key in ["rope_theta", "partial_rotary_factor", "rope_type"] {
+                    if let Some(val) = v.get(key) {
+                        rope.insert(key.to_string(), val.clone());
+                    }
+                }
+                text["rope_parameters"] = serde_json::Value::Object(rope);
+            }
+            let mut text_config: TextConfig = serde_json::from_value(text)
+                .context("parse flat qwen3_next config.json hyperparameters")?;
+            text_config.attn_output_gate = true;
+            Config {
+                model_type,
+                text_config,
+                vision_config: None,
+                image_token_id: None,
+            }
+        } else {
+            serde_json::from_str(json).context("parse nested qwen3_5 config.json")?
+        };
+
+        if cfg.text_config.layer_types.is_empty() {
+            let interval = cfg.text_config.full_attention_interval.unwrap_or(4);
+            anyhow::ensure!(
+                interval > 0,
+                "full_attention_interval must be >= 1 to derive layer_types"
+            );
+            cfg.text_config.layer_types = (0..cfg.text_config.num_hidden_layers)
+                .map(|i| {
+                    if (i + 1).is_multiple_of(interval) {
+                        "full_attention".to_string()
+                    } else {
+                        "linear_attention".to_string()
+                    }
+                })
+                .collect();
+        }
+
+        Ok(cfg)
+    }
 }
 
 /// Inner config (the `text_config` block). Mirrors the Qwen3 layout
@@ -185,6 +265,56 @@ pub struct TextConfig {
     /// (Qwen3.6-27B: 4).
     #[serde(default)]
     pub linear_conv_kernel_dim: usize,
+
+    // --- High-sparsity MoE FFN (Qwen3-Next 80B-A3B family, #92) --------
+    // All default to the dense case (0 experts) so existing dense
+    // configs (Qwen3.6-27B) deserialise unchanged. A layer gets the MoE
+    // FFN iff `layer_uses_moe` says so; otherwise the dense SwiGLU.
+    /// Total routed experts per MoE layer (80B-A3B: 512). `0` → dense
+    /// model, no MoE anywhere.
+    #[serde(default)]
+    pub num_experts: usize,
+    /// Experts activated per token (80B-A3B: 10).
+    #[serde(default)]
+    pub num_experts_per_tok: usize,
+    /// Per-expert FFN width (80B-A3B: 512). Distinct from the dense
+    /// `intermediate_size`.
+    #[serde(default)]
+    pub moe_intermediate_size: usize,
+    /// Width of the always-on shared expert (80B-A3B: 512). `0` → no
+    /// shared expert (Qwen3-30B-A3B style).
+    #[serde(default)]
+    pub shared_expert_intermediate_size: usize,
+    /// Every `decoder_sparse_step`-th layer is MoE (1 → all layers,
+    /// the 80B-A3B case). Follows the upstream `(i+1) % step == 0`
+    /// convention.
+    #[serde(default = "default_decoder_sparse_step")]
+    pub decoder_sparse_step: usize,
+    /// Layer indices forced to the dense MLP even when MoE is on.
+    /// Empty for 80B-A3B.
+    #[serde(default)]
+    pub mlp_only_layers: Vec<usize>,
+    /// Renormalise the top-k routing weights to sum to 1 (80B-A3B:
+    /// true). Upstream selects top-k *after* softmax over all experts.
+    #[serde(default)]
+    pub norm_topk_prob: bool,
+}
+
+impl TextConfig {
+    /// Whether decoder layer `layer_idx` carries the MoE FFN (vs the
+    /// dense SwiGLU). Mirrors upstream `Qwen3NextDecoderLayer`:
+    /// experts configured, layer not in `mlp_only_layers`, and on the
+    /// `decoder_sparse_step` grid.
+    pub fn layer_uses_moe(&self, layer_idx: usize) -> bool {
+        self.num_experts > 0
+            && self.decoder_sparse_step > 0
+            && !self.mlp_only_layers.contains(&layer_idx)
+            && (layer_idx + 1).is_multiple_of(self.decoder_sparse_step)
+    }
+}
+
+fn default_decoder_sparse_step() -> usize {
+    1
 }
 
 fn default_hidden_act() -> String {
@@ -356,6 +486,17 @@ impl Qwen3_5Model {
                  got {}",
                 cfg.num_hidden_layers,
                 cfg.layer_types.len()
+            );
+        }
+
+        // MoE FFN wiring is F1 (#92) slice 2 — fail with a clear message
+        // rather than a cryptic missing-tensor error from the dense MLP
+        // loader ('mlp.gate_proj/weight not found').
+        if cfg.num_experts > 0 {
+            anyhow::bail!(
+                "config declares a MoE FFN (num_experts={}) but the qwen3_5 MoE \
+                 block is not implemented yet (#92); only dense-FFN checkpoints load",
+                cfg.num_experts
             );
         }
 
@@ -915,6 +1056,110 @@ mod tests {
         assert_eq!(cfg.text_config.layer_types.len(), 4);
         assert_eq!(cfg.text_config.rope_parameters.rope_theta, 10_000_000.0);
         assert!((cfg.text_config.rope_parameters.partial_rotary_factor - 0.25).abs() < 1e-6);
+        // Dense config: no MoE anywhere.
+        assert_eq!(cfg.text_config.num_experts, 0);
+        assert!(!cfg.text_config.layer_uses_moe(0));
+
+        // The normalising entry point must agree with plain serde for
+        // the nested shape (and leave the explicit layer_types alone).
+        let via_norm = Config::from_config_json(raw).expect("normalised parse");
+        assert_eq!(via_norm.text_config.layer_types.len(), 4);
+        assert_eq!(via_norm.text_config.layer_types[3], "full_attention");
+    }
+
+    /// The flat qwen3_next layout (Qwen3-Next-80B-A3B family): all
+    /// hyperparameters top-level, flat rope fields, no `layer_types`,
+    /// MoE fields present. Sample mirrors
+    /// `Qwen/Qwen3-Next-80B-A3B-Instruct/config.json`.
+    #[test]
+    fn config_normalises_the_flat_qwen3_next_shape() {
+        let raw = r#"{
+            "architectures": ["Qwen3NextForCausalLM"],
+            "model_type": "qwen3_next",
+            "vocab_size": 151936,
+            "hidden_size": 2048,
+            "intermediate_size": 5120,
+            "num_hidden_layers": 48,
+            "num_attention_heads": 16,
+            "num_key_value_heads": 2,
+            "head_dim": 256,
+            "max_position_embeddings": 262144,
+            "partial_rotary_factor": 0.25,
+            "rope_theta": 10000000,
+            "rms_norm_eps": 1e-6,
+            "tie_word_embeddings": false,
+            "full_attention_interval": 4,
+            "linear_conv_kernel_dim": 4,
+            "linear_key_head_dim": 128,
+            "linear_num_key_heads": 16,
+            "linear_num_value_heads": 32,
+            "linear_value_head_dim": 128,
+            "decoder_sparse_step": 1,
+            "mlp_only_layers": [],
+            "moe_intermediate_size": 512,
+            "norm_topk_prob": true,
+            "num_experts": 512,
+            "num_experts_per_tok": 10,
+            "shared_expert_intermediate_size": 512
+        }"#;
+        let cfg = Config::from_config_json(raw).expect("parse qwen3_next config");
+        assert_eq!(cfg.model_type, MODEL_TYPE_NEXT);
+        assert!(cfg.vision_config.is_none());
+
+        let t = &cfg.text_config;
+        assert_eq!(t.hidden_size, 2048);
+        // Flat rope fields normalised into the nested block.
+        assert_eq!(t.rope_parameters.rope_theta, 10_000_000.0);
+        assert!((t.rope_parameters.partial_rotary_factor - 0.25).abs() < 1e-6);
+        // Output-gated attention is unconditional for qwen3_next.
+        assert!(t.attn_output_gate);
+        // layer_types derived from the interval: (i+1) % 4 == 0 → full.
+        assert_eq!(t.layer_types.len(), 48);
+        assert_eq!(t.layer_types[3], "full_attention");
+        assert_eq!(t.layer_types[47], "full_attention");
+        assert_eq!(t.layer_types[0], "linear_attention");
+        assert_eq!(t.layer_types[46], "linear_attention");
+        assert_eq!(
+            t.layer_types
+                .iter()
+                .filter(|s| *s == "full_attention")
+                .count(),
+            12
+        );
+        // MoE hyperparameters land.
+        assert_eq!(t.num_experts, 512);
+        assert_eq!(t.num_experts_per_tok, 10);
+        assert_eq!(t.moe_intermediate_size, 512);
+        assert_eq!(t.shared_expert_intermediate_size, 512);
+        assert!(t.norm_topk_prob);
+        // decoder_sparse_step 1 + empty mlp_only_layers → every layer MoE.
+        assert!(t.layer_uses_moe(0));
+        assert!(t.layer_uses_moe(47));
+    }
+
+    /// `mlp_only_layers` and `decoder_sparse_step` gate `layer_uses_moe`
+    /// per the upstream convention.
+    #[test]
+    fn layer_uses_moe_respects_step_and_exclusions() {
+        let raw = r#"{
+            "model_type": "qwen3_next",
+            "vocab_size": 8, "hidden_size": 8, "intermediate_size": 8,
+            "num_hidden_layers": 8, "num_attention_heads": 2,
+            "num_key_value_heads": 1, "head_dim": 4,
+            "max_position_embeddings": 128, "rms_norm_eps": 1e-6,
+            "num_experts": 4, "num_experts_per_tok": 2,
+            "moe_intermediate_size": 8,
+            "decoder_sparse_step": 2,
+            "mlp_only_layers": [3]
+        }"#;
+        let cfg = Config::from_config_json(raw).expect("parse");
+        let t = &cfg.text_config;
+        // step 2 → layers 1, 3, 5, 7 are on the sparse grid…
+        assert!(!t.layer_uses_moe(0));
+        assert!(t.layer_uses_moe(1));
+        // …but 3 is excluded by mlp_only_layers.
+        assert!(!t.layer_uses_moe(3));
+        assert!(t.layer_uses_moe(5));
     }
 
     /// `splice_runs` replaces (1, L, H) embedding rows at the given
