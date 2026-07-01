@@ -274,19 +274,52 @@ jobs:
 
           echo "LLM probe against ${model}"
           probe_body=$(printf '{"model":"%s","messages":[{"role":"user","content":"Reply with exactly one word: pineapple"}],"max_tokens":512,"temperature":0}' "${model}")
-          resp=$(curl -fsS --max-time 180 -H "content-type: application/json" \
-            -d "${probe_body}" http://localhost:13131/v1/chat/completions) || {
-            echo "FAIL: probe request errored"
-            exit 1
-          }
-          if printf %s "${resp}" | grep -qi pineapple; then
-            echo "LLM probe passed"
-          else
-            echo "FAIL: probe response missing expected token"
-            printf %s "${resp}" | head -c 2000
-            echo
-            exit 1
-          fi
+          # The probe races real traffic: a deploy publishes a new build
+          # SHA, which is exactly what triggers helexa-bench to re-sweep
+          # every scenario against this neuron — long capability-probe
+          # generations can hold the batch-1 model for minutes. Admission
+          # control answers concurrent requests with 429/503 +
+          # Retry-After (#53/#63); treat those as "busy, try again", not
+          # deploy failure. Overall budget ~6 min.
+          probe_deadline=$(( $(date +%s) + 360 ))
+          attempt=0
+          while :; do
+            attempt=$(( attempt + 1 ))
+            hdrs=$(mktemp)
+            resp=$(curl -sS --max-time 180 -D "${hdrs}" \
+              -H "content-type: application/json" \
+              -d "${probe_body}" http://localhost:13131/v1/chat/completions) || resp=""
+            status=$(awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}' "${hdrs}")
+            retry_after=$(awk 'tolower($1) == "retry-after:" {print $2+0; exit}' "${hdrs}")
+            rm -f "${hdrs}"
+            if [ "${status}" = "200" ]; then
+              if printf %s "${resp}" | grep -qi pineapple; then
+                echo "LLM probe passed (attempt ${attempt})"
+                break
+              fi
+              echo "FAIL: probe response missing expected token"
+              printf %s "${resp}" | head -c 2000
+              echo
+              exit 1
+            fi
+            case "${status}" in
+              429|503) ;;  # busy/queue-full — retryable
+              *)
+                echo "FAIL: probe request errored (HTTP ${status:-none})"
+                printf %s "${resp}" | head -c 2000
+                echo
+                exit 1
+                ;;
+            esac
+            if [ "$(date +%s)" -ge "${probe_deadline}" ]; then
+              echo "FAIL: model still busy (HTTP ${status}) after probe budget"
+              exit 1
+            fi
+            wait_s=${retry_after:-15}
+            [ "${wait_s}" -ge 5 ] 2>/dev/null || wait_s=15
+            echo "model busy (HTTP ${status}), retrying in ${wait_s}s (attempt ${attempt})"
+            sleep "${wait_s}"
+          done
           DEPLOY
 
       - name: Ensure firewalld allows helexa-neuron
