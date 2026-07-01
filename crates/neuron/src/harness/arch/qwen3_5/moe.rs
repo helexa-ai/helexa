@@ -112,43 +112,67 @@ impl Qwen3_5MoeBlock {
     }
 }
 
+/// Per-expert routing assignment: `(token_rows, weights)` per expert,
+/// produced by [`route_scatter`].
+pub(crate) type ExpertAssignments = (Vec<Vec<u32>>, Vec<Vec<f32>>);
+
+/// Router + host-side scatter shared by the single-GPU and TP MoE
+/// blocks (#92): softmax over ALL experts in f32 → descending-argsort
+/// top-k → renormalise iff `norm_topk_prob` → per-expert token-row and
+/// weight lists. Under TP the router weight is replicated, so every
+/// rank computes identical assignments with zero communication.
+pub(crate) fn route_scatter(
+    gate: &Linear,
+    xs_flat: &Tensor,
+    num_experts: usize,
+    num_experts_per_tok: usize,
+    norm_topk_prob: bool,
+) -> candle_core::Result<ExpertAssignments> {
+    let n_tokens = xs_flat.dim(0)?;
+    // Router probabilities in f32 (reference uses float softmax
+    // regardless of activations dtype).
+    let router_logits = gate.forward(xs_flat)?;
+    let probs = candle_nn::ops::softmax_last_dim(&router_logits.to_dtype(DType::F32)?)?;
+
+    // Top-k selection: descending argsort, take the first k. The
+    // renormalisation (iff norm_topk_prob) divides by the sum of
+    // the selected global-softmax values.
+    let sorted = probs.arg_sort_last_dim(false)?;
+    let topk_idx = sorted.narrow(1, 0, num_experts_per_tok)?.contiguous()?;
+    let mut topk_w = probs.gather(&topk_idx, 1)?;
+    if norm_topk_prob {
+        let denom = topk_w.sum_keepdim(1)?;
+        topk_w = topk_w.broadcast_div(&denom)?;
+    }
+
+    // Host-side scatter: token row lists per expert. Cheap relative
+    // to the expert GEMMs; replaced by grouped-GEMM in slice 4.
+    let idx_host: Vec<Vec<u32>> = topk_idx.to_vec2()?;
+    let w_host: Vec<Vec<f32>> = topk_w.to_vec2()?;
+    let mut tokens_for: Vec<Vec<u32>> = vec![Vec::new(); num_experts];
+    let mut weights_for: Vec<Vec<f32>> = vec![Vec::new(); num_experts];
+    for t in 0..n_tokens {
+        for j in 0..num_experts_per_tok {
+            let e = idx_host[t][j] as usize;
+            tokens_for[e].push(t as u32);
+            weights_for[e].push(w_host[t][j]);
+        }
+    }
+    Ok((tokens_for, weights_for))
+}
+
 impl Module for Qwen3_5MoeBlock {
     fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
         let (b, l, hidden) = xs.dims3()?;
         let xs_flat = xs.reshape(((), hidden))?;
-        let n_tokens = b * l;
 
-        // Router probabilities in f32 (reference uses float softmax
-        // regardless of activations dtype).
-        let router_logits = self.gate.forward(&xs_flat)?;
-        let probs = candle_nn::ops::softmax_last_dim(&router_logits.to_dtype(DType::F32)?)?;
-
-        // Top-k selection: descending argsort, take the first k. The
-        // renormalisation (iff norm_topk_prob) divides by the sum of
-        // the selected global-softmax values.
-        let sorted = probs.arg_sort_last_dim(false)?;
-        let topk_idx = sorted
-            .narrow(1, 0, self.num_experts_per_tok)?
-            .contiguous()?;
-        let mut topk_w = probs.gather(&topk_idx, 1)?;
-        if self.norm_topk_prob {
-            let denom = topk_w.sum_keepdim(1)?;
-            topk_w = topk_w.broadcast_div(&denom)?;
-        }
-
-        // Host-side scatter: token row lists per expert. Cheap relative
-        // to the expert GEMMs; replaced by grouped-GEMM in slice 4.
-        let idx_host: Vec<Vec<u32>> = topk_idx.to_vec2()?;
-        let w_host: Vec<Vec<f32>> = topk_w.to_vec2()?;
-        let mut tokens_for: Vec<Vec<u32>> = vec![Vec::new(); self.experts.len()];
-        let mut weights_for: Vec<Vec<f32>> = vec![Vec::new(); self.experts.len()];
-        for t in 0..n_tokens {
-            for j in 0..self.num_experts_per_tok {
-                let e = idx_host[t][j] as usize;
-                tokens_for[e].push(t as u32);
-                weights_for[e].push(w_host[t][j]);
-            }
-        }
+        let (tokens_for, weights_for) = route_scatter(
+            &self.gate,
+            &xs_flat,
+            self.experts.len(),
+            self.num_experts_per_tok,
+            self.norm_topk_prob,
+        )?;
 
         let mut ys = xs_flat.zeros_like()?;
         for (e, expert) in self.experts.iter().enumerate() {

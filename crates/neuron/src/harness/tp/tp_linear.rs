@@ -156,6 +156,15 @@ pub struct ColumnParallelLinear {
 }
 
 impl ColumnParallelLinear {
+    /// Wrap an already-materialised per-rank weight slice (used by the
+    /// fused-checkpoint loaders that de-interleave a rank's regions
+    /// before construction, #92).
+    pub fn from_weight(weight: Tensor, quant: Option<GgmlDType>) -> Result<Self> {
+        Ok(Self {
+            inner: MaybeQuantLinear::from_weight(weight, quant)?,
+        })
+    }
+
     /// Load this rank's column-parallel slice from a
     /// `ShardedVarBuilder`. The provided `vb` must already be `pp`-ed
     /// to the layer's path (e.g. `vb.pp("model.layers.0.self_attn.q_proj")`).
