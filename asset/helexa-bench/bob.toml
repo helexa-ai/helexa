@@ -30,7 +30,7 @@ concurrency_prompt_tokens = 512
 # 27B on planning quality, so the 27B needs scored artifacts first.
 [[scenarios.capability_probes]]
 name = "rust-plan"
-max_tokens = 2048
+max_tokens = 4096
 prompt = """
 Write an implementation plan for adding rate limiting to an Axum service.
 Honor existing conventions, call out trade-offs, and sequence the work.
@@ -38,7 +38,7 @@ Honor existing conventions, call out trade-offs, and sequence the work.
 
 [[scenarios.capability_probes]]
 name = "debug-reason"
-max_tokens = 2048
+max_tokens = 4096
 prompt = """
 A Rust axum server streams SSE responses through a reverse proxy. Clients
 report that streams stall for exactly 60 seconds and then resume, but only
