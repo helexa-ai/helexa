@@ -800,19 +800,28 @@ impl ModelArch {
 /// Returns `(content_ids, reasoning_token_count)`. Strategy: if the model
 /// declares a reasoning marker pair and its **close** token appears in
 /// `generated_ids`, everything up to and including the last close token is
-/// reasoning and only the tail is the answer. Otherwise (non-reasoning
-/// model, thinking disabled, or a generation truncated mid-reasoning) the
-/// tokens are returned unchanged. Splitting on the token id — not a
-/// decoded `</think>` string — keeps this robust against tokenizer
-/// byte-fallback and special-token handling.
+/// reasoning and only the tail is the answer. When no close token was
+/// generated, `prompt_opened` decides (#112): the chat template may have
+/// force-opened the think block inside the generation prompt
+/// (Qwen3-Next-80B-A3B-Thinking ends its prompt with
+/// `<|im_start|>assistant\n<think>\n`), in which case a generation
+/// truncated mid-reasoning is ALL reasoning and the visible answer is
+/// empty. Otherwise (non-reasoning model, thinking disabled) the tokens
+/// are returned unchanged. Splitting on the token id — not a decoded
+/// `</think>` string — keeps this robust against tokenizer byte-fallback
+/// and special-token handling.
 fn split_off_reasoning<'a>(
     generated_ids: &'a [u32],
     reasoning: Option<&ReasoningTokenPair>,
+    prompt_opened: bool,
 ) -> (&'a [u32], u64) {
-    if let Some(pair) = reasoning
-        && let Some(idx) = generated_ids.iter().rposition(|&t| t == pair.close_id)
-    {
-        return (&generated_ids[idx + 1..], (idx + 1) as u64);
+    if let Some(pair) = reasoning {
+        if let Some(idx) = generated_ids.iter().rposition(|&t| t == pair.close_id) {
+            return (&generated_ids[idx + 1..], (idx + 1) as u64);
+        }
+        if prompt_opened {
+            return (&[], generated_ids.len() as u64);
+        }
     }
     (generated_ids, 0)
 }
@@ -2305,6 +2314,12 @@ impl CandleHarness {
             };
 
             let prompt_len = prompt_tokens.len();
+            // Whether the chat template left the think block open in the
+            // generation prompt (#112) — decides the truncated-mid-think
+            // case in `split_off_reasoning`. Computed before the
+            // inference closure takes ownership of `prompt_tokens`.
+            let prompt_opened_reasoning =
+                prompt_opens_reasoning(&prompt_tokens, loaded.reasoning_tokens.as_ref());
             let temperature = request.temperature.unwrap_or(0.7);
             let top_p = request.top_p;
             let max_new = request.max_tokens.unwrap_or(8192) as usize;
@@ -2494,7 +2509,11 @@ impl CandleHarness {
             // doesn't leak into `content` (the streaming path drops it
             // as ReasoningDelta; this is the non-streaming equivalent).
             let (content_ids, reasoning_tokens) =
-                split_off_reasoning(&generated_ids, loaded.reasoning_tokens.as_ref());
+                split_off_reasoning(
+                    &generated_ids,
+                    loaded.reasoning_tokens.as_ref(),
+                    prompt_opened_reasoning,
+                );
             let completion_text = loaded
                 .tokenizer
                 .decode(content_ids, true)
@@ -4791,8 +4810,11 @@ async fn chat_completion_tp_inner(
 
     // Strip the leading `<think>` span (see `split_off_reasoning` and the
     // single-GPU path) so the chain-of-thought doesn't leak into `content`.
-    let (content_ids, reasoning_tokens) =
-        split_off_reasoning(&generated, tp.reasoning_tokens.as_ref());
+    let (content_ids, reasoning_tokens) = split_off_reasoning(
+        &generated,
+        tp.reasoning_tokens.as_ref(),
+        prompt_opens_reasoning(&prompt_tokens, tp.reasoning_tokens.as_ref()),
+    );
     let completion_text = tp
         .tokenizer
         .decode(content_ids, true)
@@ -6616,16 +6638,16 @@ mod tests {
     fn split_off_reasoning_strips_up_to_close_marker() {
         // [reasoning_a, reasoning_b, </think>, answer_x, answer_y]
         let ids = [10, 11, 200, 42, 43];
-        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()), false);
         assert_eq!(content, &[42, 43]);
         assert_eq!(reasoning, 3); // two reasoning tokens + the close marker
     }
 
     #[test]
     fn split_off_reasoning_no_close_marker_returns_all() {
-        // Thinking disabled / model never closed the span: return as-is.
+        // Thinking disabled / span not opened by the prompt: return as-is.
         let ids = [42, 43, 44];
-        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()), false);
         assert_eq!(content, &ids);
         assert_eq!(reasoning, 0);
     }
@@ -6633,7 +6655,7 @@ mod tests {
     #[test]
     fn split_off_reasoning_no_marker_pair_is_noop() {
         let ids = [1, 2, 3];
-        let (content, reasoning) = split_off_reasoning(&ids, None);
+        let (content, reasoning) = split_off_reasoning(&ids, None, true);
         assert_eq!(content, &ids);
         assert_eq!(reasoning, 0);
     }
@@ -6642,7 +6664,18 @@ mod tests {
     fn split_off_reasoning_close_at_end_yields_empty_content() {
         // All reasoning, answer truncated to nothing after the marker.
         let ids = [10, 11, 200];
-        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()), false);
+        assert!(content.is_empty());
+        assert_eq!(reasoning, 3);
+    }
+
+    #[test]
+    fn split_off_reasoning_prompt_opened_truncation_is_all_reasoning() {
+        // Template force-opened the think block (#112:
+        // Qwen3-Next-80B-A3B-Thinking) and generation hit max_tokens
+        // before emitting </think> — everything is chain-of-thought.
+        let ids = [10, 11, 12];
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()), true);
         assert!(content.is_empty());
         assert_eq!(reasoning, 3);
     }
@@ -6652,7 +6685,7 @@ mod tests {
         // Defensive: if the model emits its own <think></think> pair plus
         // the prompt-injected one, split on the LAST close marker.
         let ids = [200, 10, 200, 42];
-        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()));
+        let (content, reasoning) = split_off_reasoning(&ids, Some(&think_pair()), true);
         assert_eq!(content, &[42]);
         assert_eq!(reasoning, 3);
     }
