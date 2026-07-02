@@ -847,6 +847,32 @@ impl TpExpert {
     }
 }
 
+/// How the routed experts are stored and dispatched (#92 slice 4).
+///
+/// `Scatter` is the correctness-first path: per-expert
+/// `MaybeQuantLinear`s driven by a host-side token scatter. Correct
+/// everywhere, but at batch-1 decode it costs a GPU→CPU routing sync
+/// plus ~top-k tiny GEMV launches per layer per token — measured at
+/// **4.3 tok/s** on the 80B (vs ~27 for the dense 27B).
+///
+/// `Fused` holds each projection as ONE stacked per-rank `QTensor`
+/// (`[num_experts, out/ws, in]`) driven by candle-nn's grouped-GEMM
+/// GGUF kernels (`moe_gemm_gguf`): routing, index sort, and all expert
+/// GEMMs stay on-device — three kernel launches per layer regardless
+/// of k. Chosen at load on CUDA devices when ISQ is active and the
+/// block dims satisfy the GGUF constraints; `NEURON_MOE_FUSED=0`
+/// forces Scatter as an escape hatch / A-B lever.
+enum TpExpertStore {
+    Scatter(Vec<TpExpert>),
+    #[cfg(feature = "cuda")]
+    Fused {
+        gate_experts: Arc<candle_core::quantized::QTensor>,
+        up_experts: Arc<candle_core::quantized::QTensor>,
+        down_experts: Arc<candle_core::quantized::QTensor>,
+        num_experts: usize,
+    },
+}
+
 /// TP counterpart of `arch::qwen3_5::moe::Qwen3_5MoeBlock`. The router
 /// and the shared-expert sigmoid gate are replicated (tiny; every rank
 /// computes identical routing with zero communication); expert FFNs
@@ -854,7 +880,7 @@ impl TpExpert {
 /// end recovers the full activation.
 pub(crate) struct TpQwen3_5MoeBlock {
     gate: candle_nn::Linear,
-    experts: Vec<TpExpert>,
+    experts: TpExpertStore,
     shared_expert: Option<TpExpert>,
     shared_expert_gate: Option<candle_nn::Linear>,
     num_experts_per_tok: usize,
@@ -895,15 +921,8 @@ impl TpQwen3_5MoeBlock {
         rank: u32,
         world_size: u32,
         quant: Option<GgmlDType>,
-    ) -> Result<(Vec<TpExpert>, Option<TpExpert>, Option<candle_nn::Linear>)> {
-        let experts_vb = vb.pp("experts");
-        let mut experts = Vec::with_capacity(cfg.num_experts);
-        for i in 0..cfg.num_experts {
-            experts.push(
-                TpExpert::load(&experts_vb.pp(i), rank, world_size, quant)
-                    .with_context(|| format!("load TP expert {i}"))?,
-            );
-        }
+    ) -> Result<(TpExpertStore, Option<TpExpert>, Option<candle_nn::Linear>)> {
+        let experts = Self::load_expert_store(cfg, vb, rank, world_size, quant)?;
         let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {
             let shared = TpExpert::load(&vb.pp("shared_expert"), rank, world_size, quant)
                 .context("load TP shared_expert")?;
@@ -914,6 +933,125 @@ impl TpQwen3_5MoeBlock {
             (None, None)
         };
         Ok((experts, shared_expert, shared_expert_gate))
+    }
+
+    fn load_expert_store(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> Result<TpExpertStore> {
+        #[cfg(feature = "cuda")]
+        if Self::fused_eligible(cfg, vb, world_size, quant) {
+            return Self::load_fused_experts(cfg, vb, rank, world_size, quant);
+        }
+        let experts_vb = vb.pp("experts");
+        let mut experts = Vec::with_capacity(cfg.num_experts);
+        for i in 0..cfg.num_experts {
+            experts.push(
+                TpExpert::load(&experts_vb.pp(i), rank, world_size, quant)
+                    .with_context(|| format!("load TP expert {i}"))?,
+            );
+        }
+        Ok(TpExpertStore::Scatter(experts))
+    }
+
+    /// Whether the fused grouped-GEMM path can serve this block: CUDA
+    /// device, ISQ active with a kernel-supported GGML dtype, GGUF
+    /// block alignment on both GEMM K dims (hidden for gate/up, the
+    /// per-rank intermediate slice for down), and not vetoed by the
+    /// `NEURON_MOE_FUSED=0` escape hatch.
+    #[cfg(feature = "cuda")]
+    fn fused_eligible(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> bool {
+        if std::env::var("NEURON_MOE_FUSED").is_ok_and(|v| v == "0" || v == "false") {
+            tracing::info!("NEURON_MOE_FUSED=0 — MoE block using scatter dispatch");
+            return false;
+        }
+        if !vb.device().is_cuda() {
+            return false;
+        }
+        let Some(q) = quant else { return false };
+        let kernel_supported = matches!(
+            q,
+            GgmlDType::Q8_0
+                | GgmlDType::Q4K
+                | GgmlDType::Q2K
+                | GgmlDType::Q3K
+                | GgmlDType::Q5K
+                | GgmlDType::Q6K
+        );
+        let per_rank_inter = cfg.moe_intermediate_size / world_size as usize;
+        let aligned = cfg.hidden_size.is_multiple_of(q.block_size())
+            && per_rank_inter.is_multiple_of(q.block_size());
+        if !kernel_supported || !aligned {
+            tracing::warn!(
+                quant = ?q,
+                hidden = cfg.hidden_size,
+                per_rank_inter,
+                "MoE fused path ineligible — falling back to scatter dispatch"
+            );
+            return false;
+        }
+        true
+    }
+
+    /// Build the stacked per-rank expert QTensors for the fused path:
+    /// read each expert's rank slice, stack into `[E, out/ws, in]`
+    /// (gate/up) and `[E, hidden, inter/ws]` (down), ISQ the stack in
+    /// one parallel pass per projection. Transient cost: one bf16
+    /// stack per projection (~0.5 GB at 80B dims) alive on-device
+    /// until its QTensor replaces it.
+    #[cfg(feature = "cuda")]
+    fn load_fused_experts(
+        cfg: &TextConfig,
+        vb: &ShardedVarBuilder,
+        rank: u32,
+        world_size: u32,
+        quant: Option<GgmlDType>,
+    ) -> Result<TpExpertStore> {
+        let q = quant.expect("fused_eligible ensured quant");
+        let experts_vb = vb.pp("experts");
+
+        let stack_proj = |name: &str, shard_dim: usize| -> Result<Tensor> {
+            let mut slices = Vec::with_capacity(cfg.num_experts);
+            for i in 0..cfg.num_experts {
+                let w = experts_vb
+                    .pp(i)
+                    .pp(name)
+                    .get_with_hints(
+                        (),
+                        "weight",
+                        super::tp_linear::shard(shard_dim, rank, world_size),
+                    )
+                    .with_context(|| format!("load expert {i} '{name}' rank slice"))?;
+                slices.push(w);
+            }
+            Tensor::stack(&slices, 0).with_context(|| format!("stack {name} experts"))
+        };
+
+        let quantize =
+            |stack: Tensor, name: &str| -> Result<Arc<candle_core::quantized::QTensor>> {
+                let qt = super::isq::quantize_parallel(&stack, q)
+                    .with_context(|| format!("ISQ {name} expert stack to {q:?}"))?;
+                Ok(Arc::new(qt))
+            };
+
+        let gate_experts = quantize(stack_proj("gate_proj", 0)?, "gate_proj")?;
+        let up_experts = quantize(stack_proj("up_proj", 0)?, "up_proj")?;
+        let down_experts = quantize(stack_proj("down_proj", 1)?, "down_proj")?;
+
+        Ok(TpExpertStore::Fused {
+            gate_experts,
+            up_experts,
+            down_experts,
+            num_experts: cfg.num_experts,
+        })
     }
 
     #[cfg(feature = "cuda")]
@@ -963,37 +1101,156 @@ impl TpQwen3_5MoeBlock {
     }
 }
 
-impl Module for TpQwen3_5MoeBlock {
-    /// Same routing + scatter as the single-GPU block (shared
-    /// `route_scatter`), but every expert contribution is a partial
-    /// sum; one AllReduce at the end recovers the full activation.
-    /// The shared expert's per-token sigmoid mix is a replicated
-    /// scalar, so scaling the partial slice commutes with the reduce.
-    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
-        let (b, l, hidden) = xs.dims3()?;
-        let xs_flat = xs.reshape(((), hidden))?;
-
+impl TpQwen3_5MoeBlock {
+    /// Correctness-first dispatch: shared `route_scatter` host routing
+    /// with per-expert GEMMs. Returns the rank's PARTIAL routed
+    /// output, `(tokens, hidden)`, in the input dtype.
+    fn forward_scatter(
+        &self,
+        experts: &[TpExpert],
+        xs_flat: &Tensor,
+    ) -> candle_core::Result<Tensor> {
         let (tokens_for, weights_for) = crate::harness::arch::qwen3_5::moe::route_scatter(
             &self.gate,
-            &xs_flat,
-            self.experts.len(),
+            xs_flat,
+            experts.len(),
             self.num_experts_per_tok,
             self.norm_topk_prob,
         )?;
 
         let mut ys = xs_flat.zeros_like()?;
-        for (e, expert) in self.experts.iter().enumerate() {
+        for (e, expert) in experts.iter().enumerate() {
             if tokens_for[e].is_empty() {
                 continue;
             }
-            let rows = Tensor::new(tokens_for[e].as_slice(), xs.device())?;
+            let rows = Tensor::new(tokens_for[e].as_slice(), xs_flat.device())?;
             let picked = xs_flat.index_select(&rows, 0)?;
             let out = expert.forward_partial(&picked)?;
-            let w = Tensor::new(weights_for[e].as_slice(), xs.device())?
+            let w = Tensor::new(weights_for[e].as_slice(), xs_flat.device())?
                 .to_dtype(out.dtype())?
                 .reshape(((), 1))?;
             ys = ys.index_add(&rows, &out.broadcast_mul(&w)?, 0)?;
         }
+        Ok(ys)
+    }
+
+    /// Fused grouped-GEMM dispatch (#92 slice 4): routing, index sort,
+    /// and all expert GEMMs stay on-device — the port of
+    /// candle-transformers' `FusedMoeGGUF::forward` onto per-rank
+    /// expert stacks. Returns the rank's PARTIAL routed output,
+    /// `(tokens, hidden)`, in the input dtype.
+    ///
+    /// Kernel contract (candle-nn `moe_gemm_gguf`): decode wants an
+    /// F32 input and always emits F32; the `dtype` argument only
+    /// selects the f16/bf16 conversion used by the prefill kernel.
+    /// gate/up run with `topk_weights: None` → `tokens×topk` output
+    /// rows; the down GEMM folds the routing weights in-kernel and the
+    /// final `(tokens, topk, hidden)` view sums over `topk`.
+    #[cfg(feature = "cuda")]
+    #[allow(clippy::too_many_arguments)]
+    fn forward_fused(
+        &self,
+        gate_experts: &candle_core::quantized::QTensor,
+        up_experts: &candle_core::quantized::QTensor,
+        down_experts: &candle_core::quantized::QTensor,
+        num_experts: usize,
+        xs_flat: &Tensor,
+        is_prefill: bool,
+    ) -> candle_core::Result<Tensor> {
+        use candle_core::D;
+
+        let original_dtype = xs_flat.dtype();
+        let n_tokens = xs_flat.dim(0)?;
+        let xs_f32 = if original_dtype == DType::F32 {
+            xs_flat.clone()
+        } else {
+            xs_flat.to_dtype(DType::F32)?
+        };
+
+        // Replicated routing, all on-device (contrast route_scatter's
+        // host round-trip): softmax over all experts → top-k → renorm.
+        let router_logits = self.gate.forward(&xs_f32)?;
+        let probs = candle_nn::ops::softmax_last_dim(&router_logits)?;
+        let topk_ids = probs
+            .arg_sort_last_dim(false)?
+            .narrow(D::Minus1, 0, self.num_experts_per_tok)?
+            .contiguous()?;
+        let mut topk_weights = probs.gather(&topk_ids, D::Minus1)?;
+        if self.norm_topk_prob {
+            topk_weights = topk_weights.broadcast_div(&topk_weights.sum_keepdim(D::Minus1)?)?;
+        }
+        let (expert_ids, sorted_token_ids) = topk_ids.flatten_all()?.sort_last_dim(true)?;
+        let _ = num_experts;
+
+        let gate = candle_nn::moe::moe_gemm_gguf(
+            &xs_f32,
+            gate_experts,
+            &None,
+            &sorted_token_ids,
+            &expert_ids,
+            self.num_experts_per_tok,
+            is_prefill,
+            DType::BF16,
+        )?;
+        let up = candle_nn::moe::moe_gemm_gguf(
+            &xs_f32,
+            up_experts,
+            &None,
+            &sorted_token_ids,
+            &expert_ids,
+            self.num_experts_per_tok,
+            is_prefill,
+            DType::BF16,
+        )?;
+        let down_inputs = (up * candle_nn::ops::silu(&gate)?)?;
+        let ys = candle_nn::moe::moe_gemm_gguf(
+            &down_inputs,
+            down_experts,
+            &Some(topk_weights),
+            &sorted_token_ids,
+            &expert_ids,
+            self.num_experts_per_tok,
+            is_prefill,
+            DType::BF16,
+        )?;
+
+        let hidden = xs_flat.dim(1)?;
+        let ys = ys.reshape((n_tokens, (), hidden))?.sum(D::Minus2)?;
+        if ys.dtype() == original_dtype {
+            Ok(ys)
+        } else {
+            ys.to_dtype(original_dtype)
+        }
+    }
+}
+
+impl Module for TpQwen3_5MoeBlock {
+    /// Route + expert dispatch (scatter or fused per the store), then
+    /// the shared expert's sigmoid-gated partial, then ONE AllReduce
+    /// recovering the full activation. The shared expert's per-token
+    /// mix is a replicated scalar, so scaling the partial slice
+    /// commutes with the reduce.
+    fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
+        let (b, l, hidden) = xs.dims3()?;
+        let xs_flat = xs.reshape(((), hidden))?;
+
+        let mut ys = match &self.experts {
+            TpExpertStore::Scatter(experts) => self.forward_scatter(experts, &xs_flat)?,
+            #[cfg(feature = "cuda")]
+            TpExpertStore::Fused {
+                gate_experts,
+                up_experts,
+                down_experts,
+                num_experts,
+            } => self.forward_fused(
+                gate_experts,
+                up_experts,
+                down_experts,
+                *num_experts,
+                &xs_flat,
+                l > 1,
+            )?,
+        };
 
         if let (Some(shared), Some(gate)) = (&self.shared_expert, &self.shared_expert_gate) {
             let mix = candle_nn::ops::sigmoid(&gate.forward(&xs_flat)?)?;
