@@ -94,13 +94,24 @@ impl AdmissionController {
     /// overall queue is full or the principal is over its fair-share cap —
     /// then waits up to `max_wait` for an in-flight slot. The returned permit
     /// must be held for the request's lifetime; dropping it frees the slots.
+    ///
+    /// CANCELLATION SAFETY: the semaphore wait below is where a client
+    /// disconnect lands — axum drops the request future mid-await. The
+    /// reservation therefore lives in a RAII [`PendingReservation`] taken
+    /// BEFORE the await: if this future is dropped while queued, the
+    /// guard's Drop rolls the counts back. (The original version
+    /// incremented raw counters and only decremented on the timeout
+    /// branch — every abandoned wait leaked a `pending` + per-principal
+    /// slot, ratcheting the model into a permanent instant-429 state
+    /// under client retry storms. Observed live 2026-07-02:
+    /// `queue_depth: 1` pinned on an idle model.)
     pub async fn enter(
         &self,
         principal: Option<&str>,
     ) -> Result<AdmissionPermit, AdmissionRejection> {
         // Decision + reservation under one brief lock so concurrent callers
         // can't both slip past the thresholds. No await is held here.
-        {
+        let reservation = {
             let mut st = self.state.lock().expect("admission state poisoned");
             if st.pending >= self.max_pending {
                 return Err(AdmissionRejection::QueueFull {
@@ -119,29 +130,23 @@ impl AdmissionController {
             if let Some(p) = principal {
                 *st.per_principal.entry(p.to_string()).or_insert(0) += 1;
             }
-        }
+            PendingReservation {
+                state: Arc::clone(&self.state),
+                principal: principal.map(str::to_string),
+            }
+        };
 
         match tokio::time::timeout(self.max_wait, Arc::clone(&self.slots).acquire_owned()).await {
             Ok(Ok(permit)) => Ok(AdmissionPermit {
                 _permit: permit,
-                state: Arc::clone(&self.state),
-                principal: principal.map(str::to_string),
+                _reservation: reservation,
             }),
-            // Semaphore is never closed; treat a closed/elapsed wait the same.
-            Ok(Err(_)) | Err(_) => {
-                self.release(principal);
-                Err(AdmissionRejection::Timeout {
-                    retry_after_secs: self.retry_hint(self.max_pending),
-                })
-            }
+            // Semaphore is never closed; treat a closed/elapsed wait the
+            // same. `reservation` drops here, rolling back the counts.
+            Ok(Err(_)) | Err(_) => Err(AdmissionRejection::Timeout {
+                retry_after_secs: self.retry_hint(self.max_pending),
+            }),
         }
-    }
-
-    /// Roll back a reserved-but-not-admitted slot (wait timed out).
-    fn release(&self, principal: Option<&str>) {
-        let mut st = self.state.lock().expect("admission state poisoned");
-        st.pending = st.pending.saturating_sub(1);
-        decrement_principal(&mut st.per_principal, principal);
     }
 
     /// Requests currently running (holding an in-flight slot).
@@ -177,21 +182,30 @@ fn decrement_principal(map: &mut HashMap<String, usize>, principal: Option<&str>
     }
 }
 
-/// Held for a request's lifetime; frees the in-flight + queue slot (and the
-/// principal's fair-share slot) on drop.
+/// RAII accounting for one reserved slot (queued or in-flight): decrements
+/// `pending` and the principal's fair-share count on drop, whichever way
+/// the reservation ends — admitted-and-finished, wait timeout, or the
+/// caller's future being dropped mid-queue (client disconnect).
 #[derive(Debug)]
-pub struct AdmissionPermit {
-    _permit: OwnedSemaphorePermit,
+struct PendingReservation {
     state: Arc<Mutex<AdmissionState>>,
     principal: Option<String>,
 }
 
-impl Drop for AdmissionPermit {
+impl Drop for PendingReservation {
     fn drop(&mut self) {
         let mut st = self.state.lock().expect("admission state poisoned");
         st.pending = st.pending.saturating_sub(1);
         decrement_principal(&mut st.per_principal, self.principal.as_deref());
     }
+}
+
+/// Held for a request's lifetime; frees the in-flight slot (semaphore
+/// permit) and the queue + fair-share accounting (reservation) on drop.
+#[derive(Debug)]
+pub struct AdmissionPermit {
+    _permit: OwnedSemaphorePermit,
+    _reservation: PendingReservation,
 }
 
 #[cfg(test)]
@@ -294,5 +308,66 @@ mod tests {
         assert_eq!(ctrl.queue_depth(), 1, "B is queued, not rejected");
         drop(_a1);
         b.await.unwrap().expect("B is served after A releases");
+    }
+
+    /// Regression for the 2026-07-02 retry-storm incident: a client that
+    /// disconnects while QUEUED drops the `enter()` future mid-await.
+    /// The reservation must roll back — the original implementation
+    /// leaked `pending` + the per-principal count on this path, pinning
+    /// the model in a permanent instant-429 state.
+    #[tokio::test]
+    async fn cancelled_queued_waiter_rolls_back_accounting() {
+        let cfg = AdmissionConfig {
+            max_in_flight: 1,
+            max_queue_depth: 2,
+            max_wait_secs: 30,
+            // Cap 3 lets the runner + both waiters coexist; if the two
+            // cancelled waiters leaked their counts, the principal would
+            // sit at 3 == cap and the post-cancel enter below would hit
+            // PrincipalCap instead of queueing.
+            max_per_principal: 3,
+        };
+        let ctrl = Arc::new(AdmissionController::new(&cfg));
+        let running = ctrl.enter(Some("acct/key")).await.expect("admit running");
+
+        // Two waiters from the same principal park in the queue…
+        let mut waiters = Vec::new();
+        for _ in 0..2 {
+            let c = Arc::clone(&ctrl);
+            waiters.push(tokio::spawn(async move {
+                c.enter(Some("acct/key")).await.map(drop)
+            }));
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(ctrl.queue_depth(), 2);
+
+        // …and both clients vanish (abort = the dropped request future).
+        for w in &waiters {
+            w.abort();
+        }
+        for w in waiters {
+            let _ = w.await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        assert_eq!(
+            ctrl.queue_depth(),
+            0,
+            "cancelled waiters must not leak queue slots"
+        );
+
+        // The principal's fair-share count must also be clean: with the
+        // runner still holding 1 of its cap of 3, a new request from the
+        // same principal queues instead of hitting PrincipalCap (which a
+        // leak of the two cancelled counts would trigger).
+        let c = Arc::clone(&ctrl);
+        let retry = tokio::spawn(async move { c.enter(Some("acct/key")).await.map(drop) });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(ctrl.queue_depth(), 1, "post-cancel request queues normally");
+        drop(running);
+        retry
+            .await
+            .unwrap()
+            .expect("post-cancel request is served — no leaked principal count");
     }
 }
