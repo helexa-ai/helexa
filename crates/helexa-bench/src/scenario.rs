@@ -416,17 +416,36 @@ async fn stream_and_measure_inner(
             Ok(c) => c,
             Err(_) => continue, // tolerate non-JSON keepalive frames
         };
-        if let Some(choice) = chunk.choices.first()
-            && let Some(content) = choice.delta.get("content").and_then(|c| c.as_str())
-            && !content.is_empty()
-        {
-            if first.is_none() {
-                first = Some(now);
+        if let Some(choice) = chunk.choices.first() {
+            // Liveness counts ANY generated delta (#117). Thinking
+            // models (Qwen3-Next-Thinking, Qwen3 with thinking on)
+            // stream `reasoning_content` first — sometimes for their
+            // entire budget — and a content-only view misread that as
+            // a dead stream ("no content chunks received") while also
+            // producing impossible client-side rates (reasoning-
+            // inclusive token counts over a visible-content-only
+            // window; observed: "244 tok/s" on a 3060). For
+            // non-thinking models the first delta IS content, so
+            // `ttft_s` semantics are unchanged for them.
+            let content = choice
+                .delta
+                .get("content")
+                .and_then(|c| c.as_str())
+                .filter(|c| !c.is_empty());
+            let reasoning = choice
+                .delta
+                .get("reasoning_content")
+                .and_then(|c| c.as_str())
+                .filter(|c| !c.is_empty());
+            if content.is_some() || reasoning.is_some() {
+                if first.is_none() {
+                    first = Some(now);
+                }
+                last = Some(now);
+                chunk_count += 1;
             }
-            last = Some(now);
-            chunk_count += 1;
-            if capture_text {
-                captured.push_str(content);
+            if capture_text && let Some(text) = content {
+                captured.push_str(text);
             }
         }
         if let Some(usage) = chunk.usage {
@@ -441,23 +460,29 @@ async fn stream_and_measure_inner(
     }
     let end = Instant::now();
 
-    let first = first.ok_or_else(|| anyhow!("no content chunks received"))?;
+    let first = first.ok_or_else(|| anyhow!("no generated chunks received"))?;
 
-    // neuron emits one SSE chunk per visible token, so chunk_count is an
-    // engine-truth count when no usage frame is sent.
+    // neuron emits one SSE chunk per generated token, so chunk_count is
+    // an engine-truth count when no usage frame is sent.
     let tokens = completion_tokens.filter(|&t| t > 0).unwrap_or(chunk_count);
-    // decode rate is only meaningful over a real inter-chunk window.
+    // Decode rate: prefer the server-measured split (#85) — it counts
+    // every generated token over the actual decode window, immune to
+    // reasoning-suppression frame mismatches. Fall back to the client
+    // inter-chunk window with the CHUNK count (same frame) — never
+    // usage.completion_tokens over the chunk window, which mixes a
+    // reasoning-inclusive numerator with a visible-only denominator.
     let window = last
         .filter(|&l| l > first)
         .map(|l| (l - first).as_secs_f64())
         .unwrap_or(0.0);
+    let decode_tps = match decode_ms {
+        Some(ms) if ms > 200 && tokens > 0 => Some(tokens as f64 / (ms as f64 / 1000.0)),
+        _ if window > 0.2 => Some(chunk_count as f64 / window),
+        _ => None,
+    };
     Ok(ScenarioMetrics {
         ttft_s: (first - start).as_secs_f64(),
-        decode_tps: if window > 0.2 {
-            Some(tokens as f64 / window)
-        } else {
-            None
-        },
+        decode_tps,
         total_s: (end - start).as_secs_f64(),
         prompt_tokens,
         completion_tokens: tokens,
