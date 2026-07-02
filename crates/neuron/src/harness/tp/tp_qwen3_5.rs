@@ -1169,8 +1169,13 @@ impl TpQwen3_5MoeBlock {
 
         // Replicated routing, all on-device (contrast route_scatter's
         // host round-trip): softmax over all experts → top-k → renorm.
-        let router_logits = self.gate.forward(&xs_f32)?;
-        let probs = candle_nn::ops::softmax_last_dim(&router_logits)?;
+        // The router runs in the ORIGINAL activation dtype — its
+        // replicated weight is bf16, and a bf16×f32 matmul is a dtype
+        // error (the first live fused request poisoned on exactly
+        // this). Only the softmax and everything downstream are f32,
+        // matching route_scatter.
+        let router_logits = self.gate.forward(xs_flat)?;
+        let probs = candle_nn::ops::softmax_last_dim(&router_logits.to_dtype(DType::F32)?)?;
         let topk_ids = probs
             .arg_sort_last_dim(false)?
             .narrow(D::Minus1, 0, self.num_experts_per_tok)?
