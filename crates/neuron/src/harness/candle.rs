@@ -2438,7 +2438,7 @@ impl CandleHarness {
                                 worker,
                                 handle,
                                 &prompt_tokens,
-                                loaded.prefix_cache.as_ref(),
+                                loaded.prefix_cache.as_deref(),
                                 loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
                                 temperature,
