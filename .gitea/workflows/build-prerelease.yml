@@ -384,7 +384,10 @@ jobs:
             cuda_home: /usr/local/cuda-13.0
             build_jobs: 8
             nvcc_threads: 4
-            cargo_features: "cuda cudnn"
+            # flash-attn on blackwell first (#95): beast carries the
+            # agentic prefill pain; ada/ampere follow once the win is
+            # measured. NEURON_FLASH_ATTN=0 is the runtime rollback.
+            cargo_features: "cuda cudnn flash-attn"
     runs-on: ${{ matrix.runner }}
     env:
       SCCACHE_BUCKET: sccache

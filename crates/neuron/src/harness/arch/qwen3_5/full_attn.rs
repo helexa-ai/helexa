@@ -29,6 +29,78 @@ use super::TextConfig;
 use super::rmsnorm::Qwen3_5RmsNorm;
 use super::rope::RotaryEmbedding;
 
+/// Runtime kill-switch for the FlashAttention path (#95):
+/// `NEURON_FLASH_ATTN=0` (or `false`) forces the eager fallback
+/// without a rebuild — the A/B lever and the rollback if the kernels
+/// misbehave on some device. Read once.
+#[cfg(feature = "flash-attn")]
+fn flash_attn_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        let on = !std::env::var("NEURON_FLASH_ATTN").is_ok_and(|v| v == "0" || v == "false");
+        tracing::info!(enabled = on, "FlashAttention path (#95)");
+        on
+    })
+}
+
+/// Attention core shared by the single-GPU and TP full-attention
+/// layers (#95): `(B, H, L, D)` query and `(B, H_kv, S, D)` key/value
+/// (post-KV-cache, NOT GQA-repeated) → `(B, H, L, D)` context.
+///
+/// With the `flash-attn` feature on a CUDA device in f16/bf16, this
+/// dispatches to the FlashAttention kernel: GQA is native (no
+/// repeated-K/V materialisation) and causality is a kernel flag, so
+/// the O(L²) mask/score tensors never exist. The kernels align the
+/// causal mask to the BOTTOM-RIGHT when `seqlen_q != seqlen_k`
+/// (flash-attention v2.1+ semantics), which is exactly what chunked
+/// prefill continuation needs: a chunk of L new queries against
+/// `offset + L` cached keys masks correctly.
+///
+/// INVARIANT: `attn_mask` is either `None` (decode / single position)
+/// or the standard causal mask — the only mask the qwen3_5 forward
+/// constructs. The flash path encodes it as `causal = attn_mask
+/// .is_some()`; a future non-causal mask must extend this signature,
+/// not silently pass through.
+///
+/// Falls back to the eager matmul→softmax→matmul everywhere else
+/// (CPU, f32, feature off, or `NEURON_FLASH_ATTN=0`).
+pub(crate) fn attention_context(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    attn_mask: Option<&Tensor>,
+    num_kv_groups: usize,
+    scale: f64,
+) -> candle_core::Result<Tensor> {
+    #[cfg(feature = "flash-attn")]
+    {
+        use candle_core::DType;
+        let dtype = q.dtype();
+        if flash_attn_enabled()
+            && q.device().is_cuda()
+            && (dtype == DType::F16 || dtype == DType::BF16)
+        {
+            // flash_attn wants (B, L, H, D); the callers carry (B, H, L, D).
+            let qf = q.transpose(1, 2)?.contiguous()?;
+            let kf = k.transpose(1, 2)?.contiguous()?;
+            let vf = v.transpose(1, 2)?.contiguous()?;
+            let causal = attn_mask.is_some();
+            let ctx = candle_flash_attn::flash_attn(&qf, &kf, &vf, scale as f32, causal)?;
+            return ctx.transpose(1, 2)?.contiguous();
+        }
+    }
+
+    // Eager fallback: materialise GQA-repeated K/V and the score matrix.
+    let k = repeat_kv(k.clone(), num_kv_groups)?.contiguous()?;
+    let v = repeat_kv(v.clone(), num_kv_groups)?.contiguous()?;
+    let mut scores = (q.matmul(&k.transpose(2, 3)?)? * scale)?;
+    if let Some(m) = attn_mask {
+        scores = scores.broadcast_add(m)?;
+    }
+    let probs = candle_nn::ops::softmax_last_dim(&scores)?;
+    probs.matmul(&v)
+}
+
 pub struct Qwen3_5Attention {
     q_proj: Linear,
     k_proj: Linear,
@@ -139,18 +211,10 @@ impl Qwen3_5Attention {
         // 4. KV cache.
         let (k, v) = self.kv_cache.append(&k, &v)?;
 
-        // 5. GQA repeat (cheap shape op).
-        let k = repeat_kv(k, self.num_kv_groups)?.contiguous()?;
-        let v = repeat_kv(v, self.num_kv_groups)?.contiguous()?;
-
-        // 6. Scaled dot-product + causal mask.
+        // 5+6. Attention core — FlashAttention when available, eager
+        // GQA-repeat + masked softmax otherwise (#95).
         let scale = 1.0_f64 / (self.head_dim as f64).sqrt();
-        let mut scores = (q.matmul(&k.transpose(2, 3)?)? * scale)?;
-        if let Some(m) = attn_mask {
-            scores = scores.broadcast_add(m)?;
-        }
-        let probs = candle_nn::ops::softmax_last_dim(&scores)?;
-        let ctx = probs.matmul(&v)?; // (B, H, L, D)
+        let ctx = attention_context(&q, &k, &v, attn_mask, self.num_kv_groups, scale)?; // (B, H, L, D)
 
         // 7. Reshape back, apply the output gate, project.
         let ctx = ctx
