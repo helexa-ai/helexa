@@ -16,6 +16,14 @@ name = "candle"
 
 [harness.candle]
 
+# Batched decode engine (#98): up to 8 concurrent text streams
+# multiplex through one lockstep (B,1) forward per decode step.
+# max_in_flight is both the admission bound and the engine's slot
+# count. NEURON_BATCHING=0 (systemd drop-in) is the kill switch;
+# removing this section reverts to batch-1 serialization.
+[harness.candle.admission]
+max_in_flight = 8
+
 [[default_models]]
 model_id = "Qwen/Qwen3.6-27B"
 harness = "candle"
