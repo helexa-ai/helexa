@@ -278,6 +278,16 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 );
                 let _ = reply.send(result);
             }
+            Job::ExtractKvRows {
+                handle,
+                rows,
+                padded_len,
+                steps,
+                reply,
+            } => {
+                let result = extract_kv_rows(&mut state, handle, &rows, padded_len, steps);
+                let _ = reply.send(result);
+            }
             Job::EncodeImage {
                 handle,
                 pixels,
@@ -1105,6 +1115,42 @@ fn assemble_kv_batch(
     Ok(batch.padded_len)
 }
 
+/// Extract live batched-state rows into stored per-sequence snapshots
+/// (#98) — see `Job::ExtractKvRows`. Captures the live state once
+/// (shallow attention KV, deep-copied GDN) and slices each requested
+/// row out gap-free.
+fn extract_kv_rows(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    rows: &[(usize, usize)],
+    padded_len: usize,
+    steps: usize,
+) -> anyhow::Result<Vec<(KvSnapshotId, u64)>> {
+    let live = state
+        .models
+        .get(&handle)
+        .ok_or_else(|| anyhow::anyhow!("ExtractKvRows: no model for handle {}", handle.0))?
+        .snapshot_kv_cache()?;
+    let mut out = Vec::with_capacity(rows.len());
+    for &(row, prefix_len) in rows {
+        let snap = crate::harness::arch::qwen3_5::snapshot::extract_row(
+            &live, row, prefix_len, padded_len, steps,
+        )?;
+        let id = KvSnapshotId(state.next_kv_snapshot_id);
+        state.next_kv_snapshot_id = state.next_kv_snapshot_id.wrapping_add(1);
+        let bytes = snap.size_bytes();
+        state.kv_snapshots.insert((handle, id.0), snap);
+        out.push((id, bytes));
+    }
+    tracing::debug!(
+        handle = handle.0,
+        rows = rows.len(),
+        stored = state.kv_snapshots.len(),
+        "device worker: batch rows extracted"
+    );
+    Ok(out)
+}
+
 /// One lockstep batched decode step (#98). Builds the `(B, 1)` input
 /// on the worker's device, derives per-row positions and the padding
 /// mask, and copies each row's logits back to CPU — same
@@ -1306,6 +1352,9 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogitsBatch { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::ExtractKvRows { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::EncodeImage { reply, .. } => {

@@ -162,6 +162,22 @@ pub enum Job {
         seqs: Vec<(KvSnapshotId, usize)>,
         reply: oneshot::Sender<Result<usize>>,
     },
+    /// Extract rows of the model's **live** batched cache state back
+    /// into contiguous single-sequence snapshots stored in the
+    /// worker's slab (#98) — the first half of a rebatch (join or
+    /// leave). `rows` pairs each batch-row index with its prefix
+    /// length; `padded_len`/`steps` describe the live batch geometry.
+    /// Replies one `(snapshot id, bytes)` per requested row, in
+    /// order. Compose with `AssembleKvBatch` to form the new batch,
+    /// then `DropKvSnapshot` the intermediates.
+    ExtractKvRows {
+        handle: ArchHandle,
+        /// `(batch row index, prefix_len)` per surviving sequence.
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        reply: oneshot::Sender<Result<Vec<(KvSnapshotId, u64)>>>,
+    },
     /// One lockstep batched decode step (#98): `tokens[i]` is batch
     /// row i's next token, sitting at sequence position
     /// `prefix_lens[i] + step`. The handler derives per-row positions

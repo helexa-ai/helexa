@@ -213,6 +213,91 @@ fn assemble_layer(
     }
 }
 
+/// Extract one row of a batched cache snapshot back into a contiguous
+/// single-sequence snapshot — the defragment half of batch membership
+/// changes (#98). A join/leave rebatches by extracting every surviving
+/// row (each becomes a gap-free `B=1` snapshot of length `prefix_len +
+/// steps`) and running [`assemble_batch`] over them again, so the
+/// "each row has exactly one padding gap" invariant holds for the new
+/// batch too.
+///
+/// `row` indexes the batch dim. The row's valid attention KV is its
+/// prefix `[0, prefix_len)` plus the lockstep decode columns
+/// `[padded_len, padded_len + steps)`; the gap between them is padding
+/// and is dropped. GDN states are position-free — the row is sliced
+/// out whole and **deep-copied** (the live buffers are mutated in
+/// place by the CUDA kernels; see the module notes on copy semantics).
+pub fn extract_row(
+    snap: &KvCacheSnapshot,
+    row: usize,
+    prefix_len: usize,
+    padded_len: usize,
+    steps: usize,
+) -> candle_core::Result<KvCacheSnapshot> {
+    if prefix_len == 0 || prefix_len > padded_len {
+        candle_core::bail!(
+            "extract_row: prefix_len {prefix_len} out of range (padded_len {padded_len})"
+        );
+    }
+    let mut layers = Vec::with_capacity(snap.layers.len());
+    for (li, layer) in snap.layers.iter().enumerate() {
+        layers.push(match layer {
+            LayerKvSnapshot::Full(Some((k, v))) => {
+                let (b, _h, s, _d) = k.dims4()?;
+                if row >= b {
+                    candle_core::bail!("extract_row: row {row} out of range (batch {b})");
+                }
+                if s != padded_len + steps {
+                    candle_core::bail!(
+                        "extract_row: layer {li} KV length {s} != padded_len {padded_len} + \
+                         steps {steps}"
+                    );
+                }
+                LayerKvSnapshot::Full(Some((
+                    unpad_row(k, row, prefix_len, padded_len, steps)?,
+                    unpad_row(v, row, prefix_len, padded_len, steps)?,
+                )))
+            }
+            LayerKvSnapshot::Full(None) => {
+                candle_core::bail!("extract_row: layer {li} has an empty attention cache")
+            }
+            LayerKvSnapshot::Linear {
+                conv_state: Some(conv),
+                recurrent_state: Some(rec),
+            } => LayerKvSnapshot::Linear {
+                conv_state: Some(conv.narrow(0, row, 1)?.copy()?),
+                recurrent_state: Some(rec.narrow(0, row, 1)?.copy()?),
+            },
+            LayerKvSnapshot::Linear { .. } => {
+                candle_core::bail!("extract_row: layer {li} has unpopulated GDN state")
+            }
+        });
+    }
+    Ok(KvCacheSnapshot {
+        layers,
+        rope_delta: 0,
+    })
+}
+
+/// Slice `row` out of a batched `(B, H, padded_len + steps, D)` K or V
+/// tensor and drop its padding gap, yielding an owned contiguous
+/// `(1, H, prefix_len + steps, D)` tensor.
+fn unpad_row(
+    t: &Tensor,
+    row: usize,
+    prefix_len: usize,
+    padded_len: usize,
+    steps: usize,
+) -> candle_core::Result<Tensor> {
+    let r = t.narrow(0, row, 1)?;
+    let prefix = r.narrow(2, 0, prefix_len)?;
+    if steps == 0 {
+        return prefix.contiguous()?.copy();
+    }
+    let decoded = r.narrow(2, padded_len, steps)?;
+    Tensor::cat(&[&prefix.contiguous()?, &decoded.contiguous()?], 2)
+}
+
 /// Right-pad a `(1, H, S, D)` K or V tensor with zeros along the
 /// sequence axis to `padded_len`. Zero columns are inert: the padding
 /// mask keeps every query from attending to them.
@@ -529,6 +614,92 @@ mod tests {
             let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
             let diff = max_abs_diff(&expected[row], &got);
             assert!(diff < 1e-4, "row {row} diverged: {diff}");
+        }
+    }
+
+    /// Round-trip for batch membership changes (#98): decode two steps
+    /// in a lockstep batch, extract each row back to a contiguous
+    /// single-sequence snapshot, restore it alone, and continue
+    /// decoding at B=1 — the continuation must match a pure-sequential
+    /// run of the same tokens. This is the primitive a join/leave
+    /// rebatch is built from.
+    #[test]
+    fn extract_row_continues_like_sequential() {
+        use candle_core::IndexOp;
+        let cfg = tiny_config();
+        let mut model = tiny_model(&cfg);
+
+        let prompts: [&[u32]; 2] = [&[1, 2, 3], &[4, 5]];
+        let toks: [&[u32]; 2] = [&[11, 12, 13, 14], &[9, 8, 7, 6]];
+        let batched_steps = 2; // decoded in the batch
+        let solo_steps = 2; // decoded after extraction, B=1
+
+        // Pure-sequential reference over all four steps.
+        let mut expected: Vec<Vec<Vec<f32>>> = Vec::new();
+        for (prompt, t) in prompts.iter().zip(toks.iter()) {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            let mut per_step = Vec::new();
+            for (i, tok) in t.iter().enumerate() {
+                per_step.push(forward_tokens(&mut model, &[*tok], prompt.len() + i));
+            }
+            expected.push(per_step);
+        }
+
+        // Prefill + assemble + two lockstep batched steps.
+        let mut snaps = Vec::new();
+        for prompt in prompts.iter() {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            snaps.push(model.snapshot_kv_cache().expect("snapshot"));
+        }
+        let seqs: Vec<(&super::KvCacheSnapshot, usize)> = snaps
+            .iter()
+            .zip(prompts.iter())
+            .map(|(s, p)| (s, p.len()))
+            .collect();
+        let batch = super::assemble_batch(&seqs).expect("assemble");
+        model.restore_kv_cache(&batch.snapshot).expect("install");
+        for t in 0..batched_steps {
+            let step_toks: Vec<u32> = toks.iter().map(|s| s[t]).collect();
+            let input = Tensor::from_vec(step_toks, (2, 1), &Device::Cpu).unwrap();
+            let positions: Vec<usize> = prompts.iter().map(|p| p.len() + t).collect();
+            let mask = model
+                .batch_decode_mask(
+                    &batch.prefix_lens,
+                    batch.padded_len,
+                    batch.padded_len + t + 1,
+                )
+                .expect("mask");
+            let h = model
+                .forward_batch_decode(&input, &positions, mask.as_ref())
+                .expect("batched step");
+            for row in 0..2 {
+                let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
+                let diff = max_abs_diff(&expected[row][t], &got);
+                assert!(diff < 1e-4, "batched row {row} step {t}: {diff}");
+            }
+        }
+
+        // Extract each row from the live batched state, restore it
+        // alone, and continue at B=1.
+        let live = model.snapshot_kv_cache().expect("snapshot live batch");
+        for row in 0..2 {
+            let solo = super::extract_row(
+                &live,
+                row,
+                prompts[row].len(),
+                batch.padded_len,
+                batched_steps,
+            )
+            .expect("extract row");
+            model.restore_kv_cache(&solo).expect("restore solo");
+            for i in 0..solo_steps {
+                let t = batched_steps + i;
+                let got = forward_tokens(&mut model, &[toks[row][t]], prompts[row].len() + t);
+                let diff = max_abs_diff(&expected[row][t], &got);
+                assert!(diff < 1e-4, "solo row {row} step {t}: {diff}");
+            }
         }
     }
 
