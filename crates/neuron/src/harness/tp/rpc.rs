@@ -115,6 +115,48 @@ pub enum WorkerRequest {
         chunk_size: usize,
     },
 
+    /// One lockstep batched decode step (#98): `tokens[i]` is batch
+    /// row i's next token at position `prefix_lens[i] + step`.
+    /// Identical on every rank (the leader mirrors it through
+    /// `Job::TpForwardLogitsBatch`); each rank derives the per-row
+    /// positions and padding mask locally and discards its logits,
+    /// same as `GenerateStep`.
+    GenerateStepBatch {
+        model_id: String,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        /// Uniform padded KV length the batch was assembled to.
+        padded_len: usize,
+        /// Decode steps since the last rebatch.
+        step: usize,
+    },
+
+    /// Assemble stored per-sequence snapshots into one batched cache
+    /// state and install it as this rank's live state (#98). `seqs`
+    /// pairs pool-minted snapshot ids with true token lengths; every
+    /// rank holds symmetric shard snapshots under the same ids, so
+    /// the assembled geometry (padded length) is identical across
+    /// ranks. Source snapshots remain stored. Replies
+    /// `KvBatchAssembled { padded_len }`.
+    AssembleKvBatch {
+        model_id: String,
+        seqs: Vec<(u64, usize)>,
+    },
+
+    /// Extract rows of this rank's live batched state back into
+    /// contiguous single-sequence snapshots (#98) — the first half of
+    /// a rebatch. `rows` pairs batch-row indexes with prefix lengths;
+    /// `snapshot_ids` carries the pool-minted id to store each
+    /// extracted row under (one per entry of `rows`, so every rank
+    /// keys identically). Replies `KvRowsExtracted`.
+    ExtractKvRows {
+        model_id: String,
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        snapshot_ids: Vec<u64>,
+    },
+
     /// Reset the KV cache for this model on this rank. Sent at the
     /// start of every inference so a fresh request doesn't accidentally
     /// attend over the previous one's tokens.
@@ -191,6 +233,14 @@ pub enum WorkerResponse {
 
     /// Reply to `ClearKvCache`. Empty payload.
     KvCacheCleared,
+
+    /// Reply to `AssembleKvBatch`. The uniform padded KV length the
+    /// batch was assembled to — the leader asserts every rank agrees.
+    KvBatchAssembled { padded_len: u64 },
+
+    /// Reply to `ExtractKvRows`. Total bytes of the extracted
+    /// snapshots on this rank (budget accounting only).
+    KvRowsExtracted { bytes: u64 },
 
     /// Reply to `QueryVram`. This rank's device VRAM in MiB.
     VramInfo { free_mb: u64, total_mb: u64 },

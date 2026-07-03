@@ -874,6 +874,112 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Leader half of a TP batched decode step (#98) — per-row
+    /// `[vocab]` logits back for per-slot sampling. The caller fans
+    /// the matching `GenerateStepBatch` out to the subprocess ranks.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_forward_logits_batch(
+        &self,
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+    ) -> Result<Vec<Vec<f32>>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpForwardLogitsBatch {
+                handle,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Leader half of a TP batch assembly (#98). Returns the padded
+    /// uniform KV length. Snapshot ids are pool-minted by the caller.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_assemble_kv_batch(
+        &self,
+        handle: TpHandle,
+        seqs: Vec<(u64, usize)>,
+    ) -> Result<usize, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpAssembleKvBatch {
+                handle,
+                seqs,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Leader half of a TP row extraction (#98). Stores each extracted
+    /// row under the caller's pre-minted pool id; returns total bytes.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_extract_kv_rows(
+        &self,
+        handle: TpHandle,
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        snapshot_ids: Vec<u64>,
+    ) -> Result<u64, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpExtractKvRows {
+                handle,
+                rows,
+                padded_len,
+                steps,
+                snapshot_ids,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Image-bearing TP leader forward (single-shot vision prefill).
     /// Routes `Job::TpForwardLogitsWithImages` onto the worker thread;
     /// the handler preprocesses + encodes + splices + forwards and

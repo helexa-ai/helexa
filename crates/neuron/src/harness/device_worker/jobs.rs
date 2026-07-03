@@ -348,6 +348,41 @@ pub enum Job {
         offset: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
+    /// Leader half of a TP batched decode step (#98) — mirrors the
+    /// single-GPU `ForwardLogitsBatch` against the TP slab. The caller
+    /// (`WorkerPool::generate_step_batch`) fans out the matching
+    /// `GenerateStepBatch` RPC to subprocess ranks first so the
+    /// row-parallel collectives pair up.
+    #[cfg(feature = "cuda")]
+    TpForwardLogitsBatch {
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+        reply: oneshot::Sender<Result<Vec<Vec<f32>>>>,
+    },
+    /// Leader half of a TP batch assembly (#98) — mirrors
+    /// `AssembleKvBatch` against the TP slab, with **pool-minted**
+    /// snapshot ids (the same ids every subprocess rank stores under).
+    #[cfg(feature = "cuda")]
+    TpAssembleKvBatch {
+        handle: TpHandle,
+        seqs: Vec<(u64, usize)>,
+        reply: oneshot::Sender<Result<usize>>,
+    },
+    /// Leader half of a TP row extraction (#98) — mirrors
+    /// `ExtractKvRows` against the TP slab, storing each extracted row
+    /// under the **pre-minted** id in `snapshot_ids` (one per row).
+    #[cfg(feature = "cuda")]
+    TpExtractKvRows {
+        handle: TpHandle,
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        snapshot_ids: Vec<u64>,
+        reply: oneshot::Sender<Result<u64>>,
+    },
     /// Image-bearing leader (rank 0) forward for the single-shot vision
     /// prefill. The handler preprocesses each `image_data_uris` entry
     /// (the same deterministic path every rank runs), encodes through
