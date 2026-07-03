@@ -3597,12 +3597,35 @@ impl Harness for CandleHarness {
                         "TP unload: DropTp RPC failed (leader model may leak in worker slab)"
                     );
                 }
-                let mut pool = tp.pool.into_inner();
-                if let Err(e) = pool.unload_model(model_id).await {
-                    tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
-                }
-                if let Err(e) = pool.shutdown().await {
-                    tracing::warn!(model = %model_id, error = %e, "TP pool shutdown failed");
+                // The pool mutex is Arc-shared with the batch engine's
+                // active-phase guard (#98). `Arc::try_unwrap(tp)`
+                // succeeding above means the engine is idle (it holds
+                // `Arc<TpLoadedModel>` whenever it holds the pool
+                // guard), so sole ownership is the expected case; the
+                // fallback covers the narrow race where the engine's
+                // guard is mid-release.
+                match Arc::try_unwrap(tp.pool) {
+                    Ok(pool_mutex) => {
+                        let mut pool = pool_mutex.into_inner();
+                        if let Err(e) = pool.unload_model(model_id).await {
+                            tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
+                        }
+                        if let Err(e) = pool.shutdown().await {
+                            tracing::warn!(model = %model_id, error = %e, "TP pool shutdown failed");
+                        }
+                    }
+                    Err(pool_arc) => {
+                        tracing::warn!(
+                            model = %model_id,
+                            "TP unload: pool mutex still referenced (engine guard \
+                             mid-release); unloading without explicit pool shutdown — \
+                             worker children reap when the last reference drops"
+                        );
+                        let mut pool = pool_arc.lock().await;
+                        if let Err(e) = pool.unload_model(model_id).await {
+                            tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
+                        }
+                    }
                 }
             }
         }
