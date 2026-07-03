@@ -476,6 +476,50 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let _ = reply.send(());
             }
             #[cfg(feature = "cuda")]
+            Job::TpForwardLogitsBatch {
+                handle,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+                reply,
+            } => {
+                let result = tp_forward_logits_batch(
+                    &mut state,
+                    handle,
+                    &tokens,
+                    &prefix_lens,
+                    padded_len,
+                    step,
+                );
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpAssembleKvBatch {
+                handle,
+                seqs,
+                reply,
+            } => {
+                let result = tp_assemble_kv_batch(&mut state, handle, &seqs);
+                if result.is_ok() {
+                    trim_device_pool(&state);
+                }
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpExtractKvRows {
+                handle,
+                rows,
+                padded_len,
+                steps,
+                snapshot_ids,
+                reply,
+            } => {
+                let result =
+                    tp_extract_kv_rows(&mut state, handle, &rows, padded_len, steps, &snapshot_ids);
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
             Job::TpForwardLogits {
                 handle,
                 tokens,
@@ -991,6 +1035,114 @@ fn tp_forward_logits(
     Ok(values)
 }
 
+/// TP-equivalent of [`forward_logits_batch`] on the leader's shard
+/// (#98). The caller has already fanned the matching
+/// `GenerateStepBatch` out to the subprocess ranks.
+#[cfg(feature = "cuda")]
+fn tp_forward_logits_batch(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    tokens: &[u32],
+    prefix_lens: &[usize],
+    padded_len: usize,
+    step: usize,
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    use candle_core::{DType, Tensor};
+
+    let b = tokens.len();
+    anyhow::ensure!(b > 0, "TpForwardLogitsBatch: empty batch");
+    anyhow::ensure!(
+        prefix_lens.len() == b,
+        "TpForwardLogitsBatch: {} prefix_lens for batch of {b}",
+        prefix_lens.len()
+    );
+
+    let input = Tensor::from_vec(tokens.to_vec(), (b, 1), &state.device)?;
+    let model = state
+        .tp_models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("TpForwardLogitsBatch: no model for handle {}", handle.0))?;
+
+    let positions: Vec<usize> = prefix_lens.iter().map(|&len| len + step).collect();
+    let total_len = padded_len + step + 1;
+    let mask = model.batch_decode_mask(prefix_lens, padded_len, total_len)?;
+    let logits = model.forward_batch_decode(&input, &positions, mask.as_ref())?;
+
+    let logits = logits.to_dtype(DType::F32)?;
+    let (rows, _, vocab) = logits.dims3()?;
+    anyhow::ensure!(
+        rows == b,
+        "TpForwardLogitsBatch: model returned {rows} logits rows for batch of {b}"
+    );
+    let flat: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+    Ok(flat.chunks(vocab).map(<[f32]>::to_vec).collect())
+}
+
+/// TP-equivalent of [`assemble_kv_batch`] against the TP slab (#98),
+/// keyed by pool-minted snapshot ids.
+#[cfg(feature = "cuda")]
+fn tp_assemble_kv_batch(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    seqs: &[(u64, usize)],
+) -> anyhow::Result<usize> {
+    let DeviceWorkerState {
+        tp_models,
+        tp_kv_snapshots,
+        ..
+    } = state;
+    let mut pairs = Vec::with_capacity(seqs.len());
+    for (id, len) in seqs {
+        let snap = tp_kv_snapshots.get(&(handle, *id)).ok_or_else(|| {
+            anyhow::anyhow!(
+                "TpAssembleKvBatch: no snapshot {id} for handle {}",
+                handle.0
+            )
+        })?;
+        pairs.push((snap, *len));
+    }
+    let batch = crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs)?;
+    let model = tp_models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("TpAssembleKvBatch: no model for handle {}", handle.0))?;
+    model.restore_kv_cache(&batch.snapshot)?;
+    Ok(batch.padded_len)
+}
+
+/// TP-equivalent of [`extract_kv_rows`] against the TP slab (#98),
+/// storing each extracted row under the caller's pre-minted pool id.
+/// Returns total snapshot bytes (budget accounting).
+#[cfg(feature = "cuda")]
+fn tp_extract_kv_rows(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    rows: &[(usize, usize)],
+    padded_len: usize,
+    steps: usize,
+    snapshot_ids: &[u64],
+) -> anyhow::Result<u64> {
+    anyhow::ensure!(
+        snapshot_ids.len() == rows.len(),
+        "TpExtractKvRows: {} rows vs {} snapshot_ids",
+        rows.len(),
+        snapshot_ids.len()
+    );
+    let live = state
+        .tp_models
+        .get(&handle)
+        .ok_or_else(|| anyhow::anyhow!("TpExtractKvRows: no model for handle {}", handle.0))?
+        .snapshot_kv_cache()?;
+    let mut total = 0u64;
+    for (&(row, prefix_len), &id) in rows.iter().zip(snapshot_ids) {
+        let snap = crate::harness::arch::qwen3_5::snapshot::extract_row(
+            &live, row, prefix_len, padded_len, steps,
+        )?;
+        total += snap.size_bytes();
+        state.tp_kv_snapshots.insert((handle, id), snap);
+    }
+    Ok(total)
+}
+
 /// Image-bearing leader forward (rank 0). Preprocesses each source
 /// `image_data_uris` entry through the same deterministic
 /// `preprocess_data_uri` every rank runs, uploads to the leader's
@@ -1397,6 +1549,18 @@ fn drain_poisoned(job: Job, device_index: u32) {
         }
         #[cfg(feature = "cuda")]
         Job::TpRestoreKv { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpForwardLogitsBatch { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpAssembleKvBatch { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpExtractKvRows { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         #[cfg(feature = "cuda")]

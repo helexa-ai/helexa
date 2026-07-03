@@ -51,7 +51,7 @@ use super::candle::{
     stable_snapshot_cut, store_prefix_snapshot_via_worker,
 };
 use super::context_limit::PrefillRateEma;
-use super::device_worker::{ArchHandle, DeviceWorkerHandle};
+use super::device_worker::{ArchHandle, DeviceWorkerHandle, jobs};
 use crate::wire::event::{
     FinishReason, FinishTiming, InferenceEvent, ReasoningTokenPair, ToolCallTokenPair,
 };
@@ -69,28 +69,327 @@ pub fn batching_enabled() -> bool {
 }
 
 /// Everything the engine needs that is per-model (not per-request).
-/// Deliberately does NOT hold `Arc<LoadedModel>` — the engine task
-/// must not keep the model alive (the task exits when the model drops
-/// its `EngineHandle` and the channel closes).
 pub struct EngineConfig {
     pub model_id: String,
-    pub worker: Arc<DeviceWorkerHandle>,
-    pub handle: ArchHandle,
     pub tokenizer: Tokenizer,
-    pub prefix_cache: Option<Arc<ModelPrefixCache>>,
-    pub prefill_rate: Arc<PrefillRateEma>,
     pub reasoning_tokens: Option<ReasoningTokenPair>,
     pub tool_call_tokens: Option<ToolCallTokenPair>,
-    /// Shared with `LoadedModel.poisoned` so a device fault inside the
-    /// engine fast-rejects subsequent requests at the harness boundary.
-    pub poisoned: Arc<AtomicBool>,
-    /// Shared with `LoadedModel.inference_lock`. Held for the whole
-    /// active phase (first join → last slot finished) so the
-    /// non-engine forward paths (vision, non-streaming chat) can never
-    /// clobber the live batched cache state mid-decode. Released while
-    /// idle.
-    pub inference_lock: Arc<tokio::sync::Mutex<()>>,
     pub max_slots: usize,
+    pub backend: BackendConfig,
+}
+
+/// The two serving substrates an engine can drive. Deliberately does
+/// NOT keep the owning model alive while idle — the engine task must
+/// exit when the model unloads (the `EngineHandle` sender drops and
+/// the channel closes; the TP `Weak` stops upgrading).
+pub enum BackendConfig {
+    /// Single-GPU device-worker path (`LoadedModel`). Holds Arc'd
+    /// clones of the model's shared pieces rather than the model.
+    Single {
+        worker: Arc<DeviceWorkerHandle>,
+        handle: ArchHandle,
+        prefix_cache: Option<Arc<ModelPrefixCache>>,
+        prefill_rate: Arc<PrefillRateEma>,
+        /// Shared with `LoadedModel.poisoned` so a device fault inside
+        /// the engine fast-rejects subsequent requests at the harness
+        /// boundary.
+        poisoned: Arc<AtomicBool>,
+        /// Shared with `LoadedModel.inference_lock`. Held for the whole
+        /// active phase (first join → last slot finished) so the
+        /// non-engine forward paths (vision, non-streaming chat) can
+        /// never clobber the live batched cache state mid-decode.
+        /// Released while idle.
+        inference_lock: Arc<tokio::sync::Mutex<()>>,
+    },
+    /// Tensor-parallel path (`TpLoadedModel`). The `Weak` upgrades for
+    /// the duration of an active phase only: while the engine has
+    /// slots it holds the `Arc` (an unload then completes when the
+    /// batch drains), while idle it holds nothing and unload is
+    /// immediate.
+    #[cfg(feature = "cuda")]
+    Tp {
+        tp: std::sync::Weak<super::candle::TpLoadedModel>,
+    },
+}
+
+/// Held while the engine has active slots: the exclusive right to the
+/// model's forward path plus (for TP) the upgraded model handle.
+enum ActiveSession {
+    Single {
+        _guard: tokio::sync::OwnedMutexGuard<()>,
+    },
+    #[cfg(feature = "cuda")]
+    Tp {
+        tp: Arc<super::candle::TpLoadedModel>,
+        pool: tokio::sync::OwnedMutexGuard<super::tp::WorkerPool>,
+    },
+}
+
+impl BackendConfig {
+    /// Enter the active phase: take the model's serialization lock
+    /// (single-GPU `inference_lock` / TP pool mutex). `None` when the
+    /// model has been unloaded (TP `Weak` no longer upgrades).
+    async fn acquire(&self) -> Option<ActiveSession> {
+        match self {
+            BackendConfig::Single { inference_lock, .. } => Some(ActiveSession::Single {
+                _guard: Arc::clone(inference_lock).lock_owned().await,
+            }),
+            #[cfg(feature = "cuda")]
+            BackendConfig::Tp { tp } => {
+                let tp = tp.upgrade()?;
+                let pool = Arc::clone(&tp.pool).lock_owned().await;
+                Some(ActiveSession::Tp { tp, pool })
+            }
+        }
+    }
+
+    /// Record a device fault on the owning model's poison flag.
+    fn mark_poisoned(&self) {
+        match self {
+            BackendConfig::Single { poisoned, .. } => poisoned.store(true, Ordering::Release),
+            #[cfg(feature = "cuda")]
+            BackendConfig::Tp { tp } => {
+                if let Some(tp) = tp.upgrade() {
+                    tp.poisoned.store(true, Ordering::Release);
+                }
+            }
+        }
+    }
+}
+
+/// One lockstep decode step against the live batched state.
+async fn op_step(
+    cfg: &EngineConfig,
+    session: &mut ActiveSession,
+    tokens: Vec<u32>,
+    prefix_lens: Vec<usize>,
+    padded_len: usize,
+    step: usize,
+) -> Result<Vec<Vec<f32>>> {
+    match (&cfg.backend, session) {
+        (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => worker
+            .forward_logits_batch(*handle, tokens, prefix_lens, padded_len, step)
+            .await
+            .map_err(|e| anyhow::anyhow!("batched decode step {step}: {e}")),
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => pool
+            .generate_step_batch(
+                &tp.model_id,
+                tp.leader_handle,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("TP batched decode step {step}: {e}")),
+        #[cfg(feature = "cuda")]
+        _ => anyhow::bail!("engine backend/session mismatch"),
+    }
+}
+
+/// Assemble per-sequence snapshots (by id) into the live batched
+/// state; returns the padded uniform KV length.
+async fn op_assemble(
+    cfg: &EngineConfig,
+    session: &mut ActiveSession,
+    seqs: Vec<(u64, usize)>,
+) -> Result<usize> {
+    match (&cfg.backend, session) {
+        (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => {
+            let seqs = seqs
+                .into_iter()
+                .map(|(id, len)| (jobs::KvSnapshotId(id), len))
+                .collect();
+            worker
+                .assemble_kv_batch(*handle, seqs)
+                .await
+                .map_err(|e| anyhow::anyhow!("assemble_kv_batch: {e}"))
+        }
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => pool
+            .assemble_kv_batch(&tp.model_id, tp.leader_handle, seqs)
+            .await
+            .map_err(|e| anyhow::anyhow!("TP assemble_kv_batch: {e}")),
+        #[cfg(feature = "cuda")]
+        _ => anyhow::bail!("engine backend/session mismatch"),
+    }
+}
+
+/// Extract live batch rows into per-sequence snapshots; returns their
+/// ids (backend-scoped).
+async fn op_extract(
+    cfg: &EngineConfig,
+    session: &mut ActiveSession,
+    rows: Vec<(usize, usize)>,
+    padded_len: usize,
+    steps: usize,
+) -> Result<Vec<u64>> {
+    match (&cfg.backend, session) {
+        (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => Ok(worker
+            .extract_kv_rows(*handle, rows, padded_len, steps)
+            .await
+            .map_err(|e| anyhow::anyhow!("extract_kv_rows: {e}"))?
+            .into_iter()
+            .map(|(id, _bytes)| id.0)
+            .collect()),
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
+            let ids: Vec<u64> = (0..rows.len())
+                .map(|_| tp.next_snapshot_id.fetch_add(1, Ordering::Relaxed))
+                .collect();
+            pool.extract_kv_rows(
+                &tp.model_id,
+                tp.leader_handle,
+                rows,
+                padded_len,
+                steps,
+                ids.clone(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("TP extract_kv_rows: {e}"))?;
+            Ok(ids)
+        }
+        #[cfg(feature = "cuda")]
+        _ => anyhow::bail!("engine backend/session mismatch"),
+    }
+}
+
+/// Snapshot the freshly prefilled single-sequence state for assembly.
+async fn op_snapshot_seq(cfg: &EngineConfig, session: &mut ActiveSession) -> Result<u64> {
+    match (&cfg.backend, session) {
+        (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => worker
+            .snapshot_kv(*handle)
+            .await
+            .map(|(id, _bytes)| id.0)
+            .map_err(|e| anyhow::anyhow!("snapshot after prefill: {e}")),
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
+            let id = tp.next_snapshot_id.fetch_add(1, Ordering::Relaxed);
+            pool.snapshot_kv_cache(&tp.model_id, tp.leader_handle, id)
+                .await
+                .map_err(|e| anyhow::anyhow!("TP snapshot after prefill: {e}"))?;
+            Ok(id)
+        }
+        #[cfg(feature = "cuda")]
+        _ => anyhow::bail!("engine backend/session mismatch"),
+    }
+}
+
+/// Drop a temporary per-sequence snapshot (best-effort).
+async fn op_drop_snap(cfg: &EngineConfig, session: &mut ActiveSession, id: u64) {
+    match (&cfg.backend, session) {
+        (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => {
+            let _ = worker
+                .drop_kv_snapshot(*handle, jobs::KvSnapshotId(id))
+                .await;
+        }
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
+            let _ = pool
+                .drop_kv_snapshot(&tp.model_id, tp.leader_handle, id)
+                .await;
+        }
+        #[cfg(feature = "cuda")]
+        _ => {}
+    }
+}
+
+/// Prefill one joining request at B=1 through the backend's existing
+/// chunked-prefill + prefix-cache paths. Returns the prefill logits.
+async fn op_prefill(
+    cfg: &EngineConfig,
+    session: &mut ActiveSession,
+    prompt_tokens: &[u32],
+) -> Result<Vec<f32>> {
+    let prompt_len = prompt_tokens.len();
+    let prefill_start = std::time::Instant::now();
+    let logits = match (&cfg.backend, session) {
+        (
+            BackendConfig::Single {
+                worker,
+                handle,
+                prefix_cache,
+                prefill_rate,
+                ..
+            },
+            ActiveSession::Single { .. },
+        ) => {
+            let prefix_cache = prefix_cache.as_deref();
+            let reused =
+                restore_or_clear_via_worker(worker, *handle, prefix_cache, prompt_tokens).await?;
+            let cut = if prefix_cache.is_some() {
+                stable_snapshot_cut(prompt_tokens, cfg.tokenizer.token_to_id("<|im_start|>"))
+                    .filter(|&c| c > reused)
+            } else {
+                None
+            };
+            let logits = match cut {
+                Some(c) => {
+                    chunked_prefill_via_worker(worker, *handle, &prompt_tokens[..c], reused)
+                        .await?;
+                    store_prefix_snapshot_via_worker(
+                        worker,
+                        *handle,
+                        prefix_cache,
+                        prompt_tokens[..c].to_vec(),
+                    )
+                    .await;
+                    chunked_prefill_via_worker(worker, *handle, prompt_tokens, c).await?
+                }
+                None => chunked_prefill_via_worker(worker, *handle, prompt_tokens, reused).await?,
+            };
+            prefill_rate.record(prompt_len, prefill_start.elapsed());
+            logits
+        }
+        #[cfg(feature = "cuda")]
+        (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
+            let reused = super::candle::restore_or_clear_tp(pool, tp, prompt_tokens).await?;
+            let cut = if tp.prefix_cache.is_some() {
+                stable_snapshot_cut(prompt_tokens, cfg.tokenizer.token_to_id("<|im_start|>"))
+                    .filter(|&c| c > reused)
+            } else {
+                None
+            };
+            let logits = match cut {
+                Some(c) => {
+                    super::candle::chunked_prefill_tp(
+                        pool,
+                        &tp.model_id,
+                        tp.leader_handle,
+                        &prompt_tokens[..c],
+                        reused,
+                    )
+                    .await?;
+                    super::candle::store_prefix_snapshot_tp(pool, tp, prompt_tokens[..c].to_vec())
+                        .await;
+                    super::candle::chunked_prefill_tp(
+                        pool,
+                        &tp.model_id,
+                        tp.leader_handle,
+                        prompt_tokens,
+                        c,
+                    )
+                    .await?
+                }
+                None => {
+                    super::candle::chunked_prefill_tp(
+                        pool,
+                        &tp.model_id,
+                        tp.leader_handle,
+                        prompt_tokens,
+                        reused,
+                    )
+                    .await?
+                }
+            };
+            tp.prefill_rate.record(prompt_len, prefill_start.elapsed());
+            logits
+        }
+        #[cfg(feature = "cuda")]
+        _ => anyhow::bail!("engine backend/session mismatch"),
+    };
+    Ok(logits)
 }
 
 /// One queued request. Admission has already been passed — the permit
@@ -180,8 +479,9 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
     // `ExtractKvRows` key off.
     let mut padded_len = 0usize;
     let mut step = 0usize;
-    // Held while any slot is active — see `EngineConfig.inference_lock`.
-    let mut lock_guard: Option<tokio::sync::OwnedMutexGuard<()>> = None;
+    // Held while any slot is active — the model's serialization lock
+    // plus (TP) the upgraded model handle. See `ActiveSession`.
+    let mut session: Option<ActiveSession> = None;
 
     tracing::info!(
         model = %cfg.model_id,
@@ -207,38 +507,39 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
             }
         }
 
-        // Take the model's inference lock before touching cache state;
-        // release it whenever the batch drains so vision/non-streaming
+        // Enter the active phase before touching cache state; release
+        // it whenever the batch drains so vision/non-streaming
         // requests get their turn.
-        if !joins.is_empty() && lock_guard.is_none() {
-            lock_guard = Some(Arc::clone(&cfg.inference_lock).lock_owned().await);
+        if !joins.is_empty() && session.is_none() {
+            match cfg.backend.acquire().await {
+                Some(s) => session = Some(s),
+                None => break 'main, // model unloaded (TP weak gone)
+            }
         }
+        let Some(sess) = session.as_mut() else {
+            continue;
+        };
 
         let needs_compaction = slots
             .iter()
             .any(|s| s.finished.is_some() || s.hangup.load(Ordering::Acquire));
         if (!joins.is_empty() || needs_compaction)
-            && let Err(e) = rebatch(&cfg, &mut slots, joins, &mut padded_len, &mut step).await
+            && let Err(e) = rebatch(&cfg, sess, &mut slots, joins, &mut padded_len, &mut step).await
         {
             fail_engine(&cfg, &mut slots, &mut rx, &e);
             break 'main;
         }
         if slots.is_empty() {
-            lock_guard = None; // every join finished during prefill
+            session = None; // every join finished during prefill
             continue;
         }
 
         // One lockstep decode step.
         let tokens: Vec<u32> = slots.iter().map(|s| s.next_token).collect();
         let prefix_lens: Vec<usize> = slots.iter().map(|s| s.prefix_len).collect();
-        let rows = match cfg
-            .worker
-            .forward_logits_batch(cfg.handle, tokens, prefix_lens, padded_len, step)
-            .await
-        {
+        let rows = match op_step(&cfg, sess, tokens, prefix_lens, padded_len, step).await {
             Ok(rows) => rows,
             Err(e) => {
-                let e = anyhow::anyhow!("batched decode step {step}: {e}");
                 fail_engine(&cfg, &mut slots, &mut rx, &e);
                 break 'main;
             }
@@ -330,7 +631,7 @@ fn fail_engine(
 ) {
     let chain = format!("{error:#}");
     if is_device_fault(&chain) {
-        cfg.poisoned.store(true, Ordering::Release);
+        cfg.backend.mark_poisoned();
         tracing::error!(
             model = %cfg.model_id,
             error = %chain,
@@ -356,6 +657,7 @@ fn fail_engine(
 /// geometry.
 async fn rebatch(
     cfg: &EngineConfig,
+    session: &mut ActiveSession,
     slots: &mut Vec<Slot>,
     joins: Vec<EngineRequest>,
     padded_len: &mut usize,
@@ -363,7 +665,7 @@ async fn rebatch(
 ) -> Result<()> {
     // 1. Extract survivors BEFORE any prefill clobbers the live state.
     let mut kept: Vec<Slot> = Vec::new();
-    let mut extracted: Vec<(super::device_worker::jobs::KvSnapshotId, usize)> = Vec::new();
+    let mut extracted: Vec<(u64, usize)> = Vec::new();
     let leavers_or_joiners = joins.len()
         + slots
             .iter()
@@ -380,12 +682,8 @@ async fn rebatch(
             .iter()
             .map(|&i| (i, slots[i].prefix_len))
             .collect();
-        let ids = cfg
-            .worker
-            .extract_kv_rows(cfg.handle, rows, *padded_len, *step)
-            .await
-            .map_err(|e| anyhow::anyhow!("extract_kv_rows: {e}"))?;
-        for (&i, (id, _bytes)) in survivors.iter().zip(ids) {
+        let ids = op_extract(cfg, session, rows, *padded_len, *step).await?;
+        for (&i, id) in survivors.iter().zip(ids) {
             let new_len = slots[i].prefix_len + *step;
             extracted.push((id, new_len));
         }
@@ -402,11 +700,14 @@ async fn rebatch(
 
     // 2. Prefill each join at B=1 (prefix cache + chunked prefill
     //    exactly as the per-request path).
-    let mut assemble: Vec<(super::device_worker::jobs::KvSnapshotId, usize)> = extracted.clone();
+    let mut assemble: Vec<(u64, usize)> = extracted.clone();
     for req in joins {
         let req_span = req.span.clone();
         // `None` = finished during prefill (EOS / hangup / max_new 0).
-        if let Some((slot, snap_id)) = prefill_join(cfg, req).instrument_in(req_span).await? {
+        if let Some((slot, snap_id)) = prefill_join(cfg, session, req)
+            .instrument_in(req_span)
+            .await?
+        {
             assemble.push((snap_id, slot.prompt_len));
             kept.push(slot);
         }
@@ -416,20 +717,15 @@ async fn rebatch(
     if kept.is_empty() {
         // Nothing active. Temp snapshots for extraction are dropped.
         for (id, _) in &assemble {
-            let _ = cfg.worker.drop_kv_snapshot(cfg.handle, *id).await;
+            op_drop_snap(cfg, session, *id).await;
         }
         *padded_len = 0;
         *step = 0;
         return Ok(());
     }
-    let seqs: Vec<(super::device_worker::jobs::KvSnapshotId, usize)> = assemble.clone();
-    let new_padded = cfg
-        .worker
-        .assemble_kv_batch(cfg.handle, seqs)
-        .await
-        .map_err(|e| anyhow::anyhow!("assemble_kv_batch: {e}"))?;
+    let new_padded = op_assemble(cfg, session, assemble.clone()).await?;
     for (id, _) in &assemble {
-        let _ = cfg.worker.drop_kv_snapshot(cfg.handle, *id).await;
+        op_drop_snap(cfg, session, *id).await;
     }
     *padded_len = new_padded;
     *step = 0;
@@ -443,8 +739,9 @@ async fn rebatch(
 /// up) — its Finish has been emitted and no slot joins the batch.
 async fn prefill_join(
     cfg: &EngineConfig,
+    session: &mut ActiveSession,
     req: EngineRequest,
-) -> Result<Option<(Slot, super::device_worker::jobs::KvSnapshotId)>> {
+) -> Result<Option<(Slot, u64)>> {
     use candle_transformers::generation::Sampling;
 
     let EngineRequest {
@@ -472,34 +769,10 @@ async fn prefill_join(
         LogitsProcessor::from_sampling(seed, sampling)
     };
 
-    let prefix_cache = cfg.prefix_cache.as_deref();
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
-    let reused =
-        restore_or_clear_via_worker(&cfg.worker, cfg.handle, prefix_cache, &prompt_tokens).await?;
-    let cut = if prefix_cache.is_some() {
-        stable_snapshot_cut(&prompt_tokens, cfg.tokenizer.token_to_id("<|im_start|>"))
-            .filter(|&c| c > reused)
-    } else {
-        None
-    };
-    let logits_vec = match cut {
-        Some(c) => {
-            chunked_prefill_via_worker(&cfg.worker, cfg.handle, &prompt_tokens[..c], reused)
-                .await?;
-            store_prefix_snapshot_via_worker(
-                &cfg.worker,
-                cfg.handle,
-                prefix_cache,
-                prompt_tokens[..c].to_vec(),
-            )
-            .await;
-            chunked_prefill_via_worker(&cfg.worker, cfg.handle, &prompt_tokens, c).await?
-        }
-        None => chunked_prefill_via_worker(&cfg.worker, cfg.handle, &prompt_tokens, reused).await?,
-    };
+    let logits_vec = op_prefill(cfg, session, &prompt_tokens).await?;
     let prefill_elapsed = prefill_start.elapsed();
-    cfg.prefill_rate.record(prompt_len, prefill_elapsed);
 
     // First token from the prefill logits.
     let generated: Vec<u32> = Vec::new();
@@ -572,11 +845,7 @@ async fn prefill_join(
     }
 
     // Snapshot the freshly prefilled state for assembly.
-    let (snap_id, _bytes) = cfg
-        .worker
-        .snapshot_kv(cfg.handle)
-        .await
-        .map_err(|e| anyhow::anyhow!("snapshot after prefill: {e}"))?;
+    let snap_id = op_snapshot_seq(cfg, session).await?;
     Ok(Some((slot, snap_id)))
 }
 
@@ -817,16 +1086,18 @@ mod tests {
         let admission = AdmissionController::new(&admission_cfg);
         let engine = EngineHandle::spawn(EngineConfig {
             model_id: "qwen3_next-tiny".into(),
-            worker: Arc::clone(&worker),
-            handle,
             tokenizer: tiny_tokenizer(512),
-            prefix_cache: None,
-            prefill_rate: Arc::new(PrefillRateEma::new()),
             reasoning_tokens: None,
             tool_call_tokens: None,
-            poisoned: Arc::new(AtomicBool::new(false)),
-            inference_lock: Arc::new(tokio::sync::Mutex::new(())),
             max_slots: 3,
+            backend: BackendConfig::Single {
+                worker: Arc::clone(&worker),
+                handle,
+                prefix_cache: None,
+                prefill_rate: Arc::new(PrefillRateEma::new()),
+                poisoned: Arc::new(AtomicBool::new(false)),
+                inference_lock: Arc::new(tokio::sync::Mutex::new(())),
+            },
         });
 
         let prompts: [&[u32]; 3] = [&[1, 2, 3], &[4, 5], &[7, 3, 2, 5, 6]];

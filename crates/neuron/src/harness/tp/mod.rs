@@ -94,6 +94,37 @@ impl TpLeaderModel {
         }
     }
 
+    /// Lockstep batched decode step on rank 0 (#98). Only qwen3_5
+    /// batches (same gate as snapshots).
+    pub fn forward_batch_decode(
+        &mut self,
+        input: &candle_core::Tensor,
+        positions: &[usize],
+        attn_mask: Option<&candle_core::Tensor>,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            TpLeaderModel::Qwen3(_) => {
+                candle_core::bail!("forward_batch_decode: qwen3 (dense) has no batched decode")
+            }
+            TpLeaderModel::Qwen3_5(m) => m.forward_batch_decode(input, positions, attn_mask),
+        }
+    }
+
+    /// Padding mask for a batched decode step (#98).
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> candle_core::Result<Option<candle_core::Tensor>> {
+        match self {
+            TpLeaderModel::Qwen3(_) => {
+                candle_core::bail!("batch_decode_mask: qwen3 (dense) has no batched decode")
+            }
+            TpLeaderModel::Qwen3_5(m) => m.batch_decode_mask(prefix_lens, padded_len, total_len),
+        }
+    }
+
     /// Whether this arch supports prefix snapshots (#11). Gates the
     /// pool fan-out so unsupported archs never even ask the ranks.
     pub fn supports_kv_snapshot(&self) -> bool {
@@ -835,6 +866,179 @@ impl WorkerPool {
                 }
             }
         }
+    }
+
+    /// One lockstep batched decode step across every rank (#98).
+    /// Same fan-out / leader-forward / always-drain shape as
+    /// [`Self::generate_step`]; every rank derives positions + mask
+    /// locally from the broadcast geometry. Returns one `[vocab]`
+    /// logits row per batch row from the leader's rank-0 shard.
+    #[cfg(feature = "cuda")]
+    pub async fn generate_step_batch(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::GenerateStepBatch {
+                model_id: model_id.to_string(),
+                tokens: tokens.clone(),
+                prefix_lens: prefix_lens.clone(),
+                padded_len,
+                step,
+            })
+            .await?;
+        }
+
+        let timeout = tp_step_timeout();
+        let leader_fut = self.leader_worker.tp_forward_logits_batch(
+            leader_handle,
+            tokens,
+            prefix_lens,
+            padded_len,
+            step,
+        );
+        let leader_result = match tokio::time::timeout(timeout, leader_fut).await {
+            Ok(r) => r,
+            Err(_elapsed) => {
+                // Watchdog (#17 Stage 2) — same rationale as
+                // `generate_step`: abort the wedged comm, fail without
+                // draining, let auto-recovery restart the pool.
+                self.watchdog_abort_leader_comm(model_id, timeout.as_secs());
+                anyhow::bail!(
+                    "tp watchdog: leader batched forward exceeded {}s deadline; aborted wedged \
+                     NCCL comm — model will auto-recover",
+                    timeout.as_secs()
+                );
+            }
+        };
+
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::GenerateStepOk => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected GenerateStepOk, got {other:?}")),
+        })
+        .await;
+
+        match leader_result {
+            Ok(rows) => {
+                if worker_errors.is_empty() {
+                    Ok(rows)
+                } else {
+                    anyhow::bail!(
+                        "GenerateStepBatch: leader succeeded but workers failed: {}",
+                        worker_errors.join("; ")
+                    )
+                }
+            }
+            Err(e) => Err(anyhow::Error::new(e).context(if worker_errors.is_empty() {
+                "GenerateStepBatch: leader forward failed".to_string()
+            } else {
+                format!(
+                    "GenerateStepBatch: leader forward failed and workers also failed: {}",
+                    worker_errors.join("; ")
+                )
+            })),
+        }
+    }
+
+    /// Assemble stored per-sequence snapshots into every rank's live
+    /// batched state (#98). Snapshot ids in `seqs` are pool-minted;
+    /// every rank (leader + subprocesses) assembles the same geometry
+    /// and the returned padded length is asserted identical.
+    #[cfg(feature = "cuda")]
+    pub async fn assemble_kv_batch(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        seqs: Vec<(u64, usize)>,
+    ) -> Result<usize> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::AssembleKvBatch {
+                model_id: model_id.to_string(),
+                seqs: seqs.clone(),
+            })
+            .await?;
+        }
+        let leader_result = self
+            .leader_worker
+            .tp_assemble_kv_batch(leader_handle, seqs)
+            .await;
+        let leader_padded = leader_result.as_ref().ok().copied();
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::KvBatchAssembled { padded_len } => {
+                if leader_padded.is_some_and(|lp| lp as u64 != padded_len) {
+                    Err(format!(
+                        "rank assembled padded_len {padded_len} != leader {}",
+                        leader_padded.unwrap_or(0)
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected KvBatchAssembled, got {other:?}")),
+        })
+        .await;
+        let padded = leader_result.map_err(|e| {
+            anyhow::Error::new(e).context("AssembleKvBatch: leader assembly failed")
+        })?;
+        if !worker_errors.is_empty() {
+            anyhow::bail!(
+                "AssembleKvBatch: leader succeeded but workers failed: {}",
+                worker_errors.join("; ")
+            );
+        }
+        Ok(padded)
+    }
+
+    /// Extract live batched-state rows into per-sequence snapshots on
+    /// every rank (#98), stored under the pre-minted `snapshot_ids`
+    /// (one per row, minted from the pool's snapshot counter).
+    #[cfg(feature = "cuda")]
+    pub async fn extract_kv_rows(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        snapshot_ids: Vec<u64>,
+    ) -> Result<()> {
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::ExtractKvRows {
+                model_id: model_id.to_string(),
+                rows: rows.clone(),
+                padded_len,
+                steps,
+                snapshot_ids: snapshot_ids.clone(),
+            })
+            .await?;
+        }
+        let leader_result = self
+            .leader_worker
+            .tp_extract_kv_rows(leader_handle, rows, padded_len, steps, snapshot_ids)
+            .await;
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::KvRowsExtracted { .. } => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected KvRowsExtracted, got {other:?}")),
+        })
+        .await;
+        leader_result.map_err(|e| {
+            anyhow::Error::new(e).context("ExtractKvRows: leader extraction failed")
+        })?;
+        if !worker_errors.is_empty() {
+            anyhow::bail!(
+                "ExtractKvRows: leader succeeded but workers failed: {}",
+                worker_errors.join("; ")
+            );
+        }
+        Ok(())
     }
 
     /// Image-bearing variant of [`Self::generate_step`] for the

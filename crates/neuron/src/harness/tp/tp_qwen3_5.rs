@@ -1739,6 +1739,63 @@ impl TpQwen3_5Model {
         self.forward_inner(input, offset, None, None, None)
     }
 
+    /// Lockstep batched decode step (#98) — the TP mirror of
+    /// `Qwen3_5Model::forward_batch_decode`: `(B, 1)` input, per-row
+    /// positions, padding mask from [`Self::batch_decode_mask`].
+    /// Every rank runs this with identical inputs, so the
+    /// replicated-hidden-state invariant holds per batch row.
+    /// Text-only: `rope_delta` is ignored — positions are explicit
+    /// and vision requests never enter the batch path.
+    pub fn forward_batch_decode(
+        &mut self,
+        input: &Tensor,
+        positions: &[usize],
+        attn_mask: Option<&Tensor>,
+    ) -> candle_core::Result<Tensor> {
+        let (b, l) = input.dims2()?;
+        if l != 1 {
+            candle_core::bail!("forward_batch_decode: expected (B, 1) input, got (B, {l})");
+        }
+        if positions.len() != b {
+            candle_core::bail!(
+                "forward_batch_decode: {} positions for batch of {b}",
+                positions.len()
+            );
+        }
+        let mut h = self.embed_tokens.forward(input)?;
+        let (cos, sin) = self.rotary.batch_cos_sin(positions)?;
+        for layer in &mut self.layers {
+            h = layer.forward(&h, attn_mask, &cos, &sin)?;
+        }
+        self.norm.forward(&h)
+    }
+
+    /// Additive padding mask for a batched decode step — the TP mirror
+    /// of `Qwen3_5Model::batch_decode_mask`: `(B, 1, 1, total_len)`,
+    /// `-inf` on each row's padding gap `[prefix_lens[i], padded_len)`,
+    /// `None` when no row is padded.
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> candle_core::Result<Option<Tensor>> {
+        if prefix_lens.iter().all(|&len| len == padded_len) {
+            return Ok(None);
+        }
+        let minf = f32::NEG_INFINITY;
+        let b = prefix_lens.len();
+        let mask: Vec<f32> = prefix_lens
+            .iter()
+            .flat_map(|&len| {
+                (0..total_len).map(move |j| if j >= len && j < padded_len { minf } else { 0. })
+            })
+            .collect();
+        Ok(Some(
+            Tensor::from_vec(mask, (b, 1, 1, total_len), &self.device)?.to_dtype(self.dtype)?,
+        ))
+    }
+
     /// Forward for a vision-prefill chunk: optional image-embedding
     /// splice plus explicit interleaved-M-RoPE `position_ids` (the
     /// chunk's slice of the full prompt's 3D positions). Used by
@@ -1946,6 +2003,33 @@ impl TpQwen3_5ForCausalLM {
         let (_, l) = input.dims2()?;
         let hidden = self.base.forward(input, offset)?;
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
+    /// Lockstep batched decode step (#98): `(B, 1)` input, per-row
+    /// positions, padding mask from
+    /// [`TpQwen3_5Model::batch_decode_mask`]. Returns `(B, 1, vocab)`.
+    pub fn forward_batch_decode(
+        &mut self,
+        input: &Tensor,
+        positions: &[usize],
+        attn_mask: Option<&Tensor>,
+    ) -> candle_core::Result<Tensor> {
+        let hidden = self
+            .base
+            .forward_batch_decode(input, positions, attn_mask)?;
+        hidden.apply(&self.lm_head)
+    }
+
+    /// Padding mask for a batched decode step — see
+    /// [`TpQwen3_5Model::batch_decode_mask`].
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> candle_core::Result<Option<Tensor>> {
+        self.base
+            .batch_decode_mask(prefix_lens, padded_len, total_len)
     }
 
     /// Forward for a vision-prefill chunk (optional image splice +

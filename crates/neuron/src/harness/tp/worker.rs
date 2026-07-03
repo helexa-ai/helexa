@@ -82,6 +82,37 @@ impl WorkerModel {
         }
     }
 
+    /// Lockstep batched decode step (#98). Only qwen3_5 batches — the
+    /// leader gates on its own `TpLeaderModel` support first.
+    fn forward_batch_decode(
+        &mut self,
+        input: &candle_core::Tensor,
+        positions: &[usize],
+        attn_mask: Option<&candle_core::Tensor>,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            WorkerModel::Qwen3(_) => {
+                candle_core::bail!("forward_batch_decode: qwen3 (dense) has no batched decode")
+            }
+            WorkerModel::Qwen3_5(m) => m.forward_batch_decode(input, positions, attn_mask),
+        }
+    }
+
+    /// Padding mask for a batched decode step (#98).
+    fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> candle_core::Result<Option<candle_core::Tensor>> {
+        match self {
+            WorkerModel::Qwen3(_) => {
+                candle_core::bail!("batch_decode_mask: qwen3 (dense) has no batched decode")
+            }
+            WorkerModel::Qwen3_5(m) => m.batch_decode_mask(prefix_lens, padded_len, total_len),
+        }
+    }
+
     /// Capture this rank's cache state for a prefix snapshot (#11).
     /// Only qwen3_5 exposes its state; the dense qwen3 arch errors —
     /// the leader never asks, because it gates on its own
@@ -248,6 +279,23 @@ impl WorkerState {
                 image_data_uris,
                 chunk_size,
             ),
+            WorkerRequest::GenerateStepBatch {
+                model_id,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+            } => self.handle_generate_step_batch(&model_id, tokens, prefix_lens, padded_len, step),
+            WorkerRequest::AssembleKvBatch { model_id, seqs } => {
+                self.handle_assemble_kv_batch(&model_id, &seqs)
+            }
+            WorkerRequest::ExtractKvRows {
+                model_id,
+                rows,
+                padded_len,
+                steps,
+                snapshot_ids,
+            } => self.handle_extract_kv_rows(&model_id, &rows, padded_len, steps, &snapshot_ids),
             WorkerRequest::ClearKvCache { model_id } => self.handle_clear_kv_cache(&model_id),
             WorkerRequest::SnapshotKvCache {
                 model_id,
@@ -538,6 +586,206 @@ impl WorkerState {
         WorkerResponse::Error {
             kind: "cuda_feature_not_enabled".into(),
             message: "GenerateStep requires --features cuda".into(),
+        }
+    }
+
+    /// One lockstep batched decode step on this rank (#98). Mirrors
+    /// the leader's `forward_logits_batch`: derives per-row positions
+    /// and the padding mask locally from the broadcast geometry, runs
+    /// the batched forward, and discards the logits (the leader
+    /// samples from rank 0; the NCCL collectives are the point).
+    #[cfg(feature = "cuda")]
+    fn handle_generate_step_batch(
+        &mut self,
+        model_id: &str,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+    ) -> WorkerResponse {
+        use candle_core::Tensor;
+
+        let b = tokens.len();
+        if b == 0 || prefix_lens.len() != b {
+            return WorkerResponse::Error {
+                kind: "bad_request".into(),
+                message: format!(
+                    "GenerateStepBatch: {b} tokens vs {} prefix_lens",
+                    prefix_lens.len()
+                ),
+            };
+        }
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let device = model.device().clone();
+        let result = (|| -> candle_core::Result<()> {
+            let input = Tensor::from_vec(tokens, (b, 1), &device)?;
+            let positions: Vec<usize> = prefix_lens.iter().map(|&len| len + step).collect();
+            let total_len = padded_len + step + 1;
+            let mask = model.batch_decode_mask(&prefix_lens, padded_len, total_len)?;
+            model.forward_batch_decode(&input, &positions, mask.as_ref())?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => WorkerResponse::GenerateStepOk,
+            Err(e) => {
+                tracing::warn!(
+                    rank = self.config.rank,
+                    model = %model_id,
+                    error = %e,
+                    "worker GenerateStepBatch: forward failed"
+                );
+                WorkerResponse::Error {
+                    kind: "forward_failed".into(),
+                    message: format!("TP batched forward: {e}"),
+                }
+            }
+        }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_generate_step_batch(
+        &mut self,
+        _model_id: &str,
+        _tokens: Vec<u32>,
+        _prefix_lens: Vec<usize>,
+        _padded_len: usize,
+        _step: usize,
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "GenerateStepBatch requires --features cuda".into(),
+        }
+    }
+
+    /// Assemble stored per-sequence snapshots into this rank's live
+    /// batched state (#98). Mirrors the leader's `assemble_kv_batch`.
+    #[cfg(feature = "cuda")]
+    fn handle_assemble_kv_batch(
+        &mut self,
+        model_id: &str,
+        seqs: &[(u64, usize)],
+    ) -> WorkerResponse {
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let mut pairs = Vec::with_capacity(seqs.len());
+        for (id, len) in seqs {
+            let Some(snap) = self.kv_snapshots.get(&(model_id.to_string(), *id)) else {
+                return WorkerResponse::Error {
+                    kind: "snapshot_not_found".into(),
+                    message: format!(
+                        "AssembleKvBatch: no snapshot {id} for '{model_id}' on rank {}",
+                        self.config.rank
+                    ),
+                };
+            };
+            pairs.push((snap, *len));
+        }
+        let result =
+            crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs).and_then(|batch| {
+                model.restore_kv_cache(&batch.snapshot)?;
+                Ok(batch.padded_len)
+            });
+        match result {
+            Ok(padded_len) => WorkerResponse::KvBatchAssembled {
+                padded_len: padded_len as u64,
+            },
+            Err(e) => WorkerResponse::Error {
+                kind: "assemble_failed".into(),
+                message: format!("AssembleKvBatch: {e}"),
+            },
+        }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_assemble_kv_batch(
+        &mut self,
+        _model_id: &str,
+        _seqs: &[(u64, usize)],
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "AssembleKvBatch requires --features cuda".into(),
+        }
+    }
+
+    /// Extract live batched-state rows into stored per-sequence
+    /// snapshots under pool-minted ids (#98). Mirrors the leader's
+    /// `extract_kv_rows`.
+    #[cfg(feature = "cuda")]
+    fn handle_extract_kv_rows(
+        &mut self,
+        model_id: &str,
+        rows: &[(usize, usize)],
+        padded_len: usize,
+        steps: usize,
+        snapshot_ids: &[u64],
+    ) -> WorkerResponse {
+        if snapshot_ids.len() != rows.len() {
+            return WorkerResponse::Error {
+                kind: "bad_request".into(),
+                message: format!(
+                    "ExtractKvRows: {} rows vs {} snapshot_ids",
+                    rows.len(),
+                    snapshot_ids.len()
+                ),
+            };
+        }
+        let Some(model) = self.models.get(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let live = match model.snapshot_kv_cache() {
+            Ok(s) => s,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "extract_failed".into(),
+                    message: format!("ExtractKvRows: snapshot live state: {e}"),
+                };
+            }
+        };
+        let mut total_bytes = 0u64;
+        for (&(row, prefix_len), &id) in rows.iter().zip(snapshot_ids) {
+            match crate::harness::arch::qwen3_5::snapshot::extract_row(
+                &live, row, prefix_len, padded_len, steps,
+            ) {
+                Ok(snap) => {
+                    total_bytes += snap.size_bytes();
+                    self.kv_snapshots.insert((model_id.to_string(), id), snap);
+                }
+                Err(e) => {
+                    return WorkerResponse::Error {
+                        kind: "extract_failed".into(),
+                        message: format!("ExtractKvRows: row {row}: {e}"),
+                    };
+                }
+            }
+        }
+        WorkerResponse::KvRowsExtracted { bytes: total_bytes }
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_extract_kv_rows(
+        &mut self,
+        _model_id: &str,
+        _rows: &[(usize, usize)],
+        _padded_len: usize,
+        _steps: usize,
+        _snapshot_ids: &[u64],
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "ExtractKvRows requires --features cuda".into(),
         }
     }
 

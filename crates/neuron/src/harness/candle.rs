@@ -480,7 +480,7 @@ pub struct TpLoadedModel {
     /// so this Mutex no longer covers the leader's KV cache; it just
     /// serialises subprocess RPC traffic on the pool's
     /// `Vec<Worker>` channels.
-    pub pool: tokio::sync::Mutex<super::tp::WorkerPool>,
+    pub pool: Arc<tokio::sync::Mutex<super::tp::WorkerPool>>,
     /// Bounded admission scheduler (#53), mirroring the single-GPU path.
     /// Gated before the pool lock so an overloaded TP model returns fast
     /// backpressure instead of an unbounded, untimed wait.
@@ -545,6 +545,13 @@ pub struct TpLoadedModel {
     /// Mint for pool-wide snapshot ids. Plain counter; uniqueness only
     /// needs to hold per model lifetime (snapshots die with the model).
     pub next_snapshot_id: std::sync::atomic::AtomicU64,
+    /// Lockstep batched decode engine (#98) — the TP mirror of
+    /// `LoadedModel::engine`. Set once at load (after the `Arc` is
+    /// built, so the engine can hold a `Weak` back to this model);
+    /// unset when `max_in_flight` is 1 or batching is killed. Text
+    /// chat streams route through it; the engine holds the pool mutex
+    /// while it has active slots.
+    pub engine: std::sync::OnceLock<super::engine::EngineHandle>,
     /// Cached tightest free VRAM (MiB) for the control plane (#53) — see
     /// [`LoadedModel::last_free_mb`]. Read by `derived_limit` so `GET /models`
     /// never fans a VRAM query out to the (inference-saturated) TP workers.
@@ -1657,7 +1664,7 @@ pub(crate) async fn chunked_prefill_via_worker(
 /// `start_offset` skips a restored cached prefix, as in
 /// [`chunked_prefill_local`].
 #[cfg(feature = "cuda")]
-async fn chunked_prefill_tp(
+pub(crate) async fn chunked_prefill_tp(
     pool: &mut super::tp::WorkerPool,
     model_id: &str,
     leader_handle: super::device_worker::TpHandle,
@@ -3468,16 +3475,18 @@ impl Harness for CandleHarness {
                 Some(super::engine::EngineHandle::spawn(
                     super::engine::EngineConfig {
                         model_id: spec.model_id.clone(),
-                        worker: Arc::clone(w),
-                        handle: h,
                         tokenizer: tokenizer.clone(),
-                        prefix_cache: prefix_cache.clone(),
-                        prefill_rate: Arc::clone(&prefill_rate),
                         reasoning_tokens: reasoning_tokens.clone(),
                         tool_call_tokens: tool_call_tokens.clone(),
-                        poisoned: Arc::clone(&poisoned),
-                        inference_lock: Arc::clone(&inference_lock),
                         max_slots: self.admission_cfg.max_in_flight,
+                        backend: super::engine::BackendConfig::Single {
+                            worker: Arc::clone(w),
+                            handle: h,
+                            prefix_cache: prefix_cache.clone(),
+                            prefill_rate: Arc::clone(&prefill_rate),
+                            poisoned: Arc::clone(&poisoned),
+                            inference_lock: Arc::clone(&inference_lock),
+                        },
                     },
                 ))
             }
@@ -3588,12 +3597,35 @@ impl Harness for CandleHarness {
                         "TP unload: DropTp RPC failed (leader model may leak in worker slab)"
                     );
                 }
-                let mut pool = tp.pool.into_inner();
-                if let Err(e) = pool.unload_model(model_id).await {
-                    tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
-                }
-                if let Err(e) = pool.shutdown().await {
-                    tracing::warn!(model = %model_id, error = %e, "TP pool shutdown failed");
+                // The pool mutex is Arc-shared with the batch engine's
+                // active-phase guard (#98). `Arc::try_unwrap(tp)`
+                // succeeding above means the engine is idle (it holds
+                // `Arc<TpLoadedModel>` whenever it holds the pool
+                // guard), so sole ownership is the expected case; the
+                // fallback covers the narrow race where the engine's
+                // guard is mid-release.
+                match Arc::try_unwrap(tp.pool) {
+                    Ok(pool_mutex) => {
+                        let mut pool = pool_mutex.into_inner();
+                        if let Err(e) = pool.unload_model(model_id).await {
+                            tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
+                        }
+                        if let Err(e) = pool.shutdown().await {
+                            tracing::warn!(model = %model_id, error = %e, "TP pool shutdown failed");
+                        }
+                    }
+                    Err(pool_arc) => {
+                        tracing::warn!(
+                            model = %model_id,
+                            "TP unload: pool mutex still referenced (engine guard \
+                             mid-release); unloading without explicit pool shutdown — \
+                             worker children reap when the last reference drops"
+                        );
+                        let mut pool = pool_arc.lock().await;
+                        if let Err(e) = pool.unload_model(model_id).await {
+                            tracing::warn!(model = %model_id, error = %e, "TP unload RPC failed");
+                        }
+                    }
                 }
             }
         }
@@ -3748,7 +3780,7 @@ impl CandleHarness {
             model_id: spec.model_id.clone(),
             tokenizer,
             devices: devices.clone(),
-            pool: TMutex::new(pool),
+            pool: StdArc::new(TMutex::new(pool)),
             admission: super::admission::AdmissionController::new(&self.admission_cfg),
             leader_handle,
             leader_device: leader_device.clone(),
@@ -3778,7 +3810,33 @@ impl CandleHarness {
             derived_input_cap: AtomicUsize::new(0),
             last_free_mb: AtomicU64::new(0),
             next_snapshot_id: std::sync::atomic::AtomicU64::new(1),
+            engine: std::sync::OnceLock::new(),
         });
+        // Batched decode engine (#98): spawned when the operator raised
+        // max_in_flight above 1 on a snapshot-capable TP model. The
+        // engine holds only a Weak — an idle engine never keeps an
+        // unloaded model alive.
+        if tp_loaded.prefix_cache.is_some()
+            && self.admission_cfg.max_in_flight > 1
+            && super::engine::batching_enabled()
+        {
+            tracing::info!(
+                model = %spec.model_id,
+                max_slots = self.admission_cfg.max_in_flight,
+                "batched decode engine enabled for TP model (#98)"
+            );
+            let handle = super::engine::EngineHandle::spawn(super::engine::EngineConfig {
+                model_id: spec.model_id.clone(),
+                tokenizer: tp_loaded.tokenizer.clone(),
+                reasoning_tokens: tp_loaded.reasoning_tokens.clone(),
+                tool_call_tokens: tp_loaded.tool_call_tokens.clone(),
+                max_slots: self.admission_cfg.max_in_flight,
+                backend: super::engine::BackendConfig::Tp {
+                    tp: StdArc::downgrade(&tp_loaded),
+                },
+            });
+            let _ = tp_loaded.engine.set(handle);
+        }
         if tp_loaded.prefix_cache.is_some() {
             tracing::info!(
                 model = %spec.model_id,
@@ -4098,6 +4156,38 @@ impl CandleHarness {
             .map_err(InferenceError::from)?;
 
         let tool_schemas = build_tool_schemas(&request);
+        // Batched decode engine (#98): text streams multiplex through
+        // the per-model engine instead of serializing on the pool
+        // mutex per request. Vision requests keep the direct path and
+        // serialize against the engine via the pool lock it holds
+        // while active.
+        if vision_route.is_none()
+            && let Some(engine) = tp.engine.get()
+        {
+            engine
+                .submit(super::engine::EngineRequest {
+                    prompt_tokens,
+                    max_new,
+                    temperature,
+                    top_p,
+                    seed,
+                    eos_id,
+                    tool_schemas,
+                    tx,
+                    admit,
+                    span,
+                })
+                .await
+                .map_err(InferenceError::Other)?;
+            let reasoning_markers = tp.reasoning_tokens.clone();
+            return Ok(InferenceStream {
+                events: event_rx,
+                id: projector_id,
+                created,
+                model_id: projector_model_id,
+                reasoning_markers,
+            });
+        }
         let tp_for_task = Arc::clone(&tp);
         tokio::spawn(
             async move {
@@ -5911,7 +6001,7 @@ fn restore_or_clear_local(
 /// (some restored, some not) — the clear fallback resets every rank,
 /// restoring consistency.
 #[cfg(feature = "cuda")]
-async fn restore_or_clear_tp(
+pub(crate) async fn restore_or_clear_tp(
     pool: &mut super::tp::WorkerPool,
     tp: &TpLoadedModel,
     prompt_tokens: &[u32],
@@ -5968,7 +6058,7 @@ async fn restore_or_clear_tp(
 /// On any rank failing, drops the id everywhere (idempotent) so no
 /// rank leaks a half-stored snapshot.
 #[cfg(feature = "cuda")]
-async fn store_prefix_snapshot_tp(
+pub(crate) async fn store_prefix_snapshot_tp(
     pool: &mut super::tp::WorkerPool,
     tp: &TpLoadedModel,
     prompt_tokens: Vec<u32>,
