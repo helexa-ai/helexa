@@ -82,7 +82,9 @@ jobs:
   # see commit history).
   cuda-check:
     name: CUDA type-check
-    timeout-minutes: 35
+    # flash-attn kernel compilation dominates the first uncached run;
+    # sccache + the cargo target cache absorb it afterwards.
+    timeout-minutes: 70
     runs-on: cuda-13.0
     # The workflow-level env sets `RUSTC_WRAPPER: sccache`
     # unconditionally, which hard-fails cargo if the CUDA image
@@ -115,7 +117,7 @@ jobs:
           export PATH="/usr/local/cuda-13.0/bin:${PATH}"
           export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
-          script/ci-cargo-escalate.sh cargo check -p neuron --features cuda --all-targets
+          script/ci-cargo-escalate.sh cargo check -p neuron --features cuda,flash-attn --all-targets
 
   srpm-cortex:
     name: Build cortex SRPM

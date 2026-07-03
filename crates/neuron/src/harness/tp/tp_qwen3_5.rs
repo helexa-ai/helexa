@@ -36,7 +36,6 @@ use candle_core::safetensors::MmapedSafetensors;
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
 use candle_nn::{Embedding, kv_cache::ConcatKvCache};
-use candle_transformers::utils::repeat_kv;
 use std::sync::Arc;
 
 #[cfg(feature = "cuda")]
@@ -653,16 +652,19 @@ impl TpQwen3_5Attention {
 
         let (q, k) = self.rotary.apply_cos_sin(&q, &k, cos, sin)?;
         let (k, v) = self.kv_cache.append(&k, &v)?;
-        let k = repeat_kv(k, self.num_kv_groups)?.contiguous()?;
-        let v = repeat_kv(v, self.num_kv_groups)?.contiguous()?;
 
+        // Attention core — FlashAttention when available, eager
+        // GQA-repeat + masked softmax otherwise (#95). Per-rank heads,
+        // same kernel semantics as the single-GPU path.
         let scale = 1.0_f64 / (self.head_dim as f64).sqrt();
-        let mut scores = (q.matmul(&k.transpose(2, 3)?)? * scale)?;
-        if let Some(m) = attn_mask {
-            scores = scores.broadcast_add(m)?;
-        }
-        let probs = candle_nn::ops::softmax_last_dim(&scores)?;
-        let ctx = probs.matmul(&v)?;
+        let ctx = crate::harness::arch::qwen3_5::full_attn::attention_context(
+            &q,
+            &k,
+            &v,
+            attn_mask,
+            self.num_kv_groups,
+            scale,
+        )?;
 
         let ctx = ctx
             .transpose(1, 2)?

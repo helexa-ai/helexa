@@ -2972,6 +2972,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "candle-core",
+ "candle-flash-attn",
  "candle-nn",
  "candle-transformers",
  "clap",
