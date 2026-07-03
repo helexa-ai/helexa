@@ -159,6 +159,19 @@ impl RotaryEmbedding {
         Ok((cos, sin))
     }
 
+    /// cos/sin gathered at arbitrary **per-row** positions — the
+    /// batched-decode path (#98), where each batch row sits at its own
+    /// sequence offset. Shape `(B, 1, rotary_dim/2)`: one position per
+    /// row, one decode token per step. [`Self::apply_cos_sin`] detects
+    /// the rank-3 shape and broadcasts per row instead of per position.
+    pub fn batch_cos_sin(&self, positions: &[usize]) -> candle_core::Result<(Tensor, Tensor)> {
+        let idx: Vec<u32> = positions.iter().map(|&p| p as u32).collect();
+        let idx = Tensor::from_vec(idx, positions.len(), self.cos.device())?;
+        let cos = self.cos.index_select(&idx, 0)?.unsqueeze(1)?;
+        let sin = self.sin.index_select(&idx, 0)?.unsqueeze(1)?;
+        Ok((cos, sin))
+    }
+
     /// cos/sin from explicit per-token 3D position ids, shape
     /// `(3, seq_len)` (axes: text, height, width). Builds each axis's
     /// frequencies and blends them at the interleave index sets, so
@@ -185,7 +198,9 @@ impl RotaryEmbedding {
     }
 
     /// Apply rotary to `q`, `k` (shape `(B, H, L, head_dim)`) using
-    /// precomputed `cos`/`sin` of shape `(L, rotary_dim/2)`. Partial
+    /// precomputed `cos`/`sin` of shape `(L, rotary_dim/2)` — or, for
+    /// the batched-decode path (#98), `(B, L, rotary_dim/2)` with a
+    /// distinct position per batch row (dispatch is on rank). Partial
     /// rotary: only the first `rotary_dim` dims rotate; the tail passes
     /// through unchanged.
     pub fn apply_cos_sin(
@@ -197,9 +212,17 @@ impl RotaryEmbedding {
     ) -> candle_core::Result<(Tensor, Tensor)> {
         let (_, _, _seq_len, head_dim_in) = q.dims4()?;
         debug_assert_eq!(head_dim_in, self.head_dim, "q head_dim mismatch");
+        let per_row = cos.rank() == 3;
+        let rope = |x: &Tensor| -> candle_core::Result<Tensor> {
+            if per_row {
+                rope_per_row(x, cos, sin)
+            } else {
+                candle_nn::rotary_emb::rope_slow(x, cos, sin)
+            }
+        };
         if self.rotary_dim == self.head_dim {
-            let q_embed = candle_nn::rotary_emb::rope_slow(&q.contiguous()?, cos, sin)?;
-            let k_embed = candle_nn::rotary_emb::rope_slow(&k.contiguous()?, cos, sin)?;
+            let q_embed = rope(&q.contiguous()?)?;
+            let k_embed = rope(&k.contiguous()?)?;
             Ok((q_embed, k_embed))
         } else {
             // Partial rotation: narrow → rotate → cat the untouched tail.
@@ -212,8 +235,8 @@ impl RotaryEmbedding {
                 .narrow(candle_core::D::Minus1, 0, self.rotary_dim)?
                 .contiguous()?;
             let k_pass = k.narrow(candle_core::D::Minus1, self.rotary_dim, tail)?;
-            let q_rotated = candle_nn::rotary_emb::rope_slow(&q_rot, cos, sin)?;
-            let k_rotated = candle_nn::rotary_emb::rope_slow(&k_rot, cos, sin)?;
+            let q_rotated = rope(&q_rot)?;
+            let k_rotated = rope(&k_rot)?;
             let q_embed =
                 Tensor::cat(&[&q_rotated, &q_pass.contiguous()?], candle_core::D::Minus1)?;
             let k_embed =
@@ -221,6 +244,27 @@ impl RotaryEmbedding {
             Ok((q_embed, k_embed))
         }
     }
+}
+
+/// GLM rotate-half (same convention as candle's private
+/// `rotary_emb::rotate_half`: `cat(-x2, x1)`).
+fn rotate_half(x: &Tensor) -> candle_core::Result<Tensor> {
+    let last = x.dim(candle_core::D::Minus1)?;
+    let x1 = x.narrow(candle_core::D::Minus1, 0, last / 2)?;
+    let x2 = x.narrow(candle_core::D::Minus1, last / 2, last - last / 2)?;
+    Tensor::cat(&[&x2.neg()?, &x1], candle_core::D::Minus1)
+}
+
+/// Per-row rope apply for batched decode: `x` is `(B, H, L, rot)`,
+/// `cos`/`sin` are `(B, L, rot/2)` — each batch row gets its own
+/// position's rotation (candle's `rope_slow` only broadcasts one
+/// `(L, rot/2)` table across the whole batch).
+fn rope_per_row(x: &Tensor, cos: &Tensor, sin: &Tensor) -> candle_core::Result<Tensor> {
+    // (B, L, half) → duplicate pairs → (B, 1, L, rot) for broadcast
+    // over the head dim.
+    let cos = Tensor::cat(&[cos, cos], candle_core::D::Minus1)?.unsqueeze(1)?;
+    let sin = Tensor::cat(&[sin, sin], candle_core::D::Minus1)?.unsqueeze(1)?;
+    x.broadcast_mul(&cos)? + rotate_half(x)?.broadcast_mul(&sin)?
 }
 
 /// Compute interleaved-M-RoPE 3D position ids for a full prompt that may
@@ -562,6 +606,49 @@ mod tests {
         // Height column (index 1) must track h-position 2, not text.
         let last: Vec<f32> = cos.i(4).unwrap().to_vec1().unwrap();
         assert!((last[1] - (2.0 * inv[1]).cos()).abs() < 1e-5);
+    }
+
+    /// `batch_cos_sin` at positions [5, 9, 0] must gather exactly the
+    /// rows `plain_cos_sin` would produce for each position alone.
+    #[test]
+    fn batch_cos_sin_gathers_per_row_positions() {
+        let dev = Device::Cpu;
+        let rope = RotaryEmbedding::new(DType::F32, &qwen36_cfg(), &dev).unwrap();
+        let half = rope.inv_freq.dim(1).unwrap();
+        let positions = [5usize, 9, 0];
+        let (bc, bs) = rope.batch_cos_sin(&positions).unwrap();
+        assert_eq!(bc.dims(), &[3, 1, half]);
+        assert_eq!(bs.dims(), &[3, 1, half]);
+        for (row, &p) in positions.iter().enumerate() {
+            let (pc, ps) = rope.plain_cos_sin(p, 1).unwrap();
+            let dc = (bc.i(row).unwrap() - pc).unwrap().abs().unwrap();
+            let ds = (bs.i(row).unwrap() - ps).unwrap().abs().unwrap();
+            assert!(dc.max_all().unwrap().to_scalar::<f32>().unwrap() < 1e-6);
+            assert!(ds.max_all().unwrap().to_scalar::<f32>().unwrap() < 1e-6);
+        }
+    }
+
+    /// When every row sits at the same position, the per-row rank-3
+    /// apply path must reproduce the shared rank-2 (`rope_slow`) path
+    /// exactly — the invariant that makes the rank dispatch in
+    /// `apply_cos_sin` safe.
+    #[test]
+    fn per_row_apply_matches_shared_when_uniform() {
+        let dev = Device::Cpu;
+        let rope = RotaryEmbedding::new(DType::F32, &qwen36_cfg(), &dev).unwrap();
+        let q = Tensor::randn(0f32, 1f32, (2, 2, 1, 256), &dev).unwrap();
+        let k = Tensor::randn(0f32, 1f32, (2, 2, 1, 256), &dev).unwrap();
+
+        let (c2, s2) = rope.plain_cos_sin(7, 1).unwrap();
+        let (qa, ka) = rope.apply_cos_sin(&q, &k, &c2, &s2).unwrap();
+
+        let (c3, s3) = rope.batch_cos_sin(&[7, 7]).unwrap();
+        let (qb, kb) = rope.apply_cos_sin(&q, &k, &c3, &s3).unwrap();
+
+        let dq = (qa - qb).unwrap().abs().unwrap().max_all().unwrap();
+        let dk = (ka - kb).unwrap().abs().unwrap().max_all().unwrap();
+        assert!(dq.to_scalar::<f32>().unwrap() < 1e-6, "q mismatch {dq:?}");
+        assert!(dk.to_scalar::<f32>().unwrap() < 1e-6, "k mismatch {dk:?}");
     }
 
     #[test]

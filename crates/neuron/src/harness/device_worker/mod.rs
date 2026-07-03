@@ -420,6 +420,111 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Assemble stored per-sequence snapshots into one batched cache
+    /// state and install it as the model's live state (#98). Returns
+    /// the padded uniform KV length the batch was assembled to. The
+    /// source snapshots remain stored.
+    pub async fn assemble_kv_batch(
+        &self,
+        handle: ArchHandle,
+        seqs: Vec<(jobs::KvSnapshotId, usize)>,
+    ) -> Result<usize, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::AssembleKvBatch {
+                handle,
+                seqs,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Extract live batched-state rows into stored per-sequence
+    /// snapshots (#98) — the first half of a rebatch. Returns one
+    /// `(snapshot id, bytes)` per requested row, in order.
+    pub async fn extract_kv_rows(
+        &self,
+        handle: ArchHandle,
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+    ) -> Result<Vec<(jobs::KvSnapshotId, u64)>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ExtractKvRows {
+                handle,
+                rows,
+                padded_len,
+                steps,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// One lockstep batched decode step (#98): row i's next token at
+    /// position `prefix_lens[i] + step`. Returns one CPU `[vocab]`
+    /// logits row per batch row, ready for per-slot sampling — same
+    /// no-device-tensor contract as [`Self::forward_logits`].
+    pub async fn forward_logits_batch(
+        &self,
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+    ) -> Result<Vec<Vec<f32>>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ForwardLogitsBatch {
+                handle,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// Forward with image-aware splicing in one round-trip. Stage B3.
     ///
     /// Encodes each image on the worker thread (device-resident), then
@@ -923,6 +1028,189 @@ mod tests {
             other => panic!("expected Job(Err), got {other:?}"),
         }
         handle.shutdown().expect("shutdown ok");
+    }
+
+    /// #98 slice 2 end-to-end: load the tiny qwen3_next fixture through
+    /// the worker, prefill three ragged sequences (snapshotting each),
+    /// assemble them into one batched state via `AssembleKvBatch`, and
+    /// check every `ForwardLogitsBatch` row against the sequential
+    /// `ForwardLogits` reference at each decode step. Exercises the
+    /// whole job plumbing on the real dispatch thread (CPU device in
+    /// CI), not just the arch-level primitives.
+    #[tokio::test]
+    async fn batched_decode_jobs_match_sequential_forward() {
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/numerical/qwen3_next-tiny");
+        if !fixture.join("model.safetensors").exists() {
+            eprintln!("SKIP batched_decode_jobs_match_sequential_forward: fixture not generated");
+            return;
+        }
+
+        let worker = DeviceWorkerHandle::spawn(0).expect("spawn ok");
+        let arch = worker
+            .load_dense(
+                fixture.join("config.json"),
+                vec![fixture.join("model.safetensors")],
+                "qwen3_next-tiny".into(),
+            )
+            .await
+            .expect("load tiny fixture");
+
+        let prompts: [&[u32]; 3] = [&[1, 2, 3], &[4, 5], &[7, 3, 2, 5, 6]];
+        let steps: [&[u32]; 3] = [&[11, 12, 13], &[9, 8, 7], &[21, 22, 23]];
+        let n_steps = 3;
+
+        // Sequential reference + per-sequence snapshots. Snapshot is
+        // taken at the prefill boundary; the reference decode that
+        // follows mutates only the live state (GDN snapshots are deep
+        // copies, attention KV never mutates in place).
+        let mut snaps = Vec::new();
+        let mut expected: Vec<Vec<Vec<f32>>> = Vec::new(); // [row][step]
+        for (prompt, toks) in prompts.iter().zip(steps.iter()) {
+            worker.clear_kv_cache(arch).await.expect("clear");
+            worker
+                .forward_logits(arch, prompt.to_vec(), 0)
+                .await
+                .expect("prefill");
+            let (snap, bytes) = worker.snapshot_kv(arch).await.expect("snapshot");
+            assert!(bytes > 0);
+            snaps.push(snap);
+            let mut per_step = Vec::new();
+            for (t, tok) in toks.iter().enumerate() {
+                per_step.push(
+                    worker
+                        .forward_logits(arch, vec![*tok], prompt.len() + t)
+                        .await
+                        .expect("sequential decode step"),
+                );
+            }
+            expected.push(per_step);
+        }
+
+        // Assemble and decode lockstep.
+        let seqs: Vec<(jobs::KvSnapshotId, usize)> = snaps
+            .iter()
+            .zip(prompts.iter())
+            .map(|(s, p)| (*s, p.len()))
+            .collect();
+        let prefix_lens: Vec<usize> = prompts.iter().map(|p| p.len()).collect();
+        let padded_len = worker
+            .assemble_kv_batch(arch, seqs)
+            .await
+            .expect("assemble batch");
+        assert_eq!(padded_len, 5);
+
+        for t in 0..n_steps {
+            let toks: Vec<u32> = steps.iter().map(|s| s[t]).collect();
+            let rows = worker
+                .forward_logits_batch(arch, toks, prefix_lens.clone(), padded_len, t)
+                .await
+                .expect("batched decode step");
+            assert_eq!(rows.len(), 3);
+            for (row, got) in rows.iter().enumerate() {
+                let want = &expected[row][t];
+                assert_eq!(got.len(), want.len(), "row {row} vocab width");
+                let diff = want
+                    .iter()
+                    .zip(got)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0f32, f32::max);
+                assert!(diff < 1e-4, "row {row} step {t} diverged: {diff}");
+            }
+        }
+
+        // Rebatch mid-decode (the leave path): extract rows 0 and 2
+        // from the live batch, re-assemble without row 1, and check the
+        // shrunken batch still tracks the sequential reference. The
+        // extra decode tokens per remaining row are appended after the
+        // original per-row streams for the reference run.
+        let survivors = [0usize, 2];
+        let extra: [&[u32]; 2] = [&[15, 16], &[25, 26]];
+        let mut expected_extra: Vec<Vec<Vec<f32>>> = Vec::new();
+        for (i, &row) in survivors.iter().enumerate() {
+            worker.clear_kv_cache(arch).await.expect("clear");
+            worker
+                .forward_logits(arch, prompts[row].to_vec(), 0)
+                .await
+                .expect("re-prefill");
+            for (t, tok) in steps[row].iter().enumerate() {
+                worker
+                    .forward_logits(arch, vec![*tok], prompts[row].len() + t)
+                    .await
+                    .expect("re-decode");
+            }
+            let mut per_step = Vec::new();
+            for (j, tok) in extra[i].iter().enumerate() {
+                per_step.push(
+                    worker
+                        .forward_logits(arch, vec![*tok], prompts[row].len() + n_steps + j)
+                        .await
+                        .expect("reference extra step"),
+                );
+            }
+            expected_extra.push(per_step);
+        }
+
+        // Rebuild the 3-row batch state (it was clobbered by the
+        // reference runs above), replay the lockstep steps, then
+        // extract + re-assemble the survivors.
+        let seqs: Vec<(jobs::KvSnapshotId, usize)> = snaps
+            .iter()
+            .zip(prompts.iter())
+            .map(|(s, p)| (*s, p.len()))
+            .collect();
+        worker
+            .assemble_kv_batch(arch, seqs)
+            .await
+            .expect("re-assemble");
+        for t in 0..n_steps {
+            let toks: Vec<u32> = steps.iter().map(|s| s[t]).collect();
+            worker
+                .forward_logits_batch(arch, toks, prefix_lens.clone(), padded_len, t)
+                .await
+                .expect("replay batched step");
+        }
+        let extracted = worker
+            .extract_kv_rows(
+                arch,
+                survivors.iter().map(|&r| (r, prompts[r].len())).collect(),
+                padded_len,
+                n_steps,
+            )
+            .await
+            .expect("extract survivors");
+        let new_lens: Vec<usize> = survivors
+            .iter()
+            .map(|&r| prompts[r].len() + n_steps)
+            .collect();
+        let new_seqs: Vec<(jobs::KvSnapshotId, usize)> = extracted
+            .iter()
+            .zip(new_lens.iter())
+            .map(|((id, _), &len)| (*id, len))
+            .collect();
+        let new_padded = worker
+            .assemble_kv_batch(arch, new_seqs)
+            .await
+            .expect("assemble survivors");
+        assert_eq!(new_padded, 5 + n_steps);
+        for j in 0..extra[0].len() {
+            let toks: Vec<u32> = extra.iter().map(|s| s[j]).collect();
+            let rows = worker
+                .forward_logits_batch(arch, toks, new_lens.clone(), new_padded, j)
+                .await
+                .expect("post-rebatch step");
+            for (i, got) in rows.iter().enumerate() {
+                let want = &expected_extra[i][j];
+                let diff = want
+                    .iter()
+                    .zip(got)
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0f32, f32::max);
+                assert!(diff < 1e-4, "survivor {i} extra step {j} diverged: {diff}");
+            }
+        }
+
+        worker.shutdown().expect("shutdown ok");
     }
 
     #[tokio::test]

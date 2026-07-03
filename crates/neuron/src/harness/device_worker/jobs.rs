@@ -149,6 +149,50 @@ pub enum Job {
         offset: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
+    /// Assemble stored per-sequence snapshots into one batched cache
+    /// state and install it as the model's live state (#98). `seqs`
+    /// pairs each snapshot id with its true token length; attention
+    /// K/V is right-padded to the batch max and `cat`ed on dim 0 (see
+    /// `arch::qwen3_5::snapshot::assemble_batch`). Replies with the
+    /// padded uniform KV length. The source snapshots remain stored —
+    /// the caller drops them via `DropKvSnapshot` when the sequences
+    /// leave the batch.
+    AssembleKvBatch {
+        handle: ArchHandle,
+        seqs: Vec<(KvSnapshotId, usize)>,
+        reply: oneshot::Sender<Result<usize>>,
+    },
+    /// Extract rows of the model's **live** batched cache state back
+    /// into contiguous single-sequence snapshots stored in the
+    /// worker's slab (#98) — the first half of a rebatch (join or
+    /// leave). `rows` pairs each batch-row index with its prefix
+    /// length; `padded_len`/`steps` describe the live batch geometry.
+    /// Replies one `(snapshot id, bytes)` per requested row, in
+    /// order. Compose with `AssembleKvBatch` to form the new batch,
+    /// then `DropKvSnapshot` the intermediates.
+    ExtractKvRows {
+        handle: ArchHandle,
+        /// `(batch row index, prefix_len)` per surviving sequence.
+        rows: Vec<(usize, usize)>,
+        padded_len: usize,
+        steps: usize,
+        reply: oneshot::Sender<Result<Vec<(KvSnapshotId, u64)>>>,
+    },
+    /// One lockstep batched decode step (#98): `tokens[i]` is batch
+    /// row i's next token, sitting at sequence position
+    /// `prefix_lens[i] + step`. The handler derives per-row positions
+    /// and the padding mask from `prefix_lens`/`padded_len` (the
+    /// values `AssembleKvBatch` was built from) and replies one CPU
+    /// `[vocab]` logits row per batch row, ready for per-slot
+    /// sampling on the async side.
+    ForwardLogitsBatch {
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+        reply: oneshot::Sender<Result<Vec<Vec<f32>>>>,
+    },
     /// Run the LM forward with vision splicing in one round-trip.
     /// Stage B3 of the vision plan.
     ///

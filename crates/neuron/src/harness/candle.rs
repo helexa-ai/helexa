@@ -320,7 +320,7 @@ pub struct LoadedModel {
     /// error so an operator knows to unload+reload to recover. See
     /// the 2026-05-26 beast incident where a 14k-token prefill OOM
     /// silently turned every subsequent request into a stuck wait.
-    pub poisoned: AtomicBool,
+    pub poisoned: Arc<AtomicBool>,
     /// Handle to the per-device CUDA worker thread for this model's
     /// device. `None` for CPU loads (no context to own). VRAM queries
     /// and — for CUDA loads — forward / kv-cache / drop ops route
@@ -344,7 +344,7 @@ pub struct LoadedModel {
     /// shape-mismatch failure mid-prefill. Mirrors TpLoadedModel.pool
     /// for the TP path (which already had this invariant by accident
     /// because the pool lock covered the same window).
-    pub inference_lock: tokio::sync::Mutex<()>,
+    pub inference_lock: Arc<tokio::sync::Mutex<()>>,
     /// Bounded admission scheduler (#53). Gated *before* `inference_lock`
     /// so a busy model refuses overflow fast instead of growing an
     /// unbounded, untimed queue of lock waiters.
@@ -401,7 +401,7 @@ pub struct LoadedModel {
     /// the pre-#11 behaviour. Dropped with the model, so unload and
     /// auto-recovery invalidate every entry for free (the worker-side
     /// snapshots go with `Job::DropArch`).
-    pub prefix_cache: Option<ModelPrefixCache>,
+    pub prefix_cache: Option<Arc<ModelPrefixCache>>,
     /// Context-limit physics (#67), captured at load. `None` for arches
     /// whose KV layout we don't yet introspect (GGUF/CPU/non-qwen3_5) —
     /// those fall back to the static prompt cap with no advertised limit.
@@ -412,7 +412,7 @@ pub struct LoadedModel {
     /// at the end of each streaming request's prefill phase. Feeds the
     /// throughput ceiling in the derived limit; falls back to the
     /// configured bootstrap estimate before the first sample.
-    pub prefill_rate: super::context_limit::PrefillRateEma,
+    pub prefill_rate: Arc<super::context_limit::PrefillRateEma>,
     /// Last derived input-token cap (#67), refreshed each time
     /// `derived_limit` runs (i.e. on every `/models` poll). The
     /// request-path enforcement reads this — `0` means "not derived yet"
@@ -425,6 +425,14 @@ pub struct LoadedModel {
     /// cortex's health poller into marking the node unhealthy. Refreshed off
     /// the request path: seeded at load, then by a background task.
     pub last_free_mb: AtomicU64,
+    /// Lockstep batched decode engine (#98). `Some` when the operator
+    /// raised `[admission] max_in_flight` above 1 on a snapshot-capable
+    /// worker-path model (and `NEURON_BATCHING` isn't 0). Text chat
+    /// streams route through it instead of taking `inference_lock` per
+    /// request; the engine holds the lock while it has active slots, so
+    /// vision and non-streaming requests still serialize safely against
+    /// the batch.
+    pub engine: Option<super::engine::EngineHandle>,
 }
 
 impl LoadedModel {
@@ -676,6 +684,41 @@ impl ModelArch {
         match self {
             ModelArch::Qwen3_5Dense(m) => Ok(m.restore_kv_cache(snap)?),
             _ => anyhow::bail!("restore_kv_cache: architecture has no snapshot support"),
+        }
+    }
+
+    /// One lockstep batched decode step (#98): `(B, 1)` input, per-row
+    /// positions, optional padding mask. Returns `(B, 1, vocab)` — the
+    /// caller extracts one logits row per batch row (no
+    /// `squeeze_to_vocab`, which would collapse the batch dim). Only
+    /// the qwen3_5 arch batches; the engine only forms batches where
+    /// [`Self::supports_kv_snapshot`] holds, so other archs erroring
+    /// here is defence in depth.
+    pub fn forward_batch_decode(
+        &mut self,
+        input: &Tensor,
+        positions: &[usize],
+        attn_mask: Option<&Tensor>,
+    ) -> Result<Tensor> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => Ok(m.forward_batch_decode(input, positions, attn_mask)?),
+            _ => anyhow::bail!("forward_batch_decode: architecture has no batched-decode support"),
+        }
+    }
+
+    /// Padding mask for a batched decode step — see
+    /// `Qwen3_5Model::batch_decode_mask`.
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> Result<Option<Tensor>> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => {
+                Ok(m.batch_decode_mask(prefix_lens, padded_len, total_len)?)
+            }
+            _ => anyhow::bail!("batch_decode_mask: architecture has no batched-decode support"),
         }
     }
 
@@ -1030,7 +1073,7 @@ fn resolve_hf_cache(explicit: Option<PathBuf>) -> Option<PathBuf> {
 /// paid at most once per poisoned model.
 #[derive(Debug)]
 #[allow(dead_code)]
-struct LogitsHealth {
+pub(crate) struct LogitsHealth {
     len: usize,
     nan: usize,
     pos_inf: usize,
@@ -1071,7 +1114,7 @@ fn logits_health(t: &Tensor) -> LogitsHealth {
 /// the async caller has the values in hand. Avoids the round-trip of
 /// rebuilding a Tensor just to call to_vec1 again.
 #[allow(dead_code)]
-fn logits_health_slice(values: &[f32]) -> LogitsHealth {
+pub(crate) fn logits_health_slice(values: &[f32]) -> LogitsHealth {
     let mut nan = 0usize;
     let mut pos_inf = 0usize;
     let mut neg_inf = 0usize;
@@ -1131,7 +1174,7 @@ fn logits_health_slice(values: &[f32]) -> LogitsHealth {
 /// the TP streaming task). Matching against the full chain lets the
 /// classification survive `.context("…")` and `format!("…: {e}")`
 /// wrappers in the call sites.
-fn is_device_fault(chain_text: &str) -> bool {
+pub(crate) fn is_device_fault(chain_text: &str) -> bool {
     let chain = chain_text.to_lowercase();
     // Non-device patterns: shape errors are pre-kernel and don't touch
     // GPU state; NaN-logits failures happen on the CPU side after the
@@ -1505,7 +1548,7 @@ async fn acquire_pool_lock<'a>(
 /// Apply the repetition penalty (if any) to the prediction logits and
 /// then sample. Centralises the prefill / generation-loop call sites
 /// so they share identical sampling behaviour.
-fn sample_with_penalty(
+pub(crate) fn sample_with_penalty(
     logits: &Tensor,
     history: &[u32],
     logits_processor: &mut LogitsProcessor,
@@ -1564,8 +1607,7 @@ fn chunked_prefill_local(
 /// chunk's last position. Tensors never escape the worker.
 /// `start_offset` skips a restored cached prefix, as in
 /// [`chunked_prefill_local`].
-#[cfg(feature = "cuda")]
-async fn chunked_prefill_via_worker(
+pub(crate) async fn chunked_prefill_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prompt_tokens: &[u32],
@@ -2017,9 +2059,14 @@ impl CandleHarness {
             );
 
             // bf16 is the canonical distribution dtype for Qwen3 /
-            // Llama 3 / Qwen3 MoE. CUDA on Ada+ has hardware bf16;
-            // Ampere has it too. CPU emulates.
-            let dtype = DType::BF16;
+            // Llama 3 / Qwen3 MoE; CUDA on Ampere+ has hardware bf16.
+            // candle's CPU backend has no bf16 matmul, so the CPU
+            // fallback upcasts to f32 at load.
+            let dtype = if device_for_load.is_cuda() {
+                DType::BF16
+            } else {
+                DType::F32
+            };
             // SAFETY: VarBuilder::from_mmaped_safetensors mmaps the files;
             // mutation by another process while we hold the mapping is
             // UB. We trust the HF cache is immutable-by-design.
@@ -2391,7 +2438,7 @@ impl CandleHarness {
                                 worker,
                                 handle,
                                 &prompt_tokens,
-                                loaded.prefix_cache.as_ref(),
+                                loaded.prefix_cache.as_deref(),
                                 loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
                                 temperature,
@@ -2443,7 +2490,7 @@ impl CandleHarness {
                             &mut guard,
                             &device,
                             &prompt_tokens,
-                            loaded_for_cache.prefix_cache.as_ref(),
+                            loaded_for_cache.prefix_cache.as_deref(),
                             im_start_id,
                             max_new,
                             temperature,
@@ -2853,7 +2900,29 @@ impl CandleHarness {
             .map_err(InferenceError::from)?;
 
         let tool_schemas = build_tool_schemas(&request);
-        if let (Some(worker), Some(handle)) = (loaded.worker.clone(), loaded.arch_handle) {
+        // Batched decode engine (#98): text streams multiplex through
+        // the per-model engine instead of serializing on
+        // inference_lock. Vision requests keep the direct path (they
+        // can't batch — M-RoPE positions) and serialize against the
+        // engine via the lock it holds while active.
+        if vision_route.is_none() && loaded.engine.is_some() {
+            let engine = loaded.engine.clone().expect("checked is_some");
+            engine
+                .submit(super::engine::EngineRequest {
+                    prompt_tokens,
+                    max_new,
+                    temperature,
+                    top_p,
+                    seed,
+                    eos_id,
+                    tool_schemas,
+                    tx,
+                    admit,
+                    span: span_for_task,
+                })
+                .await
+                .map_err(InferenceError::Other)?;
+        } else if let (Some(worker), Some(handle)) = (loaded.worker.clone(), loaded.arch_handle) {
             #[cfg(feature = "cuda")]
             {
                 let prompt_tokens = prompt_tokens.clone();
@@ -2870,7 +2939,7 @@ impl CandleHarness {
                             tokenizer,
                             prompt_tokens,
                             vision_route,
-                            loaded_for_task.prefix_cache.as_ref(),
+                            loaded_for_task.prefix_cache.as_deref(),
                             &loaded_for_task.prefill_rate,
                             max_new,
                             temperature,
@@ -2935,7 +3004,7 @@ impl CandleHarness {
                     &device,
                     &tokenizer,
                     &prompt_tokens,
-                    loaded_for_task.prefix_cache.as_ref(),
+                    loaded_for_task.prefix_cache.as_deref(),
                     max_new,
                     temperature,
                     top_p,
@@ -3379,6 +3448,41 @@ impl Harness for CandleHarness {
             );
         }
 
+        let poisoned = Arc::new(AtomicBool::new(false));
+        let inference_lock = Arc::new(tokio::sync::Mutex::new(()));
+        let prefix_cache = self.new_prefix_cache(snapshot_capable).map(Arc::new);
+        let prefill_rate = Arc::new(super::context_limit::PrefillRateEma::new());
+        // Batched decode engine (#98): spawned when the operator raised
+        // max_in_flight above 1 on a snapshot-capable worker-path model.
+        let engine = match (&worker, arch_handle) {
+            (Some(w), Some(h))
+                if snapshot_capable
+                    && self.admission_cfg.max_in_flight > 1
+                    && super::engine::batching_enabled() =>
+            {
+                tracing::info!(
+                    model = %spec.model_id,
+                    max_slots = self.admission_cfg.max_in_flight,
+                    "batched decode engine enabled (#98)"
+                );
+                Some(super::engine::EngineHandle::spawn(
+                    super::engine::EngineConfig {
+                        model_id: spec.model_id.clone(),
+                        worker: Arc::clone(w),
+                        handle: h,
+                        tokenizer: tokenizer.clone(),
+                        prefix_cache: prefix_cache.clone(),
+                        prefill_rate: Arc::clone(&prefill_rate),
+                        reasoning_tokens: reasoning_tokens.clone(),
+                        tool_call_tokens: tool_call_tokens.clone(),
+                        poisoned: Arc::clone(&poisoned),
+                        inference_lock: Arc::clone(&inference_lock),
+                        max_slots: self.admission_cfg.max_in_flight,
+                    },
+                ))
+            }
+            _ => None,
+        };
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
             arch: arch_local,
@@ -3386,10 +3490,10 @@ impl Harness for CandleHarness {
             device,
             quant: spec.quant.clone(),
             devices,
-            poisoned: AtomicBool::new(false),
+            poisoned,
             worker,
             arch_handle,
-            inference_lock: tokio::sync::Mutex::new(()),
+            inference_lock,
             admission: super::admission::AdmissionController::new(&self.admission_cfg),
             reasoning_tokens,
             tool_call_tokens,
@@ -3398,11 +3502,12 @@ impl Harness for CandleHarness {
             image_token_id: vision_meta.image_token_id,
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
-            prefix_cache: self.new_prefix_cache(snapshot_capable),
+            prefix_cache,
             context_profile,
-            prefill_rate: super::context_limit::PrefillRateEma::new(),
+            prefill_rate,
             derived_input_cap: AtomicUsize::new(0),
             last_free_mb: AtomicU64::new(0),
+            engine,
         });
         if loaded.prefix_cache.is_some() {
             tracing::info!(
@@ -4877,8 +4982,11 @@ async fn chat_completion_tp_inner(
 /// stays out of this function — the wire projector in
 /// [`crate::wire::openai_chat`] stamps it onto every chunk
 /// downstream.
-#[cfg(feature = "cuda")]
-async fn emit_delta(delta: &str, tx: &mpsc::Sender<InferenceEvent>, in_reasoning: bool) -> bool {
+pub(crate) async fn emit_delta(
+    delta: &str,
+    tx: &mpsc::Sender<InferenceEvent>,
+    in_reasoning: bool,
+) -> bool {
     if delta.is_empty() {
         return true;
     }
@@ -4914,7 +5022,7 @@ fn emit_delta_blocking(delta: &str, tx: &mpsc::Sender<InferenceEvent>, in_reason
 ///
 /// `pair = None` short-circuits to `false` (no reasoning markers
 /// configured for this model → pass-through).
-fn handle_reasoning_marker(
+pub(crate) fn handle_reasoning_marker(
     next_token: u32,
     pair: Option<&ReasoningTokenPair>,
     in_reasoning: &mut bool,
@@ -4939,7 +5047,10 @@ fn handle_reasoning_marker(
 /// visible text. Replaying the prompt's reasoning markers and starting
 /// the loop in whatever state the prompt ends in fixes that without
 /// disabling thinking. `None` pair (non-reasoning model) → false.
-fn prompt_opens_reasoning(prompt_tokens: &[u32], pair: Option<&ReasoningTokenPair>) -> bool {
+pub(crate) fn prompt_opens_reasoning(
+    prompt_tokens: &[u32],
+    pair: Option<&ReasoningTokenPair>,
+) -> bool {
     let Some(pair) = pair else { return false };
     let mut open = false;
     for &t in prompt_tokens {
@@ -4954,7 +5065,7 @@ fn prompt_opens_reasoning(prompt_tokens: &[u32], pair: Option<&ReasoningTokenPai
 
 /// Outcome of checking a sampled token against the model's
 /// tool-call markers.
-enum ToolCallMarker {
+pub(crate) enum ToolCallMarker {
     /// Not a tool-call marker — caller proceeds with the normal
     /// detokenize-and-emit path.
     None,
@@ -4971,7 +5082,7 @@ enum ToolCallMarker {
     Exit { buffer: String },
 }
 
-fn handle_tool_call_marker(
+pub(crate) fn handle_tool_call_marker(
     next_token: u32,
     pair: Option<&ToolCallTokenPair>,
     in_tool_call: &mut bool,
@@ -5009,7 +5120,8 @@ fn handle_tool_call_marker(
 /// the Qwen-XML tool-call parser can coerce each `<parameter>` string
 /// to its declared JSON type. An empty map (no tools, or untyped
 /// params) makes the parser fall back to value-sniffing.
-type ToolSchemas = std::collections::HashMap<String, std::collections::HashMap<String, String>>;
+pub(crate) type ToolSchemas =
+    std::collections::HashMap<String, std::collections::HashMap<String, String>>;
 
 /// Extract [`ToolSchemas`] from a request's `tools` (OpenAI shape:
 /// `{type:"function", function:{name, parameters:{properties:{p:{type}}}}}`).
@@ -5053,7 +5165,7 @@ fn build_tool_schemas(request: &ChatCompletionRequest) -> ToolSchemas {
 ///
 /// Returns `None` only when neither form yields a usable name, so the
 /// caller can re-emit the raw block as text instead of swallowing it.
-fn parse_tool_call_body(
+pub(crate) fn parse_tool_call_body(
     body: &str,
     index: usize,
     schemas: &ToolSchemas,
@@ -5660,7 +5772,10 @@ async fn run_inference_with_images_via_worker(
 ///
 /// Returns `None` (run the request without storing a snapshot) when
 /// the marker id is unknown or the prompt has no usable boundary.
-fn stable_snapshot_cut(prompt_tokens: &[u32], im_start_id: Option<u32>) -> Option<usize> {
+pub(crate) fn stable_snapshot_cut(
+    prompt_tokens: &[u32],
+    im_start_id: Option<u32>,
+) -> Option<usize> {
     let id = im_start_id?;
     let cut = prompt_tokens.iter().rposition(|&t| t == id)? + 1;
     (cut < prompt_tokens.len()).then_some(cut)
@@ -5684,8 +5799,7 @@ fn lock_prefix_cache(
 /// prompt tokens already in the cache after this call — prefill
 /// resumes at that offset. A failed restore drops the entry and falls
 /// back to clear + full prefill.
-#[cfg(feature = "cuda")]
-async fn restore_or_clear_via_worker(
+pub(crate) async fn restore_or_clear_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prefix_cache: Option<&ModelPrefixCache>,
@@ -5734,8 +5848,7 @@ async fn restore_or_clear_via_worker(
 /// `prompt_tokens`) and register it. Eviction decided by the
 /// registry; evicted worker snapshots are dropped here. Best-effort —
 /// a failed snapshot only costs the next request its prefill saving.
-#[cfg(feature = "cuda")]
-async fn store_prefix_snapshot_via_worker(
+pub(crate) async fn store_prefix_snapshot_via_worker(
     worker: &super::device_worker::DeviceWorkerHandle,
     handle: super::device_worker::ArchHandle,
     prefix_cache: Option<&ModelPrefixCache>,
