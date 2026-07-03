@@ -76,7 +76,15 @@ pub(crate) fn attention_context(
     {
         use candle_core::DType;
         let dtype = q.dtype();
+        // Prefill only (q_len > 1): measured on beast (27B, 30k-token
+        // prompt, 2x RTX 5090), flash cuts prefill 24.8s → 22.1s but
+        // REGRESSES decode ~20% (50 → 60 ms/token at 30k KV) — FA2
+        // without flash-decoding is weak at query-length 1 and the
+        // per-step layout transposes add overhead. Greedy outputs are
+        // byte-identical either way, so this split is purely a
+        // performance routing decision.
         if flash_attn_enabled()
+            && q.dim(2)? > 1
             && q.device().is_cuda()
             && (dtype == DType::F16 || dtype == DType::BF16)
         {
