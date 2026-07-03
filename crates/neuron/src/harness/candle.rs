@@ -3364,10 +3364,15 @@ impl Harness for CandleHarness {
                     self.resolve_dense_files(spec, &source_id).await?;
                 let meta = VisionMeta::from_config_path(&config_path);
                 // Prefix snapshots (#11) exist only for the in-tree
-                // qwen3_5 arch; the worker holds the ModelArch so
-                // the async side decides from config.json instead.
-                let snapshot_capable = config_model_type(&config_path).as_deref()
-                    == Some(super::arch::qwen3_5::MODEL_TYPE);
+                // qwen3_5 arch — which serves BOTH its model_types
+                // (qwen3_5 and the flat-config qwen3_next MoE family);
+                // the worker holds the ModelArch so the async side
+                // decides from config.json instead.
+                let snapshot_capable = matches!(
+                    config_model_type(&config_path).as_deref(),
+                    Some(super::arch::qwen3_5::MODEL_TYPE)
+                        | Some(super::arch::qwen3_5::MODEL_TYPE_NEXT)
+                );
                 // Context-limit physics (#67): single-GPU → world_size 1.
                 // `None` for non-qwen3_5 dense archs.
                 let context_profile =
@@ -3796,10 +3801,11 @@ impl CandleHarness {
             image_token_id: vision_meta.image_token_id,
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
-            prefix_cache: self.new_prefix_cache(
-                config_model_type(&config_path).as_deref()
-                    == Some(super::arch::qwen3_5::MODEL_TYPE),
-            ),
+            prefix_cache: self.new_prefix_cache(matches!(
+                config_model_type(&config_path).as_deref(),
+                Some(super::arch::qwen3_5::MODEL_TYPE)
+                    | Some(super::arch::qwen3_5::MODEL_TYPE_NEXT)
+            )),
             // Context-limit physics (#67): per-rank KV cost sharded across
             // the TP world. `None` for non-qwen3_5 dense archs.
             context_profile: super::context_limit::profile_from_qwen3_5_config(
