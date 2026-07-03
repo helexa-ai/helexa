@@ -149,6 +149,34 @@ pub enum Job {
         offset: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
     },
+    /// Assemble stored per-sequence snapshots into one batched cache
+    /// state and install it as the model's live state (#98). `seqs`
+    /// pairs each snapshot id with its true token length; attention
+    /// K/V is right-padded to the batch max and `cat`ed on dim 0 (see
+    /// `arch::qwen3_5::snapshot::assemble_batch`). Replies with the
+    /// padded uniform KV length. The source snapshots remain stored —
+    /// the caller drops them via `DropKvSnapshot` when the sequences
+    /// leave the batch.
+    AssembleKvBatch {
+        handle: ArchHandle,
+        seqs: Vec<(KvSnapshotId, usize)>,
+        reply: oneshot::Sender<Result<usize>>,
+    },
+    /// One lockstep batched decode step (#98): `tokens[i]` is batch
+    /// row i's next token, sitting at sequence position
+    /// `prefix_lens[i] + step`. The handler derives per-row positions
+    /// and the padding mask from `prefix_lens`/`padded_len` (the
+    /// values `AssembleKvBatch` was built from) and replies one CPU
+    /// `[vocab]` logits row per batch row, ready for per-slot
+    /// sampling on the async side.
+    ForwardLogitsBatch {
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        prefix_lens: Vec<usize>,
+        padded_len: usize,
+        step: usize,
+        reply: oneshot::Sender<Result<Vec<Vec<f32>>>>,
+    },
     /// Run the LM forward with vision splicing in one round-trip.
     /// Stage B3 of the vision plan.
     ///

@@ -679,6 +679,41 @@ impl ModelArch {
         }
     }
 
+    /// One lockstep batched decode step (#98): `(B, 1)` input, per-row
+    /// positions, optional padding mask. Returns `(B, 1, vocab)` — the
+    /// caller extracts one logits row per batch row (no
+    /// `squeeze_to_vocab`, which would collapse the batch dim). Only
+    /// the qwen3_5 arch batches; the engine only forms batches where
+    /// [`Self::supports_kv_snapshot`] holds, so other archs erroring
+    /// here is defence in depth.
+    pub fn forward_batch_decode(
+        &mut self,
+        input: &Tensor,
+        positions: &[usize],
+        attn_mask: Option<&Tensor>,
+    ) -> Result<Tensor> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => Ok(m.forward_batch_decode(input, positions, attn_mask)?),
+            _ => anyhow::bail!("forward_batch_decode: architecture has no batched-decode support"),
+        }
+    }
+
+    /// Padding mask for a batched decode step — see
+    /// `Qwen3_5Model::batch_decode_mask`.
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> Result<Option<Tensor>> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => {
+                Ok(m.batch_decode_mask(prefix_lens, padded_len, total_len)?)
+            }
+            _ => anyhow::bail!("batch_decode_mask: architecture has no batched-decode support"),
+        }
+    }
+
     /// Forward step that splices vision-tower output at
     /// `<|image_pad|>` token positions. Stage B2.
     ///
@@ -2017,9 +2052,14 @@ impl CandleHarness {
             );
 
             // bf16 is the canonical distribution dtype for Qwen3 /
-            // Llama 3 / Qwen3 MoE. CUDA on Ada+ has hardware bf16;
-            // Ampere has it too. CPU emulates.
-            let dtype = DType::BF16;
+            // Llama 3 / Qwen3 MoE; CUDA on Ampere+ has hardware bf16.
+            // candle's CPU backend has no bf16 matmul, so the CPU
+            // fallback upcasts to f32 at load.
+            let dtype = if device_for_load.is_cuda() {
+                DType::BF16
+            } else {
+                DType::F32
+            };
             // SAFETY: VarBuilder::from_mmaped_safetensors mmaps the files;
             // mutation by another process while we hold the mapping is
             // UB. We trust the HF cache is immutable-by-design.

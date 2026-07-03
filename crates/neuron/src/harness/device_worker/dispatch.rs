@@ -248,6 +248,36 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let result = forward_logits(&mut state, handle, &tokens, offset);
                 let _ = reply.send(result);
             }
+            Job::AssembleKvBatch {
+                handle,
+                seqs,
+                reply,
+            } => {
+                let result = assemble_kv_batch(&mut state, handle, &seqs);
+                // The replaced live cache state just freed its tensors.
+                if result.is_ok() {
+                    trim_device_pool(&state);
+                }
+                let _ = reply.send(result);
+            }
+            Job::ForwardLogitsBatch {
+                handle,
+                tokens,
+                prefix_lens,
+                padded_len,
+                step,
+                reply,
+            } => {
+                let result = forward_logits_batch(
+                    &mut state,
+                    handle,
+                    &tokens,
+                    &prefix_lens,
+                    padded_len,
+                    step,
+                );
+                let _ = reply.send(result);
+            }
             Job::EncodeImage {
                 handle,
                 pixels,
@@ -760,9 +790,14 @@ fn load_dense_inner(
     );
 
     // bf16 is the canonical distribution dtype for Qwen3 / Llama 3 /
-    // Qwen3 MoE. CUDA on Ada+ has hardware bf16; Ampere has it too.
-    // CPU emulates.
-    let dtype = DType::BF16;
+    // Qwen3 MoE; CUDA on Ampere+ has hardware bf16. candle's CPU
+    // backend has no bf16 matmul, so the CPU fallback (and the CPU
+    // test worker) upcasts to f32 at load.
+    let dtype = if device.is_cuda() {
+        DType::BF16
+    } else {
+        DType::F32
+    };
     // SAFETY: VarBuilder::from_mmaped_safetensors mmaps the files;
     // mutation by another process while we hold the mapping is UB.
     // We trust the HF cache is immutable-by-design.
@@ -1037,6 +1072,83 @@ fn forward_logits(
     Ok(values)
 }
 
+/// Assemble stored per-sequence snapshots into a batched cache state
+/// and install it as the model's live state (#98). Split-borrows the
+/// snapshot map (immutable) and the model slab (mutable) — disjoint
+/// fields of the worker state.
+fn assemble_kv_batch(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    seqs: &[(KvSnapshotId, usize)],
+) -> anyhow::Result<usize> {
+    let DeviceWorkerState {
+        models,
+        kv_snapshots,
+        ..
+    } = state;
+    let mut pairs = Vec::with_capacity(seqs.len());
+    for (id, len) in seqs {
+        let snap = kv_snapshots.get(&(handle, id.0)).ok_or_else(|| {
+            anyhow::anyhow!(
+                "AssembleKvBatch: no snapshot {} for handle {}",
+                id.0,
+                handle.0
+            )
+        })?;
+        pairs.push((snap, *len));
+    }
+    let batch = crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs)?;
+    let arch = models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("AssembleKvBatch: no model for handle {}", handle.0))?;
+    arch.restore_kv_cache(&batch.snapshot)?;
+    Ok(batch.padded_len)
+}
+
+/// One lockstep batched decode step (#98). Builds the `(B, 1)` input
+/// on the worker's device, derives per-row positions and the padding
+/// mask, and copies each row's logits back to CPU — same
+/// "tensors never escape the worker" contract as `forward_logits`.
+fn forward_logits_batch(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    tokens: &[u32],
+    prefix_lens: &[usize],
+    padded_len: usize,
+    step: usize,
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    use candle_core::{DType, Tensor};
+
+    let b = tokens.len();
+    anyhow::ensure!(b > 0, "ForwardLogitsBatch: empty batch");
+    anyhow::ensure!(
+        prefix_lens.len() == b,
+        "ForwardLogitsBatch: {} prefix_lens for batch of {b}",
+        prefix_lens.len()
+    );
+
+    let input = Tensor::from_vec(tokens.to_vec(), (b, 1), &state.device)?;
+    let arch = state
+        .models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("ForwardLogitsBatch: no model for handle {}", handle.0))?;
+
+    let positions: Vec<usize> = prefix_lens.iter().map(|&len| len + step).collect();
+    let total_len = padded_len + step + 1;
+    let mask = arch.batch_decode_mask(prefix_lens, padded_len, total_len)?;
+    let logits = arch.forward_batch_decode(&input, &positions, mask.as_ref())?;
+
+    // (B, 1, vocab) → per-row CPU Vec<f32>.
+    let logits = logits.to_dtype(DType::F32)?;
+    let (rows, _, vocab) = logits.dims3()?;
+    anyhow::ensure!(
+        rows == b,
+        "ForwardLogitsBatch: model returned {rows} logits rows for batch of {b}"
+    );
+    let flat: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+    Ok(flat.chunks(vocab).map(<[f32]>::to_vec).collect())
+}
+
 /// Run the LM forward with vision-tower image splicing. Stage B3.
 ///
 /// Encodes each image through the vision tower (`VisionTower::forward`,
@@ -1188,6 +1300,12 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(());
         }
         Job::ForwardLogits { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::AssembleKvBatch { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::ForwardLogitsBatch { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::EncodeImage { reply, .. } => {

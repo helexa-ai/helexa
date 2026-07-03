@@ -897,6 +897,18 @@ impl Qwen3_5ForCausalLM {
         hidden.apply(&self.lm_head)
     }
 
+    /// Padding mask for a batched decode step — see
+    /// [`Qwen3_5Model::batch_decode_mask`].
+    pub fn batch_decode_mask(
+        &self,
+        prefix_lens: &[usize],
+        padded_len: usize,
+        total_len: usize,
+    ) -> candle_core::Result<Option<Tensor>> {
+        self.base
+            .batch_decode_mask(prefix_lens, padded_len, total_len)
+    }
+
     /// Stage B: forward with image-embedding splice. Mirrors `forward`
     /// but routes through `Qwen3_5Model::forward_with_vision` so the
     /// LM's input embeddings get the image patches spliced in at
