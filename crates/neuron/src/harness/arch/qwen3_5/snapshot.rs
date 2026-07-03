@@ -84,6 +84,147 @@ impl KvCacheSnapshot {
     }
 }
 
+/// Batched cache state assembled from per-sequence snapshots (#98).
+/// Install with `Qwen3_5Model::restore_kv_cache(&self.snapshot)`; the
+/// forward then runs lockstep batched decode with
+/// `forward_batch_decode` using `prefix_lens[i] + step` positions and
+/// the padding mask from `Qwen3_5Model::batch_decode_mask`.
+pub struct BatchedKvState {
+    /// Per-layer `(B, …)` state: attention K/V right-padded along the
+    /// sequence axis to `padded_len` and `cat`ed on dim 0; GDN
+    /// conv/recurrent states `cat`ed on dim 0 (position-free).
+    pub snapshot: KvCacheSnapshot,
+    /// The uniform KV sequence length every row was padded to — the
+    /// max prefix length in the batch. Decode appends start here.
+    pub padded_len: usize,
+    /// Each row's true prefix length. Columns `[prefix_lens[i],
+    /// padded_len)` of row `i` are zero-padding and must stay masked.
+    pub prefix_lens: Vec<usize>,
+}
+
+/// Assemble per-sequence snapshots into one batched cache state.
+/// `seqs` pairs each snapshot with its true token length (the caller
+/// tracks prompt token counts; attention K/V lengths are validated
+/// against it). All snapshots must come from single-sequence (`B=1`)
+/// prefills of the same model, with `rope_delta == 0` (text-only —
+/// vision requests don't batch, #98 v1).
+///
+/// Keys are stored post-RoPE, so right-padding does not disturb
+/// position correctness: a row's cached keys keep the rotation of
+/// their true positions, the garbage columns are masked, and new
+/// tokens rotate at `prefix_len + step` while landing at storage
+/// column `padded_len + step`.
+pub fn assemble_batch(seqs: &[(&KvCacheSnapshot, usize)]) -> candle_core::Result<BatchedKvState> {
+    let Some((first, _)) = seqs.first() else {
+        candle_core::bail!("assemble_batch: empty batch");
+    };
+    let n_layers = first.layers.len();
+    let prefix_lens: Vec<usize> = seqs.iter().map(|&(_, len)| len).collect();
+    let padded_len = *prefix_lens.iter().max().expect("non-empty");
+    for (snap, len) in seqs {
+        if snap.layers.len() != n_layers {
+            candle_core::bail!(
+                "assemble_batch: snapshot layer count mismatch ({} vs {n_layers})",
+                snap.layers.len()
+            );
+        }
+        if snap.rope_delta != 0 {
+            candle_core::bail!(
+                "assemble_batch: rope_delta {} != 0 — vision-positioned sequences cannot batch",
+                snap.rope_delta
+            );
+        }
+        if *len == 0 {
+            candle_core::bail!("assemble_batch: zero-length sequence");
+        }
+    }
+
+    let mut layers = Vec::with_capacity(n_layers);
+    for li in 0..n_layers {
+        layers.push(assemble_layer(seqs, li, padded_len)?);
+    }
+    Ok(BatchedKvState {
+        snapshot: KvCacheSnapshot {
+            layers,
+            rope_delta: 0,
+        },
+        padded_len,
+        prefix_lens,
+    })
+}
+
+fn assemble_layer(
+    seqs: &[(&KvCacheSnapshot, usize)],
+    li: usize,
+    padded_len: usize,
+) -> candle_core::Result<LayerKvSnapshot> {
+    match &seqs[0].0.layers[li] {
+        LayerKvSnapshot::Full(_) => {
+            let mut ks = Vec::with_capacity(seqs.len());
+            let mut vs = Vec::with_capacity(seqs.len());
+            for (row, (snap, len)) in seqs.iter().enumerate() {
+                let LayerKvSnapshot::Full(Some((k, v))) = &snap.layers[li] else {
+                    candle_core::bail!(
+                        "assemble_batch: row {row} layer {li} is not a populated \
+                         full-attention snapshot"
+                    );
+                };
+                let (b, _h, s, _d) = k.dims4()?;
+                if b != 1 {
+                    candle_core::bail!(
+                        "assemble_batch: row {row} layer {li} has batch dim {b}, want 1"
+                    );
+                }
+                if s != *len {
+                    candle_core::bail!(
+                        "assemble_batch: row {row} layer {li} KV length {s} != declared \
+                         sequence length {len}"
+                    );
+                }
+                ks.push(pad_seq(k, padded_len)?);
+                vs.push(pad_seq(v, padded_len)?);
+            }
+            let k = Tensor::cat(&ks, 0)?;
+            let v = Tensor::cat(&vs, 0)?;
+            Ok(LayerKvSnapshot::Full(Some((k, v))))
+        }
+        LayerKvSnapshot::Linear { .. } => {
+            let mut convs = Vec::with_capacity(seqs.len());
+            let mut recs = Vec::with_capacity(seqs.len());
+            for (row, (snap, _)) in seqs.iter().enumerate() {
+                let LayerKvSnapshot::Linear {
+                    conv_state: Some(conv),
+                    recurrent_state: Some(rec),
+                } = &snap.layers[li]
+                else {
+                    candle_core::bail!(
+                        "assemble_batch: row {row} layer {li} is not a populated \
+                         linear-attention snapshot"
+                    );
+                };
+                convs.push(conv.clone());
+                recs.push(rec.clone());
+            }
+            Ok(LayerKvSnapshot::Linear {
+                conv_state: Some(Tensor::cat(&convs, 0)?),
+                recurrent_state: Some(Tensor::cat(&recs, 0)?),
+            })
+        }
+    }
+}
+
+/// Right-pad a `(1, H, S, D)` K or V tensor with zeros along the
+/// sequence axis to `padded_len`. Zero columns are inert: the padding
+/// mask keeps every query from attending to them.
+fn pad_seq(t: &Tensor, padded_len: usize) -> candle_core::Result<Tensor> {
+    let (b, h, s, d) = t.dims4()?;
+    if s == padded_len {
+        return Ok(t.clone());
+    }
+    let pad = Tensor::zeros((b, h, padded_len - s, d), t.dtype(), t.device())?;
+    Tensor::cat(&[t, &pad], 2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::{Qwen3_5Model, RopeParameters, TextConfig};
@@ -276,6 +417,142 @@ mod tests {
         let h_again = forward_tokens(&mut model, suffix, prefix.len());
         let diff = max_abs_diff(&h_restored, &h_again);
         assert!(diff < 1e-6, "second restore diverged: {diff}");
+    }
+
+    /// The gold test for #98 slice 1: ragged sequences decoded in one
+    /// lockstep batch (assembled from per-sequence snapshots, per-row
+    /// positions, padding mask) must match the same sequences decoded
+    /// sequentially, hidden-state for hidden-state at every step.
+    #[test]
+    fn batched_decode_matches_sequential() {
+        use candle_core::IndexOp;
+        let cfg = tiny_config();
+        let mut model = tiny_model(&cfg);
+
+        let prompts: [&[u32]; 3] = [&[1, 2, 3], &[4, 5], &[7, 7, 2, 5, 6]];
+        let steps: [&[u32]; 3] = [&[11, 12, 13, 14], &[9, 8, 7, 6], &[21, 22, 23, 24]];
+        let n_steps = 4;
+
+        // Sequential reference: each sequence decoded alone.
+        let mut expected: Vec<Vec<Vec<f32>>> = Vec::new(); // [row][step]
+        for (prompt, toks) in prompts.iter().zip(steps.iter()) {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            let mut per_step = Vec::new();
+            for (t, tok) in toks.iter().enumerate() {
+                per_step.push(forward_tokens(&mut model, &[*tok], prompt.len() + t));
+            }
+            expected.push(per_step);
+        }
+
+        // Batched: prefill each sequence alone, snapshot, assemble.
+        let mut snaps = Vec::new();
+        for prompt in prompts.iter() {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            snaps.push(model.snapshot_kv_cache().expect("snapshot"));
+        }
+        let seqs: Vec<(&super::KvCacheSnapshot, usize)> = snaps
+            .iter()
+            .zip(prompts.iter())
+            .map(|(s, p)| (s, p.len()))
+            .collect();
+        let batch = super::assemble_batch(&seqs).expect("assemble");
+        assert_eq!(batch.padded_len, 5);
+        assert_eq!(batch.prefix_lens, vec![3, 2, 5]);
+        model
+            .restore_kv_cache(&batch.snapshot)
+            .expect("install batched state");
+
+        for t in 0..n_steps {
+            let toks: Vec<u32> = steps.iter().map(|s| s[t]).collect();
+            let input = Tensor::from_vec(toks, (3, 1), &Device::Cpu).unwrap();
+            let positions: Vec<usize> = prompts.iter().map(|p| p.len() + t).collect();
+            let total_len = batch.padded_len + t + 1;
+            let mask = model
+                .batch_decode_mask(&batch.prefix_lens, batch.padded_len, total_len)
+                .expect("mask");
+            assert!(mask.is_some(), "ragged batch must be masked");
+            let h = model
+                .forward_batch_decode(&input, &positions, mask.as_ref())
+                .expect("batched step");
+            assert_eq!(h.dims()[0], 3);
+            for row in 0..3 {
+                let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
+                let diff = max_abs_diff(&expected[row][t], &got);
+                assert!(diff < 1e-4, "row {row} step {t} diverged: {diff}");
+            }
+        }
+    }
+
+    /// Uniform-length batch: no padding → `batch_decode_mask` returns
+    /// `None`, and unmasked lockstep decode still matches sequential.
+    #[test]
+    fn batched_decode_uniform_lengths_needs_no_mask() {
+        use candle_core::IndexOp;
+        let cfg = tiny_config();
+        let mut model = tiny_model(&cfg);
+
+        let prompts: [&[u32]; 2] = [&[1, 2, 3], &[6, 5, 4]];
+        let toks = [13u32, 17];
+
+        let mut expected = Vec::new();
+        for (prompt, tok) in prompts.iter().zip(toks.iter()) {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            expected.push(forward_tokens(&mut model, &[*tok], prompt.len()));
+        }
+
+        let mut snaps = Vec::new();
+        for prompt in prompts.iter() {
+            model.clear_kv_cache();
+            forward_tokens(&mut model, prompt, 0);
+            snaps.push(model.snapshot_kv_cache().expect("snapshot"));
+        }
+        let seqs: Vec<(&super::KvCacheSnapshot, usize)> = snaps
+            .iter()
+            .zip(prompts.iter())
+            .map(|(s, p)| (s, p.len()))
+            .collect();
+        let batch = super::assemble_batch(&seqs).expect("assemble");
+        let mask = model
+            .batch_decode_mask(&batch.prefix_lens, batch.padded_len, batch.padded_len + 1)
+            .expect("mask");
+        assert!(mask.is_none(), "uniform lengths must not build a mask");
+        model.restore_kv_cache(&batch.snapshot).expect("install");
+
+        let input = Tensor::from_vec(toks.to_vec(), (2, 1), &Device::Cpu).unwrap();
+        let h = model
+            .forward_batch_decode(&input, &[3, 3], None)
+            .expect("step");
+        for row in 0..2 {
+            let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
+            let diff = max_abs_diff(&expected[row], &got);
+            assert!(diff < 1e-4, "row {row} diverged: {diff}");
+        }
+    }
+
+    /// Mask geometry: `-inf` exactly on `[prefix_len, padded_len)` per
+    /// row, zero elsewhere (including the decode columns past
+    /// `padded_len`).
+    #[test]
+    fn batch_decode_mask_covers_only_padding_gap() {
+        let model = tiny_model(&tiny_config());
+        let m = model
+            .batch_decode_mask(&[3, 5], 5, 7)
+            .unwrap()
+            .expect("ragged → mask");
+        assert_eq!(m.dims(), &[2, 1, 1, 7]);
+        let flat: Vec<f32> = m.flatten_all().unwrap().to_vec1().unwrap();
+        let (row0, row1) = flat.split_at(7);
+        for (j, &v) in row0.iter().enumerate() {
+            if (3..5).contains(&j) {
+                assert_eq!(v, f32::NEG_INFINITY, "row0 col {j} must be masked");
+            } else {
+                assert_eq!(v, 0.0, "row0 col {j} must be open");
+            }
+        }
+        assert!(row1.iter().all(|&v| v == 0.0), "unpadded row must be open");
     }
 
     /// Restoring must fully replace the live state, not blend with it
