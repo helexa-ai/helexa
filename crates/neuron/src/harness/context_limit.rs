@@ -145,10 +145,15 @@ pub fn profile_from_qwen3_5_config(config_path: &Path, world_size: u32) -> Optio
         .get("model_type")?
         .as_str()?
         .to_owned();
-    if model_type != super::arch::qwen3_5::MODEL_TYPE {
+    if model_type != super::arch::qwen3_5::MODEL_TYPE
+        && model_type != super::arch::qwen3_5::MODEL_TYPE_NEXT
+    {
         return None;
     }
-    let cfg: super::arch::qwen3_5::Config = serde_json::from_str(&text).ok()?;
+    // `from_config_json` normalises both layouts (nested qwen3_5, flat
+    // qwen3_next) — a plain serde parse would reject the flat family,
+    // which is how Coder-Next went without an advertised limit (#126).
+    let cfg = super::arch::qwen3_5::Config::from_config_json(&text).ok()?;
     let tc = &cfg.text_config;
     let n_full_attn_layers = {
         let counted = tc
@@ -256,6 +261,22 @@ pub fn derive_limit(
         context = context.min(clamp);
     }
     context = round_down(context, CONTEXT_GRANULARITY);
+
+    // Observability (#126): every input and intermediate term, so a
+    // surprising advertised limit is diagnosable from the journal
+    // instead of re-deriving by hand. DEBUG — this runs on every
+    // `GET /models` poll (a few lines per poll cycle).
+    tracing::debug!(
+        max_pos = profile.max_position_embeddings,
+        kv_bytes_per_token_per_card = profile.kv_bytes_per_token_per_card,
+        free_tightest_mb,
+        prefill_tok_per_sec = tok_per_sec,
+        vram_ceiling,
+        throughput_ceiling,
+        ?hard_ceiling,
+        context,
+        "derive_limit"
+    );
 
     let input = context.saturating_sub(output);
     ModelLimit {
