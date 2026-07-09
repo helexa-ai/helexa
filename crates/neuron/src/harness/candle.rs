@@ -170,6 +170,16 @@ impl LoadedHandle {
         }
     }
 
+    /// Cumulative admission rejections by reason (#137) — the load-shedding
+    /// signal surfaced on `/health`.
+    pub fn rejections(&self) -> super::admission::RejectionCounts {
+        match self {
+            LoadedHandle::Single(m) => m.admission.rejections(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.admission.rejections(),
+        }
+    }
+
     /// Modalities the loaded model supports. Stage B7 (single-GPU) +
     /// TP-vision (#12) — both single-GPU and TP loads advertise
     /// `"vision"` when a replicated vision tower materialised.
@@ -3120,12 +3130,16 @@ impl CandleHarness {
             .map(|handle| {
                 let (in_flight, queue_depth) = handle.load();
                 let (max_in_flight, max_queue_depth) = handle.capacity();
+                let rej = handle.rejections();
                 cortex_core::discovery::ModelLoad {
                     id: handle.model_id().to_string(),
                     in_flight,
                     queue_depth,
                     max_in_flight,
                     max_queue_depth,
+                    rejected_queue_full: rej.queue_full,
+                    rejected_timeout: rej.timeout,
+                    rejected_per_principal: rej.per_principal,
                 }
             })
             .collect()

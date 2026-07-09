@@ -109,4 +109,8 @@ fn describe_metrics() {
         "cortex_device_temp_c",
         "Per-device GPU temperature, Celsius (#137)"
     );
+    metrics::describe_counter!(
+        "cortex_model_rejections_total",
+        "Admission rejections per neuron:model by reason: queue_full / wait_timeout / per_principal — the load-shedding signal (#137)"
+    );
 }

@@ -137,7 +137,9 @@ async fn test_capacity_gauges_exported_from_health_poll() {
                        "completed": [], "failed": []},
         "models": [
             {"id": "test-model", "in_flight": 3, "queue_depth": 2,
-             "max_in_flight": 8, "max_queue_depth": 8}
+             "max_in_flight": 8, "max_queue_depth": 8,
+             "rejected_queue_full": 5, "rejected_timeout": 1,
+             "rejected_per_principal": 0}
         ]
     });
     let mock_url = common::spawn_mock_neuron_with_models_and_health(
@@ -203,5 +205,18 @@ async fn test_capacity_gauges_exported_from_health_poll() {
     assert_eq!(
         gauge_value("cortex_device_vram_free_mb", r#"device="0""#),
         11000.0
+    );
+    // Rejections are exported as a counter, keyed by reason.
+    assert!(
+        rendered.contains("cortex_model_rejections_total"),
+        "rejection counter should be exported.\nMetrics:\n{rendered}"
+    );
+    assert_eq!(
+        gauge_value("cortex_model_rejections_total", r#"reason="queue_full""#),
+        5.0
+    );
+    assert_eq!(
+        gauge_value("cortex_model_rejections_total", r#"reason="wait_timeout""#),
+        1.0
     );
 }

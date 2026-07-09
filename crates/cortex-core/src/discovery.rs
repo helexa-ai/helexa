@@ -96,6 +96,19 @@ pub struct ModelLoad {
     /// for back-compat with pre-#137 neurons.
     #[serde(default)]
     pub max_queue_depth: usize,
+    /// Cumulative requests rejected because the admission queue was full
+    /// (#137), since this model loaded. The load-shedding signal; cortex
+    /// publishes it as a counter. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub rejected_queue_full: u64,
+    /// Cumulative requests rejected because the in-flight slot didn't free
+    /// within `max_wait` (#137). `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub rejected_timeout: u64,
+    /// Cumulative requests rejected by the per-principal fair-share cap
+    /// (#54/#137). `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub rejected_per_principal: u64,
 }
 
 #[cfg(test)]
@@ -124,6 +137,9 @@ mod health_load_tests {
                 queue_depth: 3,
                 max_in_flight: 8,
                 max_queue_depth: 8,
+                rejected_queue_full: 0,
+                rejected_timeout: 0,
+                rejected_per_principal: 0,
             }],
         };
         let s = serde_json::to_string(&resp).unwrap();

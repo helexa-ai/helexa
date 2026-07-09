@@ -6,7 +6,7 @@ use chrono::Utc;
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
 use cortex_core::node::{ModelEntry, ModelStatus, NodeState};
-use metrics::gauge;
+use metrics::{counter, gauge};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -257,6 +257,19 @@ fn export_health_metrics(node: &str, h: &HealthResponse) {
             gauge!("cortex_model_max_queue_depth", "node" => node.to_string(), "model" => m.id.clone())
                 .set(m.max_queue_depth as f64);
         }
+        // Cumulative rejections by reason (#137) — the shedding signal.
+        // Neuron reports counts-since-load; `.absolute` mirrors them onto a
+        // counter (a model reload resets to 0, which Prometheus reads as a
+        // normal counter reset).
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "queue_full")
+        .absolute(m.rejected_queue_full);
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "wait_timeout")
+        .absolute(m.rejected_timeout);
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "per_principal")
+        .absolute(m.rejected_per_principal);
     }
     for d in &h.devices {
         let device = d.index.to_string();
