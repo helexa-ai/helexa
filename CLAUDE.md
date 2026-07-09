@@ -826,3 +826,51 @@ the `benchmarks.md`-style table from the DB. `kind = "openai"` targets
 (mistral.rs/llama.cpp comparison) are scaffolded but not yet wired.
 Packaged as the `helexa-bench` RPM (prebuilt-binary spec, outbound-only
 so no firewalld service) via the same `build-prerelease.yml` pipeline.
+
+## 2026-07-09 addendum: concurrency & admission model
+
+Historical note: earlier docs described inference as "batch-1,
+serialized per model, no admission control" and the README ruled out
+continuous batching "permanently." **Both are obsolete.** Each loaded
+model on a neuron now serves multiple concurrent requests behind bounded
+admission control, and cortex routes load-aware — not as a pure
+passthrough.
+
+**Admission control (#53, #54).** Every loaded model owns an
+`AdmissionController` (`crates/neuron/src/harness/admission.rs`). It
+bounds `max_in_flight` running requests plus a `max_queue_depth` waiting
+queue with a `max_wait_secs` deadline; over-capacity requests fast-reject
+with `429`/`503` + `Retry-After` rather than hanging. A per-principal
+`max_per_principal` cap (keyed on the account/key headers cortex stamps)
+gives fair-share so one client cannot monopolise a model. Defaults live
+in `config.rs` (`max_in_flight=1`, `max_queue_depth=8`, `max_wait_secs=30`,
+`max_per_principal=2`); production overrides per host — e.g. beast runs
+`max_in_flight=8`. A request holds its `AdmissionPermit` for its whole
+lifetime; the forward itself is still serialized behind the single-GPU
+`inference_lock` / TP pool mutex.
+
+**Batched decode (#98).** When `max_in_flight > 1` on a snapshot-capable
+arch (`qwen3_5` / `qwen3_next`), the lockstep batch engine
+(`crates/neuron/src/harness/engine.rs`) multiplexes the concurrent
+sequences into one decode step (ragged prompts, mid-stream joins), so
+those models are genuinely not batch-1. Runtime kill switch
+`NEURON_BATCHING=0`. Archs without snapshot support, or
+`max_in_flight=1`, keep the serialized single-sequence path.
+
+**Live load surface.** neuron `GET /health` publishes per-model
+`ModelLoad { in_flight, queue_depth }` and per-device
+`DeviceHealth { vram_used_mb, vram_free_mb, utilization_pct, temp_c }`.
+cortex's poller reads these (~10s) into `NodeState.model_load` and picks
+the least-busy replica in `router.rs` — this is why cortex is load-aware,
+not first-loaded-node. The concurrency capacity of a neuron:model is
+therefore a real number today: `max_in_flight` (+ `max_queue_depth`
+burst absorption), with `in_flight`/`queue_depth` the live utilisation.
+
+**Observability gap.** That live load — and the device health — is
+currently consumed only by routing; it is **not** exported to cortex's
+Prometheus surface, and neuron has no `/metrics` endpoint. Nor is live
+tok/s aggregated (per-request `FinishTiming` goes to the caller in
+`usage.helexa_timing` only) or `max_in_flight` advertised. Closing this
+(export the polled load, advertise the ceiling, roll up tok/s, count
+rejections) is tracked separately — it is a plumbing gap, not a
+measurement one, since the signals already exist in memory.
