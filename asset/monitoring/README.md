@@ -10,10 +10,11 @@ bench UI shows.
   Prometheus target — it exposes every `cortex_*` metric on `:31314`, already
   labelled by `{node,model}` / `{node,device}` from its neuron poller. neuron
   has no `/metrics` endpoint.
-- **Prometheus + Grafana** run on `golgafrinchans.kosherinata.internal`
-  (Prometheus is a podman quadlet, config bind-mounted at
-  `/etc/prometheus/prometheus.yml`, `--web.enable-lifecycle` on). Its mesh IP
-  toward hanzalova is `10.3.101.4`.
+- **Prometheus + Grafana** run on `golgafrinchans.kosherinata.internal` as
+  podman quadlets. Host ports (from the registered band — 9090 is Cockpit,
+  3000 was avoided): **Prometheus `:26559`** (container config bind-mounted at
+  `/etc/prometheus/prometheus.yml`, `--web.enable-lifecycle` on), **Grafana
+  `:28767`**. Its mesh IP toward hanzalova is `10.3.101.4`.
 
 ## Apply (three steps, in order)
 
@@ -34,9 +35,9 @@ Append `prometheus-cortex.scrape.yml` into the `scrape_configs:` list of
 then hot-reload (no restart, lifecycle API is enabled):
 
 ```sh
-curl -X POST http://localhost:9090/-/reload
+curl -X POST http://localhost:26559/-/reload
 # verify the target is UP:
-curl -s 'http://localhost:9090/api/v1/targets' | jq '.data.activeTargets[]|select(.labels.job=="cortex")|{health,lastError}'
+curl -s 'http://localhost:26559/api/v1/targets' | jq '.data.activeTargets[]|select(.labels.job=="cortex")|{health,lastError}'
 ```
 
 ### 3. Import the dashboard
@@ -46,13 +47,14 @@ template variable, so it binds to whichever Prometheus data source you pick
 at import. Import via the API (creds in `/etc/grafana/grafana.env`):
 
 ```sh
-# on golgafrinchans, GF_SECURITY_ADMIN_USER/PASSWORD live in the env file
-set -a; . /etc/grafana/grafana.env; set +a
+# on golgafrinchans; GF_SECURITY_ADMIN_USER/PASSWORD live in the root-only
+# env file, Grafana is published on :28767
+set -a; source <(sudo cat /etc/grafana/grafana.env); set +a
 jq -n --slurpfile d grafana-helexa-fleet.json \
   '{dashboard: $d[0], overwrite: true, folderUid: null}' \
 | curl -s -u "$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD" \
     -H 'Content-Type: application/json' \
-    -d @- http://localhost:3000/api/dashboards/db | jq '{status,uid,version}'
+    -d @- http://localhost:28767/api/dashboards/db | jq '{status,uid,version}'
 ```
 
 The dashboard lands at uid `helexa-fleet`. Re-importing with `overwrite:true`
