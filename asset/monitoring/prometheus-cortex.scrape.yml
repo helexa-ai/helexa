@@ -1,0 +1,27 @@
+# helexa cortex gateway scrape job — append into the `scrape_configs:` list
+# of /etc/prometheus/prometheus.yml on golgafrinchans.kosherinata.internal,
+# then reload (Prometheus is published on host port 26559, NOT 9090 — 9090 is
+# Cockpit on that box):  curl -X POST http://localhost:26559/-/reload
+#
+# cortex runs on hanzalova.internal (10.6.0.46) and exposes ALL fleet metrics
+# on :31314 — it is the only Prometheus target in the stack (neuron has no
+# /metrics; cortex's poller already relabels everything by {node,model} /
+# {node,device}). Reaching it cross-DC (kosherinata -> hanzalova) requires the
+# firewalld rule in asset/monitoring/firewalld-cortex-metrics.sh, which opens
+# :31314 to this host's mesh IP (10.3.101.4) only.
+#
+# Metrics exposed here include (see #137):
+#   cortex_model_in_flight / _queue_depth / _max_in_flight / _max_queue_depth
+#   cortex_model_tok_s_decode / _tok_s_prefill
+#   cortex_model_rejections_total{reason=queue_full|wait_timeout|per_principal}
+#   cortex_device_vram_used_mb / _vram_free_mb / _utilization_pct / _temp_c
+#   cortex_requests_total / _request_errors_total / _cold_starts_total
+#   cortex_request_duration_seconds / _time_to_first_token_seconds (histograms)
+#   cortex_prompt_tokens_total / _completion_tokens_total / cortex_spend_*
+- job_name: cortex
+  # cortex refreshes the load/device gauges from each neuron's /health on a
+  # ~10s poll; 15s scrape (the global default) tracks it without aliasing.
+  static_configs:
+    - targets: ['hanzalova.internal:31314']
+      labels:
+        fleet: hanzalova

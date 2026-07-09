@@ -1,0 +1,149 @@
+{
+  "uid": "helexa-fleet",
+  "title": "helexa fleet — capacity & throughput",
+  "tags": ["helexa", "cortex", "capacity"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-3h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "label": "Prometheus",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0
+      },
+      {
+        "name": "node",
+        "label": "neuron",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(cortex_model_max_in_flight, node)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "model",
+        "label": "model",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(cortex_model_max_in_flight{node=~\"$node\"}, model)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    { "id": 1, "type": "row", "title": "Capacity & saturation", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 } },
+    {
+      "id": 2, "type": "timeseries", "title": "Saturation %  (in_flight ÷ max_in_flight)",
+      "description": "How full each neuron:model is against its admission ceiling. 100% = every slot busy; sustained >100% headroom pressure means it's about to queue/shed.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 70 }, { "color": "red", "value": 90 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "100 * cortex_model_in_flight{node=~\"$node\", model=~\"$model\"} / clamp_min(cortex_model_max_in_flight{node=~\"$node\", model=~\"$model\"}, 1)", "legendFormat": "{{node}} · {{model}}" } ]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "In-flight vs ceiling",
+      "description": "Live concurrent requests (in_flight) against the configured max_in_flight ceiling.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [ { "matcher": { "id": "byRegexp", "options": ".*ceiling.*" }, "properties": [ { "id": "custom.lineStyle", "value": { "dash": [8, 6], "fill": "dash" } }, { "id": "custom.fillOpacity", "value": 0 } ] } ] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_model_in_flight{node=~\"$node\", model=~\"$model\"}", "legendFormat": "{{node}} · {{model}}" }, { "refId": "B", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_model_max_in_flight{node=~\"$node\", model=~\"$model\"}", "legendFormat": "{{node}} · {{model}} ceiling" } ]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "Queue depth",
+      "description": "Requests waiting in admission beyond the in-flight slots — the backpressure building before rejection.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_model_queue_depth{node=~\"$node\", model=~\"$model\"}", "legendFormat": "{{node}} · {{model}}" } ]
+    },
+    { "id": 10, "type": "row", "title": "Throughput", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 } },
+    {
+      "id": 11, "type": "timeseries", "title": "Decode tok/s  (generation throughput)",
+      "description": "Live decode tokens/sec EMA per neuron:model — the revenue-capacity number. Honest under batch concurrency (folded in at every serving finish site).",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never", "axisLabel": "tok/s" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "mean", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_model_tok_s_decode{node=~\"$node\", model=~\"$model\"}", "legendFormat": "{{node}} · {{model}}" } ]
+    },
+    {
+      "id": 12, "type": "timeseries", "title": "Prefill tok/s  (prompt-processing throughput)",
+      "description": "Live prefill tokens/sec EMA per neuron:model.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "none", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never", "axisLabel": "tok/s" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "mean", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_model_tok_s_prefill{node=~\"$node\", model=~\"$model\"}", "legendFormat": "{{node}} · {{model}}" } ]
+    },
+    { "id": 20, "type": "row", "title": "Backpressure & traffic", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 } },
+    {
+      "id": 21, "type": "timeseries", "title": "Rejection rate by reason  (load shedding)",
+      "description": "rate() of admission rejections. Any sustained non-zero here means the neuron:model is turning work away — queue_full/wait_timeout = at capacity, per_principal = a client hit its fair-share cap.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "custom": { "fillOpacity": 15, "showPoints": "never", "stacking": { "mode": "normal" } } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "sum"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by (node, model, reason) (rate(cortex_model_rejections_total{node=~\"$node\", model=~\"$model\"}[5m]))", "legendFormat": "{{node}} · {{model}} · {{reason}}" } ]
+    },
+    {
+      "id": 22, "type": "timeseries", "title": "Request & error rate",
+      "description": "Proxied request rate and error rate per neuron:model.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [ { "matcher": { "id": "byRegexp", "options": ".*error.*" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } } ] } ] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by (node, model) (rate(cortex_requests_total{node=~\"$node\", model=~\"$model\"}[5m]))", "legendFormat": "{{node}} · {{model}}" }, { "refId": "B", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by (node, model) (rate(cortex_request_errors_total{node=~\"$node\", model=~\"$model\"}[5m]))", "legendFormat": "{{node}} · {{model}} error" } ]
+    },
+    {
+      "id": 23, "type": "timeseries", "title": "TTFT p95 / p50",
+      "description": "Time-to-first-token latency percentiles from the request histogram.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 19 },
+      "fieldConfig": { "defaults": { "unit": "s", "min": 0, "custom": { "fillOpacity": 0, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "histogram_quantile(0.95, sum by (le, node, model) (rate(cortex_time_to_first_token_seconds_bucket{node=~\"$node\", model=~\"$model\"}[5m])))", "legendFormat": "p95 {{node}} · {{model}}" }, { "refId": "B", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "histogram_quantile(0.50, sum by (le, node, model) (rate(cortex_time_to_first_token_seconds_bucket{node=~\"$node\", model=~\"$model\"}[5m])))", "legendFormat": "p50 {{node}} · {{model}}" } ]
+    },
+    { "id": 30, "type": "row", "title": "GPU health", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 } },
+    {
+      "id": 31, "type": "timeseries", "title": "VRAM used per device",
+      "description": "Per-device VRAM used (MB). Pair with free to see headroom for loading bigger models.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "decmbytes", "min": 0, "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_device_vram_used_mb{node=~\"$node\"}", "legendFormat": "{{node}} · gpu{{device}}" } ]
+    },
+    {
+      "id": 32, "type": "timeseries", "title": "GPU utilization %",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "percent", "min": 0, "max": 100, "custom": { "fillOpacity": 10, "showPoints": "never" } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "mean"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_device_utilization_pct{node=~\"$node\"}", "legendFormat": "{{node}} · gpu{{device}}" } ]
+    },
+    {
+      "id": 33, "type": "timeseries", "title": "GPU temperature °C",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 28 },
+      "fieldConfig": { "defaults": { "unit": "celsius", "min": 0, "custom": { "fillOpacity": 0, "showPoints": "never" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 75 }, { "color": "red", "value": 87 } ] } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [ { "refId": "A", "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "cortex_device_temp_c{node=~\"$node\"}", "legendFormat": "{{node}} · gpu{{device}}" } ]
+    }
+  ]
+}
