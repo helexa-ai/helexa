@@ -3,7 +3,7 @@
 //! doc: engine, model, prompt tok, TTFT (s), decode tok/s, total (s),
 //! plus the build SHA each cell was measured against.
 
-use crate::store::{CapabilityRun, ReportRow, ScalingCurve, SwapCost};
+use crate::store::{CapabilityRun, ConcurrencyCurve, ReportRow, ScalingCurve, SwapCost};
 use anyhow::Result;
 
 pub fn render_markdown(rows: &[ReportRow]) -> String {
@@ -133,6 +133,58 @@ pub fn render_scaling_markdown(curves: &[ScalingCurve]) -> String {
 }
 
 pub fn render_scaling_json(curves: &[ScalingCurve]) -> Result<String> {
+    Ok(serde_json::to_string_pretty(curves)?)
+}
+
+/// Concurrency-sweep view (#137): one block per (target, model) with the
+/// throughput / latency-tail / shedding curve across burst widths, then the
+/// knee — the max sustainable concurrency, the data-backed `max_in_flight`.
+pub fn render_concurrency_markdown(curves: &[ConcurrencyCurve]) -> String {
+    let mut out = String::new();
+    for c in curves {
+        let gpu = c.gpu.as_deref().unwrap_or("");
+        out.push_str(&format!(
+            "### {} · {}  (`{}`{})\n\n",
+            c.target_name,
+            c.model_id,
+            c.git_sha,
+            if gpu.is_empty() {
+                String::new()
+            } else {
+                format!(", {gpu}")
+            },
+        ));
+        out.push_str("| N | decode tok/s | p95 TTFT (s) | queue wait (ms) | reject % | n |\n");
+        out.push_str("|---:|---:|---:|---:|---:|---:|\n");
+        for p in &c.points {
+            let reject = p
+                .reject_rate
+                .map(|r| format!("{:.0}%", r * 100.0))
+                .unwrap_or_else(|| "—".into());
+            out.push_str(&format!(
+                "| {} | {} | {} | {} | {} | {} |\n",
+                p.concurrency,
+                fmt_opt(p.decode_tps, 1),
+                fmt_opt(p.ttft_p95_s, 2),
+                fmt_opt(p.queue_wait_ms, 0),
+                reject,
+                p.samples,
+            ));
+        }
+        match c.knee_concurrency {
+            Some(k) => out.push_str(&format!(
+                "\nmax sustainable concurrency: **{k}** \
+                 (no shedding, p95 TTFT within 2× of the lightest-load baseline)\n\n",
+            )),
+            None => out.push_str(
+                "\nmax sustainable concurrency: — (sheds or breaks even at the lightest level)\n\n",
+            ),
+        }
+    }
+    out
+}
+
+pub fn render_concurrency_json(curves: &[ConcurrencyCurve]) -> Result<String> {
     Ok(serde_json::to_string_pretty(curves)?)
 }
 

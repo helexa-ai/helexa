@@ -32,10 +32,13 @@ prompt_sizes = [128, 4096]
 max_tokens = 256
 # Concurrency / agentic-load scenarios (#89): one concurrency:<n> scenario
 # per level, each firing N simultaneous streams to characterize the real
-# a0/hermes/opencode fan-out. Empty by default — enable deliberately, since
-# a burst puts genuine simultaneous load on the serving fleet.
-# concurrency_levels = [2, 4, 8]
-# concurrency_prompt_tokens = 512
+# a0/hermes/opencode fan-out. Enable deliberately — a burst puts genuine
+# simultaneous load on the serving fleet. Bracket the model's max_in_flight
+# (beast serves 8) so `helexa-bench report --concurrency` (or GET
+# /api/concurrency) can locate the sustainable-concurrency knee (#137): the
+# highest N before the model sheds load or its p95 TTFT tail breaks.
+concurrency_levels = [1, 2, 4, 8, 16]
+concurrency_prompt_tokens = 512
 
 # Capability probes (#91): each runs a fixed prompt and stores the full
 # output for quality scoring — the reasoning/planning axis the speed

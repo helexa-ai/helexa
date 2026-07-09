@@ -94,6 +94,11 @@ enum Command {
         /// scores, with per-model median.
         #[arg(long)]
         capability: bool,
+        /// Render the concurrency-sweep view (#137): throughput / p95 TTFT /
+        /// reject-rate across burst widths per model, with the sustainable-
+        /// concurrency knee.
+        #[arg(long)]
+        concurrency: bool,
     },
 }
 
@@ -205,6 +210,7 @@ async fn run(cli: Cli) -> Result<()> {
             scaling,
             swap,
             capability,
+            concurrency,
         } => {
             let db_path = match db {
                 Some(p) => p,
@@ -216,6 +222,12 @@ async fn run(cli: Cli) -> Result<()> {
                 match format {
                     Format::Md => report::render_capability_markdown(&runs),
                     Format::Json => report::render_capability_json(&runs)?,
+                }
+            } else if concurrency {
+                let curves = store.concurrency()?;
+                match format {
+                    Format::Md => report::render_concurrency_markdown(&curves),
+                    Format::Json => report::render_concurrency_json(&curves)?,
                 }
             } else if swap {
                 let costs = store.swap_costs()?;
