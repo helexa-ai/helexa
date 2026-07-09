@@ -109,6 +109,16 @@ pub struct ModelLoad {
     /// (#54/#137). `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub rejected_per_principal: u64,
+    /// Live prefill throughput EMA in tokens/sec (#137) — prompt tokens
+    /// processed per second. `0.0` before the first sample. `#[serde(default)]`
+    /// for back-compat with pre-#137 neurons.
+    #[serde(default)]
+    pub tok_s_prefill: f64,
+    /// Live decode throughput EMA in tokens/sec (#137) — generation tokens
+    /// per second, the headline capacity number. `0.0` before the first
+    /// sample. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub tok_s_decode: f64,
 }
 
 #[cfg(test)]
@@ -140,6 +150,8 @@ mod health_load_tests {
                 rejected_queue_full: 0,
                 rejected_timeout: 0,
                 rejected_per_principal: 0,
+                tok_s_prefill: 0.0,
+                tok_s_decode: 0.0,
             }],
         };
         let s = serde_json::to_string(&resp).unwrap();

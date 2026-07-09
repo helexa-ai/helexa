@@ -29,61 +29,100 @@ use cortex_core::harness::ModelLimit;
 
 use crate::config::ContextLimitConfig;
 
-/// EMA smoothing factor for the prefill-rate sample. Low enough that one
+/// EMA smoothing factor for a throughput sample. Low enough that one
 /// anomalous turn (a contended GPU, a cold cache) doesn't swing the
-/// advertised limit, high enough to track a real shift (e.g. prefix
-/// caching, #11, dropping effective prefill cost) within a few turns.
-const PREFILL_EMA_ALPHA: f64 = 0.3;
+/// advertised limit / published rate, high enough to track a real shift
+/// (e.g. prefix caching, #11, dropping effective prefill cost) within a
+/// few turns.
+const RATE_EMA_ALPHA: f64 = 0.3;
 
-/// Self-measured prefill throughput for one loaded model, as an
-/// exponential moving average of tokens/sec (#67). Updated at the end of
-/// each streaming request's prefill phase, read when deriving the
-/// throughput ceiling. Lock-free: prefill is serialised per model (the
-/// `inference_lock`), and the limit reader only needs a recent value.
-/// Stores the f64 rate as raw bits; `0` means "no sample yet" → callers
-/// fall back to the configured bootstrap estimate.
-#[derive(Debug)]
-pub struct PrefillRateEma {
-    bits: AtomicU64,
+/// Fold one throughput sample (`tokens` in `elapsed`) into the EMA held in
+/// `bits`. No-op for degenerate inputs so a probe request or a clock blip
+/// can't poison the average.
+fn fold_rate(bits: &AtomicU64, tokens: usize, elapsed: Duration) {
+    let secs = elapsed.as_secs_f64();
+    if tokens == 0 || secs <= 0.0 {
+        return;
+    }
+    let sample = tokens as f64 / secs;
+    if !sample.is_finite() || sample <= 0.0 {
+        return;
+    }
+    let prev = f64::from_bits(bits.load(Ordering::Acquire));
+    let next = if prev > 0.0 {
+        RATE_EMA_ALPHA * sample + (1.0 - RATE_EMA_ALPHA) * prev
+    } else {
+        sample
+    };
+    bits.store(next.to_bits(), Ordering::Release);
 }
 
-impl PrefillRateEma {
+/// Read a rate EMA, or `None` before the first sample lands.
+fn read_rate(bits: &AtomicU64) -> Option<f64> {
+    let v = f64::from_bits(bits.load(Ordering::Acquire));
+    (v.is_finite() && v > 0.0).then_some(v)
+}
+
+/// Self-measured throughput for one loaded model, as exponential moving
+/// averages of tokens/sec. Tracks the two phases the client can't tell
+/// apart from chunk-arrival timing:
+///
+/// - **prefill** (#67) — prompt tokens/sec, read when deriving the context
+///   throughput ceiling;
+/// - **decode** (#137) — generation tokens/sec, the live throughput number
+///   cortex publishes for capacity planning.
+///
+/// Updated at the end of each request's respective phase, read by the
+/// context-limit deriver and by `/health`. Lock-free: each phase is
+/// serialised per model and readers only need a recent value. Each rate is
+/// stored as raw f64 bits; `0` means "no sample yet".
+///
+/// The [`PrefillRateEma`] alias preserves the pre-#137 name at the many
+/// prefill call sites; the type now carries decode too.
+#[derive(Debug)]
+pub struct ThroughputEma {
+    prefill_bits: AtomicU64,
+    decode_bits: AtomicU64,
+}
+
+/// Legacy name for [`ThroughputEma`] — kept so the prefill call sites
+/// (context-limit derivation, load paths) read unchanged.
+pub type PrefillRateEma = ThroughputEma;
+
+impl ThroughputEma {
     pub const fn new() -> Self {
         Self {
-            bits: AtomicU64::new(0),
+            prefill_bits: AtomicU64::new(0),
+            decode_bits: AtomicU64::new(0),
         }
     }
 
     /// Fold one prefill measurement (`prompt_tokens` processed in
-    /// `elapsed`) into the EMA. No-op for degenerate inputs so a probe
-    /// request or a clock blip can't poison the average.
+    /// `elapsed`) into the prefill EMA.
     pub fn record(&self, prompt_tokens: usize, elapsed: Duration) {
-        let secs = elapsed.as_secs_f64();
-        if prompt_tokens == 0 || secs <= 0.0 {
-            return;
-        }
-        let sample = prompt_tokens as f64 / secs;
-        if !sample.is_finite() || sample <= 0.0 {
-            return;
-        }
-        let prev = f64::from_bits(self.bits.load(Ordering::Acquire));
-        let next = if prev > 0.0 {
-            PREFILL_EMA_ALPHA * sample + (1.0 - PREFILL_EMA_ALPHA) * prev
-        } else {
-            sample
-        };
-        self.bits.store(next.to_bits(), Ordering::Release);
+        fold_rate(&self.prefill_bits, prompt_tokens, elapsed);
     }
 
-    /// The current measured rate (tokens/sec), or `None` before the
-    /// first sample lands.
+    /// The current prefill rate (tokens/sec), or `None` before the first
+    /// sample.
     pub fn get(&self) -> Option<f64> {
-        let v = f64::from_bits(self.bits.load(Ordering::Acquire));
-        (v.is_finite() && v > 0.0).then_some(v)
+        read_rate(&self.prefill_bits)
+    }
+
+    /// Fold one decode measurement (`completion_tokens` generated in
+    /// `elapsed`) into the decode EMA (#137).
+    pub fn record_decode(&self, completion_tokens: usize, elapsed: Duration) {
+        fold_rate(&self.decode_bits, completion_tokens, elapsed);
+    }
+
+    /// The current decode rate (tokens/sec), or `None` before the first
+    /// sample (#137).
+    pub fn decode(&self) -> Option<f64> {
+        read_rate(&self.decode_bits)
     }
 }
 
-impl Default for PrefillRateEma {
+impl Default for ThroughputEma {
     fn default() -> Self {
         Self::new()
     }
@@ -368,6 +407,27 @@ mod tests {
         // 0.3*2000 + 0.7*1000 = 1300.
         ema.record(2000, Duration::from_secs(1));
         assert!((ema.get().unwrap() - 1300.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn decode_ema_is_independent_of_prefill() {
+        // #137: decode throughput tracks separately from prefill and both
+        // ignore degenerate samples.
+        let ema = ThroughputEma::new();
+        assert_eq!(ema.decode(), None);
+        ema.record_decode(50, Duration::from_secs(1));
+        assert_eq!(ema.decode(), Some(50.0));
+        // Recording prefill doesn't touch decode, and vice versa.
+        ema.record(1000, Duration::from_secs(1));
+        assert_eq!(ema.decode(), Some(50.0));
+        assert_eq!(ema.get(), Some(1000.0));
+        // Degenerate decode samples are ignored.
+        ema.record_decode(0, Duration::from_secs(1));
+        ema.record_decode(50, Duration::from_secs(0));
+        assert_eq!(ema.decode(), Some(50.0));
+        // Smoothing: 0.3*100 + 0.7*50 = 65.
+        ema.record_decode(100, Duration::from_secs(1));
+        assert!((ema.decode().unwrap() - 65.0).abs() < 1e-6);
     }
 
     #[test]

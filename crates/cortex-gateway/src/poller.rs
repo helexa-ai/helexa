@@ -257,6 +257,12 @@ fn export_health_metrics(node: &str, h: &HealthResponse) {
             gauge!("cortex_model_max_queue_depth", "node" => node.to_string(), "model" => m.id.clone())
                 .set(m.max_queue_depth as f64);
         }
+        // Live throughput EMAs (#137) — decode tok/s is the headline
+        // capacity number. Emitted unconditionally (0.0 = no sample yet).
+        gauge!("cortex_model_tok_s_prefill", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.tok_s_prefill);
+        gauge!("cortex_model_tok_s_decode", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.tok_s_decode);
         // Cumulative rejections by reason (#137) — the shedding signal.
         // Neuron reports counts-since-load; `.absolute` mirrors them onto a
         // counter (a model reload resets to 0, which Prometheus reads as a

@@ -50,6 +50,8 @@ async fn seed_loaded(fleet: &CortexState, node: &str, in_flight: usize, queue_de
             rejected_queue_full: 0,
             rejected_timeout: 0,
             rejected_per_principal: 0,
+            tok_s_prefill: 0.0,
+            tok_s_decode: 0.0,
         },
     );
 }

@@ -139,7 +139,8 @@ async fn test_capacity_gauges_exported_from_health_poll() {
             {"id": "test-model", "in_flight": 3, "queue_depth": 2,
              "max_in_flight": 8, "max_queue_depth": 8,
              "rejected_queue_full": 5, "rejected_timeout": 1,
-             "rejected_per_principal": 0}
+             "rejected_per_principal": 0,
+             "tok_s_prefill": 950.0, "tok_s_decode": 47.5}
         ]
     });
     let mock_url = common::spawn_mock_neuron_with_models_and_health(
@@ -218,5 +219,14 @@ async fn test_capacity_gauges_exported_from_health_poll() {
     assert_eq!(
         gauge_value("cortex_model_rejections_total", r#"reason="wait_timeout""#),
         1.0
+    );
+    // Live throughput — the headline capacity number.
+    assert_eq!(
+        gauge_value("cortex_model_tok_s_decode", r#"model="test-model""#),
+        47.5
+    );
+    assert_eq!(
+        gauge_value("cortex_model_tok_s_prefill", r#"model="test-model""#),
+        950.0
     );
 }

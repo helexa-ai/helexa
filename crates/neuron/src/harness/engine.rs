@@ -576,7 +576,7 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
                 }
             };
             if Some(nt) == slot.eos_id {
-                finish_slot(slot, FinishReason::Stop).await;
+                finish_slot(slot, FinishReason::Stop, active_rate(&cfg, sess)).await;
                 continue;
             }
             slot.generated.push(nt);
@@ -588,7 +588,7 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
                 continue;
             }
             if slot.generated.len() >= slot.max_new {
-                finish_slot(slot, FinishReason::Length).await;
+                finish_slot(slot, FinishReason::Length, active_rate(&cfg, sess)).await;
             }
         }
         if let Some(e) = fatal {
@@ -600,10 +600,27 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
     tracing::info!(model = %cfg.model_id, "batch engine stopped");
 }
 
+/// The model's throughput tracker for the active backend/session — the
+/// same object read by `/health` (#137). Single keeps it in the backend
+/// config; TP keeps it on the shared `TpLoadedModel`.
+fn active_rate<'a>(cfg: &'a EngineConfig, session: &'a ActiveSession) -> &'a PrefillRateEma {
+    match session {
+        #[cfg(feature = "cuda")]
+        ActiveSession::Tp { tp, .. } => &tp.prefill_rate,
+        _ => match &cfg.backend {
+            BackendConfig::Single { prefill_rate, .. } => prefill_rate,
+            #[cfg(feature = "cuda")]
+            _ => unreachable!("non-Single backend with a Single session"),
+        },
+    }
+}
+
 /// Emit the slot's Finish through its router and mark it for
-/// compaction.
-async fn finish_slot(slot: &mut Slot, reason: FinishReason) {
+/// compaction. Folds this sequence's decode throughput into the model's
+/// tracker (#137) before routing the Finish.
+async fn finish_slot(slot: &mut Slot, reason: FinishReason, rate: &PrefillRateEma) {
     slot.finish(reason);
+    rate.record_decode(slot.generated.len(), slot.decode_start.elapsed());
     let _ = slot
         .router
         .send(RouterMsg::Finish {
@@ -832,7 +849,7 @@ async fn prefill_join(
         } else {
             FinishReason::Stop
         };
-        finish_slot(&mut slot, reason).await;
+        finish_slot(&mut slot, reason, active_rate(cfg, session)).await;
         return Ok(None);
     }
     slot.generated.push(first);
@@ -840,7 +857,7 @@ async fn prefill_join(
         return Ok(None); // consumer already gone
     }
     if slot.generated.len() >= slot.max_new {
-        finish_slot(&mut slot, FinishReason::Length).await;
+        finish_slot(&mut slot, FinishReason::Length, active_rate(cfg, session)).await;
         return Ok(None);
     }
 

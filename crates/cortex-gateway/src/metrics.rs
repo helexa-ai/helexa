@@ -113,4 +113,12 @@ fn describe_metrics() {
         "cortex_model_rejections_total",
         "Admission rejections per neuron:model by reason: queue_full / wait_timeout / per_principal — the load-shedding signal (#137)"
     );
+    metrics::describe_gauge!(
+        "cortex_model_tok_s_decode",
+        "Live decode throughput per neuron:model, tokens/sec EMA — the headline capacity number (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_tok_s_prefill",
+        "Live prefill throughput per neuron:model, tokens/sec EMA (#137)"
+    );
 }
