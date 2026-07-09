@@ -85,6 +85,17 @@ pub struct ModelLoad {
     pub in_flight: usize,
     /// Requests waiting in the bounded admission queue.
     pub queue_depth: usize,
+    /// Admission concurrency ceiling (#137) — the denominator for
+    /// saturation = `in_flight / max_in_flight`. `#[serde(default)]` (→ 0)
+    /// for pre-#137 neurons; cortex treats 0 as "unknown" and skips the
+    /// ceiling gauge so a rolling deploy doesn't publish a bogus 0.
+    #[serde(default)]
+    pub max_in_flight: usize,
+    /// Admission queue capacity (#137): how many requests may wait beyond
+    /// the in-flight slots before the model sheds load. `#[serde(default)]`
+    /// for back-compat with pre-#137 neurons.
+    #[serde(default)]
+    pub max_queue_depth: usize,
 }
 
 #[cfg(test)]
@@ -111,6 +122,8 @@ mod health_load_tests {
                 id: "Qwen/Qwen3.6-27B".into(),
                 in_flight: 1,
                 queue_depth: 3,
+                max_in_flight: 8,
+                max_queue_depth: 8,
             }],
         };
         let s = serde_json::to_string(&resp).unwrap();
@@ -118,6 +131,19 @@ mod health_load_tests {
         assert_eq!(back.models.len(), 1);
         assert_eq!(back.models[0].in_flight, 1);
         assert_eq!(back.models[0].queue_depth, 3);
+        assert_eq!(back.models[0].max_in_flight, 8);
+        assert_eq!(back.models[0].max_queue_depth, 8);
+    }
+
+    #[test]
+    fn model_load_without_ceiling_fields_defaults_to_zero() {
+        // A pre-#137 neuron omits max_in_flight/max_queue_depth; cortex must
+        // still parse (serde default → 0, treated as "unknown").
+        let json = r#"{"id":"m","in_flight":2,"queue_depth":0}"#;
+        let m: ModelLoad = serde_json::from_str(json).expect("back-compat parse");
+        assert_eq!(m.in_flight, 2);
+        assert_eq!(m.max_in_flight, 0);
+        assert_eq!(m.max_queue_depth, 0);
     }
 }
 

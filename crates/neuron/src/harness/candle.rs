@@ -159,6 +159,17 @@ impl LoadedHandle {
         }
     }
 
+    /// Configured admission ceiling (#137): `(max_in_flight, max_queue_depth)`.
+    /// The saturation denominator + burst capacity, advertised on `/health`
+    /// so cortex can publish `in_flight / max_in_flight` without guessing.
+    pub fn capacity(&self) -> (usize, usize) {
+        match self {
+            LoadedHandle::Single(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+        }
+    }
+
     /// Modalities the loaded model supports. Stage B7 (single-GPU) +
     /// TP-vision (#12) — both single-GPU and TP loads advertise
     /// `"vision"` when a replicated vision tower materialised.
@@ -3108,10 +3119,13 @@ impl CandleHarness {
             .values()
             .map(|handle| {
                 let (in_flight, queue_depth) = handle.load();
+                let (max_in_flight, max_queue_depth) = handle.capacity();
                 cortex_core::discovery::ModelLoad {
                     id: handle.model_id().to_string(),
                     in_flight,
                     queue_depth,
+                    max_in_flight,
+                    max_queue_depth,
                 }
             })
             .collect()

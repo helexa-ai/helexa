@@ -161,6 +161,20 @@ impl AdmissionController {
         pending.saturating_sub(self.in_flight())
     }
 
+    /// Configured concurrency ceiling (#137) — the saturation denominator
+    /// (`in_flight / max_in_flight`). Reflects the clamped value (min 1).
+    pub fn max_in_flight(&self) -> usize {
+        self.max_in_flight
+    }
+
+    /// Configured admission queue capacity (#137): waiters allowed beyond the
+    /// in-flight slots before the model sheds load. Derived from `max_pending`
+    /// (`max_in_flight + max_queue_depth`) so it stays consistent with the
+    /// rejection threshold.
+    pub fn max_queue_depth(&self) -> usize {
+        self.max_pending.saturating_sub(self.max_in_flight)
+    }
+
     /// Rough `Retry-After`: scale with how backed-up the model is, clamped to
     /// a sane band. Without per-request timing this is a heuristic, but it
     /// gives well-behaved clients (opencode/AI SDK) a sensible backoff.

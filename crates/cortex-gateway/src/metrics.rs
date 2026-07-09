@@ -75,4 +75,38 @@ fn describe_metrics() {
         "cortex_spend_completion_tokens_total",
         "Metered completion tokens per principal, labelled by account/key (#51)"
     );
+    // Live capacity signals polled from neuron /health (#137), {node,model}.
+    metrics::describe_gauge!(
+        "cortex_model_in_flight",
+        "Requests currently running on a neuron:model (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_queue_depth",
+        "Requests queued in admission for a neuron:model (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_max_in_flight",
+        "Configured concurrency ceiling; saturation = in_flight / max_in_flight (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_max_queue_depth",
+        "Configured admission queue capacity before a neuron:model sheds load (#137)"
+    );
+    // Per-device GPU headroom polled from neuron /health (#137), {node,device}.
+    metrics::describe_gauge!(
+        "cortex_device_vram_used_mb",
+        "Per-device VRAM used, MB (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_device_vram_free_mb",
+        "Per-device VRAM free, MB (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_device_utilization_pct",
+        "Per-device GPU utilization, percent (#137)"
+    );
+    metrics::describe_gauge!(
+        "cortex_device_temp_c",
+        "Per-device GPU temperature, Celsius (#137)"
+    );
 }
