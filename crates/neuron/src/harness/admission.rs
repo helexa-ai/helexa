@@ -22,6 +22,7 @@
 
 use crate::config::AdmissionConfig;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
@@ -51,6 +52,26 @@ impl AdmissionRejection {
     }
 }
 
+/// Monotonic per-reason rejection tallies (#137), counted since this
+/// controller was created (i.e. since the model last loaded). Lock-free so
+/// `/health` can read them without contending with the admission path.
+#[derive(Default)]
+struct RejectionCounters {
+    queue_full: AtomicU64,
+    timeout: AtomicU64,
+    per_principal: AtomicU64,
+}
+
+/// Snapshot of [`RejectionCounters`] for the `/health` payload — the
+/// definitive "this model is shedding load" signal (#137). Cumulative since
+/// load; cortex publishes each as a Prometheus counter.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RejectionCounts {
+    pub queue_full: u64,
+    pub timeout: u64,
+    pub per_principal: u64,
+}
+
 /// Admission accounting, mutated under a brief lock (never held across an
 /// await). `pending` is queued + in-flight overall; `per_principal` is the
 /// same count keyed by principal for fair-share (#54).
@@ -73,6 +94,7 @@ pub struct AdmissionController {
     max_per_principal: usize,
     max_in_flight: usize,
     max_wait: Duration,
+    rejections: RejectionCounters,
 }
 
 impl AdmissionController {
@@ -86,6 +108,7 @@ impl AdmissionController {
             max_per_principal: cfg.max_per_principal,
             max_in_flight,
             max_wait: Duration::from_secs(cfg.max_wait_secs),
+            rejections: RejectionCounters::default(),
         }
     }
 
@@ -114,6 +137,7 @@ impl AdmissionController {
         let reservation = {
             let mut st = self.state.lock().expect("admission state poisoned");
             if st.pending >= self.max_pending {
+                self.rejections.queue_full.fetch_add(1, Ordering::Relaxed);
                 return Err(AdmissionRejection::QueueFull {
                     retry_after_secs: self.retry_hint(st.pending),
                 });
@@ -122,6 +146,9 @@ impl AdmissionController {
                 && self.max_per_principal > 0
                 && st.per_principal.get(p).copied().unwrap_or(0) >= self.max_per_principal
             {
+                self.rejections
+                    .per_principal
+                    .fetch_add(1, Ordering::Relaxed);
                 return Err(AdmissionRejection::PrincipalCap {
                     retry_after_secs: self.retry_hint(st.pending),
                 });
@@ -143,9 +170,12 @@ impl AdmissionController {
             }),
             // Semaphore is never closed; treat a closed/elapsed wait the
             // same. `reservation` drops here, rolling back the counts.
-            Ok(Err(_)) | Err(_) => Err(AdmissionRejection::Timeout {
-                retry_after_secs: self.retry_hint(self.max_pending),
-            }),
+            Ok(Err(_)) | Err(_) => {
+                self.rejections.timeout.fetch_add(1, Ordering::Relaxed);
+                Err(AdmissionRejection::Timeout {
+                    retry_after_secs: self.retry_hint(self.max_pending),
+                })
+            }
         }
     }
 
@@ -159,6 +189,30 @@ impl AdmissionController {
     pub fn queue_depth(&self) -> usize {
         let pending = self.state.lock().expect("admission state poisoned").pending;
         pending.saturating_sub(self.in_flight())
+    }
+
+    /// Configured concurrency ceiling (#137) — the saturation denominator
+    /// (`in_flight / max_in_flight`). Reflects the clamped value (min 1).
+    pub fn max_in_flight(&self) -> usize {
+        self.max_in_flight
+    }
+
+    /// Configured admission queue capacity (#137): waiters allowed beyond the
+    /// in-flight slots before the model sheds load. Derived from `max_pending`
+    /// (`max_in_flight + max_queue_depth`) so it stays consistent with the
+    /// rejection threshold.
+    pub fn max_queue_depth(&self) -> usize {
+        self.max_pending.saturating_sub(self.max_in_flight)
+    }
+
+    /// Cumulative per-reason rejection tally (#137) since this model loaded —
+    /// the load-shedding signal. Lock-free.
+    pub fn rejections(&self) -> RejectionCounts {
+        RejectionCounts {
+            queue_full: self.rejections.queue_full.load(Ordering::Relaxed),
+            timeout: self.rejections.timeout.load(Ordering::Relaxed),
+            per_principal: self.rejections.per_principal.load(Ordering::Relaxed),
+        }
     }
 
     /// Rough `Retry-After`: scale with how backed-up the model is, clamped to
@@ -258,6 +312,13 @@ mod tests {
         // Release the runner so the parked waiter can proceed and finish.
         drop(_running);
         waiter.await.unwrap().unwrap();
+
+        // #137: the refused request is tallied under queue_full, and only
+        // there — the admitted ones don't touch the counters.
+        let rej = ctrl.rejections();
+        assert_eq!(rej.queue_full, 1);
+        assert_eq!(rej.timeout, 0);
+        assert_eq!(rej.per_principal, 0);
     }
 
     #[tokio::test]

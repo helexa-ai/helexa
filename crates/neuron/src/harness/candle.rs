@@ -159,6 +159,38 @@ impl LoadedHandle {
         }
     }
 
+    /// Configured admission ceiling (#137): `(max_in_flight, max_queue_depth)`.
+    /// The saturation denominator + burst capacity, advertised on `/health`
+    /// so cortex can publish `in_flight / max_in_flight` without guessing.
+    pub fn capacity(&self) -> (usize, usize) {
+        match self {
+            LoadedHandle::Single(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+        }
+    }
+
+    /// Cumulative admission rejections by reason (#137) — the load-shedding
+    /// signal surfaced on `/health`.
+    pub fn rejections(&self) -> super::admission::RejectionCounts {
+        match self {
+            LoadedHandle::Single(m) => m.admission.rejections(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.admission.rejections(),
+        }
+    }
+
+    /// Live throughput EMAs (#137): `(prefill_tok_s, decode_tok_s)`, each
+    /// `0.0` until its phase has a sample.
+    pub fn rates(&self) -> (f64, f64) {
+        let ema: &super::context_limit::ThroughputEma = match self {
+            LoadedHandle::Single(m) => &m.prefill_rate,
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => &m.prefill_rate,
+        };
+        (ema.get().unwrap_or(0.0), ema.decode().unwrap_or(0.0))
+    }
+
     /// Modalities the loaded model supports. Stage B7 (single-GPU) +
     /// TP-vision (#12) — both single-GPU and TP loads advertise
     /// `"vision"` when a replicated vision tower materialised.
@@ -3108,10 +3140,20 @@ impl CandleHarness {
             .values()
             .map(|handle| {
                 let (in_flight, queue_depth) = handle.load();
+                let (max_in_flight, max_queue_depth) = handle.capacity();
+                let rej = handle.rejections();
+                let (tok_s_prefill, tok_s_decode) = handle.rates();
                 cortex_core::discovery::ModelLoad {
                     id: handle.model_id().to_string(),
                     in_flight,
                     queue_depth,
+                    max_in_flight,
+                    max_queue_depth,
+                    rejected_queue_full: rej.queue_full,
+                    rejected_timeout: rej.timeout,
+                    rejected_per_principal: rej.per_principal,
+                    tok_s_prefill,
+                    tok_s_decode,
                 }
             })
             .collect()
@@ -4667,6 +4709,12 @@ impl CandleHarness {
                     finish_reason = FinishReason::ToolCalls;
                 }
                 if failure.is_none() {
+                    // Fold decode throughput into the model tracker (#137).
+                    if let Some(d) = decode_start {
+                        tp_for_task
+                            .prefill_rate
+                            .record_decode(all_tokens.len(), d.elapsed());
+                    }
                     let _ = tx
                         .send(InferenceEvent::Finish {
                             reason: finish_reason,
@@ -6528,6 +6576,8 @@ async fn stream_inference_via_worker(
     if emitted_tool_call && finish_reason == FinishReason::Stop {
         finish_reason = FinishReason::ToolCalls;
     }
+    // Fold this request's decode throughput into the model tracker (#137).
+    prefill_rate.record_decode(all_tokens.len(), decode_start.elapsed());
     let _ = tx
         .send(InferenceEvent::Finish {
             reason: finish_reason,

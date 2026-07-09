@@ -45,6 +45,13 @@ async fn seed_loaded(fleet: &CortexState, node: &str, in_flight: usize, queue_de
             id: "test-model".into(),
             in_flight,
             queue_depth,
+            max_in_flight: 8,
+            max_queue_depth: 8,
+            rejected_queue_full: 0,
+            rejected_timeout: 0,
+            rejected_per_principal: 0,
+            tok_s_prefill: 0.0,
+            tok_s_decode: 0.0,
         },
     );
 }

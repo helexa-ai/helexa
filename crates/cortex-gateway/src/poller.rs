@@ -6,6 +6,7 @@ use chrono::Utc;
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
 use cortex_core::harness::ModelInfo;
 use cortex_core::node::{ModelEntry, ModelStatus, NodeState};
+use metrics::{counter, gauge};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -215,6 +216,12 @@ async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
     };
     match resp.json::<HealthResponse>().await {
         Ok(h) => {
+            // Export the live load + device health to Prometheus (#137).
+            // These values are already in hand from the routing scrape, so
+            // publishing them adds no polling. Emitted as gauges (last-write
+            // wins, refreshed every ~10s poll) outside the state lock.
+            export_health_metrics(name, &h);
+
             let mut nodes = fleet.nodes.write().await;
             if let Some(node) = nodes.get_mut(name) {
                 node.activation = Some(h.activation);
@@ -226,6 +233,60 @@ async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
         Err(e) => {
             tracing::debug!(node = name, error = %e, "failed to parse /health response");
         }
+    }
+}
+
+/// Publish a neuron's `/health` snapshot to Prometheus (#137): live
+/// per-model admission load + configured ceiling, and per-device GPU
+/// headroom. Gauges are `{node,model}` / `{node,device}` labelled to match
+/// the existing `cortex_*` set. Called on every successful poll so values
+/// track the ~10s cadence; a model that unloads simply stops being
+/// refreshed (its last gauge value goes stale — acceptable for the bounded
+/// fleet cardinality here).
+fn export_health_metrics(node: &str, h: &HealthResponse) {
+    for m in &h.models {
+        gauge!("cortex_model_in_flight", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.in_flight as f64);
+        gauge!("cortex_model_queue_depth", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.queue_depth as f64);
+        // Ceiling is the saturation denominator. 0 = pre-#137 neuron that
+        // doesn't advertise it yet — skip rather than publish a bogus 0.
+        if m.max_in_flight > 0 {
+            gauge!("cortex_model_max_in_flight", "node" => node.to_string(), "model" => m.id.clone())
+                .set(m.max_in_flight as f64);
+            gauge!("cortex_model_max_queue_depth", "node" => node.to_string(), "model" => m.id.clone())
+                .set(m.max_queue_depth as f64);
+        }
+        // Live throughput EMAs (#137) — decode tok/s is the headline
+        // capacity number. Emitted unconditionally (0.0 = no sample yet).
+        gauge!("cortex_model_tok_s_prefill", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.tok_s_prefill);
+        gauge!("cortex_model_tok_s_decode", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.tok_s_decode);
+        // Cumulative rejections by reason (#137) — the shedding signal.
+        // Neuron reports counts-since-load; `.absolute` mirrors them onto a
+        // counter (a model reload resets to 0, which Prometheus reads as a
+        // normal counter reset).
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "queue_full")
+        .absolute(m.rejected_queue_full);
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "wait_timeout")
+        .absolute(m.rejected_timeout);
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "per_principal")
+        .absolute(m.rejected_per_principal);
+    }
+    for d in &h.devices {
+        let device = d.index.to_string();
+        gauge!("cortex_device_vram_used_mb", "node" => node.to_string(), "device" => device.clone())
+            .set(d.vram_used_mb as f64);
+        gauge!("cortex_device_vram_free_mb", "node" => node.to_string(), "device" => device.clone())
+            .set(d.vram_free_mb as f64);
+        gauge!("cortex_device_utilization_pct", "node" => node.to_string(), "device" => device.clone())
+            .set(d.utilization_pct as f64);
+        gauge!("cortex_device_temp_c", "node" => node.to_string(), "device" => device.clone())
+            .set(d.temp_c as f64);
     }
 }
 

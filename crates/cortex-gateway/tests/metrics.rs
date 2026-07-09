@@ -119,3 +119,152 @@ async fn test_token_metrics_emitted_for_streamed_request() {
         "completion token counter should include this request's 42.\nMetrics:\n{rendered}"
     );
 }
+
+#[tokio::test]
+async fn test_anthropic_non_streaming_emits_token_metrics() {
+    // #6: the non-streaming Anthropic (/v1/messages) path buffers the whole
+    // response and previously emitted no per-model token/tok-s metrics —
+    // only spend. It must now emit them like the streaming proxy does.
+    let handle = recorder();
+
+    let mock_url = common::spawn_mock_neuron().await;
+    let gw_url = common::spawn_gateway(&mock_url).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{gw_url}/v1/messages"))
+        .header("content-type", "application/json")
+        .json(&json!({
+            "model": "test-model",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hi"}]
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(resp.status(), 200);
+    let _body: serde_json::Value = resp.json().await.unwrap();
+
+    let rendered = handle.render();
+    for needle in [
+        "cortex_prompt_tokens_total",
+        "cortex_completion_tokens_total",
+        "cortex_tokens_per_second",
+    ] {
+        assert!(
+            rendered.contains(needle),
+            "{needle} should be emitted for a non-streaming Anthropic request.\nMetrics:\n{rendered}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_capacity_gauges_exported_from_health_poll() {
+    // #137: the live per-model load and per-device GPU health that cortex
+    // already polls from neuron /health for routing must also be published
+    // as Prometheus gauges, so operators can graph saturation and headroom.
+    let handle = recorder();
+
+    let health = json!({
+        "uptime_secs": 1,
+        "devices": [
+            {"index": 0, "vram_used_mb": 21000, "vram_free_mb": 11000,
+             "utilization_pct": 73, "temp_c": 61}
+        ],
+        "activation": {"state": "ready", "pending": [], "in_progress": null,
+                       "completed": [], "failed": []},
+        "models": [
+            {"id": "test-model", "in_flight": 3, "queue_depth": 2,
+             "max_in_flight": 8, "max_queue_depth": 8,
+             "rejected_queue_full": 5, "rejected_timeout": 1,
+             "rejected_per_principal": 0,
+             "tok_s_prefill": 950.0, "tok_s_decode": 47.5}
+        ]
+    });
+    let mock_url = common::spawn_mock_neuron_with_models_and_health(
+        json!([{"id": "test-model", "harness": "candle", "status": "loaded",
+                "devices": [0], "vram_used_mb": 21000}]),
+        health,
+    )
+    .await;
+
+    let config = cortex_core::config::GatewayConfig {
+        gateway: cortex_core::config::GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: cortex_core::config::EvictionSettings {
+            strategy: cortex_core::config::EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![cortex_core::config::NeuronEndpoint {
+            name: "beast".into(),
+            endpoint: mock_url,
+        }],
+        models_config: "/dev/null".into(),
+        entitlements: Default::default(),
+        upstream: Default::default(),
+    };
+    let fleet = std::sync::Arc::new(cortex_gateway::state::CortexState::from_config(&config));
+    cortex_gateway::poller::poll_once(&fleet).await;
+
+    let rendered = handle.render();
+    for needle in [
+        "cortex_model_in_flight",
+        "cortex_model_queue_depth",
+        "cortex_model_max_in_flight",
+        "cortex_model_max_queue_depth",
+        "cortex_device_vram_used_mb",
+        "cortex_device_vram_free_mb",
+        "cortex_device_utilization_pct",
+        "cortex_device_temp_c",
+    ] {
+        assert!(
+            rendered.contains(needle),
+            "{needle} should be exported after a /health poll.\nMetrics:\n{rendered}"
+        );
+    }
+    // Gauges carry the node/model (and node/device) labels of the poll.
+    let gauge_value = |name: &str, label: &str| -> f64 {
+        rendered
+            .lines()
+            .find(|l| l.starts_with(name) && l.contains(label))
+            .and_then(|l| l.rsplit(' ').next())
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| panic!("{name}{{{label}}} should be present.\nMetrics:\n{rendered}"))
+    };
+    assert_eq!(
+        gauge_value("cortex_model_in_flight", r#"model="test-model""#),
+        3.0
+    );
+    assert_eq!(
+        gauge_value("cortex_model_max_in_flight", r#"model="test-model""#),
+        8.0
+    );
+    assert_eq!(
+        gauge_value("cortex_device_vram_free_mb", r#"device="0""#),
+        11000.0
+    );
+    // Rejections are exported as a counter, keyed by reason.
+    assert!(
+        rendered.contains("cortex_model_rejections_total"),
+        "rejection counter should be exported.\nMetrics:\n{rendered}"
+    );
+    assert_eq!(
+        gauge_value("cortex_model_rejections_total", r#"reason="queue_full""#),
+        5.0
+    );
+    assert_eq!(
+        gauge_value("cortex_model_rejections_total", r#"reason="wait_timeout""#),
+        1.0
+    );
+    // Live throughput — the headline capacity number.
+    assert_eq!(
+        gauge_value("cortex_model_tok_s_decode", r#"model="test-model""#),
+        47.5
+    );
+    assert_eq!(
+        gauge_value("cortex_model_tok_s_prefill", r#"model="test-model""#),
+        950.0
+    );
+}

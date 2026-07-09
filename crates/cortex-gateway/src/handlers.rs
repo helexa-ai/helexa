@@ -469,14 +469,34 @@ async fn anthropic_messages(
 
         metrics::histogram!("cortex_request_duration_seconds", &labels)
             .record(start.elapsed().as_secs_f64());
-        // Settle metering with the upstream usage (#51). Scanned from the
-        // raw body — same engine-truth source as the streaming path — so we
-        // don't depend on the typed usage struct's optionality.
+
+        // Usage scanned from the raw body — engine-truth, same source as the
+        // streaming path — so we don't depend on the typed struct's
+        // optionality. Used for both per-model metrics and metering.
+        let tail = String::from_utf8_lossy(&body_bytes);
+        let prompt_tokens = proxy::last_count_for(&tail, "prompt_tokens");
+        let completion_tokens = proxy::last_count_for(&tail, "completion_tokens");
+
+        // Per-model token + throughput metrics (#6): the non-streaming
+        // Anthropic path buffers the whole body, so it emitted none of the
+        // token/tok-s metrics the streaming proxy does. tok/s is over the
+        // full request duration (a single buffered body has no decode
+        // window), mirroring the streaming path's non-stream fallback.
+        if let Some(prompt) = prompt_tokens {
+            metrics::counter!("cortex_prompt_tokens_total", &labels).increment(prompt);
+        }
+        if let Some(completion) = completion_tokens.filter(|c| *c > 0) {
+            metrics::counter!("cortex_completion_tokens_total", &labels).increment(completion);
+            let secs = start.elapsed().as_secs_f64();
+            if secs > 0.0 {
+                metrics::histogram!("cortex_tokens_per_second", &labels)
+                    .record(completion as f64 / secs);
+            }
+        }
+
+        // Settle metering with the upstream usage (#51).
         if let Some(sink) = usage_sink {
-            let tail = String::from_utf8_lossy(&body_bytes);
-            let prompt = proxy::last_count_for(&tail, "prompt_tokens").unwrap_or(0);
-            let completion = proxy::last_count_for(&tail, "completion_tokens").unwrap_or(0);
-            sink(prompt, completion);
+            sink(prompt_tokens.unwrap_or(0), completion_tokens.unwrap_or(0));
         }
         // Did the model actually produce a structured tool call, or just
         // text? This is the single most useful signal for "is tool
