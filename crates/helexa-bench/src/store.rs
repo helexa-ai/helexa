@@ -431,6 +431,58 @@ impl Store {
         Ok(out)
     }
 
+    /// Concurrency sweep (#137): per (target, model) at the latest build, the
+    /// aggregate serving behaviour across `concurrency:<n>` burst levels, plus
+    /// the derived knee — the max sustainable concurrency before the model
+    /// sheds load or its p95 TTFT tail breaks. The data-backed justification
+    /// for a `max_in_flight` ceiling.
+    pub fn concurrency(&self) -> Result<Vec<ConcurrencyCurve>> {
+        use std::collections::BTreeMap;
+        // Reuse the aggregated report cells; the concurrency:<n> rows are the
+        // per-burst-width measurement points.
+        let mut by_model: BTreeMap<(String, String), Vec<ReportRow>> = BTreeMap::new();
+        for r in self.report_rows()? {
+            if r.scenario_id.starts_with("concurrency:") {
+                by_model
+                    .entry((r.target_name.clone(), r.model_id.clone()))
+                    .or_default()
+                    .push(r);
+            }
+        }
+        let mut out = Vec::new();
+        for ((target_name, model_id), mut rows) in by_model {
+            rows.sort_by_key(|r| r.concurrency.unwrap_or(0));
+            let points: Vec<ConcurrencyPoint> = rows
+                .iter()
+                .map(|r| {
+                    let n = r.concurrency.unwrap_or(0);
+                    let reject_rate = match r.rejected_median {
+                        Some(rej) if n > 0 => Some(rej / n as f64),
+                        _ => None,
+                    };
+                    ConcurrencyPoint {
+                        concurrency: n as u32,
+                        decode_tps: r.decode_tps_median,
+                        ttft_p95_s: r.ttft_p95_load_s,
+                        queue_wait_ms: r.queue_wait_ms_median,
+                        reject_rate,
+                        samples: r.samples,
+                    }
+                })
+                .collect();
+            let knee_concurrency = concurrency_knee(&points);
+            out.push(ConcurrencyCurve {
+                target_name,
+                model_id,
+                git_sha: rows.first().map(|r| r.git_sha.clone()).unwrap_or_default(),
+                gpu: rows.iter().find_map(|r| r.gpu.clone()),
+                points,
+                knee_concurrency,
+            });
+        }
+        Ok(out)
+    }
+
     /// Cold-load / model-swap costs (#90): per (target, model) at the latest
     /// build, the median unload→reload latency and the cold first-request
     /// latency after reload (the `scenario_id = "swap"` rows).
@@ -1007,6 +1059,68 @@ pub struct ScalingPoint {
     pub samples: usize,
 }
 
+/// One point on a concurrency sweep for a (target, model) at its latest
+/// build (#137): the aggregate serving behaviour at `concurrency` N
+/// simultaneous streams.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConcurrencyPoint {
+    /// Burst width — the number of simultaneous streams.
+    pub concurrency: u32,
+    /// Aggregate node throughput (total tokens / burst window), tok/s.
+    pub decode_tps: Option<f64>,
+    /// Within-burst p95 time-to-first-token — where saturation first bites.
+    pub ttft_p95_s: Option<f64>,
+    /// Median admission queue wait, ms.
+    pub queue_wait_ms: Option<f64>,
+    /// Fraction of the burst shed by admission (`rejected / concurrency`).
+    /// `> 0` means the model is at capacity for this N.
+    pub reject_rate: Option<f64>,
+    pub samples: usize,
+}
+
+/// A concurrency sweep for a (target, model) at its latest build (#137):
+/// the points ordered by burst width, plus the derived knee — the highest
+/// concurrency the model sustains before it sheds load or its latency tail
+/// breaks. This is the data-backed justification for a `max_in_flight`
+/// ceiling.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ConcurrencyCurve {
+    pub target_name: String,
+    pub model_id: String,
+    pub git_sha: String,
+    pub gpu: Option<String>,
+    pub points: Vec<ConcurrencyPoint>,
+    /// Max sustainable concurrency: the largest level that shed nothing and
+    /// held p95 TTFT within [`KNEE_TTFT_FACTOR`] of the lightest-load
+    /// baseline. `None` when even the smallest level sheds or lacks a TTFT.
+    pub knee_concurrency: Option<u32>,
+}
+
+/// How far the p95 TTFT tail may stretch past the lightest-load baseline
+/// before a concurrency level counts as "broken" for the knee (#137).
+const KNEE_TTFT_FACTOR: f64 = 2.0;
+
+/// Highest sustainable concurrency from an ascending-ordered sweep: the
+/// largest level that shed nothing and held p95 TTFT within
+/// [`KNEE_TTFT_FACTOR`] of the lightest-load baseline. Degradation is
+/// monotonic in N, so the scan stops at the first level that breaks.
+fn concurrency_knee(points: &[ConcurrencyPoint]) -> Option<u32> {
+    let baseline = points.iter().find_map(|p| p.ttft_p95_s)?;
+    let mut knee = None;
+    for p in points {
+        let shed = p.reject_rate.unwrap_or(0.0) > 0.0;
+        let within_tail = p
+            .ttft_p95_s
+            .map(|t| t <= baseline * KNEE_TTFT_FACTOR)
+            .unwrap_or(false);
+        if shed || !within_tail {
+            break;
+        }
+        knee = Some(p.concurrency);
+    }
+    knee
+}
+
 /// Group by (target, model, scenario), keep only the latest SHA's rows
 /// (latest = the SHA of the last-inserted row, since input is id-ordered),
 /// and median each metric.
@@ -1311,6 +1425,44 @@ mod tests {
         assert_eq!(row.queue_wait_ms_median, Some(150.0)); // median(120,180)
         assert_eq!(row.rejected_median, Some(2.0)); // median(1,3)
         assert_eq!(row.ttft_p95_load_s, Some(0.9));
+    }
+
+    #[test]
+    fn concurrency_sweep_finds_the_knee() {
+        let s = Store::open_in_memory().unwrap();
+        // A sweep where 1,2,4 hold but 8 sheds and blows the p95 tail.
+        for (n, ttft, rej) in [(1u32, 0.2, 0u32), (2, 0.25, 0), (4, 0.35, 0), (8, 0.9, 2)] {
+            let mut r = rec("beast", "sha", "m", &format!("concurrency:{n}"), true);
+            r.concurrency = Some(n);
+            r.ttft_p95_s = Some(ttft);
+            r.rejected = Some(rej);
+            s.insert_run(&r).unwrap();
+        }
+        let curves = s.concurrency().unwrap();
+        assert_eq!(curves.len(), 1);
+        let c = &curves[0];
+        // Ordered ascending by burst width.
+        assert_eq!(
+            c.points.iter().map(|p| p.concurrency).collect::<Vec<_>>(),
+            vec![1, 2, 4, 8]
+        );
+        // N=8 shed 2 of 8 → reject_rate 0.25.
+        assert_eq!(c.points[3].reject_rate, Some(0.25));
+        // Knee = 4: highest level with no shedding and p95 TTFT within 2× of
+        // the lightest-load baseline (0.2 → 0.4; 0.35 holds, 0.9 breaks).
+        assert_eq!(c.knee_concurrency, Some(4));
+    }
+
+    #[test]
+    fn concurrency_knee_is_none_when_lightest_level_sheds() {
+        let s = Store::open_in_memory().unwrap();
+        let mut r = rec("beast", "sha", "m", "concurrency:2", true);
+        r.concurrency = Some(2);
+        r.ttft_p95_s = Some(0.3);
+        r.rejected = Some(1);
+        s.insert_run(&r).unwrap();
+        let curves = s.concurrency().unwrap();
+        assert_eq!(curves[0].knee_concurrency, None);
     }
 
     #[test]

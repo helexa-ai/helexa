@@ -36,6 +36,7 @@ pub fn api_routes(state: ApiState) -> Router {
         .route("/api/dimensions", get(dimensions))
         .route("/api/summary", get(summary))
         .route("/api/scaling", get(scaling))
+        .route("/api/concurrency", get(concurrency))
         .route("/api/swap", get(swap))
         .route("/api/capability", get(capability))
         .route("/api/series", get(series))
@@ -83,6 +84,16 @@ async fn scaling(
 ) -> Result<Json<Vec<crate::store::ScalingCurve>>, ApiError> {
     let store = s.lock().await;
     store.scaling().map(Json).map_err(err500)
+}
+
+/// Concurrency sweep per (target, model) — throughput / p95 TTFT / reject-rate
+/// across burst widths, plus the sustainable-concurrency knee (#137). The UI's
+/// live-capacity view.
+async fn concurrency(
+    State(s): State<ApiState>,
+) -> Result<Json<Vec<crate::store::ConcurrencyCurve>>, ApiError> {
+    let store = s.lock().await;
+    store.concurrency().map(Json).map_err(err500)
 }
 
 /// Cold-load / model-swap costs per (target, model) — reload latency + cold
