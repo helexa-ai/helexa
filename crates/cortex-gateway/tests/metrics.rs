@@ -121,6 +121,44 @@ async fn test_token_metrics_emitted_for_streamed_request() {
 }
 
 #[tokio::test]
+async fn test_anthropic_non_streaming_emits_token_metrics() {
+    // #6: the non-streaming Anthropic (/v1/messages) path buffers the whole
+    // response and previously emitted no per-model token/tok-s metrics —
+    // only spend. It must now emit them like the streaming proxy does.
+    let handle = recorder();
+
+    let mock_url = common::spawn_mock_neuron().await;
+    let gw_url = common::spawn_gateway(&mock_url).await;
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{gw_url}/v1/messages"))
+        .header("content-type", "application/json")
+        .json(&json!({
+            "model": "test-model",
+            "max_tokens": 100,
+            "messages": [{"role": "user", "content": "Hi"}]
+        }))
+        .send()
+        .await
+        .expect("request should succeed");
+    assert_eq!(resp.status(), 200);
+    let _body: serde_json::Value = resp.json().await.unwrap();
+
+    let rendered = handle.render();
+    for needle in [
+        "cortex_prompt_tokens_total",
+        "cortex_completion_tokens_total",
+        "cortex_tokens_per_second",
+    ] {
+        assert!(
+            rendered.contains(needle),
+            "{needle} should be emitted for a non-streaming Anthropic request.\nMetrics:\n{rendered}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn test_capacity_gauges_exported_from_health_poll() {
     // #137: the live per-model load and per-device GPU health that cortex
     // already polls from neuron /health for routing must also be published
