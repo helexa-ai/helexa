@@ -26,10 +26,11 @@
 //!
 //! Tool-name handling: the model knows its tool descriptions via
 //! the [`crate::qwen3`] system-prompt block exactly the way the chat
-//! provider does. We don't echo them in the request body because
-//! neuron currently ignores `tools` on /v1/responses (same as on
-//! /v1/chat/completions). Once neuron honours request-side tool
-//! definitions, both providers add them in the same place.
+//! provider does. We don't echo them in the request body — neuron
+//! honours request-side `tools` on /v1/responses since #158, but
+//! this provider's in-band prompt block predates that and works;
+//! migrating both providers to request-side tools is a separate
+//! cleanup.
 
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;

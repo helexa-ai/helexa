@@ -289,6 +289,8 @@ pub mod events {
     pub const OUTPUT_TEXT_DONE: &str = "response.output_text.done";
     pub const CONTENT_PART_DONE: &str = "response.content_part.done";
     pub const OUTPUT_ITEM_DONE: &str = "response.output_item.done";
+    pub const FUNCTION_CALL_ARGUMENTS_DELTA: &str = "response.function_call_arguments.delta";
+    pub const FUNCTION_CALL_ARGUMENTS_DONE: &str = "response.function_call_arguments.done";
     pub const COMPLETED: &str = "response.completed";
 }
 
