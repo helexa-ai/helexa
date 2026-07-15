@@ -273,13 +273,34 @@ pub struct ResponseStreamFrame {
 /// Empty TextDeltas (the harness's incomplete-UTF-8 buffering) are
 /// dropped. `ReasoningDelta`s have no representation in the
 /// Responses API spec we model yet, so they're dropped too.
+///
+/// Every frame's data object is stamped with `"type"` (the event
+/// name, duplicated from the SSE `event:` field) and a monotonic
+/// `"sequence_number"`, matching OpenAI's wire shape. Official SDKs
+/// and SDK-derived clients (ZeroClaw, #156) dispatch on `data.type`
+/// and never read the SSE `event:` line — without the in-payload
+/// tag they discard the entire stream.
 pub fn project_responses_stream(
     rx: mpsc::Receiver<InferenceEvent>,
     meta: ResponseMeta,
 ) -> mpsc::Receiver<ResponseStreamFrame> {
+    let (raw_tx, mut raw_rx) = mpsc::channel::<ResponseStreamFrame>(64);
     let (tx, out_rx) = mpsc::channel::<ResponseStreamFrame>(64);
     tokio::spawn(async move {
-        run_projection(rx, meta, tx).await;
+        run_projection(rx, meta, raw_tx).await;
+    });
+    tokio::spawn(async move {
+        let mut sequence_number: u64 = 0;
+        while let Some(mut frame) = raw_rx.recv().await {
+            if let Value::Object(data) = &mut frame.data {
+                data.insert("type".into(), Value::String(frame.event_name.into()));
+                data.insert("sequence_number".into(), json!(sequence_number));
+            }
+            sequence_number += 1;
+            if tx.send(frame).await.is_err() {
+                return;
+            }
+        }
     });
     out_rx
 }
@@ -956,6 +977,42 @@ mod tests {
         let output = completed["output"].as_array().unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0]["content"][0]["text"], "hello");
+    }
+
+    #[tokio::test]
+    async fn every_frame_carries_in_payload_type_and_sequence_number() {
+        // OpenAI-SDK-style clients (ZeroClaw, #156) dispatch on
+        // `data.type`, never the SSE `event:` line. Every frame must
+        // duplicate its event name into the payload and carry a
+        // 0-based monotonic sequence_number.
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::TextDelta("hi".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let frames = collect(out).await;
+        assert!(!frames.is_empty());
+        for (i, frame) in frames.iter().enumerate() {
+            assert_eq!(
+                frame.data["type"], frame.event_name,
+                "frame {i} missing in-payload type"
+            );
+            assert_eq!(
+                frame.data["sequence_number"], i as u64,
+                "frame {i} sequence_number mismatch"
+            );
+        }
     }
 
     #[tokio::test]
