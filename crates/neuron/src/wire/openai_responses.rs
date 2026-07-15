@@ -23,9 +23,13 @@
 //! - `previous_response_id` is rejected by [`request_to_chat`]
 //!   with [`TranslateError::ChainedConversationNotSupported`].
 //! - `Reasoning` input items are dropped (no equivalent in chat).
-//! - `FunctionCall` / `FunctionCallOutput` items round-trip but the
-//!   harness never emits tool calls today; the synthesis paths are
-//!   in place so the surface is ready when it does.
+//!
+//! Tool calling is wired end-to-end (#158): `tools` definitions are
+//! normalized into the chat-wrapped shape and forwarded to the
+//! harness, harness [`InferenceEvent::ToolCall`]s project into the
+//! `response.function_call_arguments.*` event family, and
+//! `FunctionCall` / `FunctionCallOutput` input items round-trip back
+//! in as assistant `tool_calls` / tool-role messages.
 
 use cortex_core::openai::{ChatCompletionRequest, ChatMessage, MessageContent};
 use cortex_core::responses::{
@@ -135,6 +139,18 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         }
     }
 
+    // Forward tool definitions to the harness (#158). The chat path
+    // reads `extra["tools"]` for both the Jinja prompt render and
+    // argument-type coercion, so normalizing into the chat-wrapped
+    // shape here is all the plumbing tools need.
+    let mut extra = serde_json::Map::new();
+    if let Some(tools) = req.extra.get("tools").and_then(Value::as_array) {
+        let normalized: Vec<Value> = tools.iter().filter_map(normalize_tool).collect();
+        if !normalized.is_empty() {
+            extra.insert("tools".into(), Value::Array(normalized));
+        }
+    }
+
     Ok(ChatCompletionRequest {
         model: req.model,
         messages,
@@ -142,8 +158,36 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         top_p: req.top_p,
         max_tokens: req.max_output_tokens,
         stream: Some(req.stream),
-        extra: Value::Object(Default::default()),
+        extra: Value::Object(extra),
     })
+}
+
+/// Normalize one Responses-format tool definition into the
+/// chat-completions wrapped shape the chat templates were written
+/// against. Responses flattens the function fields onto the tool
+/// object (`{type:"function", name, description, parameters}`);
+/// chat nests them (`{type:"function", function:{…}}`). Hosted tool
+/// types (web_search, file_search, …) have no server-side
+/// implementation here and are dropped rather than rejected.
+fn normalize_tool(tool: &Value) -> Option<Value> {
+    if tool.get("function").is_some() {
+        // Already chat-wrapped — pass through untouched.
+        return Some(tool.clone());
+    }
+    if tool.get("type").and_then(Value::as_str) != Some("function") {
+        return None;
+    }
+    let name = tool.get("name").and_then(Value::as_str)?;
+    let mut func = serde_json::Map::new();
+    func.insert("name".into(), Value::String(name.into()));
+    for field in ["description", "parameters"] {
+        if let Some(v) = tool.get(field)
+            && !v.is_null()
+        {
+            func.insert(field.into(), v.clone());
+        }
+    }
+    Some(json!({ "type": "function", "function": Value::Object(func) }))
 }
 
 fn input_item_to_chat(item: ResponsesInputItem) -> Option<ChatMessage> {
@@ -314,6 +358,10 @@ async fn run_projection(
     let mut finish: Option<FinishReason> = None;
     let mut usage: Option<ResponsesUsage> = None;
     let mut emitted_start = false;
+    // Completed `function_call` output items, re-emitted inside the
+    // final `response.completed` payload so clients that only read
+    // the terminal response still see the calls.
+    let mut tool_items: Vec<Value> = Vec::new();
 
     while let Some(event) = rx.recv().await {
         match event {
@@ -346,12 +394,82 @@ async fn run_projection(
                 // Stage where it'd land: a `response.reasoning_*`
                 // event family alongside `response.output_text.*`.
             }
-            InferenceEvent::ToolCall { .. } => {
-                // Responses-side tool-call routing not wired yet
-                // (would emit response.function_call_arguments.*
-                // events). Drop for now; the chat-completions
-                // projector handles tool calls. Future work
-                // tracked in #7 alongside the in_progress event.
+            InferenceEvent::ToolCall {
+                index,
+                id,
+                name,
+                arguments,
+            } => {
+                // The message item opened by the start frames holds
+                // output_index 0; function_call items follow it.
+                let output_index = 1 + index as u64;
+                let item_id = format!(
+                    "fc_{}_{index}",
+                    meta.response_id.trim_start_matches("resp_")
+                );
+                let (id, name, arguments) = (id.as_str(), name.as_str(), arguments.as_str());
+                let item_id = item_id.as_str();
+                let full_item = json!({
+                    "type": "function_call",
+                    "id": item_id,
+                    "call_id": id,
+                    "name": name,
+                    "arguments": arguments,
+                    "status": "completed",
+                });
+                // The harness buffers a whole call and emits exactly
+                // one ToolCall event, so the arguments "stream" is a
+                // single delta. Emitting the full added → delta →
+                // done → item.done family anyway matches OpenAI's
+                // wire shape; SDK clients dedupe across the last
+                // three, so no double-fire.
+                let frames = [
+                    ResponseStreamFrame {
+                        event_name: events::OUTPUT_ITEM_ADDED,
+                        data: json!({
+                            "output_index": output_index,
+                            "item": {
+                                "type": "function_call",
+                                "id": item_id,
+                                "call_id": id,
+                                "name": name,
+                                "arguments": "",
+                                "status": "in_progress",
+                            },
+                        }),
+                    },
+                    ResponseStreamFrame {
+                        event_name: events::FUNCTION_CALL_ARGUMENTS_DELTA,
+                        data: json!({
+                            "item_id": item_id,
+                            "output_index": output_index,
+                            "delta": arguments,
+                        }),
+                    },
+                    ResponseStreamFrame {
+                        event_name: events::FUNCTION_CALL_ARGUMENTS_DONE,
+                        data: json!({
+                            "item_id": item_id,
+                            "output_index": output_index,
+                            "call_id": id,
+                            "name": name,
+                            "arguments": arguments,
+                        }),
+                    },
+                    ResponseStreamFrame {
+                        event_name: events::OUTPUT_ITEM_DONE,
+                        data: json!({
+                            "output_index": output_index,
+                            "item": full_item.clone(),
+                        }),
+                    },
+                ];
+                for frame in frames {
+                    if tx.send(frame).await.is_err() {
+                        return;
+                    }
+                }
+                tool_items.push(full_item);
             }
             InferenceEvent::Finish {
                 reason,
@@ -388,7 +506,15 @@ async fn run_projection(
     }
 
     let reason = finish.unwrap_or(FinishReason::Stop);
-    let _ = emit_finish_frames(&tx, &meta, &accumulated, reason, usage.as_ref()).await;
+    let _ = emit_finish_frames(
+        &tx,
+        &meta,
+        &accumulated,
+        reason,
+        usage.as_ref(),
+        &tool_items,
+    )
+    .await;
 }
 
 async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &ResponseMeta) -> bool {
@@ -442,6 +568,7 @@ async fn emit_finish_frames(
     full_text: &str,
     reason: FinishReason,
     usage: Option<&ResponsesUsage>,
+    tool_items: &[Value],
 ) -> bool {
     let status = finish_to_status(reason);
     let full_part = json!({
@@ -456,6 +583,12 @@ async fn emit_finish_frames(
         "content": [full_part.clone()],
         "status": status,
     });
+    // Terminal output array: the message item (always present — its
+    // open frames were emitted eagerly at stream start) followed by
+    // any completed function_call items.
+    let mut output_items = Vec::with_capacity(1 + tool_items.len());
+    output_items.push(full_item.clone());
+    output_items.extend(tool_items.iter().cloned());
     let frames = [
         ResponseStreamFrame {
             event_name: events::OUTPUT_TEXT_DONE,
@@ -485,7 +618,7 @@ async fn emit_finish_frames(
         ResponseStreamFrame {
             event_name: events::COMPLETED,
             data: json!({
-                "response": response_shell(meta, status, &[full_item], usage)
+                "response": response_shell(meta, status, &output_items, usage)
             }),
         },
     ];
@@ -911,6 +1044,44 @@ mod tests {
         }
     }
 
+    #[test]
+    fn tools_normalize_to_chat_wrapped_shape() {
+        // Responses-flat function tools wrap into the chat shape the
+        // templates expect; already-wrapped tools pass through; hosted
+        // tool types we can't serve are dropped (#158).
+        let raw = r#"{
+            "model": "m",
+            "input": "hi",
+            "tools": [
+                {"type": "function", "name": "shell", "description": "run a command",
+                 "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
+                 "strict": false},
+                {"type": "function", "function": {"name": "wrapped", "parameters": {}}},
+                {"type": "web_search"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let chat = request_to_chat(req).unwrap();
+        let tools = chat.extra.get("tools").unwrap().as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0]["type"], "function");
+        assert_eq!(tools[0]["function"]["name"], "shell");
+        assert_eq!(tools[0]["function"]["description"], "run a command");
+        assert_eq!(
+            tools[0]["function"]["parameters"]["properties"]["command"]["type"],
+            "string"
+        );
+        assert_eq!(tools[1]["function"]["name"], "wrapped");
+    }
+
+    #[test]
+    fn absent_tools_leave_extra_empty() {
+        let raw = r#"{"model": "m", "input": "hi"}"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).unwrap();
+        let chat = request_to_chat(req).unwrap();
+        assert!(chat.extra.get("tools").is_none());
+    }
+
     // ── streaming projector ─────────────────────────────────────────
 
     async fn collect(mut rx: mpsc::Receiver<ResponseStreamFrame>) -> Vec<ResponseStreamFrame> {
@@ -977,6 +1148,81 @@ mod tests {
         let output = completed["output"].as_array().unwrap();
         assert_eq!(output.len(), 1);
         assert_eq!(output[0]["content"][0]["text"], "hello");
+    }
+
+    #[tokio::test]
+    async fn tool_call_projects_function_call_event_family() {
+        // A harness ToolCall becomes the OpenAI function_call event
+        // family, and the completed response carries the item (#158).
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::ToolCall {
+            index: 0,
+            id: "call_1".into(),
+            name: "shell".into(),
+            arguments: r#"{"command":"ls"}"#.into(),
+        })
+        .await
+        .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::ToolCalls,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let frames = collect(out).await;
+
+        let added = frames
+            .iter()
+            .filter(|f| f.event_name == events::OUTPUT_ITEM_ADDED)
+            .find(|f| f.data["item"]["type"] == "function_call")
+            .expect("function_call output_item.added");
+        assert_eq!(added.data["output_index"], 1);
+        assert_eq!(added.data["item"]["call_id"], "call_1");
+        assert_eq!(added.data["item"]["name"], "shell");
+        assert_eq!(added.data["item"]["status"], "in_progress");
+        let item_id = added.data["item"]["id"].as_str().unwrap().to_string();
+
+        let delta = frames
+            .iter()
+            .find(|f| f.event_name == events::FUNCTION_CALL_ARGUMENTS_DELTA)
+            .expect("arguments.delta");
+        assert_eq!(delta.data["item_id"], item_id.as_str());
+        assert_eq!(delta.data["delta"], r#"{"command":"ls"}"#);
+
+        let done = frames
+            .iter()
+            .find(|f| f.event_name == events::FUNCTION_CALL_ARGUMENTS_DONE)
+            .expect("arguments.done");
+        assert_eq!(done.data["arguments"], r#"{"command":"ls"}"#);
+        assert_eq!(done.data["call_id"], "call_1");
+        assert_eq!(done.data["name"], "shell");
+
+        let item_done = frames
+            .iter()
+            .filter(|f| f.event_name == events::OUTPUT_ITEM_DONE)
+            .find(|f| f.data["item"]["type"] == "function_call")
+            .expect("function_call output_item.done");
+        assert_eq!(item_done.data["item"]["status"], "completed");
+        assert_eq!(item_done.data["item"]["arguments"], r#"{"command":"ls"}"#);
+
+        // ToolCalls finish maps to a completed response whose output
+        // carries the message item plus the function_call item.
+        let completed = frames
+            .iter()
+            .find(|f| f.event_name == events::COMPLETED)
+            .unwrap();
+        assert_eq!(completed.data["response"]["status"], "completed");
+        let output = completed.data["response"]["output"].as_array().unwrap();
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0]["type"], "message");
+        assert_eq!(output[1]["type"], "function_call");
+        assert_eq!(output[1]["call_id"], "call_1");
     }
 
     #[tokio::test]
