@@ -58,7 +58,7 @@ struct MockCortex {
     rate_limited: bool,
 }
 
-async fn mock_handler(State(m): State<MockCortex>, headers: HeaderMap) -> Response {
+async fn mock_handler(State(m): State<MockCortex>, headers: HeaderMap, body: Bytes) -> Response {
     if m.rate_limited {
         return (
             StatusCode::TOO_MANY_REQUESTS,
@@ -71,7 +71,14 @@ async fn mock_handler(State(m): State<MockCortex>, headers: HeaderMap) -> Respon
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    Json(json!({ "served_by": m.name, "auth_seen": auth })).into_response()
+    // Echo the model this cortex actually received, so tests can assert
+    // the router's alias rewrite (#166).
+    let model_seen = serde_json::from_slice::<Value>(&body)
+        .ok()
+        .and_then(|v| v.get("model").and_then(Value::as_str).map(String::from))
+        .unwrap_or_default();
+    Json(json!({ "served_by": m.name, "auth_seen": auth, "model_seen": model_seen }))
+        .into_response()
 }
 
 async fn spawn_cortex(mock: MockCortex) -> String {
@@ -154,6 +161,43 @@ async fn body_json(resp: Response) -> (StatusCode, Value) {
 }
 
 // ── Tests ────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn tier_alias_resolves_and_rewrites_body_model() {
+    // Topology knows only the REAL model id; the inbound request names the
+    // tier alias. Dispatch must select on the real id and rewrite the body
+    // so the cortex sees the true model (#166).
+    let url = spawn_cortex(ok_cortex("c1")).await;
+    let mut state = state_with(vec![ep("c1", &url, None)], None);
+    state
+        .aliases
+        .insert("helexa/small".to_string(), MODEL.to_string());
+    set_topology(&state, "c1", true, true, true, 2).await;
+
+    let body = Bytes::from_static(b"{\"model\":\"helexa/small\",\"stream\":false}");
+    let resp = dispatch(&state, "/v1/chat/completions", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["served_by"], "c1");
+    assert_eq!(body["model_seen"], MODEL);
+}
+
+#[tokio::test]
+async fn unmapped_alias_style_name_is_unknown_model() {
+    // A tier-looking name with no alias entry behaves like any unknown
+    // model: 404, not a silent fallback.
+    let url = spawn_cortex(ok_cortex("c1")).await;
+    let state = state_with(vec![ep("c1", &url, None)], None);
+    set_topology(&state, "c1", true, true, true, 2).await;
+
+    let body = Bytes::from_static(b"{\"model\":\"helexa/enormous\",\"stream\":false}");
+    let resp = dispatch(&state, "/v1/chat/completions", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "model_not_found");
+}
 
 #[tokio::test]
 async fn routes_to_serving_cortex_and_forwards_bearer() {

@@ -3,6 +3,7 @@ use figment::{
     providers::{Env, Format, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Top-level `helexa-router` configuration.
@@ -17,6 +18,15 @@ pub struct RouterConfig {
     /// capacity-aware dispatch (#73) consume them later.
     #[serde(default)]
     pub cortexes: Vec<CortexEndpoint>,
+    /// Product-tier aliases (#166): federation-level model names resolved
+    /// to real operator model ids before dispatch, e.g.
+    /// `"helexa/small" = "Qwen/Qwen3-8B"`. Tiers are a platform concept —
+    /// operators advertise real model ids; the router maps product names
+    /// onto whatever the federation currently serves. The inbound body's
+    /// `model` field is rewritten to the real id, so cortex-side
+    /// validation, routing and metering all see the true model.
+    #[serde(default)]
+    pub aliases: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,6 +105,7 @@ impl Default for RouterConfig {
                 region: None,
             },
             cortexes: vec![],
+            aliases: HashMap::new(),
         }
     }
 }
