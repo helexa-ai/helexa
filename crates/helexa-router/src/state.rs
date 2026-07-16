@@ -24,6 +24,9 @@ pub struct RouterState {
     clients: HashMap<String, reqwest::Client>,
     /// This router instance's region, for dispatch geo affinity (#73).
     pub region: Option<String>,
+    /// Product-tier aliases (#166): alias → real model id, applied before
+    /// selection in dispatch.
+    pub aliases: HashMap<String, String>,
     /// How often the poller refreshes the topology.
     pub poll_interval: Duration,
     /// Live per-cortex topology, keyed by cortex name. Pre-populated from
@@ -92,6 +95,7 @@ impl RouterState {
             cortexes: config.cortexes.clone(),
             clients,
             region: config.router.region.clone(),
+            aliases: config.aliases.clone(),
             poll_interval: Duration::from_secs(config.router.poll_interval_secs),
             topology: RwLock::new(topology),
         }

@@ -14,6 +14,17 @@ listen = "0.0.0.0:8088"
 # How often (seconds) to refresh each cortex's health + /v1/models topology.
 # poll_interval_secs = 10
 
+# -- Product-tier aliases -------------------------------------------------
+# Federation-level model names resolved to real operator model ids before
+# dispatch. Tiers are a platform concept: operators advertise real model
+# ids; the router maps product names onto whatever the federation serves.
+# The request body's `model` field is rewritten to the real id, so
+# cortex-side validation, routing and metering see the true model.
+#
+# [aliases]
+# "helexa/small" = "Qwen/Qwen3-8B"
+# "helexa/balanced" = "Qwen/Qwen3.6-27B"
+
 # -- Downstream cortexes -------------------------------------------------
 # Each [[cortexes]] entry is an operator-run cortex the router may dispatch
 # to. The router forwards the client's bearer verbatim (auth stays at

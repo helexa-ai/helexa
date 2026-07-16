@@ -134,6 +134,19 @@ pub async fn dispatch(
         ));
     };
 
+    // Product-tier aliases (#166): resolve federation-level names
+    // (helexa/small, helexa/balanced, …) to the real operator model id
+    // before selection, and rewrite the body so cortex-side validation,
+    // routing and metering all see the true model. Non-alias requests
+    // keep their original bytes verbatim.
+    let (model, body) = match state.aliases.get(&model) {
+        Some(real) => {
+            tracing::debug!(alias = %model, model = %real, "resolving tier alias");
+            (real.clone(), rewrite_model_in_body(&body, real))
+        }
+        None => (model, body),
+    };
+
     let candidates = match select_cortexes(state, &model).await {
         Selection::Candidates(c) => c,
         Selection::UnknownModel => {
@@ -209,6 +222,22 @@ pub async fn dispatch(
 fn extract_model(body: &Bytes) -> Option<String> {
     let v: serde_json::Value = serde_json::from_slice(body).ok()?;
     v.get("model")?.as_str().map(str::to_string)
+}
+
+/// Re-serialise the body with `model` replaced — only used on the alias
+/// path, so ordinary requests still forward their original bytes. A body
+/// that fails to parse is forwarded unchanged (cortex will reject it with
+/// its own envelope).
+fn rewrite_model_in_body(body: &Bytes, model: &str) -> Bytes {
+    let Ok(mut v) = serde_json::from_slice::<serde_json::Value>(body) else {
+        return body.clone();
+    };
+    if let Some(obj) = v.as_object_mut() {
+        obj.insert("model".into(), serde_json::Value::String(model.into()));
+    }
+    serde_json::to_vec(&v)
+        .map(Bytes::from)
+        .unwrap_or_else(|_| body.clone())
 }
 
 /// The router proxies bytes verbatim and keeps no per-request policy, so it

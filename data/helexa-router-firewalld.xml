@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-router</short>
+  <description>helexa-router — federation data plane (/v1 inference dispatch across operator cortexes)</description>
+  <port protocol="tcp" port="8088"/>
+</service>
