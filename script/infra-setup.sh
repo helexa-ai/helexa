@@ -369,6 +369,14 @@ for web_host in "${web_hosts[@]}"; do
     # can read it (else 403). Files rsynced in later inherit the type.
     ssh "${web_host}" "sudo restorecon -R '${web_webroot}'"
 
+    # Shared per-IP rate-limit zones (http context) used by the /v1 and
+    # /api locations in the vhost (#167).
+    rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/helexa-ratelimit.conf" \
+        "${web_host}:/etc/nginx/conf.d/helexa-ratelimit.conf" \
+        || echo "  failed to install helexa-ratelimit.conf"
+
     # Obtain the cert (idempotent: --keep-until-expiring). Cloudflare
     # DNS-01, so it works even while nginx is stopped. /root/.certbot-
     # internal must hold a token scoped to the helexa.ai zone.
@@ -472,3 +480,44 @@ if ssh "${cortex_host}" "sudo test -f '${web_int_cert}'"; then
 else
     echo "  ${web_int_domain} cert still absent — vhost not installed"
 fi
+
+# ── gallumbits: federation service host (helexa-router + helexa-upstream) ──
+# One host at the DC site runs the federation data plane (router, tcp/8088)
+# and the account/budget authority (upstream, tcp/8090). Both edge proxies
+# reverse-proxy to it: /v1 → router, /api → upstream. Deploy of the RPMs is
+# CI's job (deploy.yml deploy-gallumbits); this section does the one-time
+# host prep and syncs the operator-owned configs (they carry secrets — DB
+# password, JWT secret, operator tokens — so CI never sees them).
+svc_host=gallumbits.kosherinata.internal
+
+echo "==> ${svc_host}: gitea_ci key + service-host sudoers"
+ensure_ci_key "${svc_host}"
+install_sudoers "${svc_host}" \
+    "${repo_path}/asset/sudoers.d/gallumbits-host.conf"
+
+echo "==> ${svc_host}: ensuring lair-cafe-unstable repo + config dirs"
+if ! ssh "${svc_host}" '
+    set -eu
+    if dnf repolist --all 2>/dev/null | grep -q "^lair-cafe-unstable"; then
+        echo "  lair-cafe-unstable already present"
+    else
+        sudo dnf config-manager addrepo --from-repofile=https://rpm.lair.cafe/lair-cafe-unstable.repo
+        sudo dnf config-manager setopt lair-cafe-unstable.enabled=1
+        echo "  lair-cafe-unstable enabled"
+    fi
+    sudo install -d -o root -g root -m 0755 /etc/helexa-router
+    sudo install -d -o root -g root -m 0755 /etc/helexa-upstream
+'; then
+    echo "  failed to prepare ${svc_host}"
+fi
+
+echo "==> ${svc_host}: syncing service configs"
+sync_config "${svc_host}" "${repo_path}/helexa-router.toml" /etc/helexa-router/helexa-router.toml
+sync_config "${svc_host}" "${repo_path}/helexa-upstream.toml" /etc/helexa-upstream/helexa-upstream.toml
+# Config changes only take effect on service restart; do it here (not in
+# CI) so a config-only iteration doesn't need a deploy run. Ignore
+# failures — first run happens before the RPMs are installed.
+ssh "${svc_host}" '
+    systemctl is-active --quiet helexa-router.service && sudo systemctl restart helexa-router.service || true
+    systemctl is-active --quiet helexa-upstream.service && sudo systemctl restart helexa-upstream.service || true
+' || true
