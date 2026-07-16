@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Inferență IA europeană suverană",
     "title": "Infrastructură suverană",
-    "lead": "Credem că rularea unor modele avansate și capabile pe hardware-ul pe care îl ai deja — în facilități mici și eficiente — este modul în care IMM-urile europene concurează cu mentalitatea hyperscaler care domină ecosistemul tehnologic global de astăzi.",
+    "lead": "Credem că rularea unor modele avansate și capabile pe hardware-ul pe care îl ai deja, în facilități mici și eficiente, este modul în care IMM-urile europene concurează cu mentalitatea hyperscaler care domină ecosistemul tehnologic global de astăzi.",
     "ctaJoinMesh": "Încearcă acum",
     "ctaFollowProject": "Urmărește proiectul",
     "subcopy": "Creat de europeni, pentru europeni.",
@@ -24,7 +24,7 @@
     "title": "De ce acum",
     "problemTitle": "Nepotrivirea",
     "problemBullet1": "Platformele de inferență de astăzi presupun centre de date hyperscale, clustere mari de GPU-uri și LLM-uri cu sursă închisă.",
-    "problemBullet2": "Reglementarea europeană — GDPR, Regulamentul privind IA, normele sectoriale — direcționează sarcinile de lucru către infrastructura proprie și în interiorul regiunii.",
+    "problemBullet2": "Reglementarea europeană (GDPR, Regulamentul privind IA, normele sectoriale) direcționează sarcinile de lucru către infrastructura proprie și în interiorul regiunii.",
     "problemBullet3": "Trimiterea datelor către cloud-uri străine este o vulnerabilitate de reglementare, de confidențialitate și de cost.",
     "problemBullet4": "Accesul la GPU-uri în cloud este scump, limitat de ofertă și guvernat din altă parte.",
     "problemBullet5": "Hardware capabil, de consum și de stație de lucru, stă deja subutilizat în toată Europa.",

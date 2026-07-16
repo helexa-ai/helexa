@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Inference na AI na Turai Mai Cin Gashin Kai",
     "title": "Ababen more rayuwa masu cin gashin kai",
-    "lead": "Mun yi imanin cewa tafiyar da manyan model masu iyawa a kan na'urorin da kake da su tuni — a cikin ƙananan cibiyoyi masu inganci — ita ce hanyar da ƙananan da matsakaitan sana'o'in Turai za su yi gogayya da tunanin hyperscaler da ke mamaye harkar fasahar duniya a yau.",
+    "lead": "Mun yi imanin cewa tafiyar da manyan model masu iyawa a kan na'urorin da kake da su tuni, a cikin ƙananan cibiyoyi masu inganci, ita ce hanyar da ƙananan da matsakaitan sana'o'in Turai za su yi gogayya da tunanin hyperscaler da ke mamaye harkar fasahar duniya a yau.",
     "ctaJoinMesh": "Gwada shi yanzu",
     "ctaFollowProject": "Bi diddigin aikin",
     "subcopy": "Mutanen Turai ne suka ƙirƙire shi, don mutanen Turai.",
@@ -24,7 +24,7 @@
     "title": "Me Ya Sa Yanzu",
     "problemTitle": "Rashin Daidaituwa",
     "problemBullet1": "Tsarukan inference na yau suna ɗauka cewa akwai manyan datacentre na hyperscale, manyan rukunin GPU da LLM na rufaffen tushe.",
-    "problemBullet2": "Dokokin Turai — GDPR, AI Act, ƙa'idojin sassa — suna karkatar da ayyuka zuwa cikin gida da cikin yanki.",
+    "problemBullet2": "Dokokin Turai (GDPR, AI Act, ƙa'idojin sassa) suna karkatar da ayyuka zuwa cikin gida da cikin yanki.",
     "problemBullet3": "Aika bayanai zuwa girgijen ƙasashen waje haɗari ne ta fuskar doka, sirri da kuɗi.",
     "problemBullet4": "Samun GPU ta girgije yana da tsada, yana da ƙarancin wadata, kuma ana sarrafa shi daga wani wuri.",
     "problemBullet5": "Na'urori masu ƙarfi na kasuwa da na workstation sun riga sun kasance a faɗin Turai ba tare da cikakken amfani ba.",

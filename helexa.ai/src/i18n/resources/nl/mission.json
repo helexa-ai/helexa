@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Soevereine Europese AI-inferentie",
     "title": "Soevereine infrastructuur",
-    "lead": "Wij geloven dat geavanceerde, capabele modellen draaien op hardware die je al hebt — in kleine, efficiënte faciliteiten — dé manier is waarop het Europese mkb kan concurreren met de hyperscaler-mentaliteit die het huidige mondiale technologie-ecosysteem domineert.",
+    "lead": "Wij geloven dat geavanceerde, capabele modellen draaien op hardware die je al hebt, in kleine, efficiënte faciliteiten, dé manier is waarop het Europese mkb kan concurreren met de hyperscaler-mentaliteit die het huidige mondiale technologie-ecosysteem domineert.",
     "ctaJoinMesh": "Probeer het nu",
     "ctaFollowProject": "Volg het project",
     "subcopy": "Gemaakt door Europeanen, voor Europeanen.",
@@ -24,7 +24,7 @@
     "title": "Waarom nu",
     "problemTitle": "De mismatch",
     "problemBullet1": "De huidige inferentie-stacks gaan uit van hyperscale-datacenters, grote GPU-clusters en closed-source-LLM's.",
-    "problemBullet2": "Europese regelgeving — AVG, de AI-verordening, sectorale regels — stuurt workloads naar on-premises en de eigen regio.",
+    "problemBullet2": "Europese regelgeving (AVG, de AI-verordening, sectorale regels) stuurt workloads naar on-premises en de eigen regio.",
     "problemBullet3": "Data naar buitenlandse clouds sturen is een risico op het gebied van regelgeving, privacy en kosten.",
     "problemBullet4": "Toegang tot cloud-GPU's is duur, schaars en wordt elders bestuurd.",
     "problemBullet5": "Capabele consumenten- en workstationhardware staat in heel Europa al onderbenut te wachten.",

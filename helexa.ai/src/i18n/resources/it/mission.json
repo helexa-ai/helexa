@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Inferenza IA sovrana europea",
     "title": "Infrastruttura sovrana",
-    "lead": "Crediamo che eseguire modelli avanzati e capaci sull'hardware che già possiedi — in strutture piccole ed efficienti — sia il modo in cui le PMI europee competono con la mentalità hyperscaler che domina l'ecosistema tecnologico globale di oggi.",
+    "lead": "Crediamo che eseguire modelli avanzati e capaci sull'hardware che già possiedi, in strutture piccole ed efficienti, sia il modo in cui le PMI europee competono con la mentalità hyperscaler che domina l'ecosistema tecnologico globale di oggi.",
     "ctaJoinMesh": "Provalo ora",
     "ctaFollowProject": "Segui il progetto",
     "subcopy": "Creato da europei, per europei.",
@@ -24,7 +24,7 @@
     "title": "Perché ora",
     "problemTitle": "Il disallineamento",
     "problemBullet1": "Gli stack di inferenza di oggi presuppongono data center hyperscale, grandi cluster di GPU e LLM closed-source.",
-    "problemBullet2": "La regolamentazione europea — il GDPR, l'AI Act, le norme settoriali — orienta i carichi di lavoro on-premises e all'interno della regione.",
+    "problemBullet2": "La regolamentazione europea (il GDPR, l'AI Act, le norme settoriali) orienta i carichi di lavoro on-premises e all'interno della regione.",
     "problemBullet3": "Inviare dati a cloud stranieri è un onere normativo, di privacy e di costi.",
     "problemBullet4": "L'accesso a GPU nel cloud è costoso, limitato dall'offerta e governato altrove.",
     "problemBullet5": "In tutta Europa esiste già hardware consumer e workstation capace ma sottoutilizzato.",

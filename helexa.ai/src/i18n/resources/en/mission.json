@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Sovereign European AI Inference",
     "title": "Sovereign infrastructure",
-    "lead": "We believe running advanced, capable models on hardware you already have — in small, efficient facilities — is how European SMEs compete with the hyperscaler mindset dominating today's global technology ecosystem.",
+    "lead": "We believe running advanced, capable models on hardware you already have, in small, efficient facilities, is how European SMEs compete with the hyperscaler mindset dominating today's global technology ecosystem.",
     "ctaJoinMesh": "Try it now",
     "ctaFollowProject": "Follow the project",
     "subcopy": "Created by Europeans, for Europeans.",
@@ -24,7 +24,7 @@
     "title": "Why Now",
     "problemTitle": "The Mismatch",
     "problemBullet1": "Today's inference stacks assume hyperscale datacentres, large GPU clusters and closed-source LLMs.",
-    "problemBullet2": "European regulation — GDPR, the AI Act, sectoral rules — directs workloads on-premises and in-region.",
+    "problemBullet2": "European regulation (GDPR, the AI Act, sectoral rules) directs workloads on-premises and in-region.",
     "problemBullet3": "Sending data to foreign clouds is a regulatory, privacy and cost liability.",
     "problemBullet4": "Cloud GPU access is expensive, supply-constrained and governed elsewhere.",
     "problemBullet5": "Capable commodity and workstation hardware already sits underutilised across Europe.",

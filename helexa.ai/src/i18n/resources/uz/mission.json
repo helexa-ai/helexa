@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suveren Yevropa AI inferensiyasi",
     "title": "Suveren infratuzilma",
-    "lead": "Ilgʻor, qobiliyatli modellarni qoʻlingizdagi uskunalarda — kichik va samarali obyektlarda — ishga tushirish Yevropa kichik va oʻrta bizneslari uchun bugungi global texnologiya ekotizimida hukmron boʻlgan giperskeyler tafakkuri bilan raqobatlashish yoʻlidir, deb ishonamiz.",
+    "lead": "Ilgʻor, qobiliyatli modellarni qoʻlingizdagi uskunalarda, kichik va samarali obyektlarda ishga tushirish Yevropa kichik va oʻrta bizneslari uchun bugungi global texnologiya ekotizimida hukmron boʻlgan giperskeyler tafakkuri bilan raqobatlashish yoʻlidir, deb ishonamiz.",
     "ctaJoinMesh": "Hozir sinab koʻring",
     "ctaFollowProject": "Loyihani kuzatib boring",
     "subcopy": "Yevropaliklar tomonidan, yevropaliklar uchun yaratilgan.",
@@ -24,7 +24,7 @@
     "title": "Nega aynan hozir",
     "problemTitle": "Nomuvofiqlik",
     "problemBullet1": "Bugungi inferensiya steklari gipermasshtabli data-markazlar, yirik GPU klasterlari va yopiq LLMlarni nazarda tutadi.",
-    "problemBullet2": "Yevropa tartibga solish tizimi — GDPR, AI Act, tarmoq qoidalari — ish yuklamalarini joyida va mintaqa ichida bajarishga yoʻnaltiradi.",
+    "problemBullet2": "Yevropa tartibga solish tizimi (GDPR, AI Act, tarmoq qoidalari) ish yuklamalarini joyida va mintaqa ichida bajarishga yoʻnaltiradi.",
     "problemBullet3": "Maʼlumotlarni xorijiy bulutlarga yuborish — tartibga solish, maxfiylik va xarajat nuqtai nazaridan xatar.",
     "problemBullet4": "Bulutdagi GPU quvvatiga kirish qimmat, taqchil va boshqa joydan boshqariladi.",
     "problemBullet5": "Qobiliyatli oddiy va ish stansiyasi uskunalari Yevropa boʻylab allaqachon toʻliq foydalanilmay turibdi.",

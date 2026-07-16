@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Uendeshaji Huru wa AI wa Ulaya",
     "title": "Miundombinu huru",
-    "lead": "Tunaamini kwamba kuendesha miundo ya hali ya juu na yenye uwezo kwenye vifaa ulivyo navyo tayari — katika vituo vidogo na vyenye ufanisi — ndiyo njia ya biashara ndogo na za kati za Ulaya kushindana na fikra ya hyperscaler inayotawala mfumo wa teknolojia wa dunia leo.",
+    "lead": "Tunaamini kwamba kuendesha miundo ya hali ya juu na yenye uwezo kwenye vifaa ulivyo navyo tayari, katika vituo vidogo na vyenye ufanisi, ndiyo njia ya biashara ndogo na za kati za Ulaya kushindana na fikra ya hyperscaler inayotawala mfumo wa teknolojia wa dunia leo.",
     "ctaJoinMesh": "Ijaribu sasa",
     "ctaFollowProject": "Fuatilia mradi",
     "subcopy": "Imeundwa na Waeuropa, kwa ajili ya Waeuropa.",
@@ -24,7 +24,7 @@
     "title": "Kwa Nini Sasa",
     "problemTitle": "Kutolingana",
     "problemBullet1": "Mifumo ya inference ya leo hudhania datacentre kubwa za hyperscale, makundi makubwa ya GPU na LLM za chanzo-funge.",
-    "problemBullet2": "Kanuni za Ulaya — GDPR, AI Act, sheria za kisekta — zinaelekeza kazi zifanyike kwenye vituo vya ndani na ndani ya kanda.",
+    "problemBullet2": "Kanuni za Ulaya (GDPR, AI Act, sheria za kisekta) zinaelekeza kazi zifanyike kwenye vituo vya ndani na ndani ya kanda.",
     "problemBullet3": "Kupeleka data kwenye mawingu ya kigeni ni hatari ya kikanuni, ya faragha na ya gharama.",
     "problemBullet4": "Upatikanaji wa GPU za wingu ni ghali, una uhaba wa ugavi na unaongozwa kutoka nje.",
     "problemBullet5": "Vifaa vya kawaida na vya workstation vyenye uwezo tayari vipo Ulaya kote bila kutumika ipasavyo.",

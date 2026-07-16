@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Egemen Avrupa Yapay Zekâ Çıkarımı",
     "title": "Egemen altyapı",
-    "lead": "Gelişmiş, yetenekli modelleri hâlihazırda sahip olduğunuz donanımda — küçük, verimli tesislerde — çalıştırmanın, Avrupalı KOBİ'lerin bugünün küresel teknoloji ekosistemine hâkim hyperscaler zihniyetiyle rekabet etmesinin yolu olduğuna inanıyoruz.",
+    "lead": "Gelişmiş, yetenekli modelleri hâlihazırda sahip olduğunuz donanımda, küçük, verimli tesislerde çalıştırmanın, Avrupalı KOBİ'lerin bugünün küresel teknoloji ekosistemine hâkim hyperscaler zihniyetiyle rekabet etmesinin yolu olduğuna inanıyoruz.",
     "ctaJoinMesh": "Hemen deneyin",
     "ctaFollowProject": "Projeyi takip edin",
     "subcopy": "Avrupalılar tarafından, Avrupalılar için.",
@@ -24,7 +24,7 @@
     "title": "Neden Şimdi",
     "problemTitle": "Uyumsuzluk",
     "problemBullet1": "Bugünün çıkarım yığınları hyperscale veri merkezlerini, büyük GPU kümelerini ve kapalı kaynak LLM'leri varsayar.",
-    "problemBullet2": "Avrupa düzenlemeleri — GDPR, AB Yapay Zekâ Yasası, sektörel kurallar — iş yüklerini şirket içine ve bölge içine yönlendiriyor.",
+    "problemBullet2": "Avrupa düzenlemeleri (GDPR, AB Yapay Zekâ Yasası, sektörel kurallar) iş yüklerini şirket içine ve bölge içine yönlendiriyor.",
     "problemBullet3": "Veriyi yabancı bulutlara göndermek düzenleyici, gizlilik ve maliyet açısından bir yükümlülük.",
     "problemBullet4": "Bulutta GPU erişimi pahalı, arzı kısıtlı ve başka yerden yönetiliyor.",
     "problemBullet5": "Yetenekli tüketici ve iş istasyonu donanımı Avrupa genelinde zaten atıl duruyor.",

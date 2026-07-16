@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Inferencia de IA soberana europea",
     "title": "Infraestructura soberana",
-    "lead": "Creemos que ejecutar modelos avanzados y capaces en el hardware que ya tienes — en instalaciones pequeñas y eficientes — es la forma en que las pymes europeas compiten con la mentalidad hyperscaler que domina el ecosistema tecnológico global actual.",
+    "lead": "Creemos que ejecutar modelos avanzados y capaces en el hardware que ya tienes, en instalaciones pequeñas y eficientes, es la forma en que las pymes europeas compiten con la mentalidad hyperscaler que domina el ecosistema tecnológico global actual.",
     "ctaJoinMesh": "Pruébalo ahora",
     "ctaFollowProject": "Sigue el proyecto",
     "subcopy": "Creado por europeos, para europeos.",
@@ -24,7 +24,7 @@
     "title": "Por qué ahora",
     "problemTitle": "El desajuste",
     "problemBullet1": "Las plataformas de inferencia actuales presuponen centros de datos de hiperescala, grandes clústeres de GPU y LLM de código cerrado.",
-    "problemBullet2": "La regulación europea — el RGPD, el Reglamento de IA, las normas sectoriales — dirige las cargas de trabajo hacia entornos locales y dentro de la región.",
+    "problemBullet2": "La regulación europea (el RGPD, el Reglamento de IA, las normas sectoriales) dirige las cargas de trabajo hacia entornos locales y dentro de la región.",
     "problemBullet3": "Enviar datos a nubes extranjeras es un pasivo regulatorio, de privacidad y de costes.",
     "problemBullet4": "El acceso a GPU en la nube es caro, con oferta limitada y gobernado desde fuera.",
     "problemBullet5": "En toda Europa ya hay hardware de consumo y de estación de trabajo capaz que está infrautilizado.",

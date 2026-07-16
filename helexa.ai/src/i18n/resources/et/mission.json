@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suveräänne Euroopa AI-inferents",
     "title": "Suveräänne taristu",
-    "lead": "Usume, et arenenud ja võimekate mudelite käitamine juba olemasoleval riistvaral — väikestes ja tõhusates rajatistes — on viis, kuidas Euroopa VKEd konkureerivad tänast globaalset tehnoloogiaökosüsteemi valitseva hyperscaler-mõtteviisiga.",
+    "lead": "Usume, et arenenud ja võimekate mudelite käitamine juba olemasoleval riistvaral, väikestes ja tõhusates rajatistes, on viis, kuidas Euroopa VKEd konkureerivad tänast globaalset tehnoloogiaökosüsteemi valitseva hyperscaler-mõtteviisiga.",
     "ctaJoinMesh": "Proovi kohe",
     "ctaFollowProject": "Jälgi projekti",
     "subcopy": "Loodud eurooplaste poolt, eurooplastele.",
@@ -24,7 +24,7 @@
     "title": "Miks just nüüd",
     "problemTitle": "Ebakõla",
     "problemBullet1": "Tänased inferentsipinud eeldavad hüperskaala andmekeskusi, suuri GPU-klastreid ja suletud LLM-e.",
-    "problemBullet2": "Euroopa regulatsioon — GDPR, tehisintellekti määrus, valdkondlikud reeglid — suunab töökoormused kohapeale ja oma piirkonda.",
+    "problemBullet2": "Euroopa regulatsioon (GDPR, tehisintellekti määrus, valdkondlikud reeglid) suunab töökoormused kohapeale ja oma piirkonda.",
     "problemBullet3": "Andmete saatmine välismaistesse pilvedesse on regulatiivne, privaatsus- ja kulurisk.",
     "problemBullet4": "GPU-võimsus pilves on kallis, piiratud pakkumisega ja mujalt juhitud.",
     "problemBullet5": "Võimekas tarbija- ja tööjaamariistvara seisab juba praegu üle Euroopa alakasutatuna.",

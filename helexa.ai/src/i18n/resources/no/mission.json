@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suveren europeisk AI-inferens",
     "title": "Suveren infrastruktur",
-    "lead": "Vi tror at avanserte, kapable modeller på maskinvare man allerede har — i små, effektive anlegg — er måten europeiske SMB-er kan konkurrere med hyperscaler-tankegangen som dominerer dagens globale teknologiøkosystem.",
+    "lead": "Vi tror at avanserte, kapable modeller på maskinvare man allerede har, i små, effektive anlegg, er måten europeiske SMB-er kan konkurrere med hyperscaler-tankegangen som dominerer dagens globale teknologiøkosystem.",
     "ctaJoinMesh": "Prøv nå",
     "ctaFollowProject": "Følg prosjektet",
     "subcopy": "Laget av europeere, for europeere.",
@@ -24,7 +24,7 @@
     "title": "Derfor nå",
     "problemTitle": "Gapet",
     "problemBullet1": "Dagens inferensstacker forutsetter hyperskala datasentre, store GPU-klynger og lukkede LLM-er.",
-    "problemBullet2": "Europeisk regulering — GDPR, AI-forordningen, sektorregler — styrer arbeidslaster til egne lokaler og egen region.",
+    "problemBullet2": "Europeisk regulering (GDPR, AI-forordningen, sektorregler) styrer arbeidslaster til egne lokaler og egen region.",
     "problemBullet3": "Å sende data til utenlandske skyer er en belastning for regeletterlevelse, personvern og kostnader.",
     "problemBullet4": "GPU-tilgang i skyen er dyr, tilbudsbegrenset og styrt andre steder.",
     "problemBullet5": "Kapabel forbruker- og arbeidsstasjonsmaskinvare står allerede underutnyttet over hele Europa.",

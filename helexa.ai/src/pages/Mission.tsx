@@ -142,21 +142,23 @@ const WhyNowSection: React.FC = () => {
 const HowItWorksSection: React.FC = () => {
   const { t } = useTranslation("mission");
 
+  // Step numbers are decimals of this section's "03" eyebrow so the
+  // two numbering systems read as one hierarchy, not a clash.
   const steps = [
     {
-      num: "01",
+      num: "03.1",
       eyebrow: t("howItWorks.operators.eyebrow"),
       title: t("howItWorks.operators.title"),
       body: t("howItWorks.operators.body"),
     },
     {
-      num: "02",
+      num: "03.2",
       eyebrow: t("howItWorks.routing.eyebrow"),
       title: t("howItWorks.routing.title"),
       body: t("howItWorks.routing.body"),
     },
     {
-      num: "03",
+      num: "03.3",
       eyebrow: t("howItWorks.value.eyebrow"),
       title: t("howItWorks.value.title"),
       body: t("howItWorks.value.body"),

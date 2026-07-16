@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Inférence IA européenne souveraine",
     "title": "Une infrastructure souveraine",
-    "lead": "Nous sommes convaincus que faire tourner des modèles avancés et performants sur du matériel déjà en place — dans des installations compactes et efficaces — est la voie par laquelle les PME européennes peuvent rivaliser avec la logique hyperscaler qui domine l'écosystème technologique mondial d'aujourd'hui.",
+    "lead": "Nous sommes convaincus que faire tourner des modèles avancés et performants sur du matériel déjà en place, dans des installations compactes et efficaces, est la voie par laquelle les PME européennes peuvent rivaliser avec la logique hyperscaler qui domine l'écosystème technologique mondial d'aujourd'hui.",
     "ctaJoinMesh": "Essayer maintenant",
     "ctaFollowProject": "Suivre le projet",
     "subcopy": "Créé par des Européens, pour des Européens.",
@@ -24,7 +24,7 @@
     "title": "Pourquoi maintenant",
     "problemTitle": "Le décalage",
     "problemBullet1": "Les stacks d'inférence actuels présupposent des centres de données hyperscale, de grands clusters de GPU et des LLM propriétaires.",
-    "problemBullet2": "La réglementation européenne — RGPD, règlement sur l'IA, règles sectorielles — oriente les charges de travail vers l'hébergement sur site et dans la région.",
+    "problemBullet2": "La réglementation européenne (RGPD, règlement sur l'IA, règles sectorielles) oriente les charges de travail vers l'hébergement sur site et dans la région.",
     "problemBullet3": "Envoyer des données vers des clouds étrangers est un risque réglementaire, de confidentialité et de coût.",
     "problemBullet4": "L'accès aux GPU cloud est coûteux, limité par l'offre et gouverné ailleurs.",
     "problemBullet5": "Du matériel grand public et workstation performant dort déjà, sous-utilisé, partout en Europe.",

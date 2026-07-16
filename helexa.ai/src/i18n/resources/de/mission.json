@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Souveräne europäische KI-Inferenz",
     "title": "Souveräne Infrastruktur",
-    "lead": "Wir sind überzeugt: Fortschrittliche, leistungsfähige Modelle auf bereits vorhandener Hardware zu betreiben — in kleinen, effizienten Einrichtungen — ist der Weg, auf dem europäische KMU mit der Hyperscaler-Mentalität konkurrieren, die das heutige globale Technologie-Ökosystem dominiert.",
+    "lead": "Wir sind überzeugt: Fortschrittliche, leistungsfähige Modelle auf bereits vorhandener Hardware zu betreiben, in kleinen, effizienten Einrichtungen, ist der Weg, auf dem europäische KMU mit der Hyperscaler-Mentalität konkurrieren, die das heutige globale Technologie-Ökosystem dominiert.",
     "ctaJoinMesh": "Jetzt ausprobieren",
     "ctaFollowProject": "Dem Projekt folgen",
     "subcopy": "Von Europäern, für Europäer.",
@@ -24,7 +24,7 @@
     "title": "Warum jetzt",
     "problemTitle": "Das Missverhältnis",
     "problemBullet1": "Heutige Inferenz-Stacks setzen Hyperscale-Rechenzentren, große GPU-Cluster und Closed-Source-LLMs voraus.",
-    "problemBullet2": "Europäische Regulierung — DSGVO, die KI-Verordnung, sektorale Vorschriften — lenkt Workloads on-premises und in die Region.",
+    "problemBullet2": "Europäische Regulierung (DSGVO, die KI-Verordnung, sektorale Vorschriften) lenkt Workloads on-premises und in die Region.",
     "problemBullet3": "Daten an ausländische Clouds zu senden ist ein Regulierungs-, Datenschutz- und Kostenrisiko.",
     "problemBullet4": "Cloud-GPU-Zugang ist teuer, knapp und wird andernorts kontrolliert.",
     "problemBullet5": "Leistungsfähige Consumer- und Workstation-Hardware liegt in ganz Europa bereits ungenutzt brach.",
