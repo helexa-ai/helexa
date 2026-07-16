@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Вход",
+    "email": "Эл. почта",
+    "password": "Пароль",
+    "submit": "Войти",
+    "noAccount": "Нет аккаунта? Зарегистрируйтесь"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Создайте аккаунт",
+    "email": "Эл. почта",
+    "password": "Пароль",
+    "submit": "Зарегистрироваться",
+    "haveAccount": "Уже есть аккаунт? Войти",
+    "checkEmail": "Почти готово — проверьте почту, чтобы подтвердить аккаунт."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Проверка…",
+    "ok": "Адрес подтверждён. Теперь можно войти.",
+    "failed": "Ссылка подтверждения недействительна или устарела.",
+    "toLogin": "Перейти ко входу"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Сброс пароля",
+    "email": "Эл. почта",
+    "requestSubmit": "Отправить ссылку для сброса",
+    "requestDone": "Если для этого адреса есть аккаунт, ссылка для сброса уже в пути.",
+    "confirmTitle": "Выберите новый пароль",
+    "newPassword": "Новый пароль",
+    "confirmSubmit": "Сохранить пароль",
+    "ok": "Пароль обновлён. Теперь можно войти."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Аккаунт",
+    "balance": "Квота",
+    "total": "Всего",
+    "spent": "Израсходовано",
+    "reserved": "Зарезервировано",
+    "remaining": "Осталось",
+    "manageKeys": "Управление API-ключами",
+    "redeemTitle": "Активировать код пополнения",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Активировать",
+    "redeemed": "Код активирован.",
+    "logout": "Выйти"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API-ключи",
+    "create": "Создать ключ",
+    "label": "Название",
+    "limitKind": "Лимит",
+    "percent": "% от квоты",
+    "hardcap": "Жёсткий лимит (токены)",
+    "value": "Значение",
+    "none": "Ключей пока нет.",
+    "createdTitle": "Ваш новый API-ключ",
+    "createdWarn": "Скопируйте его сейчас — он больше не будет показан.",
+    "copy": "Копировать",
+    "copied": "Скопировано",
+    "archive": "В архив",
+    "save": "Сохранить",
+    "status": "Статус",
+    "usage": "Использовано",
+    "useForChat": "Использовать для чата на этом устройстве",
+    "usedForChat": "Включён для чата ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Что-то пошло не так.",
+    "unauthorized": "Пожалуйста, войдите заново."
   }
 }
