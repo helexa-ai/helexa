@@ -345,6 +345,80 @@ jobs:
   # dependency on cortex or the neurons (the sweep loop is version-aware
   # and picks up whatever each neuron reports whenever). So it runs
   # alongside the cortex→neurons chain rather than after it.
+  # Roll helexa-router + helexa-upstream onto the federation service host
+  # (gallumbits). Same manifest-gated dnf pattern as deploy-cortex; the
+  # two services are independent daemons on one host, so one job handles
+  # both. Configs are NOT synced here — they carry secrets and ride in
+  # script/infra-setup.sh under the operator's own sudo.
+  deploy-gallumbits:
+    runs-on: fedora-43
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+              gitea_ci@gallumbits.kosherinata.internal 'hostname -f'
+
+      - name: Deploy helexa-router + helexa-upstream (skips when already current)
+        run: |
+          ssh gitea_ci@gallumbits.kosherinata.internal 'bash -s' <<'DEPLOY'
+          set -eu
+          for pkg in helexa-router helexa-upstream; do
+            installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+            latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
+              | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          cands = [p for p in json.load(sys.stdin)["packages"] if p.get("name") == name]
+          if cands:
+              p = max(cands, key=lambda p: p.get("buildTime", 0))
+              print(p["version"] + "-" + p["release"])
+          ' "${pkg}" 2>/dev/null || true)
+            if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+              echo "${pkg}-${installed} already current — leaving service untouched"
+              continue
+            fi
+            echo "${pkg}: installed=${installed} published=${latest:-unknown} — deploying"
+            if systemctl is-active --quiet "${pkg}.service"; then
+              sudo /usr/bin/systemctl stop "${pkg}.service"
+            fi
+            if rpm -q "${pkg}" >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y "${pkg}"
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y "${pkg}"
+            fi
+            sudo /usr/bin/systemctl daemon-reload
+            sudo /usr/bin/systemctl enable --now "${pkg}.service"
+          done
+          DEPLOY
+
+      - name: Ensure firewalld allows helexa-router + helexa-upstream
+        run: |
+          ssh gitea_ci@gallumbits.kosherinata.internal '
+            changed=0
+            for svc in helexa-router helexa-upstream; do
+              if ! sudo /usr/bin/firewall-cmd --query-service=${svc} --quiet 2>/dev/null; then
+                sudo /usr/bin/firewall-cmd --add-service=${svc} --permanent
+                changed=1
+              fi
+            done
+            [ "$changed" = "1" ] && sudo /usr/bin/firewall-cmd --reload || true
+          '
+
+      - name: Capture service startup journals
+        if: always()
+        run: |
+          sleep 10
+          ssh gitea_ci@gallumbits.kosherinata.internal \
+              'journalctl --unit helexa-router.service -I --no-pager; journalctl --unit helexa-upstream.service -I --no-pager'
+
   deploy-bench:
     runs-on: fedora-43
     if: >-

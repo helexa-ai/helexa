@@ -13,3 +13,5 @@ models.toml
 doc/plan/*
 /target-cuda/
 .claude/
+helexa-router.toml
+helexa-upstream.toml
