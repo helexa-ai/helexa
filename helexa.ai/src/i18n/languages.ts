@@ -15,6 +15,7 @@ import type { Resource } from "i18next";
 export type LanguageCode =
   | "en"
   | "bg"
+  | "ca"
   | "cs"
   | "da"
   | "de"
@@ -103,12 +104,31 @@ export const SUPPORTED_LANGUAGES: LanguageCode[] = [
   "sr",
   "tr",
   "uk",
+  // EU-24 completion + Catalan (2026-07-16): every official EU language
+  // is now supported.
+  "ca",
+  "cs",
+  "ga",
+  "hr",
+  "hu",
+  "lt",
+  "lv",
+  "mt",
+  "sk",
+  "sl",
   // Future Afro‑European / Eurasian candidates; keep out of SUPPORTED_LANGUAGES until translated:
   // "ig", // Igbo
   // "om", // Oromo
   // "so", // Somali
   // "ti", // Tigrinya
   // "wo", // Wolof
+  //
+  // Asian and Latin-American languages (hi, bn, ur, id, vi, th, fil, ja,
+  // ko, ta, es-419, pt-BR, …) are DELIBERATELY not queued here: each
+  // launches together with the market narrative (mission copy) for its
+  // region, not ahead of it — a language arriving alongside a market
+  // story reads as intent; arriving alone it reads as autotranslate.
+  // See TRANSLATION_PRIORITY in translation-priority.ts for the policy.
 ];
 
 /**
@@ -120,6 +140,7 @@ export const SUPPORTED_LANGUAGES: LanguageCode[] = [
 export const AUTONYM_MAP: Record<LanguageCode, string> = {
   en: "English",
   bg: "български",
+  ca: "català",
   cs: "čeština",
   da: "dansk",
   de: "Deutsch",

@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Inferenza Sovrana Ewropea tal-IA",
+    "title": "Infrastruttura sovrana",
+    "lead": "Nemmnu li t-tħaddim ta' mudelli avvanzati u kapaċi fuq ħardwer li diġà għandek, f'faċilitajiet żgħar u effiċjenti, huwa l-mod kif l-SMEs Ewropej jikkompetu mal-mentalità tal-hyperscalers li tiddomina l-ekosistema teknoloġika globali tal-lum.",
+    "ctaJoinMesh": "Ipprovaha issa",
+    "ctaFollowProject": "Segwi l-proġett",
+    "subcopy": "Maħluqa mill-Ewropej, għall-Ewropej.",
+    "imageAlt": "Viżwal tal-elika ta' Helexa"
+  },
+
+  "intent": {
+    "title": "Għaliex Teżisti Helexa",
+    "p1": "L-infrastruttura tal-IA tal-lum hija ddominata minn ċentri tad-data hyperscale li jinsabu fiżikament f'ġurisdizzjonijiet barra l-UE jew taħt il-kontroll ta' entitajiet legali li jwieġbu lil ġurisdizzjonijiet barra l-UE — b'aġendi, prattiki u strateġiji li mhux dejjem jistgħu jilħqu l-istandards għoljin Ewropej tal-etika u tal-protezzjoni tal-konsumatur. In-negozji Ewropej dejjem aktar iridu jipproċessaw u jipproteġu d-data fi ħdan il-qafas regolatorju tal-UE, ħaġa li l-istacks tal-inferenza esterni rarament jagħtuha prijorità.",
+    "p2Intro": "Helexa tisfrutta l-infrastruttura li l-Ewropa diġà għandha u l-mudelli open-weight li ma nistgħux naffordjaw li nitilfu:",
+    "bullet1": "Mudelli avvanzati open-weight li jaħdmu b'mod effiċjenti fuq aċċeleraturi commodity, professjonali u tal-klassi taċ-ċentri tad-data.",
+    "bullet2": "Residenza tad-data u privatezza b'mod awtomatiku. L-inferenza tgħix fuq infrastruttura fil-ġurisdizzjoni tal-konsumatur.",
+    "bullet3": "L-isfruttar tal-kapaċità tal-aċċeleraturi disponibbli bħalissa mingħajr ma tiġi ssagrifikata l-prestazzjoni.",
+    "bullet4": "Indipendenza mill-hyperscalers globali b'interessi konkorrenti.",
+    "closing": "Mhux cloud globali li b'kumbinazzjoni għandu ċentru tad-data fl-UE. Diversi operaturi tal-UE indipendenti u sovrani."
+  },
+
+  "whyNow": {
+    "title": "Għaliex Issa",
+    "problemTitle": "In-Nuqqas ta' Qbil",
+    "problemBullet1": "L-istacks tal-inferenza tal-lum jassumu ċentri tad-data hyperscale, clusters kbar ta' GPUs u LLMs b'sors magħluq.",
+    "problemBullet2": "Ir-regolamentazzjoni Ewropea (GDPR, l-Att dwar l-IA, regoli settorjali) tidderieġi t-tagħbijiet tax-xogħol fuq il-post u fir-reġjun.",
+    "problemBullet3": "Li tibgħat data lil clouds barranin huwa riskju regolatorju, ta' privatezza u ta' spejjeż.",
+    "problemBullet4": "L-aċċess għal GPUs fil-cloud huwa għali, limitat fil-provvista u ggvernat band'oħra.",
+    "problemBullet5": "Ħardwer kapaċi commodity u tal-workstations diġà jinsab sottoutilizzat madwar l-Ewropa.",
+    "opportunityTitle": "L-Opportunità",
+    "opportunityIntro": "Mudelli open-weight qrib il-fruntiera issa jaħdmu tajjeb fuq ħardwer li l-Ewropa diġà għandha.",
+    "opportunityBullet1": "Mudelli avvanzati open-weight jaħdmu fuq workstations u GPUs commodity mingħajr clusters ta' GPUs taċ-ċentri tad-data.",
+    "opportunityBullet2": "In-negozji Ewropej iridu IA li jistgħu jħaddmu lokalment, bi spejjeż prevedibbli u aċċess futur garantit.",
+    "opportunityBullet3": "Operaturi b'ħardwer kapaċi jistgħu jservu l-inferenza qrib il-konsumaturi.",
+    "opportunityBullet4": "Ir-regolamentazzjoni qed tibdel is-sovranità tad-data minn preferenza għal rekwiżit.",
+    "opportunityBullet5": "Softwer tal-inferenza effiċjenti huwa s-saff nieqes u l-antidotu għal aktar ċentri tad-data u ikbar.",
+    "opportunityClosing": "Helexa hija dak is-saff tas-softwer."
+  },
+
+  "howItWorks": {
+    "title": "Kif Taħdem",
+    "operators": {
+      "eyebrow": "Installa Lokalment",
+      "title": "Ħaddem mudelli avvanzati fuq il-ħardwer tiegħek stess.",
+      "body": "Helexa sservi mudelli open-weight qrib il-fruntiera fuq GPUs commodity u tal-klassi tal-workstations, fuq il-post, fil-ġurisdizzjoni tiegħek stess. L-ebda cluster, l-ebda hyperscaler, l-ebda dipendenza barranija. Id-data tibqa' fejn tikkontrollaha int."
+    },
+    "routing": {
+      "eyebrow": "Irrotta b'Mod Intelliġenti",
+      "title": "It-talbiet jibqgħu qrib id-dar.",
+      "body": "Helexa tirrotta kull talba lejn infrastruttura b'kapaċità, bi preferenza għall-affinità reġjonali, biex it-traffiku u d-data jibqgħu fejn tistenniehom. L-installazzjonijiet jingħaqdu f'netwerk usa' hekk kif tikber il-kapaċità."
+    },
+    "value": {
+      "eyebrow": "Opera b'Mod Indipendenti",
+      "title": "Ix-xogħol jiġi ppruvat. L-ekonomija hija trasparenti.",
+      "body": "L-użu jitkejjel b'mod trasparenti u l-operaturi indipendenti se jiġu kkumpensati għall-intelliġenza li jservu. L-ebda taxxa tal-pjattaforma, l-ebda fatturazzjoni opaka, l-ebda lock-in."
+    }
+  },
+
+  "principles": {
+    "title": "Mibnija fuq is-Sovranità, Mhux fuq il-Lock-In",
+    "distributed": {
+      "title": "Sovrana mid-Disinn",
+      "body": "Ħardwer Ewropew, operaturi Ewropej, liġi Ewropea. L-ebda punt uniku ta' falliment u l-ebda ġurisdizzjoni esterna li l-aċċess jiddependi minnha."
+    },
+    "participation": {
+      "title": "Taħdem fuq il-Ħardwer li Għandek",
+      "body": "Minn workstation waħda sa ċentru tad-data reġjonali, kull kompjuter kapaċi jista' jħaddem Helexa. Tnaqqas ir-rekwiżiti tal-infrastruttura minflok ma titlob clusters ġodda."
+    },
+    "fairness": {
+      "title": "Privatezza u Trasparenza",
+      "body": "Privatezza min-natura tagħha: l-istorja tal-chat tgħix biss fil-browser, qatt fuq server. Il-kejl tal-użu huwa trasparenti; m'hemmx kaxxi suwed u m'hemmx ħlasijiet moħbija."
+    },
+    "evolving": {
+      "title": "Reżiljenti bid-Distribuzzjoni",
+      "body": "Kapaċità mifruxa fuq ħafna installazzjonijiet indipendenti hija aktar diffiċli biex tiġi ċċensurata, ristretta jew mitfija, u hija reżiljenti għal bidliet fil-politika barranija u għall-falliment ta' fornitur wieħed."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Fejn Sejra Helexa",
+    "p1": "L-għan fit-tul tagħna huwa li nsiru s-saff tas-softwer li jħaddem netwerk distribwit ta' infrastruttura tal-IA Ewropea operata b'mod indipendenti.",
+    "p2": "Minn installazzjonijiet ta' intrapriżi li jħaddmu mudelli avvanzati fuq il-ħardwer tagħhom stess, sa ċentri tad-data reġjonali mħaddma b'enerġija rinnovabbli li jservu l-komunitajiet tagħhom.",
+    "p3": "Saff ta' inferenza Ewropew, proprjetà tal-Ewropa u operat fl-Ewropa. Reżiljenti għall-interruzzjonijiet, għall-bidliet fil-politika barranija, għall-monopolji u għall-falliment ta' fornitur wieħed.",
+    "p4": "Infrastruttura li ssaħħaħ l-awtonomija Ewropea minflok ma tkabbar id-dipendenza fuq ftit fornituri barranin.",
+    "card": {
+      "eyebrow": "Viżjoni",
+      "title": "Is-saff tas-softwer għall-infrastruttura tal-IA Ewropea",
+      "body": "Helexa għadha fil-bidu, u dan apposta. Stack tal-inferenza li jaħdem illum, li qed jikber lejn netwerk distribwit ta' installazzjonijiet Ewropej operati b'mod indipendenti."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Aċċess bikri",
+    "title": "Infrastruttura tal-IA Sovrana.",
+    "titleHighlight": "Mibnija fl-Ewropa.",
+    "lead": "Kemm jekk tħaddem l-IA fuq il-ħardwer tiegħek stess, topera kapaċità, jew qed tibni lejn is-sovranità tal-IA Ewropea, hawn post għalik.",
+    "ctaRunNode": "Installa node (dalwaqt)",
+    "ctaJoinAnnouncements": "Segwi l-ewwel avviżi",
+    "ctaExploreCode": "Esplora l-kodiċi",
+    "footer": "L-ebda ġonna magħluqa. Saff tas-softwer għall-IA Ewropea sovrana. Minn workstation waħda sa ċentri tad-data reġjonali mħaddma b'enerġija rinnovabbli."
+  }
+}

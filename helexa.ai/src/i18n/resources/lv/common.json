@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Sākums",
+    "docs": "Dokumentācija",
+    "chat": "Tērzēšana",
+    "mission": "Misija",
+    "login": "Pieteikties",
+    "register": "Reģistrēties",
+    "account": "Konts",
+    "logout": "Iziet"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Pārslēgt uz gaišo režīmu",
+      "toDark": "Pārslēgt uz tumšo režīmu"
+    }
+  },
+  "lang": {
+    "am": "amharu",
+    "ar": "arābu",
+    "bg": "bulgāru",
+    "ca": "katalāņu",
+    "cs": "čehu",
+    "da": "dāņu",
+    "de": "vācu",
+    "el": "grieķu",
+    "en": "angļu",
+    "es": "spāņu",
+    "et": "igauņu",
+    "fa": "persiešu",
+    "fi": "somu",
+    "fr": "franču",
+    "ga": "īru",
+    "ha": "hausu",
+    "he": "ivrits",
+    "hr": "horvātu",
+    "hu": "ungāru",
+    "ig": "igbo",
+    "it": "itāļu",
+    "ka": "gruzīnu",
+    "kk": "kazahu",
+    "lt": "lietuviešu",
+    "lv": "latviešu",
+    "ma": "darīdža",
+    "mt": "maltiešu",
+    "nl": "holandiešu",
+    "no": "norvēģu",
+    "om": "oromu",
+    "pl": "poļu",
+    "pt": "portugāļu",
+    "ro": "rumāņu",
+    "ru": "krievu",
+    "sk": "slovāku",
+    "sl": "slovēņu",
+    "so": "somāļu",
+    "sr": "serbu",
+    "sv": "zviedru",
+    "sw": "svahili",
+    "ti": "tigrinja",
+    "tr": "turku",
+    "uk": "ukraiņu",
+    "uz": "uzbeku",
+    "wo": "volofu",
+    "yo": "jorubu",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privātums"
+  },
+  "beta": {
+    "tag": "Publiskā beta",
+    "message": "helexa ir atvērtā beta versijā — iespējamas nepilnības. Jūsu sarunas paliek jūsu pārlūkā.",
+    "dismiss": "Aizvērt"
+  }
+}

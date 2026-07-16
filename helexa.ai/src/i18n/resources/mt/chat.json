@@ -1,0 +1,21 @@
+{
+  "title": "Spazju tax-xogħol tal-konversazzjoni",
+  "badge": "Chat",
+  "lead": "Din hija l-veduta tal-chat. Qabbad il-loġika konversazzjonali u l-komponenti tal-UI tiegħek ma' din il-paġna.",
+  "transcriptPlaceholder": "It-traskrizzjoni tal-chat se tidher hawn. Uri l-messaġġi mill-mudell u mill-utent f'kontenitur li jiskrollja, jekk trid miġbura skont id-dawra.",
+  "inputPlaceholder": "Ikteb messaġġ biex tibda l-konversazzjoni…",
+  "send": "Ibgħat",
+  "clear": "Ħassar",
+  "newChat": "Chat ġdida",
+  "newProject": "Proġett ġdid",
+  "newProjectName": "Proġett ġdid",
+  "unsorted": "Mhux issortjati",
+  "emptyState": "Ibda konversazzjoni. L-istorja tiegħek tibqa' f'dan il-browser.",
+  "anonBanner": "Lħaqt il-limitu anonimu. Irreġistra għal allokazzjoni b'xejn.",
+  "signUp": "Irreġistra",
+  "stop": "Waqqaf",
+  "topUp": "Żid kreditu",
+  "rateLimited": "Ir-rata hija limitata — stenna ftit u erġa' pprova.",
+  "needsKey": "Oħloq ċavetta API u attivaha għall-chat biex tibgħat f'ismek.",
+  "manageKeysLink": "Immaniġġja ċ-ċwievet"
+}

@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Bejelentkezés",
+    "email": "E-mail",
+    "password": "Jelszó",
+    "submit": "Bejelentkezés",
+    "noAccount": "Nincs fiókod? Regisztrálj"
+  },
+  "register": {
+    "title": "Fiók létrehozása",
+    "email": "E-mail",
+    "password": "Jelszó",
+    "submit": "Regisztráció",
+    "haveAccount": "Van már fiókod? Jelentkezz be",
+    "checkEmail": "Már majdnem kész — ellenőrizd az e-mailjeidet a fiókod megerősítéséhez."
+  },
+  "verify": {
+    "verifying": "Ellenőrzés…",
+    "ok": "E-mail-cím megerősítve. Most már bejelentkezhetsz.",
+    "failed": "Ez a megerősítő link érvénytelen vagy lejárt.",
+    "toLogin": "Ugrás a bejelentkezéshez"
+  },
+  "reset": {
+    "requestTitle": "Jelszó visszaállítása",
+    "email": "E-mail",
+    "requestSubmit": "Visszaállító link küldése",
+    "requestDone": "Ha az e-mail-címhez tartozik fiók, a visszaállító link már úton van.",
+    "confirmTitle": "Válassz új jelszót",
+    "newPassword": "Új jelszó",
+    "confirmSubmit": "Jelszó beállítása",
+    "ok": "Jelszó frissítve. Most már bejelentkezhetsz."
+  },
+  "dashboard": {
+    "title": "Fiók",
+    "balance": "Keret",
+    "total": "Összesen",
+    "spent": "Elköltve",
+    "reserved": "Lefoglalva",
+    "remaining": "Hátralévő",
+    "manageKeys": "API-kulcsok kezelése",
+    "redeemTitle": "Feltöltőkód beváltása",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Beváltás",
+    "redeemed": "Kód beváltva.",
+    "logout": "Kijelentkezés"
+  },
+  "keys": {
+    "title": "API-kulcsok",
+    "create": "Kulcs létrehozása",
+    "label": "Címke",
+    "limitKind": "Limit",
+    "percent": "a keret %-a",
+    "hardcap": "Felső korlát (tokenek)",
+    "value": "Érték",
+    "none": "Még nincsenek kulcsok.",
+    "createdTitle": "Az új API-kulcsod",
+    "createdWarn": "Másold ki most — többé nem fogod látni.",
+    "copy": "Másolás",
+    "copied": "Kimásolva",
+    "archive": "Archiválás",
+    "save": "Mentés",
+    "status": "Állapot",
+    "usage": "Felhasznált",
+    "useForChat": "Használat csevegéshez ezen az eszközön",
+    "usedForChat": "Csevegéshez engedélyezve ✓"
+  },
+  "error": {
+    "generic": "Hiba történt.",
+    "unauthorized": "Kérjük, jelentkezz be újra."
+  }
+}

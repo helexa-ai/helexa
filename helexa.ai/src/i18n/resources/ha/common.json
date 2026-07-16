@@ -55,7 +55,17 @@
     "uz": "Uzbek",
     "wo": "Wolof",
     "yo": "Yorùbá",
-    "zu": "isiZulu"
+    "zu": "isiZulu",
+    "ca": "Catalan",
+    "cs": "Czech",
+    "ga": "Irish",
+    "hr": "Croatian",
+    "hu": "Hungarian",
+    "lt": "Lithuanian",
+    "lv": "Latvian",
+    "mt": "Maltese",
+    "sk": "Slovak",
+    "sl": "Slovenian"
   },
   "footer": {
     "copyright": "© {{year}} helexa.ai",

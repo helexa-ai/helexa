@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Suverena evropska inferenca umetne inteligence",
+    "title": "Suverena infrastruktura",
+    "lead": "Verjamemo, da je poganjanje naprednih, zmogljivih modelov na strojni opremi, ki jo že imate, v majhnih in učinkovitih objektih, način, kako lahko evropska mala in srednja podjetja tekmujejo s hiperskalersko miselnostjo, ki obvladuje današnji globalni tehnološki ekosistem.",
+    "ctaJoinMesh": "Preizkusite zdaj",
+    "ctaFollowProject": "Spremljajte projekt",
+    "subcopy": "Ustvarili Evropejci za Evropejce.",
+    "imageAlt": "Vizualna podoba Helexine vijačnice"
+  },
+
+  "intent": {
+    "title": "Zakaj Helexa obstaja",
+    "p1": "Današnjo infrastrukturo za umetno inteligenco obvladujejo hiperskalirani podatkovni centri, ki so bodisi fizično locirani v jurisdikcijah zunaj EU bodisi pod nadzorom pravnih subjektov, odgovornih jurisdikcijam zunaj EU — z agendami, praksami in strategijami, ki morda ne izpolnjujejo vedno visokih evropskih standardov etike in varstva potrošnikov. Evropska podjetja morajo podatke vse pogosteje obdelovati in varovati znotraj regulativnega okvira EU, česar zunanji inferenčni skladi le redko postavljajo v ospredje.",
+    "p2Intro": "Helexa izkorišča infrastrukturo, ki jo Evropa že ima, in modele z odprtimi utežmi, ki si jih ne smemo privoščiti izgubiti:",
+    "bullet1": "Napredni modeli z odprtimi utežmi, ki učinkovito tečejo na potrošniških in profesionalnih pospeševalnikih ter pospeševalnikih razreda podatkovnih centrov.",
+    "bullet2": "Rezidenčnost podatkov in zasebnost privzeto. Inferenca poteka na infrastrukturi znotraj jurisdikcije potrošnika.",
+    "bullet3": "Izkoriščanje trenutno razpoložljivih zmogljivosti pospeševalnikov brez žrtvovanja zmogljivosti delovanja.",
+    "bullet4": "Neodvisnost od globalnih hiperskalerjev z nasprotujočimi si interesi.",
+    "closing": "Ne globalni oblak, ki ima slučajno podatkovni center v EU. Več neodvisnih, suverenih operaterjev v EU."
+  },
+
+  "whyNow": {
+    "title": "Zakaj zdaj",
+    "problemTitle": "Neskladje",
+    "problemBullet1": "Današnji inferenčni skladi predpostavljajo hiperskalirane podatkovne centre, velike gruče GPE in zaprtokodne velike jezikovne modele.",
+    "problemBullet2": "Evropska regulativa (GDPR, Akt o umetni inteligenci, sektorska pravila) usmerja delovne obremenitve na lastne lokacije in v regijo.",
+    "problemBullet3": "Pošiljanje podatkov v tuje oblake je regulativno, zasebnostno in stroškovno breme.",
+    "problemBullet4": "Dostop do GPE v oblaku je drag, ponudba je omejena, upravljanje pa poteka drugje.",
+    "problemBullet5": "Zmogljiva potrošniška in delovnopostajna strojna oprema po Evropi že zdaj stoji neizkoriščena.",
+    "opportunityTitle": "Priložnost",
+    "opportunityIntro": "Skoraj vrhunski modeli z odprtimi utežmi zdaj dobro tečejo na strojni opremi, ki jo Evropa že ima.",
+    "opportunityBullet1": "Napredni modeli z odprtimi utežmi tečejo na delovnih postajah in potrošniških GPE brez gruč GPE v podatkovnih centrih.",
+    "opportunityBullet2": "Evropska podjetja želijo umetno inteligenco, ki jo lahko poganjajo lokalno, s predvidljivimi stroški in zajamčenim prihodnjim dostopom.",
+    "opportunityBullet3": "Operaterji z zmogljivo strojno opremo lahko strežejo inferenco blizu potrošnikov.",
+    "opportunityBullet4": "Regulativa spreminja podatkovno suverenost iz preference v zahtevo.",
+    "opportunityBullet5": "Učinkovita inferenčna programska oprema je manjkajoča plast in protistrup za vse več in vse večje podatkovne centre.",
+    "opportunityClosing": "Helexa je ta programska plast."
+  },
+
+  "howItWorks": {
+    "title": "Kako deluje",
+    "operators": {
+      "eyebrow": "Namestite lokalno",
+      "title": "Poganjajte napredne modele na lastni strojni opremi.",
+      "body": "Helexa streže skoraj vrhunske modele z odprtimi utežmi na potrošniških in delovnopostajnih GPE, na lastni lokaciji, v vaši jurisdikciji. Brez gruče, brez hiperskalerja, brez odvisnosti od tujine. Podatki ostanejo tam, kjer jih nadzorujete."
+    },
+    "routing": {
+      "eyebrow": "Usmerjajte pametno",
+      "title": "Zahteve ostanejo blizu doma.",
+      "body": "Helexa vsako zahtevo usmeri na infrastrukturo z razpoložljivo zmogljivostjo in daje prednost regijski bližini, tako da promet in podatki ostanejo tam, kjer pričakujete. Namestitve se z rastjo zmogljivosti povezujejo v širše omrežje."
+    },
+    "value": {
+      "eyebrow": "Delujte neodvisno",
+      "title": "Delo je dokazano. Ekonomika je pregledna.",
+      "body": "Poraba se meri pregledno in neodvisni operaterji bodo poplačani za inteligenco, ki jo strežejo. Brez platformnega davka, brez nepreglednega obračunavanja, brez vezave."
+    }
+  },
+
+  "principles": {
+    "title": "Zgrajeno na suverenosti, ne na vezavi",
+    "distributed": {
+      "title": "Suvereno po zasnovi",
+      "body": "Evropska strojna oprema, evropski operaterji, evropsko pravo. Brez enotne točke odpovedi in brez zunanje jurisdikcije, od katere bi bil odvisen dostop."
+    },
+    "participation": {
+      "title": "Teče na strojni opremi, ki jo imate",
+      "body": "Od posamezne delovne postaje do regionalnega podatkovnega centra — Helexo lahko poganja vsak dovolj zmogljiv računski vir. Zmanjšuje infrastrukturne zahteve, namesto da bi terjala nove gruče."
+    },
+    "fairness": {
+      "title": "Zasebnost in preglednost",
+      "body": "Zasebnost v jedru: zgodovina klepetov živi samo v brskalniku, nikoli na strežniku. Merjenje porabe je pregledno; ni črnih skrinjic in ni skritih stroškov."
+    },
+    "evolving": {
+      "title": "Odporno zaradi porazdeljenosti",
+      "body": "Zmogljivost, razpršeno po številnih neodvisnih namestitvah, je težje cenzurirati, dušiti ali izklopiti; odporna je na zunanjepolitične premike in odpoved enega samega ponudnika."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Kam gre Helexa",
+    "p1": "Naš dolgoročni cilj je postati programska plast, ki poganja porazdeljeno omrežje neodvisno upravljane evropske infrastrukture za umetno inteligenco.",
+    "p2": "Od podjetniških namestitev, ki poganjajo napredne modele na lastni strojni opremi, do regionalnih podatkovnih centrov na obnovljivo energijo, ki služijo svojim skupnostim.",
+    "p3": "Evropska inferenčna plast, v evropski lasti in z upravljanjem v Evropi. Odporna na izpade, zunanjepolitične premike, monopole in odpoved enega samega ponudnika.",
+    "p4": "Infrastruktura, ki krepi evropsko avtonomijo, namesto da bi poglabljala odvisnost od peščice tujih ponudnikov.",
+    "card": {
+      "eyebrow": "Vizija",
+      "title": "Programska plast za evropsko infrastrukturo umetne inteligence",
+      "body": "Helexa je v zgodnji fazi, in to namerno. Delujoč inferenčni sklad danes, ki raste v porazdeljeno omrežje neodvisno upravljanih evropskih namestitev."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Zgodnji dostop",
+    "title": "Suverena infrastruktura za umetno inteligenco.",
+    "titleHighlight": "Zgrajena v Evropi.",
+    "lead": "Če poganjate umetno inteligenco na lastni strojni opremi, upravljate zmogljivosti ali gradite evropsko suverenost na področju umetne inteligence, je tukaj prostor za vas.",
+    "ctaRunNode": "Namestite vozlišče (kmalu)",
+    "ctaJoinAnnouncements": "Spremljajte zgodnje objave",
+    "ctaExploreCode": "Raziščite kodo",
+    "footer": "Brez zaprtih vrtov. Programska plast za suvereno evropsko umetno inteligenco. Od posamezne delovne postaje do regionalnih podatkovnih centrov na obnovljivo energijo."
+  }
+}

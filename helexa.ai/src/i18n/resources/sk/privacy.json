@@ -1,0 +1,45 @@
+{
+  "title": "Súkromie",
+  "updated": "Posledná aktualizácia: 16. júla 2026",
+  "intro": "Helexa je postavená tak, aby vaše dáta zostali u vás. Táto stránka úplne opisuje, čo sa kde ukladá a prečo. Je krátka, pretože toho na zverejnenie je málo.",
+
+  "summary": {
+    "title": "Stručná verzia",
+    "noCookies": "Žiadne cookies. Žiadna analytika. Žiadne trackery. Žiadna reklama.",
+    "localHistory": "História vášho chatu je uložená iba vo vašom prehliadači. Nikdy sa neodosiela na naše servery ani sa na nich neukladá nad rámec okamihu generovania odpovede.",
+    "noAnonId": "Anonymní návštevníci nie sú fingerprintovaní, profilovaní ani identifikovaní."
+  },
+
+  "local": {
+    "title": "Čo sa ukladá vo vašom prehliadači",
+    "intro": "Všetko uvedené nižšie zostáva na vašom zariadení, existuje výlučne preto, aby produkt fungoval, a dá sa kedykoľvek odstrániť vymazaním dát tejto stránky vo vašom prehliadači.",
+    "item1": "História chatu, projekty a rozpísané správy — základným sľubom produktu je, že nikdy neopustia váš prehliadač.",
+    "item2": "Vaše predvoľby témy a jazyka.",
+    "item3": "Značka relácie pre upozornenie na betu, ktoré ste zavreli.",
+    "item4": "Ak sa prihlásite: váš token relácie a — iba ak to výslovne povolíte — API kľúč na chatovanie z tohto zariadenia.",
+    "item5": "Anonymné počítadlo správ, ktoré vynucuje limit bezplatného používania."
+  },
+
+  "account": {
+    "title": "Ak si vytvoríte účet",
+    "intro": "Účty existujú na meranie využitia a prevenciu zneužitia, nie na profilovanie. Na serveri ukladáme:",
+    "item1": "Vašu e-mailovú adresu (na prihlásenie, overenie a obnovenie hesla) a solený hash hesla — nikdy samotné heslo.",
+    "item2": "Meranie využitia: počty tokenov na požiadavku, potrebné na vynucovanie rozpočtov a odmeňovanie prevádzkovateľov, ktorí obsluhujú vaše požiadavky. Obsah promptov a odpovedí sa neuchováva.",
+    "item3": "Iba pri registrácii jednorazový signál prehliadača (hash odtlačku) slúžiaci na odhalenie zneužívania bezplatnej úrovne viacerými účtami. Nepoužíva sa na sledovanie, nikdy sa nepočíta pri anonymnom prehliadaní a po registrácii nehrá žiadnu ďalšiu rolu."
+  },
+
+  "infra": {
+    "title": "Infraštruktúra",
+    "body": "Inferencia beží na hardvéri nezávislých európskych prevádzkovateľov podľa európskeho práva. Verejnej webstránke je predradená služba Cloudflare, ktorá môže nastaviť vlastnú nevyhnutne potrebnú bezpečnostnú cookie (napr. na ochranu proti botom), ktorú nečítame ani nevyužívame."
+  },
+
+  "rights": {
+    "title": "Vaše práva",
+    "body": "Podľa GDPR môžete kedykoľvek požiadať o prístup k údajom svojho účtu, ich opravu alebo vymazanie a môžete podať sťažnosť dozornému orgánu. Vymazaním dát prehliadača odstránite históriu chatu; vymazaním účtu odstránite všetko, čo uchovávame na serveri."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Otázky a žiadosti týkajúce sa súkromia: {{email}}"
+  }
+}

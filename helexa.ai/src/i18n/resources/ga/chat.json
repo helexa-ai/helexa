@@ -1,0 +1,21 @@
+{
+  "title": "Spás oibre comhrá",
+  "badge": "Comhrá",
+  "lead": "Seo an t-amharc comhrá. Ceangail do loighic chomhrá agus do chomhpháirteanna UI leis an leathanach seo.",
+  "transcriptPlaceholder": "Taispeánfar tras-scríbhinn an chomhrá anseo. Rindreáil teachtaireachtaí ón tsamhail agus ón úsáideoir i gcoimeádán scrollaithe, agus iad grúpáilte de réir seala más mian leat.",
+  "inputPlaceholder": "Clóscríobh teachtaireacht chun tús a chur leis an gcomhrá…",
+  "send": "Seol",
+  "clear": "Glan",
+  "newChat": "Comhrá nua",
+  "newProject": "Tionscadal nua",
+  "newProjectName": "Tionscadal nua",
+  "unsorted": "Neamhshórtáilte",
+  "emptyState": "Cuir tús le comhrá. Fanann do stair sa bhrabhsálaí seo.",
+  "anonBanner": "Tá an teorainn gan ainm sroichte agat. Cláraigh le haghaidh leithdháileadh saor in aisce.",
+  "signUp": "Cláraigh",
+  "stop": "Stop",
+  "topUp": "Breisigh",
+  "rateLimited": "Ráta teoranta — fan nóiméad agus bain triail eile as.",
+  "needsKey": "Cruthaigh eochair API agus cumasaigh don chomhrá í chun seoladh mar thú féin.",
+  "manageKeysLink": "Bainistigh eochracha"
+}

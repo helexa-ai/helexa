@@ -203,6 +203,58 @@ import uzChat from "./resources/uz/chat.json";
 import uzAccount from "./resources/uz/account.json";
 import uzPrivacy from "./resources/uz/privacy.json";
 
+// EU-24 completion + Catalan (2026-07-16)
+import caCommon from "./resources/ca/common.json";
+import caMission from "./resources/ca/mission.json";
+import caChat from "./resources/ca/chat.json";
+import caAccount from "./resources/ca/account.json";
+import caPrivacy from "./resources/ca/privacy.json";
+import csCommon from "./resources/cs/common.json";
+import csMission from "./resources/cs/mission.json";
+import csChat from "./resources/cs/chat.json";
+import csAccount from "./resources/cs/account.json";
+import csPrivacy from "./resources/cs/privacy.json";
+import gaCommon from "./resources/ga/common.json";
+import gaMission from "./resources/ga/mission.json";
+import gaChat from "./resources/ga/chat.json";
+import gaAccount from "./resources/ga/account.json";
+import gaPrivacy from "./resources/ga/privacy.json";
+import hrCommon from "./resources/hr/common.json";
+import hrMission from "./resources/hr/mission.json";
+import hrChat from "./resources/hr/chat.json";
+import hrAccount from "./resources/hr/account.json";
+import hrPrivacy from "./resources/hr/privacy.json";
+import huCommon from "./resources/hu/common.json";
+import huMission from "./resources/hu/mission.json";
+import huChat from "./resources/hu/chat.json";
+import huAccount from "./resources/hu/account.json";
+import huPrivacy from "./resources/hu/privacy.json";
+import ltCommon from "./resources/lt/common.json";
+import ltMission from "./resources/lt/mission.json";
+import ltChat from "./resources/lt/chat.json";
+import ltAccount from "./resources/lt/account.json";
+import ltPrivacy from "./resources/lt/privacy.json";
+import lvCommon from "./resources/lv/common.json";
+import lvMission from "./resources/lv/mission.json";
+import lvChat from "./resources/lv/chat.json";
+import lvAccount from "./resources/lv/account.json";
+import lvPrivacy from "./resources/lv/privacy.json";
+import mtCommon from "./resources/mt/common.json";
+import mtMission from "./resources/mt/mission.json";
+import mtChat from "./resources/mt/chat.json";
+import mtAccount from "./resources/mt/account.json";
+import mtPrivacy from "./resources/mt/privacy.json";
+import skCommon from "./resources/sk/common.json";
+import skMission from "./resources/sk/mission.json";
+import skChat from "./resources/sk/chat.json";
+import skAccount from "./resources/sk/account.json";
+import skPrivacy from "./resources/sk/privacy.json";
+import slCommon from "./resources/sl/common.json";
+import slMission from "./resources/sl/mission.json";
+import slChat from "./resources/sl/chat.json";
+import slAccount from "./resources/sl/account.json";
+import slPrivacy from "./resources/sl/privacy.json";
+
 /**
  * Application translation resources, split by language and namespace.
  *
@@ -439,6 +491,78 @@ const resources: Resource = {
     account: svAccount,
     privacy: svPrivacy,
   },
+  // EU-24 completion + Catalan (2026-07-16)
+  ca: {
+    common: caCommon,
+    mission: caMission,
+    chat: caChat,
+    account: caAccount,
+    privacy: caPrivacy,
+  },
+  cs: {
+    common: csCommon,
+    mission: csMission,
+    chat: csChat,
+    account: csAccount,
+    privacy: csPrivacy,
+  },
+  ga: {
+    common: gaCommon,
+    mission: gaMission,
+    chat: gaChat,
+    account: gaAccount,
+    privacy: gaPrivacy,
+  },
+  hr: {
+    common: hrCommon,
+    mission: hrMission,
+    chat: hrChat,
+    account: hrAccount,
+    privacy: hrPrivacy,
+  },
+  hu: {
+    common: huCommon,
+    mission: huMission,
+    chat: huChat,
+    account: huAccount,
+    privacy: huPrivacy,
+  },
+  lt: {
+    common: ltCommon,
+    mission: ltMission,
+    chat: ltChat,
+    account: ltAccount,
+    privacy: ltPrivacy,
+  },
+  lv: {
+    common: lvCommon,
+    mission: lvMission,
+    chat: lvChat,
+    account: lvAccount,
+    privacy: lvPrivacy,
+  },
+  mt: {
+    common: mtCommon,
+    mission: mtMission,
+    chat: mtChat,
+    account: mtAccount,
+    privacy: mtPrivacy,
+  },
+  sk: {
+    common: skCommon,
+    mission: skMission,
+    chat: skChat,
+    account: skAccount,
+    privacy: skPrivacy,
+  },
+  sl: {
+    common: slCommon,
+    mission: slMission,
+    chat: slChat,
+    account: slAccount,
+    privacy: slPrivacy,
+  },
+
 };
 
 // Determine initial language from browser, normalised to language-only.

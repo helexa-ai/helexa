@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Kezdőlap",
+    "docs": "Dokumentáció",
+    "chat": "Csevegés",
+    "mission": "Küldetés",
+    "login": "Bejelentkezés",
+    "register": "Regisztráció",
+    "account": "Fiók",
+    "logout": "Kijelentkezés"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Váltás világos módra",
+      "toDark": "Váltás sötét módra"
+    }
+  },
+  "lang": {
+    "am": "amhara",
+    "ar": "arab",
+    "bg": "bolgár",
+    "ca": "katalán",
+    "cs": "cseh",
+    "da": "dán",
+    "de": "német",
+    "el": "görög",
+    "en": "angol",
+    "es": "spanyol",
+    "et": "észt",
+    "fa": "perzsa",
+    "fi": "finn",
+    "fr": "francia",
+    "ga": "ír",
+    "ha": "hausza",
+    "he": "héber",
+    "hr": "horvát",
+    "hu": "magyar",
+    "ig": "igbo",
+    "it": "olasz",
+    "ka": "grúz",
+    "kk": "kazah",
+    "lt": "litván",
+    "lv": "lett",
+    "ma": "darija",
+    "mt": "máltai",
+    "nl": "holland",
+    "no": "norvég",
+    "om": "oromó",
+    "pl": "lengyel",
+    "pt": "portugál",
+    "ro": "román",
+    "ru": "orosz",
+    "sk": "szlovák",
+    "sl": "szlovén",
+    "so": "szomáli",
+    "sr": "szerb",
+    "sv": "svéd",
+    "sw": "szuahéli",
+    "ti": "tigrinya",
+    "tr": "török",
+    "uk": "ukrán",
+    "uz": "üzbég",
+    "wo": "volof",
+    "yo": "joruba",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Adatvédelem"
+  },
+  "beta": {
+    "tag": "Nyilvános béta",
+    "message": "A helexa nyílt bétában fut — előfordulhatnak hibák. A csevegéseid a böngésződben maradnak.",
+    "dismiss": "Bezárás"
+  }
+}

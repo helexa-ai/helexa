@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Szuverén európai AI-inferencia",
+    "title": "Szuverén infrastruktúra",
+    "lead": "Hisszük, hogy a fejlett, nagy teljesítményű modellek futtatása a már meglévő hardveren, kis és hatékony létesítményekben az a mód, ahogyan az európai kkv-k versenyre kelhetnek a mai globális technológiai ökoszisztémát uraló hiperskálázó szemlélettel.",
+    "ctaJoinMesh": "Próbáld ki most",
+    "ctaFollowProject": "Kövesd a projektet",
+    "subcopy": "Európaiak készítették, európaiaknak.",
+    "imageAlt": "A Helexa hélix grafikája"
+  },
+
+  "intent": {
+    "title": "Miért létezik a Helexa",
+    "p1": "A mai AI-infrastruktúrát olyan hiperskálázó adatközpontok uralják, amelyek vagy fizikailag az EU-n kívüli joghatóságokban találhatók, vagy olyan jogi entitások irányítása alatt állnak, amelyek EU-n kívüli joghatóságoknak tartoznak felelősséggel — olyan célokkal, gyakorlatokkal és stratégiákkal, amelyek nem mindig felelnek meg Európa magas etikai és fogyasztóvédelmi normáinak. Az európai vállalkozásoknak egyre inkább az EU szabályozási keretén belül kell feldolgozniuk és védeniük az adatokat — ezt a külső inferencia-stackek ritkán helyezik előtérbe.",
+    "p2Intro": "A Helexa a már meglévő európai infrastruktúrára és azokra a nyílt súlyú modellekre épít, amelyeket nem engedhetünk meg magunknak elveszíteni:",
+    "bullet1": "Fejlett, nyílt súlyú modellek hatékony futtatása kereskedelmi, professzionális és adatközponti osztályú gyorsítókon.",
+    "bullet2": "Adatrezidencia és adatvédelem alapértelmezetten. Az inferencia a fogyasztó joghatóságán belüli infrastruktúrán fut.",
+    "bullet3": "A jelenleg rendelkezésre álló gyorsítókapacitás kihasználása a teljesítmény feláldozása nélkül.",
+    "bullet4": "Függetlenség a versengő érdekű globális hiperskálázóktól.",
+    "closing": "Nem egy globális felhő, amelynek történetesen van EU-s adatközpontja. Több független, szuverén EU-s üzemeltető."
+  },
+
+  "whyNow": {
+    "title": "Miért most",
+    "problemTitle": "Az ellentmondás",
+    "problemBullet1": "A mai inferencia-stackek hiperskálázó adatközpontokat, nagy GPU-klasztereket és zárt forráskódú LLM-eket feltételeznek.",
+    "problemBullet2": "Az európai szabályozás (a GDPR, az AI-rendelet és az ágazati szabályok) a munkaterheléseket helyben és régión belül tartja.",
+    "problemBullet3": "Az adatok külföldi felhőkbe küldése szabályozási, adatvédelmi és költségkockázat.",
+    "problemBullet4": "A felhőalapú GPU-hozzáférés drága, korlátozott kínálatú, és máshol irányítják.",
+    "problemBullet5": "Nagy teljesítményű kereskedelmi és munkaállomás-hardver már most kihasználatlanul áll szerte Európában.",
+    "opportunityTitle": "A lehetőség",
+    "opportunityIntro": "A frontier-közeli nyílt súlyú modellek ma már jól futnak azon a hardveren, amellyel Európa már rendelkezik.",
+    "opportunityBullet1": "A fejlett nyílt súlyú modellek munkaállomásokon és kereskedelmi GPU-kon futnak, adatközponti GPU-klaszterek nélkül.",
+    "opportunityBullet2": "Az európai vállalkozások olyan AI-t akarnak, amelyet helyben futtathatnak, kiszámítható költségekkel és garantált jövőbeli hozzáféréssel.",
+    "opportunityBullet3": "A megfelelő hardverrel rendelkező üzemeltetők a fogyasztókhoz közel szolgálhatják ki az inferenciát.",
+    "opportunityBullet4": "A szabályozás az adatszuverenitást preferenciából követelménnyé teszi.",
+    "opportunityBullet5": "A hatékony inferencia-szoftver a hiányzó réteg — és az ellenszer a még több és még nagyobb adatközpontra.",
+    "opportunityClosing": "A Helexa ez a szoftverréteg."
+  },
+
+  "howItWorks": {
+    "title": "Hogyan működik",
+    "operators": {
+      "eyebrow": "Telepítsd helyben",
+      "title": "Futtass fejlett modelleket a saját hardvereden.",
+      "body": "A Helexa frontier-közeli nyílt súlyú modelleket szolgál ki kereskedelmi és munkaállomás-osztályú GPU-kon, helyben, a saját joghatóságodban. Nincs klaszter, nincs hiperskálázó, nincs tengerentúli függőség. Az adatok ott maradnak, ahol te felügyeled őket."
+    },
+    "routing": {
+      "eyebrow": "Irányíts intelligensen",
+      "title": "A kérések közel maradnak otthonukhoz.",
+      "body": "A Helexa minden kérést szabad kapacitású infrastruktúrához irányít, előnyben részesítve a régióközelséget, így a forgalom és az adatok ott maradnak, ahol számítasz rájuk. A telepítések a kapacitás növekedésével szélesebb hálózattá állnak össze."
+    },
+    "value": {
+      "eyebrow": "Működj függetlenül",
+      "title": "A munka igazolt. A gazdaságosság átlátható.",
+      "body": "A használat mérése átlátható, és a független üzemeltetők ellentételezést kapnak majd az általuk kiszolgált intelligenciáért. Nincs platformadó, nincs átláthatatlan számlázás, nincs bezáródás."
+    }
+  },
+
+  "principles": {
+    "title": "Szuverenitásra építve, nem bezáródásra",
+    "distributed": {
+      "title": "Tervezetten szuverén",
+      "body": "Európai hardver, európai üzemeltetők, európai jog. Nincs egyetlen meghibásodási pont, és nincs olyan külső joghatóság, amelytől a hozzáférés függene."
+    },
+    "participation": {
+      "title": "A meglévő hardvereden fut",
+      "body": "Egyetlen munkaállomástól a regionális adatközpontig minden megfelelő számítási kapacitás futtathatja a Helexát. Csökkenti az infrastruktúra-igényt, ahelyett hogy új klasztereket követelne."
+    },
+    "fairness": {
+      "title": "Adatvédelem és átláthatóság",
+      "body": "Natívan adatvédő: a csevegési előzmények csak a böngészőben élnek, sosem egy szerveren. A használat mérése átlátható; nincsenek fekete dobozok és nincsenek rejtett díjak."
+    },
+    "evolving": {
+      "title": "Elosztottságából fakadóan ellenálló",
+      "body": "A sok független telepítés között elosztott kapacitást nehezebb cenzúrázni, korlátozni vagy lekapcsolni, és ellenáll a külpolitikai fordulatoknak és az egyetlen szállítón múló meghibásodásnak."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Merre tart a Helexa",
+    "p1": "Hosszú távú célunk, hogy mi legyünk az a szoftverréteg, amely a függetlenül üzemeltetett európai AI-infrastruktúra elosztott hálózatát működteti.",
+    "p2": "A fejlett modelleket saját hardveren futtató vállalati telepítésektől a közösségeiket kiszolgáló, megújuló energiával működő regionális adatközpontokig.",
+    "p3": "Egy Európában birtokolt és üzemeltetett európai inferencia-réteg. Ellenálló a kimaradásokkal, a külpolitikai fordulatokkal, a monopóliumokkal és az egyetlen szállítón múló meghibásodással szemben.",
+    "p4": "Olyan infrastruktúra, amely erősíti az európai autonómiát, ahelyett hogy mélyítené a néhány külföldi szolgáltatótól való függést.",
+    "card": {
+      "eyebrow": "Jövőkép",
+      "title": "Az európai AI-infrastruktúra szoftverrétege",
+      "body": "A Helexa korai fázisban van — szándékosan. Ma egy működő inferencia-stack, amely a függetlenül üzemeltetett európai telepítések elosztott hálózata felé növekszik."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Korai hozzáférés",
+    "title": "Szuverén AI-infrastruktúra.",
+    "titleHighlight": "Európában építve.",
+    "lead": "Akár saját hardveren futtatsz AI-t, akár kapacitást üzemeltetsz, akár az európai AI-szuverenitásért dolgozol, itt a helyed.",
+    "ctaRunNode": "Telepíts egy csomópontot (hamarosan)",
+    "ctaJoinAnnouncements": "Kövesd a korai bejelentéseket",
+    "ctaExploreCode": "Fedezd fel a kódot",
+    "footer": "Nincsenek zárt kertek. Szoftverréteg a szuverén európai AI-hoz. Egyetlen munkaállomástól a megújuló energiával működő regionális adatközpontokig."
+  }
+}

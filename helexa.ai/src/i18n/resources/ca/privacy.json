@@ -1,0 +1,45 @@
+{
+  "title": "Privadesa",
+  "updated": "Darrera actualització: 16 de juliol de 2026",
+  "intro": "Helexa està construïda perquè les vostres dades es quedin amb vós. Aquesta pàgina descriu, de manera completa, què es desa on i per què. És breu perquè hi ha poc a revelar.",
+
+  "summary": {
+    "title": "La versió curta",
+    "noCookies": "Sense galetes. Sense analítica. Sense rastrejadors. Sense publicitat.",
+    "localHistory": "El vostre historial de xat es desa només al vostre navegador. Mai no s'envia als nostres servidors ni s'hi emmagatzema més enllà del moment de generar una resposta.",
+    "noAnonId": "Els visitants anònims no són sotmesos a empremta digital, perfilats ni identificats."
+  },
+
+  "local": {
+    "title": "Què es desa al vostre navegador",
+    "intro": "Tot el que hi ha a continuació es queda al vostre dispositiu, existeix únicament perquè el producte funcioni, i es pot eliminar en qualsevol moment esborrant les dades d'aquest lloc al navegador.",
+    "item1": "L'historial de xat, els projectes i els esborranys de missatges — la promesa central del producte és que mai no surten del vostre navegador.",
+    "item2": "Les vostres preferències de tema i d'idioma.",
+    "item3": "Un marcador de sessió per a l'avís de beta que heu descartat.",
+    "item4": "Si inicieu la sessió: el vostre testimoni de sessió i — només si ho activeu explícitament — una clau API per xatejar des d'aquest dispositiu.",
+    "item5": "Un comptador anònim de missatges que fa complir el límit d'ús gratuït."
+  },
+
+  "account": {
+    "title": "Si creeu un compte",
+    "intro": "Els comptes existeixen per a la mesura del consum i la prevenció d'abusos, no per al perfilat. Al servidor hi desem:",
+    "item1": "La vostra adreça de correu electrònic (per a l'inici de sessió, la verificació i el restabliment de la contrasenya) i un resum criptogràfic de la contrasenya amb sal — mai la contrasenya en si.",
+    "item2": "La mesura del consum: recomptes de tòkens per petició, necessaris per fer complir els pressupostos i compensar els operadors que serveixen les vostres peticions. El contingut de les indicacions i de les respostes no es conserva.",
+    "item3": "Només en el moment del registre, un senyal únic del navegador (un resum d'empremta digital) que serveix per detectar l'abús multicompte del nivell gratuït. No s'usa per al seguiment, mai no es calcula durant la navegació anònima i no té cap més paper després del registre."
+  },
+
+  "infra": {
+    "title": "Infraestructura",
+    "body": "La inferència s'executa en maquinari d'operadors europeus independents sota la llei europea. El lloc web públic està servit a través de Cloudflare, que pot establir una galeta de seguretat estrictament necessària pròpia (p. ex., mitigació de bots) que nosaltres ni llegim ni usem."
+  },
+
+  "rights": {
+    "title": "Els vostres drets",
+    "body": "En virtut de l'RGPD, podeu sol·licitar en qualsevol moment l'accés, la rectificació o la supressió de les dades del vostre compte, i podeu presentar una reclamació davant la vostra autoritat de control. Esborrar les dades del navegador elimina l'historial de xat; suprimir el compte elimina tot el que conservem al servidor."
+  },
+
+  "contact": {
+    "title": "Contacte",
+    "body": "Preguntes i sol·licituds sobre privadesa: {{email}}"
+  }
+}

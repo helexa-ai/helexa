@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Suverēna Eiropas MI inference",
+    "title": "Suverēna infrastruktūra",
+    "lead": "Mēs uzskatām, ka progresīvu, spējīgu modeļu darbināšana uz aparatūras, kas jums jau pieder, mazās un efektīvās iekārtās ir veids, kā Eiropas MVU var konkurēt ar hiperskalētāju domāšanu, kura dominē mūsdienu globālajā tehnoloģiju ekosistēmā.",
+    "ctaJoinMesh": "Izmēģiniet tūlīt",
+    "ctaFollowProject": "Sekojiet projektam",
+    "subcopy": "Eiropiešu radīts eiropiešiem.",
+    "imageAlt": "Helexa spirāles vizualizācija"
+  },
+
+  "intent": {
+    "title": "Kāpēc Helexa pastāv",
+    "p1": "Mūsdienu MI infrastruktūrā dominē hiperskalas datu centri, kas vai nu fiziski atrodas jurisdikcijās ārpus ES, vai arī tos kontrolē juridiskās personas, kuras ir atbildīgas jurisdikcijām ārpus ES — ar dienaskārtībām, praksēm un stratēģijām, kas ne vienmēr atbilst Eiropas augstajiem ētikas un patērētāju aizsardzības standartiem. Eiropas uzņēmumiem dati aizvien biežāk jāapstrādā un jāaizsargā ES tiesiskā regulējuma ietvaros — kaut kas, ko ārējie inferences steki reti izvirza par prioritāti.",
+    "p2Intro": "Helexa izmanto infrastruktūru, kas Eiropai jau ir, un atvērto svaru modeļus, kurus mēs nedrīkstam atļauties zaudēt:",
+    "bullet1": "Progresīvi atvērto svaru modeļi, kas efektīvi darbojas uz plaša patēriņa, profesionālās un datu centru klases paātrinātājiem.",
+    "bullet2": "Datu rezidence un privātums pēc noklusējuma. Inference notiek uz infrastruktūras patērētāja jurisdikcijā.",
+    "bullet3": "Pašlaik pieejamās paātrinātāju jaudas izmantošana, neupurējot veiktspēju.",
+    "bullet4": "Neatkarība no globālajiem hiperskalētājiem ar konkurējošām interesēm.",
+    "closing": "Nevis globāls mākonis, kam nejauši ir datu centrs ES. Vairāki neatkarīgi, suverēni ES operatori."
+  },
+
+  "whyNow": {
+    "title": "Kāpēc tieši tagad",
+    "problemTitle": "Neatbilstība",
+    "problemBullet1": "Mūsdienu inferences steki pieņem hiperskalas datu centrus, lielus GPU klasterus un slēgta koda lielos valodas modeļus.",
+    "problemBullet2": "Eiropas regulējums (VDAR, MI akts, nozaru noteikumi) virza darba slodzes uz vietas un reģionā.",
+    "problemBullet3": "Datu sūtīšana uz ārvalstu mākoņiem ir regulatīvs, privātuma un izmaksu risks.",
+    "problemBullet4": "Piekļuve GPU mākonī ir dārga, piedāvājuma ierobežota un tiek pārvaldīta citur.",
+    "problemBullet5": "Spējīga plaša patēriņa un darbstaciju aparatūra visā Eiropā jau tagad stāv nepilnīgi izmantota.",
+    "opportunityTitle": "Iespēja",
+    "opportunityIntro": "Vadošajam līmenim tuvi atvērto svaru modeļi tagad labi darbojas uz aparatūras, kas Eiropai jau pieder.",
+    "opportunityBullet1": "Progresīvi atvērto svaru modeļi darbojas uz darbstacijām un plaša patēriņa GPU bez datu centru GPU klasteriem.",
+    "opportunityBullet2": "Eiropas uzņēmumi vēlas MI, ko var darbināt lokāli — ar prognozējamām izmaksām un garantētu piekļuvi arī nākotnē.",
+    "opportunityBullet3": "Operatori ar spējīgu aparatūru var sniegt inferenci tuvu patērētājiem.",
+    "opportunityBullet4": "Regulējums datu suverenitāti pārvērš no vēlmes par prasību.",
+    "opportunityBullet5": "Efektīva inferences programmatūra ir trūkstošais slānis un pretlīdzeklis arvien lielākam skaitam arvien lielāku datu centru.",
+    "opportunityClosing": "Helexa ir šis programmatūras slānis."
+  },
+
+  "howItWorks": {
+    "title": "Kā tas darbojas",
+    "operators": {
+      "eyebrow": "Izvietojiet lokāli",
+      "title": "Darbiniet progresīvus modeļus uz savas aparatūras.",
+      "body": "Helexa apkalpo vadošajam līmenim tuvus atvērto svaru modeļus uz plaša patēriņa un darbstaciju klases GPU — uz vietas, jūsu jurisdikcijā. Bez klastera, bez hiperskalētāja, bez atkarības no ārzemēm. Dati paliek tur, kur jūs tos kontrolējat."
+    },
+    "routing": {
+      "eyebrow": "Maršrutējiet gudri",
+      "title": "Pieprasījumi paliek tuvu mājām.",
+      "body": "Helexa katru pieprasījumu maršrutē uz infrastruktūru ar brīvu jaudu, dodot priekšroku reģionālajai piesaistei, tāpēc datplūsma un dati paliek tur, kur jūs to sagaidāt. Jaudai pieaugot, izvietojumi saaug plašākā tīklā."
+    },
+    "value": {
+      "eyebrow": "Darbojieties neatkarīgi",
+      "title": "Darbs ir pierādāms. Ekonomika ir caurskatāma.",
+      "body": "Lietojums tiek uzskaitīts caurskatāmi, un neatkarīgie operatori saņems atlīdzību par sniegto intelektu. Bez platformas nodevas, bez necaurskatāmiem rēķiniem, bez piesaistes."
+    }
+  },
+
+  "principles": {
+    "title": "Balstīta suverenitātē, ne piesaistē",
+    "distributed": {
+      "title": "Suverēna pēc uzbūves",
+      "body": "Eiropas aparatūra, Eiropas operatori, Eiropas tiesības. Nav neviena atsevišķa atteices punkta un nevienas ārējas jurisdikcijas, no kuras būtu atkarīga piekļuve."
+    },
+    "participation": {
+      "title": "Darbojas uz aparatūras, kas jums jau ir",
+      "body": "No vienas darbstacijas līdz reģionālam datu centram — spējīga skaitļošanas jauda var darbināt Helexa. Tā samazina infrastruktūras prasības, nevis pieprasa jaunus klasterus."
+    },
+    "fairness": {
+      "title": "Privātums un caurskatāmība",
+      "body": "Privātums pēc būtības: sarunu vēsture dzīvo tikai pārlūkā, nekad serverī. Lietojuma uzskaite ir caurskatāma; nav ne melno kastu, ne slēptu maksu."
+    },
+    "evolving": {
+      "title": "Noturīga, pateicoties sadalījumam",
+      "body": "Jaudu, kas izkliedēta pa daudziem neatkarīgiem izvietojumiem, ir grūtāk cenzēt, ierobežot vai atslēgt, un tā ir noturīga pret ārpolitikas svārstībām un viena piegādātāja atteici."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Kurp Helexa dodas",
+    "p1": "Mūsu ilgtermiņa mērķis ir kļūt par programmatūras slāni, kas darbina sadalītu, neatkarīgi pārvaldītas Eiropas MI infrastruktūras tīklu.",
+    "p2": "No uzņēmumu izvietojumiem, kas darbina progresīvus modeļus uz savas aparatūras, līdz atjaunīgās enerģijas darbinātiem reģionālajiem datu centriem, kas apkalpo savas kopienas.",
+    "p3": "Eiropas inferences slānis, kas pieder Eiropai un tiek darbināts Eiropā. Noturīgs pret pārtraukumiem, ārpolitikas svārstībām, monopoliem un viena piegādātāja atteici.",
+    "p4": "Infrastruktūra, kas stiprina Eiropas autonomiju, nevis padziļina atkarību no dažiem ārvalstu piegādātājiem.",
+    "card": {
+      "eyebrow": "Vīzija",
+      "title": "Programmatūras slānis Eiropas MI infrastruktūrai",
+      "body": "Helexa ir agrīnā stadijā — un apzināti. Jau šodien strādājošs inferences steks, kas aug par sadalītu, neatkarīgi pārvaldītu Eiropas izvietojumu tīklu."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Agrīnā piekļuve",
+    "title": "Suverēna MI infrastruktūra.",
+    "titleHighlight": "Būvēta Eiropā.",
+    "lead": "Vienalga, vai darbināt MI uz savas aparatūras, pārvaldāt jaudu vai strādājat Eiropas MI suverenitātes labā — šeit ir vieta arī jums.",
+    "ctaRunNode": "Izvietot mezglu (drīzumā)",
+    "ctaJoinAnnouncements": "Sekot agrīnajiem paziņojumiem",
+    "ctaExploreCode": "Izpētīt kodu",
+    "footer": "Bez slēgtiem dārziem. Programmatūras slānis suverēnam Eiropas MI. No vienas darbstacijas līdz atjaunīgās enerģijas darbinātiem reģionālajiem datu centriem."
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Početna",
+    "docs": "Dokumentacija",
+    "chat": "Razgovor",
+    "mission": "Misija",
+    "login": "Prijava",
+    "register": "Registracija",
+    "account": "Račun",
+    "logout": "Odjava"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Prijeđi na svijetli način rada",
+      "toDark": "Prijeđi na tamni način rada"
+    }
+  },
+  "lang": {
+    "am": "amharski",
+    "ar": "arapski",
+    "bg": "bugarski",
+    "ca": "katalonski",
+    "cs": "češki",
+    "da": "danski",
+    "de": "njemački",
+    "el": "grčki",
+    "en": "engleski",
+    "es": "španjolski",
+    "et": "estonski",
+    "fa": "perzijski",
+    "fi": "finski",
+    "fr": "francuski",
+    "ga": "irski",
+    "ha": "hausa",
+    "he": "hebrejski",
+    "hr": "hrvatski",
+    "hu": "mađarski",
+    "ig": "igbo",
+    "it": "talijanski",
+    "ka": "gruzijski",
+    "kk": "kazaški",
+    "lt": "litavski",
+    "lv": "latvijski",
+    "ma": "darija",
+    "mt": "malteški",
+    "nl": "nizozemski",
+    "no": "norveški",
+    "om": "oromski",
+    "pl": "poljski",
+    "pt": "portugalski",
+    "ro": "rumunjski",
+    "ru": "ruski",
+    "sk": "slovački",
+    "sl": "slovenski",
+    "so": "somalski",
+    "sr": "srpski",
+    "sv": "švedski",
+    "sw": "svahili",
+    "ti": "tigrinja",
+    "tr": "turski",
+    "uk": "ukrajinski",
+    "uz": "uzbečki",
+    "wo": "wolof",
+    "yo": "joruba",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privatnost"
+  },
+  "beta": {
+    "tag": "Javna beta",
+    "message": "helexa je u otvorenoj beti — očekujte poneku grešku. Vaši razgovori ostaju u vašem pregledniku.",
+    "dismiss": "Odbaci"
+  }
+}

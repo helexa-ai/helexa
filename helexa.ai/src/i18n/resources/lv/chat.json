@@ -1,0 +1,21 @@
+{
+  "title": "Sarunu darbvieta",
+  "badge": "Tērzēšana",
+  "lead": "Šis ir tērzēšanas skats. Pievienojiet šai lapai savu sarunu loģiku un saskarnes komponentes.",
+  "transcriptPlaceholder": "Šeit parādīsies sarunas atšifrējums. Attēlojiet modeļa un lietotāja ziņojumus ritināmā konteinerā, pēc izvēles grupējot pa gājieniem.",
+  "inputPlaceholder": "Ierakstiet ziņojumu, lai sāktu tērzēt…",
+  "send": "Sūtīt",
+  "clear": "Notīrīt",
+  "newChat": "Jauna saruna",
+  "newProject": "Jauns projekts",
+  "newProjectName": "Jauns projekts",
+  "unsorted": "Nešķirots",
+  "emptyState": "Sāciet sarunu. Jūsu vēsture paliek šajā pārlūkā.",
+  "anonBanner": "Ir sasniegts anonīmās lietošanas limits. Reģistrējieties bezmaksas piešķīrumam.",
+  "signUp": "Reģistrēties",
+  "stop": "Apturēt",
+  "topUp": "Papildināt",
+  "rateLimited": "Pieprasījumu limits sasniegts — uzgaidiet brīdi un mēģiniet vēlreiz.",
+  "needsKey": "Izveidojiet API atslēgu un iespējojiet to tērzēšanai, lai sūtītu ziņojumus savā vārdā.",
+  "manageKeysLink": "Pārvaldīt atslēgas"
+}

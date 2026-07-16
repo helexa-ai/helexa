@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Sínigh isteach",
+    "email": "Ríomhphost",
+    "password": "Pasfhocal",
+    "submit": "Sínigh isteach",
+    "noAccount": "Gan chuntas? Cláraigh"
+  },
+  "register": {
+    "title": "Cruthaigh do chuntas",
+    "email": "Ríomhphost",
+    "password": "Pasfhocal",
+    "submit": "Cláraigh",
+    "haveAccount": "Cuntas agat cheana? Sínigh isteach",
+    "checkEmail": "Beagnach ann — seiceáil do ríomhphost chun do chuntas a fhíorú."
+  },
+  "verify": {
+    "verifying": "Á fhíorú…",
+    "ok": "Ríomhphost fíoraithe. Is féidir leat síniú isteach anois.",
+    "failed": "Tá an nasc fíoraithe seo neamhbhailí nó imithe in éag.",
+    "toLogin": "Téigh chuig síniú isteach"
+  },
+  "reset": {
+    "requestTitle": "Athshocraigh do phasfhocal",
+    "email": "Ríomhphost",
+    "requestSubmit": "Seol nasc athshocraithe",
+    "requestDone": "Má tá cuntas ag an ríomhphost sin, tá nasc athshocraithe ar a bhealach.",
+    "confirmTitle": "Roghnaigh pasfhocal nua",
+    "newPassword": "Pasfhocal nua",
+    "confirmSubmit": "Socraigh an pasfhocal",
+    "ok": "Pasfhocal nuashonraithe. Is féidir leat síniú isteach anois."
+  },
+  "dashboard": {
+    "title": "Cuntas",
+    "balance": "Leithdháileadh",
+    "total": "Iomlán",
+    "spent": "Caite",
+    "reserved": "Curtha in áirithe",
+    "remaining": "Fágtha",
+    "manageKeys": "Bainistigh eochracha API",
+    "redeemTitle": "Fuascail cód breisithe",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Fuascail",
+    "redeemed": "Cód fuascailte.",
+    "logout": "Sínigh amach"
+  },
+  "keys": {
+    "title": "Eochracha API",
+    "create": "Cruthaigh eochair",
+    "label": "Lipéad",
+    "limitKind": "Teorainn",
+    "percent": "% den leithdháileadh",
+    "hardcap": "Uasteorainn chrua (comharthaí)",
+    "value": "Luach",
+    "none": "Níl aon eochracha fós.",
+    "createdTitle": "D'eochair API nua",
+    "createdWarn": "Cóipeáil anois í — ní fheicfidh tú arís í.",
+    "copy": "Cóipeáil",
+    "copied": "Cóipeáilte",
+    "archive": "Cartlannaigh",
+    "save": "Sábháil",
+    "status": "Stádas",
+    "usage": "Úsáidte",
+    "useForChat": "Úsáid don chomhrá ar an ngléas seo",
+    "usedForChat": "Cumasaithe don chomhrá ✓"
+  },
+  "error": {
+    "generic": "Chuaigh rud éigin amú.",
+    "unauthorized": "Sínigh isteach arís, le do thoil."
+  }
+}

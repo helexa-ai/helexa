@@ -1,0 +1,45 @@
+{
+  "title": "Privatezza",
+  "updated": "L-aħħar aġġornament: 16 ta' Lulju 2026",
+  "intro": "Helexa hija mibnija biex id-data tiegħek tibqa' għandek. Din il-paġna tiddeskrivi, b'mod komplet, x'jinħażen fejn u għaliex. Hija qasira għax ftit hemm x'jiġi żvelat.",
+
+  "summary": {
+    "title": "Il-verżjoni l-qasira",
+    "noCookies": "L-ebda cookies. L-ebda analitika. L-ebda trackers. L-ebda reklamar.",
+    "localHistory": "L-istorja tal-chat tiegħek tinħażen biss fil-browser tiegħek. Qatt ma tintbagħat lis-servers tagħna, u qatt ma tinħażen fuqhom, lil hinn mill-mument li fih tiġi ġġenerata tweġiba.",
+    "noAnonId": "Il-viżitaturi anonimi ma jsirilhomx fingerprinting, ma jiġux ipprofilati u ma jiġux identifikati."
+  },
+
+  "local": {
+    "title": "X'jinħażen fil-browser tiegħek",
+    "intro": "Kollox hawn taħt jibqa' fuq l-apparat tiegħek, jeżisti biss biex il-prodott jaħdem, u jista' jitneħħa fi kwalunkwe ħin billi tħassar id-data ta' dan is-sit fil-browser tiegħek.",
+    "item1": "L-istorja tal-chat, il-proġetti u l-abbozzi tal-messaġġi — il-wegħda ewlenija tal-prodott hija li dawn qatt ma jħallu l-browser tiegħek.",
+    "item2": "Il-preferenzi tiegħek tat-tema u tal-lingwa.",
+    "item3": "Marka tas-sessjoni għall-avviż tal-beta li għalaqt.",
+    "item4": "Jekk tidħol: it-token tas-sessjoni tiegħek, u — biss jekk tattivaha b'mod espliċitu — ċavetta API għall-chat minn dan l-apparat.",
+    "item5": "Kontatur anonimu tal-messaġġi li jinforza l-limitu tal-użu b'xejn."
+  },
+
+  "account": {
+    "title": "Jekk toħloq kont",
+    "intro": "Il-kontijiet jeżistu għall-kejl u għall-prevenzjoni tal-abbuż, mhux għall-ipprofilar. Fuq is-server naħżnu:",
+    "item1": "L-indirizz tal-email tiegħek (għad-dħul, għall-verifika u għar-risettjar tal-password) u hash tal-password bil-melħ — qatt il-password innifisha.",
+    "item2": "Kejl tal-użu: l-għadd ta' tokens għal kull talba, meħtieġ biex jiġu infurzati l-baġits u biex jiġu kkumpensati l-operaturi li jservu t-talbiet tiegħek. Il-kontenut tal-prompt u tat-tweġiba ma jinżammx.",
+    "item3": "Mar-reġistrazzjoni biss, sinjal tal-browser ta' darba (hash tal-fingerprint) użat biex jinkixef abbuż b'aktar minn kont wieħed tal-livell b'xejn. Ma jintużax għat-traċċar, qatt ma jiġi kkalkulat għall-ibbrawżjar anonimu, u ma għandu l-ebda rwol ieħor wara r-reġistrazzjoni."
+  },
+
+  "infra": {
+    "title": "Infrastruttura",
+    "body": "L-inferenza taħdem fuq il-ħardwer ta' operaturi Ewropej indipendenti taħt il-liġi Ewropea. Il-websajt pubbliku jinsab wara Cloudflare, li jista' jissettja cookie tas-sigurtà strettament meħtieġa tiegħu stess (eż. kontra l-bots) li aħna la naqrawha u lanqas nużawha."
+  },
+
+  "rights": {
+    "title": "Id-drittijiet tiegħek",
+    "body": "Skont il-GDPR tista' titlob aċċess għad-data tal-kont tiegħek, il-korrezzjoni jew it-tħassir tagħha fi kwalunkwe ħin, u tista' tressaq ilment quddiem l-awtorità superviżorja tiegħek. It-tħassir tad-data tal-browser tiegħek ineħħi l-istorja tal-chat; it-tħassir tal-kont tiegħek ineħħi dak kollu li nżommu fuq is-server."
+  },
+
+  "contact": {
+    "title": "Kuntatt",
+    "body": "Mistoqsijiet u talbiet dwar il-privatezza: {{email}}"
+  }
+}

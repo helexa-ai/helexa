@@ -1,0 +1,45 @@
+{
+  "title": "Privātums",
+  "updated": "Pēdējoreiz atjaunināts: 2026. gada 16. jūlijā",
+  "intro": "Helexa ir veidota tā, lai jūsu dati paliktu pie jums. Šī lapa pilnībā apraksta, kas, kur un kāpēc tiek glabāts. Tā ir īsa, jo atklājamā ir maz.",
+
+  "summary": {
+    "title": "Īsumā",
+    "noCookies": "Nekādu sīkdatņu. Nekādas analītikas. Nekādu izsekotāju. Nekādas reklāmas.",
+    "localHistory": "Jūsu sarunu vēsture tiek glabāta tikai jūsu pārlūkā. Tā nekad netiek sūtīta uz mūsu serveriem vai glabāta tajos ilgāk par atbildes ģenerēšanas brīdi.",
+    "noAnonId": "Anonīmiem apmeklētājiem netiek veidots digitālais nospiedums, tie netiek profilēti vai identificēti."
+  },
+
+  "local": {
+    "title": "Kas tiek glabāts jūsu pārlūkā",
+    "intro": "Viss tālāk minētais paliek jūsu ierīcē, pastāv vienīgi tāpēc, lai produkts darbotos, un to jebkurā brīdī var noņemt, notīrot šīs vietnes datus pārlūkā.",
+    "item1": "Sarunu vēsture, projekti un ziņojumu melnraksti — produkta pamatsolījums ir, ka tie nekad neatstāj jūsu pārlūku.",
+    "item2": "Jūsu motīva un valodas iestatījumi.",
+    "item3": "Sesijas atzīme par beta paziņojumu, kuru aizvērāt.",
+    "item4": "Ja piesakāties: jūsu sesijas tokens un — tikai tad, ja to skaidri iespējojat, — API atslēga tērzēšanai no šīs ierīces.",
+    "item5": "Anonīms ziņojumu skaitītājs, kas nodrošina bezmaksas lietošanas limita ievērošanu."
+  },
+
+  "account": {
+    "title": "Ja izveidojat kontu",
+    "intro": "Konti pastāv uzskaitei un ļaunprātīgas izmantošanas novēršanai, nevis profilēšanai. Servera pusē mēs glabājam:",
+    "item1": "Jūsu e-pasta adresi (pieteikšanās, verifikācijas un paroles atiestatīšanas vajadzībām) un sālītu paroles jaucējkodu — nekad pašu paroli.",
+    "item2": "Lietojuma uzskaiti: tokenu skaitu katram pieprasījumam, kas nepieciešams budžetu ievērošanai un atlīdzībai operatoriem, kuri apkalpo jūsu pieprasījumus. Uzvedņu un atbilžu saturs netiek saglabāts.",
+    "item3": "Tikai reģistrācijas brīdī — vienreizēju pārlūka signālu (nospieduma jaucējkodu), ko izmanto, lai atklātu bezmaksas līmeņa ļaunprātīgu izmantošanu ar vairākiem kontiem. Tas netiek izmantots izsekošanai, nekad netiek aprēķināts anonīmas pārlūkošanas laikā, un pēc reģistrācijas tam vairs nav nekādas lomas."
+  },
+
+  "infra": {
+    "title": "Infrastruktūra",
+    "body": "Inference notiek uz neatkarīgu Eiropas operatoru aparatūras saskaņā ar Eiropas tiesībām. Publisko vietni apkalpo Cloudflare, kas var iestatīt savu strikti nepieciešamu drošības sīkdatni (piemēram, botu ierobežošanai), kuru mēs ne nolasām, ne izmantojam."
+  },
+
+  "rights": {
+    "title": "Jūsu tiesības",
+    "body": "Saskaņā ar VDAR jūs jebkurā laikā varat pieprasīt piekļuvi saviem konta datiem, to labošanu vai dzēšanu, kā arī iesniegt sūdzību savai uzraudzības iestādei. Pārlūka datu dzēšana noņem jūsu sarunu vēsturi; konta dzēšana noņem visu, ko glabājam servera pusē."
+  },
+
+  "contact": {
+    "title": "Kontakti",
+    "body": "Privātuma jautājumi un pieprasījumi: {{email}}"
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Suvereni Europos DI inferencija",
+    "title": "Suvereni infrastruktūra",
+    "lead": "Tikime, kad pažangių, pajėgių modelių vykdymas jau turimoje aparatinėje įrangoje, mažuose ir efektyviuose objektuose, yra būdas Europos mažoms ir vidutinėms įmonėms konkuruoti su hipermastelio mąstysena, dominuojančia šiandienos pasaulinėje technologijų ekosistemoje.",
+    "ctaJoinMesh": "Išbandykite dabar",
+    "ctaFollowProject": "Sekite projektą",
+    "subcopy": "Sukurta europiečių — europiečiams.",
+    "imageAlt": "Helexa spiralės vaizdas"
+  },
+
+  "intent": {
+    "title": "Kodėl Helexa egzistuoja",
+    "p1": "Šiandienos DI infrastruktūroje dominuoja hipermastelio duomenų centrai, kurie arba fiziškai yra už ES ribų esančiose jurisdikcijose, arba yra valdomi juridinių asmenų, atskaitingų jurisdikcijoms už ES ribų — su darbotvarkėmis, praktikomis ir strategijomis, kurios ne visada atitinka aukštus Europos etikos ir vartotojų apsaugos standartus. Europos įmonės vis dažniau privalo tvarkyti ir saugoti duomenis pagal ES reguliavimo sistemą — o išoriniai inferencijos sprendimai tam retai teikia pirmenybę.",
+    "p2Intro": "Helexa išnaudoja infrastruktūrą, kurią Europa jau turi, ir atvirų svorių modelius, kurių negalime sau leisti prarasti:",
+    "bullet1": "Pažangūs atvirų svorių modeliai, efektyviai veikiantys plataus vartojimo, profesionaliuose ir duomenų centrų klasės spartintuvuose.",
+    "bullet2": "Duomenų rezidavimas ir privatumas pagal numatytuosius nustatymus. Inferencija vyksta infrastruktūroje vartotojo jurisdikcijoje.",
+    "bullet3": "Šiuo metu prieinamų spartintuvų pajėgumų išnaudojimas neaukojant našumo.",
+    "bullet4": "Nepriklausomybė nuo pasaulinių hipermastelio tiekėjų su konkuruojančiais interesais.",
+    "closing": "Ne pasaulinis debesis, kuris tiesiog turi duomenų centrą ES. Daug nepriklausomų, suverenių ES operatorių."
+  },
+
+  "whyNow": {
+    "title": "Kodėl dabar",
+    "problemTitle": "Neatitikimas",
+    "problemBullet1": "Šiandienos inferencijos sprendimai remiasi hipermastelio duomenų centrais, didelėmis GPU sankaupomis ir uždaro kodo didžiaisiais kalbos modeliais.",
+    "problemBullet2": "Europos reguliavimas (BDAR, DI aktas, sektorinės taisyklės) nukreipia darbo krūvius į vietines patalpas ir regioną.",
+    "problemBullet3": "Duomenų siuntimas į užsienio debesis yra reguliavimo, privatumo ir sąnaudų rizika.",
+    "problemBullet4": "Prieiga prie GPU debesyje yra brangi, ribotos pasiūlos ir valdoma kitur.",
+    "problemBullet5": "Pajėgi plataus vartojimo ir darbo stočių aparatinė įranga visoje Europoje jau dabar lieka nepakankamai išnaudota.",
+    "opportunityTitle": "Galimybė",
+    "opportunityIntro": "Beveik priešakinio lygio atvirų svorių modeliai dabar gerai veikia aparatinėje įrangoje, kurią Europa jau turi.",
+    "opportunityBullet1": "Pažangūs atvirų svorių modeliai veikia darbo stotyse ir plataus vartojimo GPU be duomenų centrų GPU sankaupų.",
+    "opportunityBullet2": "Europos įmonės nori DI, kurį galėtų vykdyti vietoje, su prognozuojamomis sąnaudomis ir garantuota prieiga ateityje.",
+    "opportunityBullet3": "Operatoriai, turintys pajėgią aparatinę įrangą, gali teikti inferenciją arti vartotojų.",
+    "opportunityBullet4": "Reguliavimas duomenų suverenumą iš pageidavimo paverčia reikalavimu.",
+    "opportunityBullet5": "Efektyvi inferencijos programinė įranga yra trūkstamas sluoksnis ir priešnuodis vis gausesniems ir vis didesniems duomenų centrams.",
+    "opportunityClosing": "Helexa ir yra tas programinės įrangos sluoksnis."
+  },
+
+  "howItWorks": {
+    "title": "Kaip tai veikia",
+    "operators": {
+      "eyebrow": "Diekite vietoje",
+      "title": "Vykdykite pažangius modelius savo aparatinėje įrangoje.",
+      "body": "Helexa teikia beveik priešakinio lygio atvirų svorių modelius plataus vartojimo ir darbo stočių klasės GPU — vietoje, jūsų jurisdikcijoje. Jokios sankaupos, jokio hipermastelio tiekėjo, jokios priklausomybės nuo užsienio. Duomenys lieka ten, kur juos kontroliuojate."
+    },
+    "routing": {
+      "eyebrow": "Nukreipkite išmaniai",
+      "title": "Užklausos lieka arti namų.",
+      "body": "Helexa kiekvieną užklausą nukreipia į infrastruktūrą su laisvais pajėgumais, pirmenybę teikdama regioniniam artumui, tad srautas ir duomenys lieka ten, kur tikitės. Augant pajėgumams, diegimai jungiasi į platesnį tinklą."
+    },
+    "value": {
+      "eyebrow": "Veikite nepriklausomai",
+      "title": "Darbas įrodomas. Ekonomika skaidri.",
+      "body": "Naudojimas apskaitomas skaidriai, o nepriklausomiems operatoriams bus atlyginama už jų teikiamą intelektą. Jokio platformos mokesčio, jokios neskaidrios apskaitos, jokio pririšimo."
+    }
+  },
+
+  "principles": {
+    "title": "Pagrįsta suverenumu, ne pririšimu",
+    "distributed": {
+      "title": "Suvereni pagal dizainą",
+      "body": "Europos aparatinė įranga, Europos operatoriai, Europos teisė. Jokio vieno gedimo taško ir jokios išorinės jurisdikcijos, nuo kurios priklausytų prieiga."
+    },
+    "participation": {
+      "title": "Veikia jūsų turimoje aparatinėje įrangoje",
+      "body": "Nuo vienos darbo stoties iki regioninio duomenų centro — pajėgūs skaičiavimo ištekliai gali vykdyti Helexa. Ji mažina infrastruktūros reikalavimus, o ne reikalauja naujų sankaupų."
+    },
+    "fairness": {
+      "title": "Privatumas ir skaidrumas",
+      "body": "Privatumas iš prigimties: pokalbių istorija gyvena tik naršyklėje, niekada serveryje. Naudojimo apskaita skaidri; nėra jokių juodųjų dėžių ir jokių paslėptų mokesčių."
+    },
+    "evolving": {
+      "title": "Atsparumas per paskirstymą",
+      "body": "Pajėgumus, paskirstytus po daugybę nepriklausomų diegimų, sunkiau cenzūruoti, riboti ar išjungti; jie atsparūs užsienio politikos pokyčiams ir vieno tiekėjo gedimui."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Kur Helexa juda",
+    "p1": "Mūsų ilgalaikis tikslas — tapti programinės įrangos sluoksniu, varančiu paskirstytą nepriklausomai valdomos Europos DI infrastruktūros tinklą.",
+    "p2": "Nuo įmonių diegimų, vykdančių pažangius modelius savo aparatinėje įrangoje, iki atsinaujinančia energija varomų regioninių duomenų centrų, tarnaujančių savo bendruomenėms.",
+    "p3": "Europos inferencijos sluoksnis, priklausantis Europai ir valdomas Europoje. Atsparus trikdžiams, užsienio politikos pokyčiams, monopolijoms ir vieno tiekėjo gedimui.",
+    "p4": "Infrastruktūra, stiprinanti Europos autonomiją, o ne gilinanti priklausomybę nuo saujelės užsienio tiekėjų.",
+    "card": {
+      "eyebrow": "Vizija",
+      "title": "Programinės įrangos sluoksnis Europos DI infrastruktūrai",
+      "body": "Helexa yra ankstyvoje stadijoje — ir sąmoningai. Veikiantis inferencijos sprendimas šiandien, augantis į paskirstytą nepriklausomai valdomų Europos diegimų tinklą."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Ankstyvoji prieiga",
+    "title": "Suvereni DI infrastruktūra.",
+    "titleHighlight": "Sukurta Europoje.",
+    "lead": "Nesvarbu, ar vykdote DI savo aparatinėje įrangoje, ar valdote pajėgumus, ar kuriate Europos DI suverenumą — čia yra vietos ir jums.",
+    "ctaRunNode": "Diegti mazgą (netrukus)",
+    "ctaJoinAnnouncements": "Sekite ankstyvuosius pranešimus",
+    "ctaExploreCode": "Naršykite kodą",
+    "footer": "Jokių uždarų sodų. Programinės įrangos sluoksnis suvereniam Europos DI. Nuo vienos darbo stoties iki atsinaujinančia energija varomų regioninių duomenų centrų."
+  }
+}

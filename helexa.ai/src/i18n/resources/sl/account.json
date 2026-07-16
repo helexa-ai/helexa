@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Prijava",
+    "email": "E-pošta",
+    "password": "Geslo",
+    "submit": "Prijava",
+    "noAccount": "Nimate računa? Registrirajte se"
+  },
+  "register": {
+    "title": "Ustvarite svoj račun",
+    "email": "E-pošta",
+    "password": "Geslo",
+    "submit": "Registracija",
+    "haveAccount": "Že imate račun? Prijavite se",
+    "checkEmail": "Skoraj končano — preverite svojo e-pošto in potrdite račun."
+  },
+  "verify": {
+    "verifying": "Preverjanje …",
+    "ok": "E-poštni naslov je potrjen. Zdaj se lahko prijavite.",
+    "failed": "Ta potrditvena povezava je neveljavna ali je potekla.",
+    "toLogin": "Na prijavo"
+  },
+  "reset": {
+    "requestTitle": "Ponastavite geslo",
+    "email": "E-pošta",
+    "requestSubmit": "Pošlji povezavo za ponastavitev",
+    "requestDone": "Če ta e-poštni naslov pripada računu, je povezava za ponastavitev na poti.",
+    "confirmTitle": "Izberite novo geslo",
+    "newPassword": "Novo geslo",
+    "confirmSubmit": "Nastavi geslo",
+    "ok": "Geslo je posodobljeno. Zdaj se lahko prijavite."
+  },
+  "dashboard": {
+    "title": "Račun",
+    "balance": "Dodelitev",
+    "total": "Skupaj",
+    "spent": "Porabljeno",
+    "reserved": "Rezervirano",
+    "remaining": "Preostalo",
+    "manageKeys": "Upravljanje ključev API",
+    "redeemTitle": "Unovčite kodo za dopolnitev",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Unovči",
+    "redeemed": "Koda je unovčena.",
+    "logout": "Odjava"
+  },
+  "keys": {
+    "title": "Ključi API",
+    "create": "Ustvari ključ",
+    "label": "Oznaka",
+    "limitKind": "Omejitev",
+    "percent": "% dodelitve",
+    "hardcap": "Trda omejitev (žetoni)",
+    "value": "Vrednost",
+    "none": "Ni še ključev.",
+    "createdTitle": "Vaš novi ključ API",
+    "createdWarn": "Kopirajte ga zdaj — znova ga ne boste videli.",
+    "copy": "Kopiraj",
+    "copied": "Kopirano",
+    "archive": "Arhiviraj",
+    "save": "Shrani",
+    "status": "Stanje",
+    "usage": "Porabljeno",
+    "useForChat": "Uporabi za klepet na tej napravi",
+    "usedForChat": "Omogočeno za klepet ✓"
+  },
+  "error": {
+    "generic": "Nekaj je šlo narobe.",
+    "unauthorized": "Prosimo, prijavite se znova."
+  }
+}

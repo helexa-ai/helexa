@@ -1,0 +1,45 @@
+{
+  "title": "Adatvédelem",
+  "updated": "Utolsó frissítés: 2026. július 16.",
+  "intro": "A Helexát úgy építettük, hogy az adataid nálad maradjanak. Ez az oldal teljes körűen leírja, mit hol és miért tárolunk. Azért rövid, mert kevés a közölnivaló.",
+
+  "summary": {
+    "title": "A rövid változat",
+    "noCookies": "Nincsenek sütik. Nincs analitika. Nincsenek nyomkövetők. Nincs hirdetés.",
+    "localHistory": "A csevegési előzményeid kizárólag a böngésződben tárolódnak. Soha nem küldjük el a szervereinkre, és nem tároljuk rajtuk a válasz generálásának pillanatán túl.",
+    "noAnonId": "Az anonim látogatókról nem készítünk ujjlenyomatot, profilt, és nem azonosítjuk őket."
+  },
+
+  "local": {
+    "title": "Mit tárolunk a böngésződben",
+    "intro": "Az alábbiak mind az eszközödön maradnak, kizárólag a termék működését szolgálják, és bármikor eltávolíthatók az oldal adatainak törlésével a böngésződben.",
+    "item1": "Csevegési előzmények, projektek és üzenetpiszkozatok — a termék alapígérete, hogy ezek soha nem hagyják el a böngésződet.",
+    "item2": "A téma- és nyelvi beállításaid.",
+    "item3": "Egy munkamenet-jelölő az általad bezárt béta-értesítéshez.",
+    "item4": "Ha bejelentkezel: a munkamenet-tokened, és — csak ha kifejezetten engedélyezed — egy API-kulcs az erről az eszközről történő csevegéshez.",
+    "item5": "Egy anonim üzenetszámláló, amely az ingyenes használati korlátot érvényesíti."
+  },
+
+  "account": {
+    "title": "Ha fiókot hozol létre",
+    "intro": "A fiókok a használatmérés és a visszaélések megelőzése miatt léteznek, nem profilalkotásra. A szerveroldalon a következőket tároljuk:",
+    "item1": "Az e-mail-címedet (bejelentkezéshez, megerősítéshez és jelszó-visszaállításhoz), valamint egy sózott jelszó-hasht — soha nem magát a jelszót.",
+    "item2": "Használatmérés: kérésenkénti tokenszámok, amelyek a keretek érvényesítéséhez és a kéréseidet kiszolgáló üzemeltetők ellentételezéséhez szükségesek. A promptok és a válaszok tartalmát nem őrizzük meg.",
+    "item3": "Kizárólag a regisztrációkor egy egyszeri böngészőjelet (ujjlenyomat-hasht), amely az ingyenes szint többfiókos visszaéléseinek felderítésére szolgál. Nem használjuk nyomkövetésre, anonim böngészésnél soha nem számítjuk ki, és a regisztráció után nincs további szerepe."
+  },
+
+  "infra": {
+    "title": "Infrastruktúra",
+    "body": "Az inferencia független európai üzemeltetők hardverén fut, európai jog alatt. A nyilvános weboldal előtt a Cloudflare áll, amely beállíthat egy saját, szigorúan szükséges biztonsági sütit (pl. botvédelem céljából), amelyet mi nem olvasunk és nem használunk."
+  },
+
+  "rights": {
+    "title": "A jogaid",
+    "body": "A GDPR alapján bármikor kérheted a fiókadataidhoz való hozzáférést, azok helyesbítését vagy törlését, és panaszt tehetsz a felügyeleti hatóságodnál. A böngészőadatok törlése eltávolítja a csevegési előzményeidet; a fiókod törlése mindent eltávolít, amit a szerveroldalon tárolunk."
+  },
+
+  "contact": {
+    "title": "Kapcsolat",
+    "body": "Adatvédelmi kérdések és kérések: {{email}}"
+  }
+}
