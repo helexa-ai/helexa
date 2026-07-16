@@ -27,7 +27,10 @@ bench_host=bob.hanzalova.internal
 pubkey="${HOME}/.ssh/id_gitea_ci.pub"
 if [[ ! -f "${pubkey}" ]]; then
     echo "fatal: ${pubkey} not found" >&2
-    echo "  generate with: ssh-keygen -t ed25519 -f ${pubkey%.pub} -C gitea_ci" >&2
+    echo "  copy ~/.ssh/id_gitea_ci{,.pub} from the operator workstation (roosta)." >&2
+    echo "  Do NOT generate a new key: every project's RSYNC_SSH_KEY secret and every" >&2
+    echo "  host's gitea_ci authorized_keys carry this one shared key — a fresh key" >&2
+    echo "  silently breaks all other projects' deploys." >&2
     exit 1
 fi
 
