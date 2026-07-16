@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Una nuova forma di intelligenza",
-    "title": "Una nuova forma di intelligenza",
-    "lead": "Helexa è una mesh di IA auto‑organizzata alimentata da operatori indipendenti. Aperta. Distribuita. In evoluzione.",
-    "ctaJoinMesh": "Unisciti alla mesh",
+    "badge": "Inferenza IA sovrana europea",
+    "title": "Infrastruttura sovrana",
+    "lead": "Crediamo che eseguire modelli avanzati e capaci sull'hardware che già possiedi — in strutture piccole ed efficienti — sia il modo in cui le PMI europee competono con la mentalità hyperscaler che domina l'ecosistema tecnologico globale di oggi.",
+    "ctaJoinMesh": "Provalo ora",
     "ctaFollowProject": "Segui il progetto",
-    "subcopy": "Creata per operatori, builder e comunità che credono che l’IA debba essere aperta, resiliente e condivisa.",
-    "imageAlt": "Visuale dell’elica Helexa"
+    "subcopy": "Creato da europei, per europei.",
+    "imageAlt": "Immagine dell'elica di Helexa"
   },
 
   "intent": {
     "title": "Perché esiste Helexa",
-    "p1": "L’IA sta diventando l’infrastruttura più potente sulla Terra. Ma oggi questo potere è concentrato in poche aziende, modellato da priorità private, limiti geografici ed economie fragili.",
-    "p2Intro": "Helexa immagina qualcosa di diverso:",
-    "bullet1": "Un’intelligenza che cresce da ovunque, non da un solo luogo.",
-    "bullet2": "Una rete in cui chiunque può contribuire e trarre beneficio.",
-    "bullet3": "Un sistema che si adatta alla domanda, non alle direttive.",
-    "bullet4": "Tecnologia che rafforza le comunità invece di sostituirle.",
-    "closing": "Helexa non è una piattaforma. Non è un cloud.\nÈ una mesh — una trama viva ed evolutiva di operatori indipendenti che formano un nuovo tipo di intelligenza."
+    "p1": "L'infrastruttura IA di oggi è dominata da data center hyperscale collocati fisicamente in giurisdizioni esterne all'UE o controllati da entità giuridiche che rispondono a giurisdizioni esterne all'UE — con agende, pratiche e strategie che non sempre rispettano gli elevati standard europei di etica e tutela dei consumatori. Le imprese europee devono sempre più trattare e proteggere i dati all'interno del quadro normativo dell'UE, cosa che gli stack di inferenza esterni raramente considerano prioritaria.",
+    "p2Intro": "Helexa sfrutta l'infrastruttura che l'Europa già possiede e i modelli open-weight che non possiamo permetterci di perdere:",
+    "bullet1": "Modelli avanzati open-weight eseguiti in modo efficiente su acceleratori consumer, professionali e di classe data center.",
+    "bullet2": "Residenza dei dati e privacy di default. L'inferenza risiede su infrastruttura all'interno della giurisdizione del consumatore.",
+    "bullet3": "Valorizzazione della capacità di accelerazione già disponibile senza sacrificare le prestazioni.",
+    "bullet4": "Indipendenza dagli hyperscaler globali con interessi contrapposti.",
+    "closing": "Non un cloud globale che per caso ha un data center nell'UE. Molteplici operatori UE indipendenti e sovrani."
   },
 
   "whyNow": {
-    "title": "Un punto di svolta per l’IA",
-    "problemTitle": "Il problema",
-    "problemBullet1": "L’IA si sta centralizzando più velocemente di qualsiasi tecnologia precedente.",
-    "problemBullet2": "L’accesso al calcolo definisce le capacità, e questo accesso si sta restringendo.",
-    "problemBullet3": "Le barriere di costo escludono ricercatori, startup e comunità.",
-    "problemBullet4": "Pressioni geopolitiche e normative minacciano la disponibilità globale.",
-    "problemBullet5": "I creatori di modelli e gli operatori dell’hardware raramente condividono il valore che producono.",
-    "opportunityTitle": "L’opportunità",
-    "opportunityIntro": "Ma un mondo distribuito è possibile.",
-    "opportunityBullet1": "Migliaia di GPU sono già sotto‑utilizzate, in tutto il mondo.",
-    "opportunityBullet2": "Gli operatori vogliono una compensazione equa per il calcolo.",
-    "opportunityBullet3": "Gli sviluppatori vogliono un’infrastruttura aperta e resistente alla censura.",
-    "opportunityBullet4": "Le comunità vogliono sovranità e resilienza nei sistemi digitali.",
-    "opportunityBullet5": "La crescita dell’IA ha superato i cloud tradizionali — servono nuove forme.",
-    "opportunityClosing": "Helexa è il momento in cui queste forze si allineano."
+    "title": "Perché ora",
+    "problemTitle": "Il disallineamento",
+    "problemBullet1": "Gli stack di inferenza di oggi presuppongono data center hyperscale, grandi cluster di GPU e LLM closed-source.",
+    "problemBullet2": "La regolamentazione europea — il GDPR, l'AI Act, le norme settoriali — orienta i carichi di lavoro on-premises e all'interno della regione.",
+    "problemBullet3": "Inviare dati a cloud stranieri è un onere normativo, di privacy e di costi.",
+    "problemBullet4": "L'accesso a GPU nel cloud è costoso, limitato dall'offerta e governato altrove.",
+    "problemBullet5": "In tutta Europa esiste già hardware consumer e workstation capace ma sottoutilizzato.",
+    "opportunityTitle": "L'opportunità",
+    "opportunityIntro": "I modelli open-weight vicini alla frontiera oggi funzionano bene sull'hardware che l'Europa già possiede.",
+    "opportunityBullet1": "I modelli avanzati open-weight girano su workstation e GPU consumer senza cluster di GPU da data center.",
+    "opportunityBullet2": "Le imprese europee vogliono un'IA da eseguire in locale, con costi prevedibili e accesso futuro garantito.",
+    "opportunityBullet3": "Gli operatori con hardware capace possono servire l'inferenza vicino ai consumatori.",
+    "opportunityBullet4": "La regolamentazione sta trasformando la sovranità dei dati da preferenza a requisito.",
+    "opportunityBullet5": "Il software di inferenza efficiente è il livello mancante e l'antidoto a data center sempre più grandi e numerosi.",
+    "opportunityClosing": "Helexa è quel livello software."
   },
 
   "howItWorks": {
-    "title": "Come si forma la mesh",
+    "title": "Come funziona",
     "operators": {
-      "eyebrow": "Gli operatori eseguono i nodi",
-      "title": "Chiunque può contribuire con calcolo.",
-      "body": "Gli operatori eseguono nodi Helexa. Decidono quali modelli ospitare. Mantengono il controllo del proprio hardware e della propria economia. Nessuna approvazione, nessun gatekeeper."
+      "eyebrow": "Distribuisci in locale",
+      "title": "Esegui modelli avanzati sul tuo hardware.",
+      "body": "Helexa serve modelli open-weight vicini alla frontiera su GPU consumer e workstation, on-premises, nella tua giurisdizione. Nessun cluster, nessun hyperscaler, nessuna dipendenza dall'estero. I dati restano dove li controlli tu."
     },
     "routing": {
-      "eyebrow": "La mesh instrada l’intelligenza",
-      "title": "La domanda scorre attraverso la rete.",
-      "body": "Helexa impara dove esiste capacità, dove la domanda sta crescendo e quali nodi sono più adatti a servire le richieste. La mesh si adatta in modo organico — come un’elica in crescita."
+      "eyebrow": "Instrada con intelligenza",
+      "title": "Le richieste restano vicino a casa.",
+      "body": "Helexa instrada ogni richiesta verso infrastruttura con capacità disponibile, privilegiando l'affinità regionale, così traffico e dati restano dove ti aspetti. Le installazioni si compongono in una rete più ampia man mano che la capacità cresce."
     },
     "value": {
-      "eyebrow": "Il valore ritorna indietro",
-      "title": "Il lavoro è dimostrabile. Il pagamento è equo.",
-      "body": "Ogni job porta con sé una ricevuta crittografica. Gli operatori guadagnano per l’intelligenza che contribuiscono a fornire. Nessuna tassazione di piattaforma. Nessuna fatturazione opaca."
+      "eyebrow": "Opera in autonomia",
+      "title": "Il lavoro è dimostrato. L'economia è trasparente.",
+      "body": "L'utilizzo è misurato in modo trasparente e gli operatori indipendenti saranno remunerati per l'intelligenza che servono. Nessuna tassa di piattaforma, nessuna fatturazione opaca, nessun lock-in."
     }
   },
 
   "principles": {
-    "title": "Costruita su principi, non su piattaforme",
+    "title": "Fondata sulla sovranità, non sul lock-in",
     "distributed": {
-      "title": "Distribuita per progettazione",
-      "body": "Nessun singolo punto di fallimento. Nessuna autorità centrale. Una rete che diventa più forte con ogni nuovo operatore."
+      "title": "Sovrana by design",
+      "body": "Hardware europeo, operatori europei, diritto europeo. Nessun punto singolo di guasto e nessuna giurisdizione esterna da cui dipenda l'accesso."
     },
     "participation": {
-      "title": "Partecipazione aperta",
-      "body": "Se hai capacità di calcolo, puoi contribuire. La mesh accoglie tutti — edge, server domestico, data center."
+      "title": "Gira sull'hardware che già hai",
+      "body": "Da una singola workstation a un data center regionale, qualsiasi capacità di calcolo adeguata può eseguire Helexa. Riduce i requisiti infrastrutturali invece di richiedere nuovi cluster."
     },
     "fairness": {
-      "title": "Equità e trasparenza",
-      "body": "I guadagni si basano su lavoro reale, verificato crittograficamente. Niente scatole nere. Nessun costo nascosto."
+      "title": "Privacy e trasparenza",
+      "body": "Privacy nativa: la cronologia delle chat vive solo nel browser, mai su un server. La misurazione dell'utilizzo è trasparente; nessuna scatola nera, nessun costo nascosto."
     },
     "evolving": {
-      "title": "Intelligenza in evoluzione",
-      "body": "La mesh impara dalla domanda. I modelli vengono caricati dove servono. L’intelligenza si diffonde attraverso la cooperazione."
+      "title": "Resiliente per distribuzione",
+      "body": "La capacità distribuita su molte installazioni indipendenti è più difficile da censurare, limitare o spegnere, ed è resiliente ai cambi di politica estera e al fallimento di un singolo fornitore."
     }
   },
 
   "roadAhead": {
-    "title": "Cosa aspira a diventare Helexa",
-    "p1": "Un livello di intelligenza globale che appartiene a tutti, alimentato da un’elica di nodi e comunità.",
-    "p2": "Una rete resiliente a interruzioni, politica, monopoli e guasti.",
-    "p3": "Un nuovo modello economico in cui operatori, builder e utenti traggono tutti beneficio.",
-    "p4": "Un ecosistema in cui l’innovazione cresce dai bordi — non dal centro.",
+    "title": "Dove sta andando Helexa",
+    "p1": "Il nostro obiettivo a lungo termine è diventare il livello software alla base di una rete distribuita di infrastrutture IA europee gestite in modo indipendente.",
+    "p2": "Dalle installazioni aziendali che eseguono modelli avanzati sul proprio hardware, ai data center regionali alimentati da energie rinnovabili al servizio delle loro comunità.",
+    "p3": "Un livello di inferenza europeo, di proprietà europea e gestito in Europa. Resiliente a interruzioni, cambi di politica estera, monopoli e al fallimento di un singolo fornitore.",
+    "p4": "Un'infrastruttura che rafforza l'autonomia europea invece di approfondire la dipendenza da una manciata di fornitori stranieri.",
     "card": {
-      "eyebrow": "Istantanea della visione",
-      "title": "Verso una mesh di intelligenza condivisa",
-      "body": "Helexa è agli inizi. Le idee sono più grandi dell’implementazione — e questo è intenzionale. La rete crescerà in modo iterativo, con operatori e builder che ne plasmeranno l’evoluzione."
+      "eyebrow": "Visione",
+      "title": "Il livello software per l'infrastruttura IA europea",
+      "body": "Helexa è agli inizi, e lo è deliberatamente. Uno stack di inferenza funzionante oggi, in crescita verso una rete distribuita di installazioni europee gestite in modo indipendente."
     }
   },
 
   "joinMesh": {
-    "badge": "Fase iniziale",
-    "title": "La mesh si sta formando.",
-    "titleHighlight": "Puoi farne parte.",
-    "lead": "Che tu gestisca hardware, costruisca modelli o ti interessi semplicemente a come viene governata l’IA, nella mesh c’è un posto per te.",
-    "ctaRunNode": "Esegui un nodo (presto)",
-    "ctaJoinAnnouncements": "Unisciti agli annunci iniziali",
+    "badge": "Accesso anticipato",
+    "title": "Infrastruttura IA sovrana.",
+    "titleHighlight": "Costruita in Europa.",
+    "lead": "Che tu esegua l'IA sul tuo hardware, gestisca capacità o stia lavorando alla sovranità europea sull'IA, qui c'è un posto per te.",
+    "ctaRunNode": "Distribuisci un nodo (in arrivo)",
+    "ctaJoinAnnouncements": "Segui i primi annunci",
     "ctaExploreCode": "Esplora il codice",
-    "footer": "Niente giardini recintati. Nessun unico proprietario. Solo una mesh di persone, hardware e idee — che compone un futuro diverso per l’intelligenza."
+    "footer": "Nessun giardino recintato. Un livello software per un'IA europea sovrana. Da una singola workstation a data center regionali alimentati da energie rinnovabili."
   }
 }

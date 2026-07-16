@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Novi oblik inteligencije",
-    "title": "Novi oblik inteligencije",
-    "lead": "Helexa je samoorganizujuća AI mreža koju pokreću nezavisni operateri. Otvorena. Distribuirana. U razvoju.",
-    "ctaJoinMesh": "Pridruži se mreži",
-    "ctaFollowProject": "Prati projekat",
-    "subcopy": "Napravljen za operatere, buildere i zajednice koje veruju da veštačka inteligencija treba da bude otvorena, otporna i zajednička.",
-    "imageAlt": "Vizuelni prikaz Helexa heliksa"
+    "badge": "Суверена европска AI инференција",
+    "title": "Суверена инфраструктура",
+    "lead": "Верујемо да је покретање напредних, способних модела на хардверу који већ имате — у малим, ефикасним постројењима — начин на који европска МСП конкуришу хиперскејлерском менталитету који доминира данашњим глобалним технолошким екосистемом.",
+    "ctaJoinMesh": "Испробајте одмах",
+    "ctaFollowProject": "Пратите пројекат",
+    "subcopy": "Направили Европљани, за Европљане.",
+    "imageAlt": "Визуелни приказ Helexa хеликса"
   },
 
   "intent": {
-    "title": "Zašto Helexa postoji",
-    "p1": "AI postaje najmoćnija infrastruktura na Zemlji. Ali danas je ta moć koncentrisana u rukama nekoliko korporacija, oblikovana privatnim prioritetima, geografskim ograničenjima i krhkom ekonomijom.",
-    "p2Intro": "Helexa zamišlja nešto drugačije:",
-    "bullet1": "Inteligenciju koja raste sa svih strana, a ne sa jednog mesta.",
-    "bullet2": "Mrežu u kojoj svako može da doprinese i da ima korist.",
-    "bullet3": "Sistem koji se prilagođava potražnji, a ne direktivama.",
-    "bullet4": "Tehnologiju koja jača zajednice umesto da ih zamenjuje.",
-    "closing": "Helexa nije platforma. Nije ni cloud.\nTo je mreža — živa, evoluirajuća rešetka nezavisnih operatera koja oblikuje novu vrstu inteligencije."
+    "title": "Зашто Helexa постоји",
+    "p1": "Данашњом инфраструктуром вештачке интелигенције доминирају хиперскејл дата-центри који се или физички налазе у јурисдикцијама ван ЕУ или су под контролом правних лица која одговарају јурисдикцијама ван ЕУ — са агендама, праксама и стратегијама које не испуњавају увек високе европске стандарде етике и заштите потрошача. Европска предузећа морају све више да обрађују и штите податке унутар регулаторног оквира ЕУ, што екстерни инференцијски стекови ретко стављају у први план.",
+    "p2Intro": "Helexa користи инфраструктуру коју Европа већ има и моделе отворених тежина које не смемо себи дозволити да изгубимо:",
+    "bullet1": "Напредни модели отворених тежина који ефикасно раде на комерцијалним, професионалним и дата-центар акцелераторима.",
+    "bullet2": "Резидентност података и приватност подразумевано. Инференција живи на инфраструктури унутар јурисдикције потрошача.",
+    "bullet3": "Искоришћавање тренутно доступних капацитета акцелератора без жртвовања перформанси.",
+    "bullet4": "Независност од глобалних хиперскејлера са супротстављеним интересима.",
+    "closing": "Не глобални облак који случајно има дата-центар у ЕУ. Више независних, суверених оператера у ЕУ."
   },
 
   "whyNow": {
-    "title": "Prelomni trenutak za AI",
-    "problemTitle": "Problem",
-    "problemBullet1": "AI se centralizuje brže nego ijedna tehnologija pre nje.",
-    "problemBullet2": "Pristup računarskim resursima definiše mogućnosti, a taj pristup se sužava.",
-    "problemBullet3": "Troškovi isključuju istraživače, startape i zajednice.",
-    "problemBullet4": "Geopolitički i regulatorni pritisci prete globalnoj dostupnosti.",
-    "problemBullet5": "Tvorci modela i operateri hardvera retko učestvuju u vrednosti koju stvaraju.",
-    "opportunityTitle": "Prilika",
-    "opportunityIntro": "Ali distribuirani svet je moguć.",
-    "opportunityBullet1": "Hiljade GPU‑ova već danas stoje nedovoljno iskorišćene širom sveta.",
-    "opportunityBullet2": "Operateri žele poštenu nadoknadu za računske resurse.",
-    "opportunityBullet3": "Programeri žele otvorenu, na cenzuru otpornu infrastrukturu.",
-    "opportunityBullet4": "Zajednice žele suverenitet i otpornost u digitalnim sistemima.",
-    "opportunityBullet5": "Rast AI je prevazišao tradicionalne cloud‑ove — potrebni su novi oblici.",
-    "opportunityClosing": "Helexa je trenutak u kom se sve te sile poravnavaju."
+    "title": "Зашто сада",
+    "problemTitle": "Несклад",
+    "problemBullet1": "Данашњи инференцијски стекови подразумевају хиперскејл дата-центре, велике GPU кластере и LLM-ове затвореног кода.",
+    "problemBullet2": "Европска регулатива — GDPR, Акт о вештачкој интелигенцији, секторска правила — усмерава радна оптерећења на сопствену инфраструктуру и унутар региона.",
+    "problemBullet3": "Слање података у стране облаке представља регулаторни ризик, ризик по приватност и трошак.",
+    "problemBullet4": "Приступ GPU ресурсима у облаку је скуп, ограничене понуде и њиме се управља другде.",
+    "problemBullet5": "Способан комерцијални и радно-станични хардвер већ стоји недовољно искоришћен широм Европе.",
+    "opportunityTitle": "Прилика",
+    "opportunityIntro": "Модели отворених тежина близу самог врха данас добро раде на хардверу који Европа већ поседује.",
+    "opportunityBullet1": "Напредни модели отворених тежина раде на радним станицама и комерцијалним GPU-овима, без дата-центар GPU кластера.",
+    "opportunityBullet2": "Европска предузећа желе вештачку интелигенцију коју могу да покрећу локално, уз предвидиве трошкове и гарантован будући приступ.",
+    "opportunityBullet3": "Оператери са способним хардвером могу да служе инференцију близу потрошача.",
+    "opportunityBullet4": "Регулатива претвара сувереност података из преференције у обавезу.",
+    "opportunityBullet5": "Ефикасан инференцијски софтвер је слој који недостаје — и противотров за све бројније и све веће дата-центре.",
+    "opportunityClosing": "Helexa је тај софтверски слој."
   },
 
   "howItWorks": {
-    "title": "Kako se mreža formira",
+    "title": "Како ради",
     "operators": {
-      "eyebrow": "Operateri pokreću nodove",
-      "title": "Svako može da doprinese računanjem.",
-      "body": "Operateri pokreću Helexa nodove. Oni odlučuju koje modele će hostovati. Ostaju u potpunoj kontroli nad svojim hardverom i ekonomijom. Bez odobrenja, bez čuvara kapija."
+      "eyebrow": "Покрените локално",
+      "title": "Покрећите напредне моделе на сопственом хардверу.",
+      "body": "Helexa служи моделе отворених тежина близу самог врха на комерцијалним и радно-станичним GPU-овима, на сопственој инфраструктури, у вашој јурисдикцији. Без кластера, без хиперскејлера, без офшор зависности. Подаци остају тамо где их ви контролишете."
     },
     "routing": {
-      "eyebrow": "Mreža usmerava inteligenciju",
-      "title": "Potražnja teče kroz mrežu.",
-      "body": "Helexa uči gde postoji kapacitet, gde potražnja raste i koji nodovi su najpogodniji da odgovore na zahteve. Mreža se prilagođava organski — poput heliksa koji raste."
+      "eyebrow": "Рутирајте паметно",
+      "title": "Захтеви остају близу куће.",
+      "body": "Helexa рутира сваки захтев ка инфраструктури са капацитетом, дајући предност регионалној блискости, тако да саобраћај и подаци остају тамо где очекујете. Како капацитет расте, инсталације се слажу у ширу мрежу."
     },
     "value": {
-      "eyebrow": "Vrednost se vraća nazad",
-      "title": "Rad je dokazan. Plaćanje je pošteno.",
-      "body": "Svaki zadatak nosi kriptografski račun. Operateri zarađuju od inteligencije koju pomažu da se pruži. Nema platformskog poreza. Nema nejasnog obračuna."
+      "eyebrow": "Радите независно",
+      "title": "Рад се доказује. Економија је транспарентна.",
+      "body": "Потрошња се мери транспарентно, а независни оператери ће бити плаћени за интелигенцију коју служе. Без платформске таксе, без непрозирног обрачуна, без закључавања."
     }
   },
 
   "principles": {
-    "title": "Zasnovano na principima, ne na platformama",
+    "title": "Изграђено на суверености, не на закључавању",
     "distributed": {
-      "title": "Distribuirano po dizajnu",
-      "body": "Nema jedne tačke pada. Nema centralnog autoriteta. Mreža koja postaje snažnija sa svakim novim operaterom."
+      "title": "Суверено по дизајну",
+      "body": "Европски хардвер, европски оператери, европско право. Без јединствене тачке отказа и без спољне јурисдикције од које зависи приступ."
     },
     "participation": {
-      "title": "Otvoreno učešće",
-      "body": "Ako imaš računarsku snagu, možeš da doprineseš. Mreža dočekuje sve — edge uređaje, kućne servere, datacentre."
+      "title": "Ради на хардверу који имате",
+      "body": "Од једне радне станице до регионалног дата-центра — способан рачунарски хардвер може да покреће Helexa. Смањује захтеве за инфраструктуром уместо да тражи нове кластере."
     },
     "fairness": {
-      "title": "Pravednost i transparentnost",
-      "body": "Zarada se zasniva na stvarnom radu, kriptografski verifikovanom. Nema crnih kutija. Nema skrivenih naknada."
+      "title": "Приватност и транспарентност",
+      "body": "Приватност у основи: историја разговора живи само у прегледачу, никада на серверу. Мерење потрошње је транспарентно; нема црних кутија ни скривених накнада."
     },
     "evolving": {
-      "title": "Evoluirajuća inteligencija",
-      "body": "Mreža uči iz potražnje. Modeli se učitavaju tamo gde su potrebni. Inteligencija se širi kroz saradnju."
+      "title": "Отпорно кроз дистрибуцију",
+      "body": "Капацитет распоређен на много независних инсталација теже је цензурисати, ограничити или угасити, и отпоран је на спољнополитичке промене и отказ једног добављача."
     }
   },
 
   "roadAhead": {
-    "title": "Kuda Helexa želi da stigne",
-    "p1": "Globalni sloj inteligencije koji pripada svima, pokretan heliksom nodova i zajednica.",
-    "p2": "Mreža otporna na prekide, politiku, monopole i kvarove.",
-    "p3": "Novi ekonomski model u kom operateri, graditelji i korisnici svi zajedno imaju koristi.",
-    "p4": "Ekosistem u kom inovacija raste sa ivica — ne iz centra.",
+    "title": "Куда Helexa иде",
+    "p1": "Наш дугорочни циљ је да постанемо софтверски слој који покреће дистрибуирану мрежу независно вођене европске инфраструктуре вештачке интелигенције.",
+    "p2": "Од пословних инсталација које покрећу напредне моделе на сопственом хардверу, до регионалних дата-центара на обновљиву енергију који служе својим заједницама.",
+    "p3": "Европски инференцијски слој у европском власништву и под европским управљањем. Отпоран на прекиде, спољнополитичке промене, монополе и отказ једног добављача.",
+    "p4": "Инфраструктура која јача европску аутономију уместо да продубљује зависност од шачице страних провајдера.",
     "card": {
-      "eyebrow": "Kratak pregled vizije",
-      "title": "Ka deljenoj mreži inteligencije",
-      "body": "Helexa je u ranoj fazi. Ideje su veće od trenutne implementacije — i to namerno. Mreža će rasti iterativno, dok operateri i graditelji oblikuju njen razvoj."
+      "eyebrow": "Визија",
+      "title": "Софтверски слој за европску AI инфраструктуру",
+      "body": "Helexa је у раној фази — намерно. Данас функционалан инференцијски стек, који расте ка дистрибуираној мрежи независно вођених европских инсталација."
     }
   },
 
   "joinMesh": {
-    "badge": "Rana faza",
-    "title": "Mreža se formira.",
-    "titleHighlight": "Možeš biti njen deo.",
-    "lead": "Bilo da pokrećeš hardver, gradiš modele ili ti je jednostavno stalo do toga kako se AI upravlja, u ovoj mreži postoji mesto za tebe.",
-    "ctaRunNode": "Pokreni nod (uskoro)",
-    "ctaJoinAnnouncements": "Prijavi se za rana obaveštenja",
-    "ctaExploreCode": "Istraži kod",
-    "footer": "Bez ograđenih vrtova. Bez jednog vlasnika. Samo mreža ljudi, hardvera i ideja — koja sklapa drugačiju budućnost za inteligenciju."
+    "badge": "Рани приступ",
+    "title": "Суверена AI инфраструктура.",
+    "titleHighlight": "Изграђена у Европи.",
+    "lead": "Било да покрећете вештачку интелигенцију на сопственом хардверу, управљате капацитетом или градите ка европској суверености у вештачкој интелигенцији, овде има места за вас.",
+    "ctaRunNode": "Поставите чвор (ускоро)",
+    "ctaJoinAnnouncements": "Пратите прве најаве",
+    "ctaExploreCode": "Истражите код",
+    "footer": "Без ограђених вртова. Софтверски слој за суверену европску вештачку интелигенцију. Од једне радне станице до регионалних дата-центара на обновљиву енергију."
   }
 }

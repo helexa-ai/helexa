@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "O nouă formă de inteligență",
-    "title": "O nouă formă de inteligență",
-    "lead": "Helexa este o rețea de inteligență artificială auto-organizată, alimentată de operatori independenți. Deschisă. Distribuită. În evoluție.",
-    "ctaJoinMesh": "Alătură-te rețelei",
+    "badge": "Inferență IA europeană suverană",
+    "title": "Infrastructură suverană",
+    "lead": "Credem că rularea unor modele avansate și capabile pe hardware-ul pe care îl ai deja — în facilități mici și eficiente — este modul în care IMM-urile europene concurează cu mentalitatea hyperscaler care domină ecosistemul tehnologic global de astăzi.",
+    "ctaJoinMesh": "Încearcă acum",
     "ctaFollowProject": "Urmărește proiectul",
-    "subcopy": "Creată pentru operatori, constructori și comunități care cred că inteligența artificială trebuie să fie deschisă, rezilientă și împărtășită.",
-    "imageAlt": "Vizual cu elicea Helexa"
+    "subcopy": "Creat de europeni, pentru europeni.",
+    "imageAlt": "Imagine cu spirala Helexa"
   },
 
   "intent": {
     "title": "De ce există Helexa",
-    "p1": "Inteligența artificială devine cea mai puternică infrastructură de pe Pământ. Dar astăzi, această putere este concentrată în mâinile câtorva corporații, modelată de priorități private, limitări geografice și economii fragile.",
-    "p2Intro": "Helexa își imaginează altceva:",
-    "bullet1": "O inteligență care crește de pretutindeni, nu dintr-un singur loc.",
-    "bullet2": "O rețea în care oricine poate contribui și beneficia.",
-    "bullet3": "Un sistem care se adaptează la cerere, nu la directive.",
-    "bullet4": "Tehnologie care întărește comunitățile în loc să le înlocuiască.",
-    "closing": "Helexa nu este o platformă. Nu este un cloud.\nEste o rețea — o țesătură vie, în continuă evoluție, de operatori independenți care formează un nou tip de inteligență."
+    "p1": "Infrastructura IA de astăzi este dominată de centre de date hyperscale situate fizic în jurisdicții din afara UE sau controlate de entități juridice care răspund în fața unor jurisdicții din afara UE — cu agende, practici și strategii care nu respectă întotdeauna standardele europene ridicate de etică și protecție a consumatorilor. Companiile europene trebuie, tot mai mult, să prelucreze și să protejeze datele în cadrul de reglementare al UE, ceva ce platformele de inferență externe rareori prioritizează.",
+    "p2Intro": "Helexa valorifică infrastructura pe care Europa o are deja și modelele open-weight pe care nu ne permitem să le pierdem:",
+    "bullet1": "Modele avansate open-weight care rulează eficient pe acceleratoare de consum, profesionale și de clasă datacenter.",
+    "bullet2": "Rezidența datelor și confidențialitate în mod implicit. Inferența rulează pe infrastructură din jurisdicția consumatorului.",
+    "bullet3": "Valorificarea capacității de accelerare deja disponibile, fără a sacrifica performanța.",
+    "bullet4": "Independență față de hyperscalerii globali cu interese concurente.",
+    "closing": "Nu un cloud global care se întâmplă să aibă un centru de date în UE. Mai mulți operatori UE independenți și suverani."
   },
 
   "whyNow": {
-    "title": "Un moment de cotitură pentru inteligența artificială",
-    "problemTitle": "Problema",
-    "problemBullet1": "Inteligența artificială se concentrează mai rapid decât orice tehnologie de până acum.",
-    "problemBullet2": "Accesul la putere de calcul definește capabilitățile, iar acest acces se îngustează.",
-    "problemBullet3": "Barierele de cost exclud cercetători, startup-uri și comunități.",
-    "problemBullet4": "Presiunile geopolitice și de reglementare amenință disponibilitatea globală.",
-    "problemBullet5": "Creatorii de modele și operatorii de infrastructură hardware rareori împart valoarea pe care o generează.",
+    "title": "De ce acum",
+    "problemTitle": "Nepotrivirea",
+    "problemBullet1": "Platformele de inferență de astăzi presupun centre de date hyperscale, clustere mari de GPU-uri și LLM-uri cu sursă închisă.",
+    "problemBullet2": "Reglementarea europeană — GDPR, Regulamentul privind IA, normele sectoriale — direcționează sarcinile de lucru către infrastructura proprie și în interiorul regiunii.",
+    "problemBullet3": "Trimiterea datelor către cloud-uri străine este o vulnerabilitate de reglementare, de confidențialitate și de cost.",
+    "problemBullet4": "Accesul la GPU-uri în cloud este scump, limitat de ofertă și guvernat din altă parte.",
+    "problemBullet5": "Hardware capabil, de consum și de stație de lucru, stă deja subutilizat în toată Europa.",
     "opportunityTitle": "Oportunitatea",
-    "opportunityIntro": "Dar o lume distribuită este posibilă.",
-    "opportunityBullet1": "Mii de GPU-uri sunt deja subutilizate în întreaga lume.",
-    "opportunityBullet2": "Operatorii își doresc o compensație corectă pentru puterea de calcul.",
-    "opportunityBullet3": "Dezvoltatorii vor infrastructură deschisă, rezistentă la cenzură.",
-    "opportunityBullet4": "Comunitățile vor suveranitate și reziliență în sistemele digitale.",
-    "opportunityBullet5": "Creșterea inteligenței artificiale a depășit cloud-urile tradiționale — sunt necesare noi forme.",
-    "opportunityClosing": "Helexa este momentul în care aceste forțe se aliniază."
+    "opportunityIntro": "Modelele open-weight aproape de frontieră rulează acum bine pe hardware pe care Europa îl deține deja.",
+    "opportunityBullet1": "Modelele avansate open-weight rulează pe stații de lucru și GPU-uri de consum, fără clustere de GPU-uri de datacenter.",
+    "opportunityBullet2": "Companiile europene vor o IA pe care să o poată rula local, cu costuri predictibile și acces viitor garantat.",
+    "opportunityBullet3": "Operatorii cu hardware capabil pot servi inferență aproape de consumatori.",
+    "opportunityBullet4": "Reglementarea transformă suveranitatea datelor dintr-o preferință într-o cerință.",
+    "opportunityBullet5": "Software-ul de inferență eficient este stratul lipsă și antidotul la centre de date tot mai multe și mai mari.",
+    "opportunityClosing": "Helexa este acel strat software."
   },
 
   "howItWorks": {
-    "title": "Cum se formează rețeaua",
+    "title": "Cum funcționează",
     "operators": {
-      "eyebrow": "Operatorii rulează noduri",
-      "title": "Oricine poate contribui cu putere de calcul.",
-      "body": "Operatorii rulează noduri Helexa. Ei decid ce modele să găzduiască. Rămân în controlul hardware-ului și al economiei lor. Fără aprobări, fără gardieni ai porții."
+      "eyebrow": "Implementează local",
+      "title": "Rulează modele avansate pe propriul hardware.",
+      "body": "Helexa servește modele open-weight aproape de frontieră pe GPU-uri de consum și de stație de lucru, on-premises, în propria jurisdicție. Fără cluster, fără hyperscaler, fără dependențe în străinătate. Datele rămân acolo unde le controlezi."
     },
     "routing": {
-      "eyebrow": "Rețeaua rutează inteligența",
-      "title": "Cererea curge prin rețea.",
-      "body": "Helexa învață unde există capacitate, unde crește cererea și ce noduri sunt cel mai potrivit poziționate pentru a deservi solicitările. Rețeaua se adaptează organic — ca o elice în creștere."
+      "eyebrow": "Rutează inteligent",
+      "title": "Cererile rămân aproape de casă.",
+      "body": "Helexa rutează fiecare cerere către infrastructura cu capacitate disponibilă, preferând afinitatea regională, astfel încât traficul și datele rămân acolo unde te aștepți. Implementările se compun într-o rețea mai largă pe măsură ce capacitatea crește."
     },
     "value": {
-      "eyebrow": "Valoarea se întoarce",
-      "title": "Munca este dovedită. Plata este corectă.",
-      "body": "Fiecare job poartă un bon criptografic. Operatorii câștigă pentru inteligența pe care ajută să o furnizeze. Fără taxe de platformă. Fără facturare opacă."
+      "eyebrow": "Operează independent",
+      "title": "Munca este dovedită. Economia este transparentă.",
+      "body": "Utilizarea este măsurată transparent, iar operatorii independenți vor fi remunerați pentru inteligența pe care o servesc. Fără taxă de platformă, fără facturare opacă, fără lock-in."
     }
   },
 
   "principles": {
-    "title": "Construim pe principii, nu pe platforme",
+    "title": "Construită pe suveranitate, nu pe lock-in",
     "distributed": {
-      "title": "Distribuită prin design",
-      "body": "Fără un singur punct de eșec. Fără autoritate centrală. O rețea care devine mai puternică cu fiecare nou operator."
+      "title": "Suverană prin design",
+      "body": "Hardware european, operatori europeni, drept european. Fără un punct unic de defecțiune și fără o jurisdicție externă de care să depindă accesul."
     },
     "participation": {
-      "title": "Participare deschisă",
-      "body": "Dacă ai putere de calcul, poți contribui. Rețeaua primește pe toată lumea — edge, server de acasă sau centru de date."
+      "title": "Rulează pe hardware-ul pe care îl ai",
+      "body": "De la o singură stație de lucru la un centru de date regional, orice capacitate de calcul adecvată poate rula Helexa. Reduce cerințele de infrastructură în loc să pretindă clustere noi."
     },
     "fairness": {
-      "title": "Echitate și transparență",
-      "body": "Câștigurile se bazează pe muncă reală, verificată criptografic. Fără cutii negre. Fără comisioane ascunse."
+      "title": "Confidențialitate și transparență",
+      "body": "Confidențialitate nativă: istoricul conversațiilor trăiește doar în browser, niciodată pe un server. Măsurarea utilizării este transparentă; nu există cutii negre și nici taxe ascunse."
     },
     "evolving": {
-      "title": "Inteligență în evoluție",
-      "body": "Rețeaua învață din cerere. Modelele se încarcă acolo unde sunt necesare. Inteligența se răspândește prin cooperare."
+      "title": "Rezilientă prin distribuție",
+      "body": "Capacitatea distribuită pe multe implementări independente este mai greu de cenzurat, limitat sau oprit și este rezilientă la schimbări de politică externă și la eșecul unui singur furnizor."
     }
   },
 
   "roadAhead": {
-    "title": "Ce își propune să devină Helexa",
-    "p1": "Un strat global de inteligență care aparține tuturor, alimentat de o elice de noduri și comunități.",
-    "p2": "O rețea rezilientă la întreruperi, politică, monopoluri și eșecuri.",
-    "p3": "Un nou model economic în care operatorii, constructorii și utilizatorii beneficiază împreună.",
-    "p4": "Un ecosistem în care inovația crește de la margini — nu din centru.",
+    "title": "Încotro se îndreaptă Helexa",
+    "p1": "Obiectivul nostru pe termen lung este să devenim stratul software care alimentează o rețea distribuită de infrastructură IA europeană operată independent.",
+    "p2": "De la implementări enterprise care rulează modele avansate pe propriul hardware, la centre de date regionale alimentate cu energie regenerabilă, în serviciul comunităților lor.",
+    "p3": "Un strat de inferență european, deținut și operat în Europa. Rezilient la întreruperi, schimbări de politică externă, monopoluri și eșecul unui singur furnizor.",
+    "p4": "Infrastructură care întărește autonomia europeană în loc să adâncească dependența de o mână de furnizori străini.",
     "card": {
-      "eyebrow": "Instantaneu de viziune",
-      "title": "Către o rețea de inteligență partajată",
-      "body": "Helexa este la început. Ideile sunt mai mari decât implementarea — și asta este intenționat. Rețeaua va crește iterativ, cu operatorii și constructorii modelându-i evoluția."
+      "eyebrow": "Viziune",
+      "title": "Stratul software pentru infrastructura IA europeană",
+      "body": "Helexa este la început, în mod deliberat. Un stack de inferență funcțional astăzi, care crește către o rețea distribuită de implementări europene operate independent."
     }
   },
 
   "joinMesh": {
-    "badge": "Fază incipientă",
-    "title": "Rețeaua se formează.",
-    "titleHighlight": "Poți face parte din ea.",
-    "lead": "Indiferent dacă rulezi hardware, construiești modele sau îți pasă doar de modul în care este guvernată inteligența artificială, există un loc pentru tine în rețea.",
-    "ctaRunNode": "Rulează un nod (în curând)",
-    "ctaJoinAnnouncements": "Alătură-te anunțurilor timpurii",
+    "badge": "Acces timpuriu",
+    "title": "Infrastructură IA suverană.",
+    "titleHighlight": "Construită în Europa.",
+    "lead": "Fie că rulezi IA pe propriul hardware, operezi capacitate sau construiești către suveranitatea europeană în IA, aici este un loc pentru tine.",
+    "ctaRunNode": "Implementează un nod (în curând)",
+    "ctaJoinAnnouncements": "Urmărește primele anunțuri",
     "ctaExploreCode": "Explorează codul",
-    "footer": "Fără grădini închise. Fără un singur proprietar. Doar o rețea de oameni, hardware și idei — care compun un viitor diferit pentru inteligență."
+    "footer": "Fără grădini îngrădite. Un strat software pentru o IA europeană suverană. De la o singură stație de lucru la centre de date regionale alimentate cu energie regenerabilă."
   }
 }

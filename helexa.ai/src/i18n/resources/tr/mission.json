@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Yeni bir zeka biçimi",
-    "title": "Yeni Bir Zeka Biçimi",
-    "lead": "Helexa, bağımsız operatörler tarafından güçlendirilen, kendi kendini örgütleyen bir yapay zeka ağıdır. Açık. Dağıtık. Evrilen.",
-    "ctaJoinMesh": "Ağa katıl",
-    "ctaFollowProject": "Projeyi takip et",
-    "subcopy": "Yapay zekanın açık, dayanıklı ve paylaşılan olması gerektiğine inanan operatörler, geliştiriciler ve topluluklar için tasarlandı.",
-    "imageAlt": "Helexa helezon görseli"
+    "badge": "Egemen Avrupa Yapay Zekâ Çıkarımı",
+    "title": "Egemen altyapı",
+    "lead": "Gelişmiş, yetenekli modelleri hâlihazırda sahip olduğunuz donanımda — küçük, verimli tesislerde — çalıştırmanın, Avrupalı KOBİ'lerin bugünün küresel teknoloji ekosistemine hâkim hyperscaler zihniyetiyle rekabet etmesinin yolu olduğuna inanıyoruz.",
+    "ctaJoinMesh": "Hemen deneyin",
+    "ctaFollowProject": "Projeyi takip edin",
+    "subcopy": "Avrupalılar tarafından, Avrupalılar için.",
+    "imageAlt": "Helexa sarmal görseli"
   },
 
   "intent": {
-    "title": "Helexa Neden Var?",
-    "p1": "Yapay zeka, dünyadaki en güçlü altyapı hâline geliyor. Ancak bugün bu güç, özel öncelikler, coğrafi kısıtlar ve kırılgan ekonomi modelleriyle şekillenen, az sayıda şirketin elinde toplanmış durumda.",
-    "p2Intro": "Helexa farklı bir şey hayal ediyor:",
-    "bullet1": "Tek bir yerden değil, her yerden büyüyen bir zeka.",
-    "bullet2": "Herkesin katkı sunabildiği ve faydalanabildiği bir ağ.",
-    "bullet3": "Emirlere değil, talebe uyum sağlayan bir sistem.",
-    "bullet4": "Toplulukları yerine koymak yerine güçlendiren teknoloji.",
-    "closing": "Helexa bir platform değil. Bir bulut da değil.\nBağımsız operatörlerin oluşturduğu, yaşayan ve evrilen bir örgü — yeni bir zeka biçimi."
+    "title": "Helexa Neden Var",
+    "p1": "Bugünün yapay zekâ altyapısına, ya fiziksel olarak AB dışındaki yargı bölgelerinde bulunan ya da AB dışındaki yargı bölgelerine hesap veren tüzel kişilerin kontrolündeki hyperscale veri merkezleri hâkim — Avrupa'nın yüksek etik ve tüketici koruma standartlarını her zaman karşılamayabilecek gündemler, uygulamalar ve stratejilerle. Avrupalı işletmeler verileri giderek daha fazla AB düzenleyici çerçevesi içinde işlemek ve korumak zorunda; dış çıkarım yığınlarının nadiren öncelik verdiği bir konu.",
+    "p2Intro": "Helexa, Avrupa'nın hâlihazırda sahip olduğu altyapıdan ve kaybetmeyi göze alamayacağımız açık ağırlıklı modellerden yararlanır:",
+    "bullet1": "Tüketici sınıfı, profesyonel ve veri merkezi sınıfı hızlandırıcılarda verimli çalışan gelişmiş, açık ağırlıklı modeller.",
+    "bullet2": "Varsayılan olarak veri yerleşimi ve gizlilik. Çıkarım, tüketicinin yargı bölgesi içindeki altyapıda yaşar.",
+    "bullet3": "Mevcut hızlandırıcı kapasitesinden performanstan ödün vermeden yararlanma.",
+    "bullet4": "Çıkarları çatışan küresel hyperscaler'lardan bağımsızlık.",
+    "closing": "AB'de bir veri merkezi bulunduran küresel bir bulut değil. Birden çok bağımsız, egemen AB operatörü."
   },
 
   "whyNow": {
-    "title": "Yapay Zeka İçin Bir Dönüm Noktası",
-    "problemTitle": "Sorun",
-    "problemBullet1": "Yapay zeka, kendisinden önceki tüm teknolojilerden daha hızlı merkezileşiyor.",
-    "problemBullet2": "Hesaplama gücüne erişim, yeteneği belirliyor ve bu erişim giderek daralıyor.",
-    "problemBullet3": "Maliyet bariyerleri; araştırmacıları, girişimleri ve toplulukları dışarıda bırakıyor.",
-    "problemBullet4": "Jeopolitik ve düzenleyici baskılar, küresel erişilebilirliği tehdit ediyor.",
-    "problemBullet5": "Model üretenler ve altyapıyı işletenler, ürettikleri değerden nadiren pay alıyor.",
+    "title": "Neden Şimdi",
+    "problemTitle": "Uyumsuzluk",
+    "problemBullet1": "Bugünün çıkarım yığınları hyperscale veri merkezlerini, büyük GPU kümelerini ve kapalı kaynak LLM'leri varsayar.",
+    "problemBullet2": "Avrupa düzenlemeleri — GDPR, AB Yapay Zekâ Yasası, sektörel kurallar — iş yüklerini şirket içine ve bölge içine yönlendiriyor.",
+    "problemBullet3": "Veriyi yabancı bulutlara göndermek düzenleyici, gizlilik ve maliyet açısından bir yükümlülük.",
+    "problemBullet4": "Bulutta GPU erişimi pahalı, arzı kısıtlı ve başka yerden yönetiliyor.",
+    "problemBullet5": "Yetenekli tüketici ve iş istasyonu donanımı Avrupa genelinde zaten atıl duruyor.",
     "opportunityTitle": "Fırsat",
-    "opportunityIntro": "Oysa dağıtık bir dünya mümkün.",
-    "opportunityBullet1": "Dünyanın dört bir yanında, binlerce GPU hâlihazırda atıl duruyor.",
-    "opportunityBullet2": "Operatörler, sağladıkları hesaplama gücü için adil bir karşılık istiyor.",
-    "opportunityBullet3": "Geliştiriciler, açık ve sansüre dirençli altyapı arıyor.",
-    "opportunityBullet4": "Topluluklar, dijital sistemlerde egemenlik ve dayanıklılık talep ediyor.",
-    "opportunityBullet5": "Yapay zekanın büyümesi, geleneksel bulutları geride bıraktı — yeni biçimlere ihtiyaç var.",
-    "opportunityClosing": "Helexa, tüm bu güçlerin kesiştiği an."
+    "opportunityIntro": "Sınıra yakın açık ağırlıklı modeller artık Avrupa'nın hâlihazırda sahip olduğu donanımda iyi çalışıyor.",
+    "opportunityBullet1": "Gelişmiş açık ağırlıklı modeller, veri merkezi GPU kümeleri olmadan iş istasyonlarında ve tüketici GPU'larında çalışıyor.",
+    "opportunityBullet2": "Avrupalı işletmeler, yerelde çalıştırabilecekleri, maliyeti öngörülebilir ve gelecekte erişimi garantili yapay zekâ istiyor.",
+    "opportunityBullet3": "Yetenekli donanıma sahip operatörler, çıkarımı tüketicilere yakın sunabilir.",
+    "opportunityBullet4": "Düzenlemeler veri egemenliğini bir tercihten bir gerekliliğe dönüştürüyor.",
+    "opportunityBullet5": "Verimli çıkarım yazılımı eksik olan katman — ve daha çok, daha büyük veri merkezlerinin panzehiri.",
+    "opportunityClosing": "Helexa o yazılım katmanıdır."
   },
 
   "howItWorks": {
-    "title": "Ağ Nasıl Oluşuyor?",
+    "title": "Nasıl Çalışır",
     "operators": {
-      "eyebrow": "Operatörler Düğümleri Çalıştırır",
-      "title": "Herkes hesaplama gücü sağlayabilir.",
-      "body": "Operatörler Helexa düğümlerini çalıştırır. Hangi modelleri barındıracaklarına kendileri karar verir. Donanımlarının ve ekonomilerinin kontrolü onlardadır. Onay süreçleri yok, aracı kapı bekçileri yok."
+      "eyebrow": "Yerelde Kurun",
+      "title": "Gelişmiş modelleri kendi donanımınızda çalıştırın.",
+      "body": "Helexa, sınıra yakın açık ağırlıklı modelleri tüketici ve iş istasyonu sınıfı GPU'larda, şirket içinde, kendi yargı bölgenizde sunar. Küme yok, hyperscaler yok, yurt dışı bağımlılığı yok. Veri, kontrolünüzün olduğu yerde kalır."
     },
     "routing": {
-      "eyebrow": "Ağ Zekayı Yönlendirir",
-      "title": "Talep ağın içinde akıp gider.",
-      "body": "Helexa, nerede kapasite olduğunu, talebin nerede arttığını ve hangi düğümlerin istekleri karşılamaya en uygun olduğunu öğrenir. Ağ, büyüyen bir helezon gibi, kendiliğinden ve organik biçimde uyum sağlar."
+      "eyebrow": "Akıllıca Yönlendirin",
+      "title": "İstekler evden uzaklaşmaz.",
+      "body": "Helexa her isteği, bölge yakınlığını tercih ederek kapasitesi olan altyapıya yönlendirir; böylece trafik ve veri beklediğiniz yerde kalır. Kapasite büyüdükçe kurulumlar daha geniş bir ağ hâlinde birleşir."
     },
     "value": {
-      "eyebrow": "Değer Geri Akıyor",
-      "title": "İş kanıtlanır. Ödeme adildir.",
-      "body": "Her iş, kriptografik bir makbuz taşır. Operatörler, sağlanmasına yardımcı oldukları zekâ üzerinden gelir elde eder. Platform vergisi yok. Opak faturalandırma yok."
+      "eyebrow": "Bağımsız Çalışın",
+      "title": "İş kanıtlanır. Ekonomi şeffaftır.",
+      "body": "Kullanım şeffaf biçimde ölçülür ve bağımsız operatörler sundukları zekâ için ücretlendirilecektir. Platform vergisi yok, opak faturalama yok, kilitlenme yok."
     }
   },
 
   "principles": {
-    "title": "Platformlara Değil, İlkelere Dayalı",
+    "title": "Kilitlenme Değil, Egemenlik Üzerine Kurulu",
     "distributed": {
-      "title": "Tasarım Gereği Dağıtık",
-      "body": "Tek bir arıza noktası yok. Merkezi bir otorite yok. Her yeni operatörle güçlenen bir ağ."
+      "title": "Tasarım Gereği Egemen",
+      "body": "Avrupa donanımı, Avrupalı operatörler, Avrupa hukuku. Tek bir hata noktası yok; erişimin bağlı olduğu bir dış yargı bölgesi yok."
     },
     "participation": {
-      "title": "Açık Katılım",
-      "body": "Hesaplama gücün varsa, katkı sunabilirsin. Ağ; uç cihaz, ev sunucusu ya da veri merkezi fark etmeksizin herkesi karşılar."
+      "title": "Sahip Olduğunuz Donanımda Çalışır",
+      "body": "Tek bir iş istasyonundan bölgesel bir veri merkezine kadar, yetenekli işlem gücü Helexa çalıştırabilir. Yeni kümeler talep etmek yerine altyapı gereksinimlerini azaltır."
     },
     "fairness": {
-      "title": "Adalet ve Şeffaflık",
-      "body": "Kazançlar, kriptografik olarak doğrulanmış gerçek işe dayanır. Kara kutu yok. Gizli ücret yok."
+      "title": "Gizlilik ve Şeffaflık",
+      "body": "Doğuştan gizlilik: sohbet geçmişi yalnızca tarayıcıda yaşar, asla bir sunucuda değil. Kullanım ölçümü şeffaftır; kara kutu yok, gizli ücret yok."
     },
     "evolving": {
-      "title": "Evrilen Zekâ",
-      "body": "Ağ, talepten öğrenir. Modeller ihtiyaç duyulan yerlere yüklenir. Zekâ, iş birliğiyle yayılır."
+      "title": "Dağıtıklıkla Dayanıklı",
+      "body": "Birçok bağımsız kuruluma yayılmış kapasiteyi sansürlemek, kısıtlamak veya kapatmak daha zordur; dış politika değişimlerine ve tek tedarikçi arızasına karşı dayanıklıdır."
     }
   },
 
   "roadAhead": {
-    "title": "Helexa’nın Olmayı Hedeflediği Şey",
-    "p1": "Herkese ait olan, düğümlerin ve toplulukların oluşturduğu bir helezon tarafından güçlendirilen küresel bir zekâ katmanı.",
-    "p2": "Kesintilere, siyasete, tekele ve arızalara karşı dayanıklı bir ağ.",
-    "p3": "Operatörlerin, geliştiricilerin ve kullanıcıların birlikte kazandığı yeni bir ekonomik model.",
-    "p4": "Yeniliğin merkezden değil, ağın kenarlarından filizlendiği bir ekosistem.",
+    "title": "Helexa Nereye Gidiyor",
+    "p1": "Uzun vadeli hedefimiz, bağımsız işletilen Avrupa yapay zekâ altyapısından oluşan dağıtık bir ağı çalıştıran yazılım katmanı olmak.",
+    "p2": "Gelişmiş modelleri kendi donanımında çalıştıran kurumsal kurulumlardan, topluluklarına hizmet veren yenilenebilir enerjili bölgesel veri merkezlerine kadar.",
+    "p3": "Avrupa'da sahip olunan ve Avrupa'da işletilen bir Avrupa çıkarım katmanı. Kesintilere, dış politika değişimlerine, tekellere ve tek tedarikçi arızasına dayanıklı.",
+    "p4": "Bir avuç yabancı sağlayıcıya bağımlılığı derinleştirmek yerine Avrupa'nın özerkliğini güçlendiren altyapı.",
     "card": {
-      "eyebrow": "Vizyona kısa bakış",
-      "title": "Paylaşılan Bir Zekâ Ağına Doğru",
-      "body": "Helexa henüz çok erken aşamada. Fikirler, mevcut uygulamadan kasıtlı olarak daha büyük. Ağ; operatörler ve geliştiricilerle birlikte, adım adım büyüyecek ve evrilecek."
+      "eyebrow": "Vizyon",
+      "title": "Avrupa yapay zekâ altyapısının yazılım katmanı",
+      "body": "Helexa erken bir aşamada — ve bilinçli olarak. Bugün çalışan bir çıkarım yığını; bağımsız işletilen Avrupa kurulumlarından oluşan dağıtık bir ağa doğru büyüyor."
     }
   },
 
   "joinMesh": {
-    "badge": "Erken faz",
-    "title": "Ağ Oluşuyor.",
-    "titleHighlight": "Parçası Olabilirsin.",
-    "lead": "İster donanım işlet, ister modeller inşa et, ister yalnızca yapay zekânın nasıl yönetildiğine önem ver; bu ağda senin için bir yer var.",
-    "ctaRunNode": "Bir düğüm çalıştır (yakında)",
-    "ctaJoinAnnouncements": "Erken duyurulara katıl",
-    "ctaExploreCode": "Kodu keşfet",
-    "footer": "Duvarlarla çevrili bahçeler yok. Tek bir sahip yok. Yalnızca insanlar, donanım ve fikirlerden oluşan — zekâ için bambaşka bir gelecek tasarlayan bir ağ."
+    "badge": "Erken erişim",
+    "title": "Egemen Yapay Zekâ Altyapısı.",
+    "titleHighlight": "Avrupa'da inşa edildi.",
+    "lead": "İster kendi donanımınızda yapay zekâ çalıştırın, ister kapasite işletin, ister Avrupa'nın yapay zekâ egemenliği için çalışıyor olun — burada size yer var.",
+    "ctaRunNode": "Bir düğüm kurun (yakında)",
+    "ctaJoinAnnouncements": "İlk duyuruları takip edin",
+    "ctaExploreCode": "Kodu keşfedin",
+    "footer": "Duvarlı bahçe yok. Egemen Avrupa yapay zekâsı için bir yazılım katmanı. Tek bir iş istasyonundan yenilenebilir enerjili bölgesel veri merkezlerine."
   }
 }

@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Sabon siffar hankali",
-    "title": "Sabon Siffar Hankali",
-    "lead": "Helexa na’urar sadarwar AI ce mai tsara kanta wacce ‘yan kasuwa masu zaman kansu ke sarrafawa. Bude take. Tana rarrabewa. Tana ci gaba da canzawa.",
-    "ctaJoinMesh": "Shiga cikin cibiyar",
-    "ctaFollowProject": "Bi aikin",
-    "subcopy": "An gina ta ne don masu aiki da na’ura, masu gina tsarin da al’ummomi da ke ganin cewa AI ya kamata ta kasance a bude, mai ɗorewa kuma mai rabawa.",
+    "badge": "Inference na AI na Turai Mai Cin Gashin Kai",
+    "title": "Ababen more rayuwa masu cin gashin kai",
+    "lead": "Mun yi imanin cewa tafiyar da manyan model masu iyawa a kan na'urorin da kake da su tuni — a cikin ƙananan cibiyoyi masu inganci — ita ce hanyar da ƙananan da matsakaitan sana'o'in Turai za su yi gogayya da tunanin hyperscaler da ke mamaye harkar fasahar duniya a yau.",
+    "ctaJoinMesh": "Gwada shi yanzu",
+    "ctaFollowProject": "Bi diddigin aikin",
+    "subcopy": "Mutanen Turai ne suka ƙirƙire shi, don mutanen Turai.",
     "imageAlt": "Hoton helix na Helexa"
   },
 
   "intent": {
-    "title": "Dalilin Da Ya Sa Helexa Take Aiki",
-    "p1": "AI na zama mafi ƙarfi cikin dukkanin tsare-tsaren kayan aiki a doron kasa. Amma a yau, wannan ƙarfi ya takaita ga ‘yan kamfanoni kaɗan, yana bin son ran masu su, iyakokin ƙasa da tsarin tattalin arziki masu rauni.",
-    "p2Intro": "Helexa tana tunanin wani abu dabam:",
-    "bullet1": "Hankali da ke tashi daga ko’ina, ba daga wuri ɗaya ba.",
-    "bullet2": "Cibiyar sadarwa wacce kowa zai iya bada gudummawa kuma ya amfana.",
-    "bullet3": "Tsarin da ke daidaitawa da bukata, ba da umarni ba.",
-    "bullet4": "Fasaha wacce ke ƙarfafa al’ummomi maimakon maye gurbinsu.",
-    "closing": "Helexa ba dandali ba ce. Ba “gajimare” ba ce ma.\nCibiya ce — hanyar sadarwa mai rai, mai canzawa, ta masu aiki masu zaman kansu da ke samar da wani sabon nau’in hankali."
+    "title": "Dalilin Samuwar Helexa",
+    "p1": "A yau, manyan datacentre na hyperscale ne suka mamaye ababen more rayuwar AI — waɗanda ko dai suna nan a zahiri a ƙasashen da ke wajen Tarayyar Turai (EU), ko kuma suna ƙarƙashin ikon kamfanoni da ke da alhaki ga hukumomin da ke wajen EU — masu manufofi, ɗabi'u da dabaru waɗanda ba kullum suke cika manyan ƙa'idojin ɗa'a da kariyar masu amfani na Turai ba. Kasuwancin Turai na ƙara buƙatar sarrafawa da kare bayanai a cikin tsarin dokokin EU — abin da tsarukan inference na waje ba kasafai suke ba fifiko ba.",
+    "p2Intro": "Helexa tana amfani da ababen more rayuwar da Turai ke da su tuni, da kuma model na open-weight da ba za mu iya rasa su ba:",
+    "bullet1": "Manyan model na open-weight suna aiki yadda ya kamata a kan accelerator na kasuwa, na ƙwararru da na matakin datacentre.",
+    "bullet2": "Zaman bayanai a wuri da kuma sirri tun daga farko. Inference yana gudana a kan ababen more rayuwa da ke cikin yankin hukumar mai amfani.",
+    "bullet3": "Amfani da ƙarfin accelerator da ake da shi yanzu ba tare da rage inganci ba.",
+    "bullet4": "Yancin kai daga hyperscaler na duniya masu manufofi masu karo da juna.",
+    "closing": "Ba wani girgije na duniya da kawai yake da datacentre a EU ba. Masu gudanarwa da yawa na EU, masu zaman kansu da cin gashin kai."
   },
 
   "whyNow": {
-    "title": "Mahimmin Lokaci Ga AI",
-    "problemTitle": "Matsalar",
-    "problemBullet1": "AI na tattaruwa a wuri guda da sauri fiye da kowace fasaha da ta gabata.",
-    "problemBullet2": "Samun damar amfani da ƙarfi na komfuta shi ne ke ayyana abin da za a iya yi, kuma wannan damar na ƙara raguwa.",
-    "problemBullet3": "Tsammanin tsada na hana masu bincike, ƙananan kamfanoni da al’ummomi shiga.",
-    "problemBullet4": "Matsin lamba na siyasa da ƙa’idoji na barazana ga samun dama a duniya baki ɗaya.",
-    "problemBullet5": "Masu ƙirƙirar samfurai da masu aiki da kayan aiki ba su cika samun rabo daga darajar da suke kunnawa ba.",
-    "opportunityTitle": "Damar",
-    "opportunityIntro": "Amma ana iya samun duniya mai rabewa.",
-    "opportunityBullet1": "Dubban GPU suna zaune ba tare da cikakken amfani ba a ko’ina cikin duniya.",
-    "opportunityBullet2": "Masu aiki suna son lada mai adalci ga ƙarfinsu na komfuta.",
-    "opportunityBullet3": "Masu ci-gaba suna so suga tsarin da ba a rufe ba, kuma mai jure takunkumi.",
-    "opportunityBullet4": "Al’ummomi suna neman iko da ɗorewa cikin tsarin su na dijital.",
-    "opportunityBullet5": "Ci gaban AI ya rigaya ya zarce gajimaren gargajiya — ana buƙatar sabbin siffofi.",
-    "opportunityClosing": "Helexa ita ce lokacin da waɗannan ƙarfi ke haduwa wuri guda."
+    "title": "Me Ya Sa Yanzu",
+    "problemTitle": "Rashin Daidaituwa",
+    "problemBullet1": "Tsarukan inference na yau suna ɗauka cewa akwai manyan datacentre na hyperscale, manyan rukunin GPU da LLM na rufaffen tushe.",
+    "problemBullet2": "Dokokin Turai — GDPR, AI Act, ƙa'idojin sassa — suna karkatar da ayyuka zuwa cikin gida da cikin yanki.",
+    "problemBullet3": "Aika bayanai zuwa girgijen ƙasashen waje haɗari ne ta fuskar doka, sirri da kuɗi.",
+    "problemBullet4": "Samun GPU ta girgije yana da tsada, yana da ƙarancin wadata, kuma ana sarrafa shi daga wani wuri.",
+    "problemBullet5": "Na'urori masu ƙarfi na kasuwa da na workstation sun riga sun kasance a faɗin Turai ba tare da cikakken amfani ba.",
+    "opportunityTitle": "Dama",
+    "opportunityIntro": "Model na open-weight masu kusan kaiwa matakin gaba yanzu suna aiki sosai a kan na'urorin da Turai ke da su tuni.",
+    "opportunityBullet1": "Manyan model na open-weight suna aiki a kan workstation da GPU na kasuwa ba tare da rukunin GPU na datacentre ba.",
+    "opportunityBullet2": "Kasuwancin Turai suna son AI da za su iya tafiyarwa a cikin gida, tare da tsayayyen farashi da tabbacin samu a nan gaba.",
+    "opportunityBullet3": "Masu gudanarwa masu na'urori masu ƙarfi za su iya bayar da inference kusa da masu amfani.",
+    "opportunityBullet4": "Doka tana mayar da ikon mallakar bayanai daga zaɓi zuwa wajibi.",
+    "opportunityBullet5": "Software na inference mai inganci shi ne matakin da ya ɓace, kuma maganin ƙarin manyan datacentre.",
+    "opportunityClosing": "Helexa ita ce wannan matakin software."
   },
 
   "howItWorks": {
-    "title": "Yadda Cibiyar Ke Samuwa",
+    "title": "Yadda Yake Aiki",
     "operators": {
-      "eyebrow": "Masu aiki na sarrafa nodi",
-      "title": "Kowa na iya bayar da ƙarfi na komfuta.",
-      "body": "Masu aiki suna gudanar da nodi na Helexa. Su ne suke yanke shawarar wane samfurin za su karɓa. Suna ci gaba da riƙe iko da kayan aiki da tattalin arzikinsu. Babu izini na musamman, babu masu tsare ƙofa."
+      "eyebrow": "Girka a Cikin Gida",
+      "title": "Tafiyar da manyan model a kan na'urorinka.",
+      "body": "Helexa tana hidimar model na open-weight masu kusan matakin gaba a kan GPU na kasuwa da na matakin workstation, a wurin aikinka, a cikin yankin hukumarka. Babu cluster, babu hyperscaler, babu dogaro da ƙasashen waje. Bayanai suna zama inda kake iko da su."
     },
     "routing": {
-      "eyebrow": "Cibiyar na tura hankali",
-      "title": "Buƙata na yawo a cikin cibiyar sadarwa.",
-      "body": "Helexa na koya inda ake da isasshen ƙarfi, inda bukata ke ƙaruwa, da wane nodi ya fi dacewa don amsa buƙatu. Cibiyar na daidaitawa a hankali — kamar helix ɗin da ke ci gaba da girma."
+      "eyebrow": "Tura da Hikima",
+      "title": "Buƙatun suna zama kusa da gida.",
+      "body": "Helexa tana tura kowace buƙata zuwa ababen more rayuwa masu ƙarfin aiki, tana fifita kusancin yanki, don haka zirga-zirga da bayanai su kasance inda kake tsammani. Girke-girke suna haɗuwa su zama babbar hanyar sadarwa yayin da ƙarfi ke ƙaruwa."
     },
     "value": {
-      "eyebrow": "Daraja na dawowa baya",
-      "title": "Aikin ya tabbata. Biyan kudi adalci ne.",
-      "body": "Kowane aiki na zuwa da takardar shaidar sirri ta hanyar ƙididdigar tsaro. Masu aiki suna samun kuɗi saboda a cikin hankalin da suka taimaka wajen samarwa. Babu harajin dandali. Babu biyan kudi mai duhu."
+      "eyebrow": "Gudanarwa Mai Zaman Kanta",
+      "title": "An tabbatar da aiki. Tattalin arziki a fili yake.",
+      "body": "Ana auna amfani a fili, kuma za a biya masu gudanarwa masu zaman kansu saboda basirar da suke bayarwa. Babu harajin dandali, babu lissafin kuɗi maras tsabta, babu kulle-kulle."
     }
   },
 
   "principles": {
-    "title": "An Gina Ta Kan Ka’idoji, Ba Dandali Kawai Ba",
+    "title": "An Gina Kan Cin Gashin Kai, Ba Kulle Ba",
     "distributed": {
-      "title": "An Rarraba ta Tun Basira",
-      "body": "Babu wuri guda na gazawa. Babu hukuma guda da ke iko. Wani cibiyar sadarwa ce da ke ƙara ƙarfi da kowane sabon mai aiki."
+      "title": "Mai Cin Gashin Kai Tun Daga Ƙira",
+      "body": "Na'urorin Turai, masu gudanarwar Turai, dokar Turai. Babu wani wuri guda da zai iya kawo faɗuwar komai, kuma babu wata hukuma ta waje da samun aiki ya dogara da ita."
     },
     "participation": {
-      "title": "Halarta a Bude",
-      "body": "Idan kana da ikon komfuta, zaka iya bada gudummawa. Cibiyar na maraba da kowa — daga na’urar gefe, zuwa uwar garken gida, zuwa cibiyar bayanai."
+      "title": "Yana Aiki a Kan Na'urorin da Kake da Su",
+      "body": "Daga workstation guda zuwa datacentre na yanki, kwamfuta mai ƙarfi na iya tafiyar da Helexa. Yana rage buƙatun ababen more rayuwa maimakon neman sabbin cluster."
     },
     "fairness": {
-      "title": "Adalci da Bayyanawa",
-      "body": "Samun riba ya dogara ne ga aiki na gaskiya, wanda aka tabbatar da shi ta hanyar sirrin ƙididdiga. Babu “akwatu baƙaƙe”. Babu ɓoyayyun kuɗaɗe."
+      "title": "Sirri da Bayyana Gaskiya",
+      "body": "Sirri tun daga tushe: tarihin hira yana zama a cikin browser kawai, ba a kan sabar ba har abada. Auna amfani a bayyane yake; babu baƙaƙen akwatuna, babu ɓoyayyun kuɗaɗe."
     },
     "evolving": {
-      "title": "Hankali Mai Ci gaba da Sauyawa",
-      "body": "Cibiyar na koyo daga bukata. Ana sauke samfurori a inda ake buƙatarsu. Hankali na yaduwa ta hanyar haɗin kai."
+      "title": "Mai Juriya Ta Hanyar Rarrabuwa",
+      "body": "Ƙarfin da aka rarraba a kan girke-girke masu zaman kansu da yawa yana da wuyar tacewa, hanawa ko kashewa, kuma yana jure sauye-sauyen manufofin ƙasashen waje da faɗuwar kamfani guda."
     }
   },
 
   "roadAhead": {
-    "title": "Me Helexa Ke Nufin Ta Zama",
-    "p1": "Matakin hankali na duniya wanda kowa ke da nasa, ana turawa da helix na nodi da al’ummomi.",
-    "p2": "Cibiyar sadarwa mai jure katsewa, siyasa, mamallaka da gazawa.",
-    "p3": "Sabon tsari na tattalin arziki wanda masu aiki, masu gini da masu amfani duk za su amfana.",
-    "p4": "Muhallin da kirkire‑kirkire ke fitowa daga gefe — ba daga tsakiya ba.",
+    "title": "Inda Helexa Za Ta Dosa",
+    "p1": "Burinmu na dogon lokaci shi ne mu zama matakin software da ke tafiyar da rarrabacciyar hanyar sadarwa ta ababen more rayuwar AI na Turai da ake gudanarwa da kansu.",
+    "p2": "Daga girke-girken kamfanoni da ke tafiyar da manyan model a kan na'urorinsu, zuwa datacentre na yanki masu amfani da makamashi mai sabuntuwa da ke hidimar al'ummominsu.",
+    "p3": "Matakin inference na Turai mallakar Turai, ana kuma gudanar da shi a Turai. Mai jure katsewa, sauye-sauyen manufofin ƙasashen waje, kamfanoni masu ƙwace kasuwa da faɗuwar kamfani guda.",
+    "p4": "Ababen more rayuwa da ke ƙarfafa 'yancin kan Turai maimakon zurfafa dogaro da 'yan kaɗan daga masu bayarwa na ƙasashen waje.",
     "card": {
-      "eyebrow": "Hoton hangen nesa",
-      "title": "Zuƙowa zuwa wutan hankali da aka raba",
-      "body": "Helexa tana matakin farko. Tunani ya fi girma fiye da abin da aka aiwatar yanzu — kuma hakan a riga aka nufa. Cibiyar zata bunƙasa a hankali, ta hanyar tasirin masu aiki da masu gini."
+      "eyebrow": "Hangen Nesa",
+      "title": "Matakin software na ababen more rayuwar AI na Turai",
+      "body": "Helexa tana matakin farko ne, kuma da gangan. Tsarin inference mai aiki a yau, yana girma zuwa rarrabacciyar hanyar sadarwa ta girke-girken Turai masu zaman kansu."
     }
   },
 
   "joinMesh": {
-    "badge": "Mataki na farko",
-    "title": "Cibiyar na Samuwa.",
-    "titleHighlight": "Kuma Kai ma Za ka Iya Zama Cikinta.",
-    "lead": "Ko kana sarrafa kayan aiki ne, kana gina samfurori, ko kuma kawai kana damuwa da yadda ake tafiyar da AI, akwai wuri a cikin wannan cibiyar a gare ka.",
-    "ctaRunNode": "Gudanar da node (nan gaba kadan)",
-    "ctaJoinAnnouncements": "Shiga jerin sanarwar farko",
-    "ctaExploreCode": "Duba lambar tushe",
-    "footer": "Babu lambun da aka kewaye da katanga. Babu mai shi guda. Kawai wutan mutane, kayan aiki da tunani — suna tsara wani irin makomar hankali dabam."
+    "badge": "Damar farko",
+    "title": "Ababen More Rayuwar AI Masu Cin Gashin Kai.",
+    "titleHighlight": "An Gina a Turai.",
+    "lead": "Ko kana tafiyar da AI a kan na'urorinka, kana sarrafa ƙarfin aiki, ko kuma kana ginawa zuwa ga 'yancin AI na Turai — akwai gurbinka a nan.",
+    "ctaRunNode": "Girka node (nan ba da jimawa ba)",
+    "ctaJoinAnnouncements": "Bi sanarwoni na farko",
+    "ctaExploreCode": "Bincika code ɗin",
+    "footer": "Babu lambunan katanga. Matakin software na AI na Turai mai cin gashin kai. Daga workstation guda zuwa datacentre na yanki masu amfani da makamashi mai sabuntuwa."
   }
 }
