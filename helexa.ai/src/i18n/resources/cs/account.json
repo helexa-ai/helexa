@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Přihlášení",
+    "email": "E-mail",
+    "password": "Heslo",
+    "submit": "Přihlásit se",
+    "noAccount": "Nemáte účet? Zaregistrujte se"
+  },
+  "register": {
+    "title": "Vytvořte si účet",
+    "email": "E-mail",
+    "password": "Heslo",
+    "submit": "Registrovat se",
+    "haveAccount": "Už máte účet? Přihlaste se",
+    "checkEmail": "Už jen krok — zkontrolujte svůj e-mail a ověřte účet."
+  },
+  "verify": {
+    "verifying": "Ověřování…",
+    "ok": "E-mail ověřen. Nyní se můžete přihlásit.",
+    "failed": "Tento ověřovací odkaz je neplatný nebo jeho platnost vypršela.",
+    "toLogin": "Přejít na přihlášení"
+  },
+  "reset": {
+    "requestTitle": "Obnovení hesla",
+    "email": "E-mail",
+    "requestSubmit": "Odeslat odkaz pro obnovení",
+    "requestDone": "Pokud k tomuto e-mailu existuje účet, odkaz pro obnovení je na cestě.",
+    "confirmTitle": "Zvolte nové heslo",
+    "newPassword": "Nové heslo",
+    "confirmSubmit": "Nastavit heslo",
+    "ok": "Heslo změněno. Nyní se můžete přihlásit."
+  },
+  "dashboard": {
+    "title": "Účet",
+    "balance": "Příděl",
+    "total": "Celkem",
+    "spent": "Utraceno",
+    "reserved": "Rezervováno",
+    "remaining": "Zbývá",
+    "manageKeys": "Spravovat API klíče",
+    "redeemTitle": "Uplatnit dobíjecí kód",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Uplatnit",
+    "redeemed": "Kód uplatněn.",
+    "logout": "Odhlásit se"
+  },
+  "keys": {
+    "title": "API klíče",
+    "create": "Vytvořit klíč",
+    "label": "Popisek",
+    "limitKind": "Limit",
+    "percent": "% přídělu",
+    "hardcap": "Pevný strop (tokeny)",
+    "value": "Hodnota",
+    "none": "Zatím žádné klíče.",
+    "createdTitle": "Váš nový API klíč",
+    "createdWarn": "Zkopírujte ho hned — už ho znovu neuvidíte.",
+    "copy": "Kopírovat",
+    "copied": "Zkopírováno",
+    "archive": "Archivovat",
+    "save": "Uložit",
+    "status": "Stav",
+    "usage": "Využito",
+    "useForChat": "Používat pro chat na tomto zařízení",
+    "usedForChat": "Povoleno pro chat ✓"
+  },
+  "error": {
+    "generic": "Něco se pokazilo.",
+    "unauthorized": "Přihlaste se prosím znovu."
+  }
+}

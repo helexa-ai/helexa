@@ -55,7 +55,17 @@
     "ru": "vene",
     "sr": "serbia",
     "tr": "türgi",
-    "uk": "ukraina"
+    "uk": "ukraina",
+    "ca": "katalaani",
+    "cs": "tšehhi",
+    "ga": "iiri",
+    "hr": "horvaadi",
+    "hu": "ungari",
+    "lt": "leedu",
+    "lv": "läti",
+    "mt": "malta",
+    "sk": "slovaki",
+    "sl": "sloveeni"
   },
   "footer": {
     "copyright": "© {{year}} helexa.ai",

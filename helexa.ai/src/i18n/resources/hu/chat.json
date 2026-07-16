@@ -1,0 +1,21 @@
+{
+  "title": "Beszélgetési munkaterület",
+  "badge": "Csevegés",
+  "lead": "Ez a csevegőnézet. Ide illesztheted be a beszélgetési logikát és a felületi komponenseket.",
+  "transcriptPlaceholder": "A csevegés átirata itt fog megjelenni. A modell és a felhasználó üzeneteit görgethető konténerben jelenítsd meg, opcionálisan körönként csoportosítva.",
+  "inputPlaceholder": "Írj egy üzenetet a csevegés megkezdéséhez…",
+  "send": "Küldés",
+  "clear": "Törlés",
+  "newChat": "Új csevegés",
+  "newProject": "Új projekt",
+  "newProjectName": "Új projekt",
+  "unsorted": "Rendezetlen",
+  "emptyState": "Kezdj el egy beszélgetést. Az előzményeid ebben a böngészőben maradnak.",
+  "anonBanner": "Elérted az anonim limitet. Regisztrálj ingyenes keretért.",
+  "signUp": "Regisztráció",
+  "stop": "Leállítás",
+  "topUp": "Feltöltés",
+  "rateLimited": "Túl sok kérés — várj egy pillanatot, majd próbáld újra.",
+  "needsKey": "Hozz létre egy API-kulcsot, és engedélyezd a csevegéshez, hogy a saját nevedben küldhess.",
+  "manageKeysLink": "Kulcsok kezelése"
+}

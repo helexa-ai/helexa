@@ -55,7 +55,17 @@
     "ru": "Rus tili",
     "sr": "Serb tili",
     "tr": "Turk tili",
-    "uk": "Ukrain tili"
+    "uk": "Ukrain tili",
+    "ca": "Katalan tili",
+    "cs": "Chex tili",
+    "ga": "Irland tili",
+    "hr": "Xorvat tili",
+    "hu": "Venger tili",
+    "lt": "Litva tili",
+    "lv": "Latish tili",
+    "mt": "Malta tili",
+    "sk": "Slovak tili",
+    "sl": "Sloven tili"
   },
   "footer": {
     "copyright": "© {{year}} helexa.ai",

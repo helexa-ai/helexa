@@ -41,6 +41,16 @@ const LANGUAGES = [
   "pt",
   "ro",
   "ru",
+  "ca",
+  "cs",
+  "ga",
+  "hr",
+  "hu",
+  "lt",
+  "lv",
+  "mt",
+  "sk",
+  "sl",
 ];
 
 function readJson(filePath) {

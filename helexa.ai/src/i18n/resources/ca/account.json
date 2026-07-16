@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Inicia la sessió",
+    "email": "Correu electrònic",
+    "password": "Contrasenya",
+    "submit": "Inicia la sessió",
+    "noAccount": "No teniu compte? Registreu-vos"
+  },
+  "register": {
+    "title": "Creeu el vostre compte",
+    "email": "Correu electrònic",
+    "password": "Contrasenya",
+    "submit": "Registra't",
+    "haveAccount": "Ja teniu compte? Inicieu la sessió",
+    "checkEmail": "Ja gairebé hi sou — reviseu el correu per verificar el compte."
+  },
+  "verify": {
+    "verifying": "S'està verificant…",
+    "ok": "Correu verificat. Ja podeu iniciar la sessió.",
+    "failed": "Aquest enllaç de verificació no és vàlid o ha caducat.",
+    "toLogin": "Vés a l'inici de sessió"
+  },
+  "reset": {
+    "requestTitle": "Restabliu la contrasenya",
+    "email": "Correu electrònic",
+    "requestSubmit": "Envia l'enllaç de restabliment",
+    "requestDone": "Si aquest correu té un compte, l'enllaç de restabliment és de camí.",
+    "confirmTitle": "Trieu una contrasenya nova",
+    "newPassword": "Contrasenya nova",
+    "confirmSubmit": "Estableix la contrasenya",
+    "ok": "Contrasenya actualitzada. Ja podeu iniciar la sessió."
+  },
+  "dashboard": {
+    "title": "Compte",
+    "balance": "Assignació",
+    "total": "Total",
+    "spent": "Gastat",
+    "reserved": "Reservat",
+    "remaining": "Restant",
+    "manageKeys": "Gestiona les claus API",
+    "redeemTitle": "Bescanvieu un codi de recàrrega",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Bescanvia",
+    "redeemed": "Codi bescanviat.",
+    "logout": "Tanca la sessió"
+  },
+  "keys": {
+    "title": "Claus API",
+    "create": "Crea una clau",
+    "label": "Etiqueta",
+    "limitKind": "Límit",
+    "percent": "% de l'assignació",
+    "hardcap": "Límit absolut (tòkens)",
+    "value": "Valor",
+    "none": "Encara no hi ha cap clau.",
+    "createdTitle": "La vostra clau API nova",
+    "createdWarn": "Copieu-la ara — no la tornareu a veure.",
+    "copy": "Copia",
+    "copied": "Copiada",
+    "archive": "Arxiva",
+    "save": "Desa",
+    "status": "Estat",
+    "usage": "Usat",
+    "useForChat": "Usa per al xat en aquest dispositiu",
+    "usedForChat": "Activada per al xat ✓"
+  },
+  "error": {
+    "generic": "Alguna cosa ha fallat.",
+    "unauthorized": "Torneu a iniciar la sessió."
+  }
+}

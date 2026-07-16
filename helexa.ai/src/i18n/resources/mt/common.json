@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Paġna ewlenija",
+    "docs": "Dokumenti",
+    "chat": "Chat",
+    "mission": "Missjoni",
+    "login": "Idħol",
+    "register": "Irreġistra",
+    "account": "Kont",
+    "logout": "Oħroġ"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Aqleb għall-modalità ċara",
+      "toDark": "Aqleb għall-modalità skura"
+    }
+  },
+  "lang": {
+    "am": "Amhariku",
+    "ar": "Għarbi",
+    "bg": "Bulgaru",
+    "ca": "Katalan",
+    "cs": "Ċek",
+    "da": "Daniż",
+    "de": "Ġermaniż",
+    "el": "Grieg",
+    "en": "Ingliż",
+    "es": "Spanjol",
+    "et": "Estonjan",
+    "fa": "Persjan",
+    "fi": "Finlandiż",
+    "fr": "Franċiż",
+    "ga": "Irlandiż",
+    "ha": "Hausa",
+    "he": "Ebrajk",
+    "hr": "Kroat",
+    "hu": "Ungeriż",
+    "ig": "Igbo",
+    "it": "Taljan",
+    "ka": "Ġorġjan",
+    "kk": "Każak",
+    "lt": "Litwan",
+    "lv": "Latvjan",
+    "ma": "Darija",
+    "mt": "Malti",
+    "nl": "Olandiż",
+    "no": "Norveġiż",
+    "om": "Oromo",
+    "pl": "Pollakk",
+    "pt": "Portugiż",
+    "ro": "Rumen",
+    "ru": "Russu",
+    "sk": "Slovakk",
+    "sl": "Sloven",
+    "so": "Somali",
+    "sr": "Serb",
+    "sv": "Svediż",
+    "sw": "Swaħili",
+    "ti": "Tigrinja",
+    "tr": "Tork",
+    "uk": "Ukren",
+    "uz": "Użbek",
+    "wo": "Wolof",
+    "yo": "Joruba",
+    "zu": "Żulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privatezza"
+  },
+  "beta": {
+    "tag": "Beta pubblika",
+    "message": "helexa tinsab f'beta miftuħa — stenna xi affarijiet mhux irfinuti. Iċ-chats tiegħek jibqgħu fil-browser tiegħek.",
+    "dismiss": "Agħlaq"
+  }
+}

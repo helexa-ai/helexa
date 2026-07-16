@@ -1,0 +1,21 @@
+{
+  "title": "Radni prostor za razgovor",
+  "badge": "Razgovor",
+  "lead": "Ovo je prikaz razgovora. Na ovu stranicu uključite svoju konverzacijsku logiku i UI komponente.",
+  "transcriptPlaceholder": "Ovdje će se prikazivati transkript razgovora. Prikažite poruke modela i korisnika u pomičnom spremniku, po želji grupirane po izmjenama.",
+  "inputPlaceholder": "Upišite poruku za početak razgovora…",
+  "send": "Pošalji",
+  "clear": "Očisti",
+  "newChat": "Novi razgovor",
+  "newProject": "Novi projekt",
+  "newProjectName": "Novi projekt",
+  "unsorted": "Nerazvrstano",
+  "emptyState": "Započnite razgovor. Vaša povijest ostaje u ovom pregledniku.",
+  "anonBanner": "Dosegnuli ste anonimni limit. Registrirajte se za besplatnu kvotu.",
+  "signUp": "Registracija",
+  "stop": "Zaustavi",
+  "topUp": "Nadoplata",
+  "rateLimited": "Previše zahtjeva — pričekajte trenutak i pokušajte ponovno.",
+  "needsKey": "Izradite API ključ i omogućite ga za razgovor kako biste slali u svoje ime.",
+  "manageKeysLink": "Upravljanje ključevima"
+}

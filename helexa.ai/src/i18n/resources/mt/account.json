@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Idħol",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Idħol",
+    "noAccount": "M'għandekx kont? Irreġistra"
+  },
+  "register": {
+    "title": "Oħloq il-kont tiegħek",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Irreġistra",
+    "haveAccount": "Diġà għandek kont? Idħol",
+    "checkEmail": "Kważi lest — iċċekkja l-email tiegħek biex tivverifika l-kont."
+  },
+  "verify": {
+    "verifying": "Qed jiġi vverifikat…",
+    "ok": "L-email ġiet ivverifikata. Issa tista' tidħol.",
+    "failed": "Din il-link ta' verifika mhix valida jew skadiet.",
+    "toLogin": "Mur fil-paġna tad-dħul"
+  },
+  "reset": {
+    "requestTitle": "Irrisettja l-password tiegħek",
+    "email": "Email",
+    "requestSubmit": "Ibgħat link ta' risettjar",
+    "requestDone": "Jekk dik l-email għandha kont, link ta' risettjar tinsab fi triqitha.",
+    "confirmTitle": "Agħżel password ġdida",
+    "newPassword": "Password ġdida",
+    "confirmSubmit": "Issettja l-password",
+    "ok": "Il-password ġiet aġġornata. Issa tista' tidħol."
+  },
+  "dashboard": {
+    "title": "Kont",
+    "balance": "Allokazzjoni",
+    "total": "Total",
+    "spent": "Minfuq",
+    "reserved": "Riżervat",
+    "remaining": "Fadal",
+    "manageKeys": "Immaniġġja ċ-ċwievet API",
+    "redeemTitle": "Uża kodiċi ta' kreditu",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Uża l-kodiċi",
+    "redeemed": "Il-kodiċi ntuża.",
+    "logout": "Oħroġ"
+  },
+  "keys": {
+    "title": "Ċwievet API",
+    "create": "Oħloq ċavetta",
+    "label": "Tikketta",
+    "limitKind": "Limitu",
+    "percent": "% tal-allokazzjoni",
+    "hardcap": "Limitu massimu (tokens)",
+    "value": "Valur",
+    "none": "Għad m'hemmx ċwievet.",
+    "createdTitle": "Iċ-ċavetta API ġdida tiegħek",
+    "createdWarn": "Ikkopjaha issa — mhux se terġa' taraha.",
+    "copy": "Ikkopja",
+    "copied": "Ikkupjata",
+    "archive": "Arkivja",
+    "save": "Salva",
+    "status": "Status",
+    "usage": "Użat",
+    "useForChat": "Uża għall-chat fuq dan l-apparat",
+    "usedForChat": "Attivata għall-chat ✓"
+  },
+  "error": {
+    "generic": "Xi ħaġa marret ħażin.",
+    "unauthorized": "Jekk jogħġbok erġa' idħol."
+  }
+}

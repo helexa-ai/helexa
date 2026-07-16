@@ -1,0 +1,45 @@
+{
+  "title": "Príobháideachas",
+  "updated": "Nuashonraithe go deireanach: 16 Iúil 2026",
+  "intro": "Tá Helexa tógtha sa chaoi go bhfanann do shonraí agat féin. Déanann an leathanach seo cur síos iomlán ar cad a stóráiltear, cén áit agus cén fáth. Tá sé gearr mar is beag atá le nochtadh.",
+
+  "summary": {
+    "title": "An leagan gearr",
+    "noCookies": "Gan fianáin. Gan anailísíocht. Gan rianairí. Gan fógraíocht.",
+    "localHistory": "Ní stóráiltear stair do chomhrá ach i do bhrabhsálaí. Ní sheoltar chuig ár bhfreastalaithe í, ná ní stóráiltear orthu í, thar an nóiméad a ghintear freagra.",
+    "noAnonId": "Ní dhéantar méarlorgaireacht, próifíliú ná sainaithint ar chuairteoirí gan ainm."
+  },
+
+  "local": {
+    "title": "Cad a stóráiltear i do bhrabhsálaí",
+    "intro": "Fanann gach rud thíos ar do ghléas, níl sé ann ach chun go n-oibreoidh an táirge, agus is féidir é a bhaint am ar bith trí shonraí an tsuímh seo a ghlanadh i do bhrabhsálaí.",
+    "item1": "Stair chomhrá, tionscadail agus dréachtaí teachtaireachtaí — is é bunghealltanas an táirge nach bhfágann siad seo do bhrabhsálaí riamh.",
+    "item2": "Do roghanna téama agus teanga.",
+    "item3": "Marcóir seisiúin don fhógra béite a dhún tú.",
+    "item4": "Má shíníonn tú isteach: comhartha do sheisiúin, agus — sa chás amháin go gcumasaíonn tú go sainráite í — eochair API le haghaidh comhrá ón ngléas seo.",
+    "item5": "Áiritheoir teachtaireachtaí gan ainm a fhorfheidhmíonn uasteorainn na saorúsáide."
+  },
+
+  "account": {
+    "title": "Má chruthaíonn tú cuntas",
+    "intro": "Tá cuntais ann le haghaidh méadraithe agus cosc ar mhí-úsáid, ní le haghaidh próifílithe. Ar thaobh an fhreastalaí stórálaimid:",
+    "item1": "Do sheoladh ríomhphoist (le haghaidh sínithe isteach, fíoraithe agus athshocraithe pasfhocail) agus hais phasfhocail le salann — ní stóráiltear an pasfhocal féin riamh.",
+    "item2": "Méadrú úsáide: comhairimh chomharthaí in aghaidh an iarratais, atá de dhíth chun buiséid a fhorfheidhmiú agus chun na hoibreoirí a fhreastalaíonn ar d'iarratais a chúiteamh. Ní choinnítear ábhar an leide ná an fhreagra.",
+    "item3": "Ag am an chlárúcháin amháin, comhartha brabhsálaí aonuaire (hais mhéarloirg) a úsáidtear chun mí-úsáid ilchuntas den tsraith saor in aisce a bhrath. Ní úsáidtear le haghaidh rianaithe é, ní ríomhtar riamh é do bhrabhsáil gan ainm, agus níl aon ról eile aige tar éis an chlárúcháin."
+  },
+
+  "infra": {
+    "title": "Bonneagar",
+    "body": "Ritheann an tátal ar chrua-earraí oibreoirí Eorpacha neamhspleácha faoi dhlí na hEorpa. Tá an suíomh gréasáin poiblí taobh thiar de Cloudflare, a bhféadfadh fianán slándála fíor-riachtanach dá chuid féin a shocrú (m.sh. maolú róbat) nach léimid ná nach n-úsáidimid."
+  },
+
+  "rights": {
+    "title": "Do chearta",
+    "body": "Faoin GDPR is féidir leat rochtain ar shonraí do chuntais, a gceartú nó a scriosadh a iarraidh am ar bith, agus is féidir leat gearán a dhéanamh le d'údarás maoirseachta. Baineann scriosadh shonraí do bhrabhsálaí stair do chomhrá; baineann scriosadh do chuntais gach rud a choinnímid ar thaobh an fhreastalaí."
+  },
+
+  "contact": {
+    "title": "Teagmháil",
+    "body": "Ceisteanna agus iarratais faoi phríobháideachas: {{email}}"
+  }
+}

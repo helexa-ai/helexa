@@ -1,0 +1,45 @@
+{
+  "title": "Privatumas",
+  "updated": "Paskutinį kartą atnaujinta: 2026 m. liepos 16 d.",
+  "intro": "Helexa sukurta taip, kad jūsų duomenys liktų pas jus. Šiame puslapyje išsamiai aprašoma, kas, kur ir kodėl saugoma. Jis trumpas, nes atskleisti beveik nėra ko.",
+
+  "summary": {
+    "title": "Trumpoji versija",
+    "noCookies": "Jokių slapukų. Jokios analitikos. Jokių sekimo priemonių. Jokios reklamos.",
+    "localHistory": "Jūsų pokalbių istorija saugoma tik jūsų naršyklėje. Ji niekada nesiunčiama į mūsų serverius ir juose nesaugoma ilgiau nei atsakymo generavimo akimirką.",
+    "noAnonId": "Anoniminiai lankytojai nėra identifikuojami pagal naršyklės atspaudą, profiliuojami ar atpažįstami."
+  },
+
+  "local": {
+    "title": "Kas saugoma jūsų naršyklėje",
+    "intro": "Viskas, kas išvardyta žemiau, lieka jūsų įrenginyje, egzistuoja vien tam, kad produktas veiktų, ir bet kada gali būti pašalinta naršyklėje išvalius šios svetainės duomenis.",
+    "item1": "Pokalbių istorija, projektai ir žinučių juodraščiai — pagrindinis produkto pažadas yra tas, kad jie niekada nepalieka jūsų naršyklės.",
+    "item2": "Jūsų temos ir kalbos nuostatos.",
+    "item3": "Seanso žymuo apie beta pranešimą, kurį uždarėte.",
+    "item4": "Jei prisijungiate: jūsų seanso žetonas ir — tik jei tai aiškiai įjungiate — API raktas pokalbiams iš šio įrenginio.",
+    "item5": "Anoniminis žinučių skaitiklis, užtikrinantis nemokamo naudojimo ribą."
+  },
+
+  "account": {
+    "title": "Jei susikuriate paskyrą",
+    "intro": "Paskyros egzistuoja naudojimo apskaitai ir piktnaudžiavimo prevencijai, o ne profiliavimui. Serverio pusėje saugome:",
+    "item1": "Jūsų el. pašto adresą (prisijungimui, patvirtinimui ir slaptažodžio atkūrimui) ir slaptažodžio maišos reikšmę su druska — niekada paties slaptažodžio.",
+    "item2": "Naudojimo apskaitą: žetonų skaičių kiekvienai užklausai, reikalingą biudžetams užtikrinti ir atlyginti operatoriams, aptarnaujantiems jūsų užklausas. Užklausų ir atsakymų turinys nesaugomas.",
+    "item3": "Tik registracijos metu — vienkartinį naršyklės signalą (atspaudo maišos reikšmę), naudojamą piktnaudžiavimui nemokamu lygmeniu per kelias paskyras aptikti. Jis nenaudojamas sekimui, niekada neskaičiuojamas naršant anonimiškai ir po registracijos nebeatlieka jokio vaidmens."
+  },
+
+  "infra": {
+    "title": "Infrastruktūra",
+    "body": "Inferencija vykdoma nepriklausomų Europos operatorių aparatinėje įrangoje pagal Europos teisę. Viešąją svetainę aptarnauja Cloudflare, kuris gali nustatyti savo griežtai būtiną saugumo slapuką (pvz., apsaugai nuo botų), kurio mes neskaitome ir nenaudojame."
+  },
+
+  "rights": {
+    "title": "Jūsų teisės",
+    "body": "Pagal BDAR galite bet kada prašyti prieigos prie savo paskyros duomenų, jų ištaisymo ar ištrynimo, taip pat galite pateikti skundą savo priežiūros institucijai. Ištrynę naršyklės duomenis pašalinate pokalbių istoriją; ištrynę paskyrą pašalinate viską, ką laikome serverio pusėje."
+  },
+
+  "contact": {
+    "title": "Kontaktai",
+    "body": "Privatumo klausimai ir prašymai: {{email}}"
+  }
+}

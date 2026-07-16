@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Baile",
+    "docs": "Doiciméid",
+    "chat": "Comhrá",
+    "mission": "Misean",
+    "login": "Sínigh isteach",
+    "register": "Cláraigh",
+    "account": "Cuntas",
+    "logout": "Sínigh amach"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Athraigh go mód geal",
+      "toDark": "Athraigh go mód dorcha"
+    }
+  },
+  "lang": {
+    "am": "Amáiris",
+    "ar": "Araibis",
+    "bg": "Bulgáiris",
+    "ca": "Catalóinis",
+    "cs": "Seicis",
+    "da": "Danmhairgis",
+    "de": "Gearmáinis",
+    "el": "Gréigis",
+    "en": "Béarla",
+    "es": "Spáinnis",
+    "et": "Eastóinis",
+    "fa": "Peirsis",
+    "fi": "Fionlainnis",
+    "fr": "Fraincis",
+    "ga": "Gaeilge",
+    "ha": "Hásais",
+    "he": "Eabhrais",
+    "hr": "Cróitis",
+    "hu": "Ungáiris",
+    "ig": "Íogbóis",
+    "it": "Iodáilis",
+    "ka": "Seoirsis",
+    "kk": "Casaicis",
+    "lt": "Liotuáinis",
+    "lv": "Laitvis",
+    "ma": "Darija",
+    "mt": "Máltais",
+    "nl": "Ollainnis",
+    "no": "Ioruais",
+    "om": "Oraimis",
+    "pl": "Polainnis",
+    "pt": "Portaingéilis",
+    "ro": "Rómáinis",
+    "ru": "Rúisis",
+    "sk": "Slóvaicis",
+    "sl": "Slóivéinis",
+    "so": "Somáilis",
+    "sr": "Seirbis",
+    "sv": "Sualainnis",
+    "sw": "Svahaílis",
+    "ti": "Tigrinis",
+    "tr": "Tuircis",
+    "uk": "Úcráinis",
+    "uz": "Úisbéicis",
+    "wo": "Volaifis",
+    "yo": "Iarúibis",
+    "zu": "Súlúis"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Príobháideachas"
+  },
+  "beta": {
+    "tag": "Béite phoiblí",
+    "message": "Tá helexa i mbéite oscailte — bí ag súil le ciumhaiseanna garbha. Fanann do chuid comhráite i do bhrabhsálaí.",
+    "dismiss": "Dún"
+  }
+}

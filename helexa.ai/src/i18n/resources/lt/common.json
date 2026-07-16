@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Pradžia",
+    "docs": "Dokumentacija",
+    "chat": "Pokalbis",
+    "mission": "Misija",
+    "login": "Prisijungti",
+    "register": "Registruotis",
+    "account": "Paskyra",
+    "logout": "Atsijungti"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Perjungti į šviesų režimą",
+      "toDark": "Perjungti į tamsų režimą"
+    }
+  },
+  "lang": {
+    "am": "amharų",
+    "ar": "arabų",
+    "bg": "bulgarų",
+    "ca": "katalonų",
+    "cs": "čekų",
+    "da": "danų",
+    "de": "vokiečių",
+    "el": "graikų",
+    "en": "anglų",
+    "es": "ispanų",
+    "et": "estų",
+    "fa": "persų",
+    "fi": "suomių",
+    "fr": "prancūzų",
+    "ga": "airių",
+    "ha": "hausų",
+    "he": "hebrajų",
+    "hr": "kroatų",
+    "hu": "vengrų",
+    "ig": "igbų",
+    "it": "italų",
+    "ka": "gruzinų",
+    "kk": "kazachų",
+    "lt": "lietuvių",
+    "lv": "latvių",
+    "ma": "darija",
+    "mt": "maltiečių",
+    "nl": "olandų",
+    "no": "norvegų",
+    "om": "oromų",
+    "pl": "lenkų",
+    "pt": "portugalų",
+    "ro": "rumunų",
+    "ru": "rusų",
+    "sk": "slovakų",
+    "sl": "slovėnų",
+    "so": "somalių",
+    "sr": "serbų",
+    "sv": "švedų",
+    "sw": "suahilių",
+    "ti": "tigrajų",
+    "tr": "turkų",
+    "uk": "ukrainiečių",
+    "uz": "uzbekų",
+    "wo": "volofų",
+    "yo": "jorubų",
+    "zu": "zulų"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privatumas"
+  },
+  "beta": {
+    "tag": "Vieša beta",
+    "message": "helexa yra atviroje beta stadijoje — tikėtini nesklandumai. Jūsų pokalbiai lieka jūsų naršyklėje.",
+    "dismiss": "Uždaryti"
+  }
+}

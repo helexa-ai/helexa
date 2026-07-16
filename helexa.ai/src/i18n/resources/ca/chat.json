@@ -1,0 +1,21 @@
+{
+  "title": "Espai de conversa",
+  "badge": "Xat",
+  "lead": "Aquesta és la vista de xat. Connecteu-hi la vostra lògica conversacional i els components d'interfície.",
+  "transcriptPlaceholder": "La transcripció del xat apareixerà aquí. Mostreu els missatges del model i de l'usuari en un contenidor amb desplaçament, opcionalment agrupats per torn.",
+  "inputPlaceholder": "Escriviu un missatge per començar a xatejar…",
+  "send": "Envia",
+  "clear": "Neteja",
+  "newChat": "Xat nou",
+  "newProject": "Projecte nou",
+  "newProjectName": "Projecte nou",
+  "unsorted": "Sense classificar",
+  "emptyState": "Comenceu una conversa. L'historial es queda en aquest navegador.",
+  "anonBanner": "Heu arribat al límit anònim. Registreu-vos per obtenir una assignació gratuïta.",
+  "signUp": "Registra't",
+  "stop": "Atura",
+  "topUp": "Recarrega",
+  "rateLimited": "Límit de peticions assolit — espereu un moment i torneu-ho a provar.",
+  "needsKey": "Creeu una clau API i activeu-la per al xat per enviar missatges en nom vostre.",
+  "manageKeysLink": "Gestiona les claus"
+}

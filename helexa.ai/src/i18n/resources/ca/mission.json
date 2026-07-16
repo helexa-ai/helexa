@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Inferència d'IA europea sobirana",
+    "title": "Infraestructura sobirana",
+    "lead": "Creiem que executar models avançats i capaços en maquinari que ja teniu, en instal·lacions petites i eficients, és la manera com les pimes europees poden competir amb la mentalitat hiperescalar que domina l'ecosistema tecnològic global actual.",
+    "ctaJoinMesh": "Prova-ho ara",
+    "ctaFollowProject": "Segueix el projecte",
+    "subcopy": "Creat per europeus, per a europeus.",
+    "imageAlt": "Visual de l'hèlix d'Helexa"
+  },
+
+  "intent": {
+    "title": "Per què existeix Helexa",
+    "p1": "La infraestructura d'IA actual està dominada per centres de dades hiperescalars que o bé estan situats físicament en jurisdiccions de fora de la UE, o bé estan controlats per entitats jurídiques que responen davant jurisdiccions de fora de la UE — amb agendes, pràctiques i estratègies que no sempre compleixen els alts estàndards europeus d'ètica i de protecció del consumidor. Les empreses europees han de processar i protegir cada cop més les dades dins del marc regulador de la UE, cosa que les piles d'inferència externes rarament prioritzen.",
+    "p2Intro": "Helexa aprofita la infraestructura que Europa ja té i els models de pesos oberts que no ens podem permetre perdre:",
+    "bullet1": "Models avançats de pesos oberts que s'executen eficientment en acceleradors de consum, professionals i de classe centre de dades.",
+    "bullet2": "Residència de dades i privadesa per defecte. La inferència viu en infraestructura dins de la jurisdicció del consumidor.",
+    "bullet3": "Aprofitament de la capacitat d'acceleració disponible avui sense sacrificar el rendiment.",
+    "bullet4": "Independència dels hiperescaladors globals amb interessos contraposats.",
+    "closing": "No un núvol global que casualment té un centre de dades a la UE. Múltiples operadors de la UE independents i sobirans."
+  },
+
+  "whyNow": {
+    "title": "Per què ara",
+    "problemTitle": "El desajust",
+    "problemBullet1": "Les piles d'inferència actuals pressuposen centres de dades hiperescalars, grans clústers de GPU i models de llenguatge de codi tancat.",
+    "problemBullet2": "La regulació europea (RGPD, la Llei d'IA, normes sectorials) empeny les càrregues de treball cap a les instal·lacions pròpies i cap a la regió.",
+    "problemBullet3": "Enviar dades a núvols estrangers és un passiu regulador, de privadesa i de costos.",
+    "problemBullet4": "L'accés a GPU al núvol és car, limitat per l'oferta i governat des de fora.",
+    "problemBullet5": "Arreu d'Europa ja hi ha maquinari de consum i d'estació de treball prou capaç que està infrautilitzat.",
+    "opportunityTitle": "L'oportunitat",
+    "opportunityIntro": "Els models de pesos oberts propers a la frontera ja funcionen bé en maquinari que Europa ja posseeix.",
+    "opportunityBullet1": "Els models avançats de pesos oberts s'executen en estacions de treball i GPU de consum sense clústers de GPU de centre de dades.",
+    "opportunityBullet2": "Les empreses europees volen una IA que puguin executar localment, amb costos predictibles i accés futur garantit.",
+    "opportunityBullet3": "Els operadors amb maquinari capaç poden servir inferència a prop dels consumidors.",
+    "opportunityBullet4": "La regulació està convertint la sobirania de les dades d'una preferència en un requisit.",
+    "opportunityBullet5": "El programari d'inferència eficient és la capa que falta i l'antídot contra més centres de dades i més grans.",
+    "opportunityClosing": "Helexa és aquesta capa de programari."
+  },
+
+  "howItWorks": {
+    "title": "Com funciona",
+    "operators": {
+      "eyebrow": "Desplegueu localment",
+      "title": "Executeu models avançats en el vostre propi maquinari.",
+      "body": "Helexa serveix models de pesos oberts propers a la frontera en GPU de consum i de classe estació de treball, a les vostres instal·lacions, dins la vostra jurisdicció. Sense clúster, sense hiperescalador, sense dependència de l'estranger. Les dades es queden allà on les controleu."
+    },
+    "routing": {
+      "eyebrow": "Encamineu amb intel·ligència",
+      "title": "Les peticions es queden a prop de casa.",
+      "body": "Helexa encamina cada petició cap a infraestructura amb capacitat, prioritzant l'afinitat regional, de manera que el trànsit i les dades es queden on espereu. Els desplegaments es componen en una xarxa més àmplia a mesura que creix la capacitat."
+    },
+    "value": {
+      "eyebrow": "Opereu amb independència",
+      "title": "La feina es demostra. L'economia és transparent.",
+      "body": "L'ús es mesura de manera transparent i els operadors independents seran compensats per la intel·ligència que serveixen. Sense impost de plataforma, sense facturació opaca, sense dependència forçada."
+    }
+  },
+
+  "principles": {
+    "title": "Construïda sobre la sobirania, no sobre la dependència",
+    "distributed": {
+      "title": "Sobirana per disseny",
+      "body": "Maquinari europeu, operadors europeus, llei europea. Cap punt únic de fallada i cap jurisdicció externa de la qual depengui l'accés."
+    },
+    "participation": {
+      "title": "Funciona amb el maquinari que ja teniu",
+      "body": "D'una sola estació de treball a un centre de dades regional, qualsevol capacitat de càlcul competent pot executar Helexa. Redueix els requisits d'infraestructura en lloc d'exigir clústers nous."
+    },
+    "fairness": {
+      "title": "Privadesa i transparència",
+      "body": "Privadesa nativa: l'historial de xat viu només al navegador, mai en un servidor. La mesura de l'ús és transparent; no hi ha caixes negres ni comissions ocultes."
+    },
+    "evolving": {
+      "title": "Resilient per distribució",
+      "body": "La capacitat repartida entre molts desplegaments independents és més difícil de censurar, limitar o apagar, i és resilient als girs de política exterior i a la fallada d'un únic proveïdor."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Cap a on va Helexa",
+    "p1": "El nostre objectiu a llarg termini és esdevenir la capa de programari que impulsa una xarxa distribuïda d'infraestructura d'IA europea operada de manera independent.",
+    "p2": "Des de desplegaments empresarials que executen models avançats en el seu propi maquinari, fins a centres de dades regionals alimentats amb energies renovables que serveixen les seves comunitats.",
+    "p3": "Una capa d'inferència europea posseïda i operada a Europa. Resilient a apagades, girs de política exterior, monopolis i fallades d'un únic proveïdor.",
+    "p4": "Infraestructura que reforça l'autonomia europea en lloc d'aprofundir la dependència d'un grapat de proveïdors estrangers.",
+    "card": {
+      "eyebrow": "Visió",
+      "title": "La capa de programari per a la infraestructura d'IA europea",
+      "body": "Helexa és un projecte incipient, i ho és deliberadament. Una pila d'inferència que ja funciona avui, que creix cap a una xarxa distribuïda de desplegaments europeus operats de manera independent."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Accés anticipat",
+    "title": "Infraestructura d'IA sobirana.",
+    "titleHighlight": "Construïda a Europa.",
+    "lead": "Tant si executeu IA en el vostre propi maquinari, com si opereu capacitat o treballeu per la sobirania europea en IA, aquí hi ha un lloc per a vós.",
+    "ctaRunNode": "Desplega un node (aviat)",
+    "ctaJoinAnnouncements": "Segueix els primers anuncis",
+    "ctaExploreCode": "Explora el codi",
+    "footer": "Sense jardins tancats. Una capa de programari per a una IA europea sobirana. D'una sola estació de treball a centres de dades regionals alimentats amb energies renovables."
+  }
+}

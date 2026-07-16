@@ -1,0 +1,21 @@
+{
+  "title": "Pokalbių darbo erdvė",
+  "badge": "Pokalbis",
+  "lead": "Tai pokalbio rodinys. Prie šio puslapio prijunkite savo pokalbių logiką ir naudotojo sąsajos komponentus.",
+  "transcriptPlaceholder": "Čia bus rodomas pokalbio įrašas. Atvaizduokite modelio ir naudotojo žinutes slenkančiame konteineryje, pasirinktinai grupuodami pagal ėjimus.",
+  "inputPlaceholder": "Įveskite žinutę ir pradėkite pokalbį…",
+  "send": "Siųsti",
+  "clear": "Išvalyti",
+  "newChat": "Naujas pokalbis",
+  "newProject": "Naujas projektas",
+  "newProjectName": "Naujas projektas",
+  "unsorted": "Nerūšiuota",
+  "emptyState": "Pradėkite pokalbį. Jūsų istorija lieka šioje naršyklėje.",
+  "anonBanner": "Pasiekėte anoniminio naudojimo ribą. Užsiregistruokite ir gaukite nemokamą kvotą.",
+  "signUp": "Registruotis",
+  "stop": "Stabdyti",
+  "topUp": "Papildyti",
+  "rateLimited": "Užklausų riba viršyta — palaukite akimirką ir bandykite dar kartą.",
+  "needsKey": "Sukurkite API raktą ir įjunkite jį pokalbiams, kad siųstumėte savo vardu.",
+  "manageKeysLink": "Tvarkyti raktus"
+}

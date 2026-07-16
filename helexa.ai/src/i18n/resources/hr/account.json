@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Prijava",
+    "email": "E-pošta",
+    "password": "Lozinka",
+    "submit": "Prijava",
+    "noAccount": "Nemate račun? Registrirajte se"
+  },
+  "register": {
+    "title": "Izradite svoj račun",
+    "email": "E-pošta",
+    "password": "Lozinka",
+    "submit": "Registracija",
+    "haveAccount": "Već imate račun? Prijavite se",
+    "checkEmail": "Još samo korak — provjerite e-poštu i potvrdite svoj račun."
+  },
+  "verify": {
+    "verifying": "Provjera…",
+    "ok": "E-pošta je potvrđena. Sada se možete prijaviti.",
+    "failed": "Ova poveznica za potvrdu nije valjana ili je istekla.",
+    "toLogin": "Idi na prijavu"
+  },
+  "reset": {
+    "requestTitle": "Ponovno postavljanje lozinke",
+    "email": "E-pošta",
+    "requestSubmit": "Pošalji poveznicu za ponovno postavljanje",
+    "requestDone": "Ako uz tu adresu e-pošte postoji račun, poveznica za ponovno postavljanje je na putu.",
+    "confirmTitle": "Odaberite novu lozinku",
+    "newPassword": "Nova lozinka",
+    "confirmSubmit": "Postavi lozinku",
+    "ok": "Lozinka je ažurirana. Sada se možete prijaviti."
+  },
+  "dashboard": {
+    "title": "Račun",
+    "balance": "Kvota",
+    "total": "Ukupno",
+    "spent": "Potrošeno",
+    "reserved": "Rezervirano",
+    "remaining": "Preostalo",
+    "manageKeys": "Upravljanje API ključevima",
+    "redeemTitle": "Iskoristite kod za nadoplatu",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Iskoristi",
+    "redeemed": "Kod je iskorišten.",
+    "logout": "Odjava"
+  },
+  "keys": {
+    "title": "API ključevi",
+    "create": "Izradi ključ",
+    "label": "Oznaka",
+    "limitKind": "Ograničenje",
+    "percent": "% kvote",
+    "hardcap": "Tvrdi limit (tokeni)",
+    "value": "Vrijednost",
+    "none": "Još nema ključeva.",
+    "createdTitle": "Vaš novi API ključ",
+    "createdWarn": "Kopirajte ga sada — više ga nećete vidjeti.",
+    "copy": "Kopiraj",
+    "copied": "Kopirano",
+    "archive": "Arhiviraj",
+    "save": "Spremi",
+    "status": "Status",
+    "usage": "Iskorišteno",
+    "useForChat": "Koristi za razgovor na ovom uređaju",
+    "usedForChat": "Omogućeno za razgovor ✓"
+  },
+  "error": {
+    "generic": "Nešto je pošlo po zlu.",
+    "unauthorized": "Prijavite se ponovno."
+  }
+}

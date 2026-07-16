@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Tátal Intleachta Saorga Ceannasach Eorpach",
+    "title": "Bonneagar ceannasach",
+    "lead": "Creidimid gurb é samhlacha ardchumasacha forbartha a rith ar chrua-earraí atá agat cheana féin, i saoráidí beaga éifeachtúla, an bealach a rachaidh FBManna na hEorpa in iomaíocht leis an meon hipearscálach atá i gceannas ar éiceachóras teicneolaíochta domhanda an lae inniu.",
+    "ctaJoinMesh": "Bain triail as anois",
+    "ctaFollowProject": "Lean an tionscadal",
+    "subcopy": "Cruthaithe ag Eorpaigh, d'Eorpaigh.",
+    "imageAlt": "Amharc héilics Helexa"
+  },
+
+  "intent": {
+    "title": "Cén Fáth a bhFuil Helexa Ann",
+    "p1": "Tá bonneagar IS an lae inniu faoi cheannas lárionad sonraí hipearscálach atá suite go fisiciúil i ndlínsí lasmuigh den AE nó faoi smacht eintiteas dlíthiúil atá freagrach do dhlínsí lasmuigh den AE — le cláir oibre, cleachtais agus straitéisí nach gcomhlíonann i gcónaí, b'fhéidir, ardchaighdeáin eiticiúla agus cosanta tomhaltóirí na hEorpa. Ní mór do ghnólachtaí Eorpacha sonraí a phróiseáil agus a chosaint níos mó agus níos mó laistigh de chreat rialála an AE, rud nach dtugann stacaí tátail sheachtracha tosaíocht dó ach go hannamh.",
+    "p2Intro": "Baineann Helexa leas as an mbonneagar atá ag an Eoraip cheana féin agus as na samhlacha meáchan oscailte nach acmhainn dúinn iad a chailleadh:",
+    "bullet1": "Samhlacha forbartha meáchan oscailte ag rith go héifeachtúil ar luasairí tráchtearra, gairmiúla agus den ghrád lárionaid sonraí.",
+    "bullet2": "Cónaitheacht sonraí agus príobháideachas de réir réamhshocraithe. Maireann an tátal ar bhonneagar laistigh de dhlínse an tomhaltóra.",
+    "bullet3": "Leas á bhaint as an acmhainn luasairí atá ar fáil faoi láthair gan íobairt a dhéanamh ar fheidhmíocht.",
+    "bullet4": "Neamhspleáchas ar hipearscálaithe domhanda a bhfuil leasanna iomaíocha acu.",
+    "closing": "Ní néal domhanda a tharlaíonn lárionad sonraí AE a bheith aige. Oibreoirí iolracha neamhspleácha ceannasacha de chuid an AE."
+  },
+
+  "whyNow": {
+    "title": "Cén Fáth Anois",
+    "problemTitle": "An Mí-oiriúint",
+    "problemBullet1": "Glacann stacaí tátail an lae inniu leis go bhfuil lárionaid sonraí hipearscálacha, braislí móra GPU agus LLManna foinse iata i gceist.",
+    "problemBullet2": "Treoraíonn rialachán Eorpach (GDPR, an tAcht um Intleacht Shaorga, rialacha earnálacha) ualaí oibre ar an láthair agus sa réigiún.",
+    "problemBullet3": "Is dliteanas rialála, príobháideachais agus costais é sonraí a sheoladh chuig néalta eachtracha.",
+    "problemBullet4": "Tá rochtain ar GPUanna néil costasach, srianta ó thaobh soláthair de agus á rialú in áiteanna eile.",
+    "problemBullet5": "Tá crua-earraí cumasacha tráchtearra agus stáisiún oibre ina suí cheana féin ar fud na hEorpa gan leas iomlán a bhaint astu.",
+    "opportunityTitle": "An Oscailt",
+    "opportunityIntro": "Ritheann samhlacha meáchan oscailte atá gar don teorainn go maith anois ar chrua-earraí atá ag an Eoraip cheana féin.",
+    "opportunityBullet1": "Ritheann samhlacha forbartha meáchan oscailte ar stáisiúin oibre agus ar GPUanna tráchtearra gan braislí GPU lárionaid sonraí.",
+    "opportunityBullet2": "Teastaíonn ó ghnólachtaí Eorpacha IS ar féidir leo a rith go háitiúil, le costais intuartha agus rochtain ráthaithe amach anseo.",
+    "opportunityBullet3": "Is féidir le hoibreoirí a bhfuil crua-earraí cumasacha acu tátal a sholáthar gar do thomhaltóirí.",
+    "opportunityBullet4": "Tá an rialachán ag iompú ceannasacht sonraí ó rogha go riachtanas.",
+    "opportunityBullet5": "Is iad bogearraí tátail éifeachtúla an ciseal atá in easnamh agus an frithnimh in aghaidh lárionaid sonraí níos mó agus níos líonmhaire.",
+    "opportunityClosing": "Is é Helexa an ciseal bogearraí sin."
+  },
+
+  "howItWorks": {
+    "title": "Conas a Oibríonn Sé",
+    "operators": {
+      "eyebrow": "Imscar go hÁitiúil",
+      "title": "Rith samhlacha forbartha ar do chrua-earraí féin.",
+      "body": "Freastalaíonn Helexa samhlacha meáchan oscailte atá gar don teorainn ar GPUanna tráchtearra agus den ghrád stáisiúin oibre, ar an láthair, i do dhlínse féin. Gan braisle, gan hipearscálaí, gan spleáchas thar lear. Fanann na sonraí san áit a rialaíonn tú iad."
+    },
+    "routing": {
+      "eyebrow": "Ródaigh go Cliste",
+      "title": "Fanann iarratais gar don bhaile.",
+      "body": "Ródaíonn Helexa gach iarratas chuig bonneagar a bhfuil acmhainn aige, agus tosaíocht á tabhairt do chleamhnas réigiúin, ionas go bhfanann trácht agus sonraí san áit a mbeifeá ag súil leo. Comhdhéanann imscartha líonra níos leithne de réir mar a fhásann an acmhainn."
+    },
+    "value": {
+      "eyebrow": "Oibrigh go Neamhspleách",
+      "title": "Cruthaítear an obair. Tá an eacnamaíocht trédhearcach.",
+      "body": "Déantar an úsáid a mhéadrú go trédhearcach agus cúiteofar oibreoirí neamhspleácha as an intleacht a fhreastalaíonn siad. Gan cháin ardáin, gan bhilleáil dhoiléir, gan ghlasáil isteach."
+    }
+  },
+
+  "principles": {
+    "title": "Tógtha ar Cheannasacht, Ní ar Ghlasáil Isteach",
+    "distributed": {
+      "title": "Ceannasach ó Dhearadh",
+      "body": "Crua-earraí Eorpacha, oibreoirí Eorpacha, dlí Eorpach. Gan aon phointe teipe amháin agus gan aon dlínse sheachtrach a mbraitheann an rochtain uirthi."
+    },
+    "participation": {
+      "title": "Ritheann ar Chrua-earraí atá Agat",
+      "body": "Ó stáisiún oibre amháin go lárionad sonraí réigiúnach, is féidir le ríomhaireacht chumasach Helexa a rith. Laghdaíonn sé riachtanais bhonneagair seachas braislí nua a éileamh."
+    },
+    "fairness": {
+      "title": "Príobháideachas agus Trédhearcacht",
+      "body": "Príobháideachas ó dhúchas: ní mhaireann stair an chomhrá ach sa bhrabhsálaí, riamh ar fhreastalaí. Tá méadrú na húsáide trédhearcach; níl aon bhoscaí dubha ná táillí folaithe ann."
+    },
+    "evolving": {
+      "title": "Athléimneach trí Dháileadh",
+      "body": "Tá acmhainn atá scaipthe ar go leor imscartha neamhspleácha níos deacra a chinsireacht, a bhac nó a mhúchadh, agus tá sí athléimneach in aghaidh athruithe ar bheartas eachtrach agus in aghaidh theip aon díoltóra amháin."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Cá bhFuil Helexa ag Dul",
+    "p1": "Is í an sprioc fhadtéarmach atá againn a bheith inár gciseal bogearraí a chumhachtaíonn líonra dáilte de bhonneagar IS Eorpach arna oibriú go neamhspleách.",
+    "p2": "Ó imscartha fiontair a ritheann samhlacha forbartha ar a gcrua-earraí féin, go lárionaid sonraí réigiúnacha faoi thiomáint fuinnimh in-athnuaite ag freastal ar a bpobail féin.",
+    "p3": "Ciseal tátail Eorpach atá faoi úinéireacht agus á oibriú san Eoraip. Athléimneach in aghaidh bristeacha, athruithe ar bheartas eachtrach, monaplachtaí agus teip aon díoltóra amháin.",
+    "p4": "Bonneagar a neartaíonn neamhspleáchas na hEorpa in ionad an spleáchas ar dhornán soláthraithe eachtracha a dhoimhniú.",
+    "card": {
+      "eyebrow": "Fís",
+      "title": "An ciseal bogearraí do bhonneagar IS na hEorpa",
+      "body": "Tá Helexa luath, agus d'aon ghnó. Stac tátail atá ag obair inniu, agus é ag fás i dtreo líonra dháilte d'imscartha Eorpacha arna n-oibriú go neamhspleách."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Luathrochtain",
+    "title": "Bonneagar IS Ceannasach.",
+    "titleHighlight": "Tógtha san Eoraip.",
+    "lead": "Cibé an ritheann tú IS ar do chrua-earraí féin, an oibríonn tú acmhainn, nó an bhfuil tú ag tógáil i dtreo cheannasacht IS na hEorpa, tá áit anseo duit.",
+    "ctaRunNode": "Imscar nód (go luath)",
+    "ctaJoinAnnouncements": "Lean na luathfhógraí",
+    "ctaExploreCode": "Iniúch an cód",
+    "footer": "Gan ghairdíní balla. Ciseal bogearraí do IS ceannasach Eorpach. Ó stáisiún oibre amháin go lárionaid sonraí réigiúnacha faoi thiomáint fuinnimh in-athnuaite."
+  }
+}

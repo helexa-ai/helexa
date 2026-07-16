@@ -1,0 +1,21 @@
+{
+  "title": "Pracovní prostor konverzace",
+  "badge": "Chat",
+  "lead": "Toto je zobrazení chatu. Připojte na tuto stránku svou konverzační logiku a UI komponenty.",
+  "transcriptPlaceholder": "Zde se zobrazí přepis chatu. Vykreslujte zprávy modelu a uživatele v rolovacím kontejneru, volitelně seskupené po tazích.",
+  "inputPlaceholder": "Napište zprávu a začněte konverzovat…",
+  "send": "Odeslat",
+  "clear": "Vymazat",
+  "newChat": "Nový chat",
+  "newProject": "Nový projekt",
+  "newProjectName": "Nový projekt",
+  "unsorted": "Nezařazené",
+  "emptyState": "Začněte konverzaci. Vaše historie zůstává v tomto prohlížeči.",
+  "anonBanner": "Dosáhli jste anonymního limitu. Zaregistrujte se a získejte bezplatný příděl.",
+  "signUp": "Registrovat se",
+  "stop": "Zastavit",
+  "topUp": "Dobít",
+  "rateLimited": "Příliš mnoho požadavků — chvíli počkejte a zkuste to znovu.",
+  "needsKey": "Vytvořte si API klíč a povolte ho pro chat, abyste mohli odesílat pod vlastním účtem.",
+  "manageKeysLink": "Spravovat klíče"
+}

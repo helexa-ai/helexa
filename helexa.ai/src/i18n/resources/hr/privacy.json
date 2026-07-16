@@ -1,0 +1,45 @@
+{
+  "title": "Privatnost",
+  "updated": "Zadnje ažuriranje: 16. srpnja 2026.",
+  "intro": "Helexa je izgrađena tako da vaši podaci ostanu kod vas. Ova stranica u cijelosti opisuje što se pohranjuje, gdje i zašto. Kratka je jer se malo toga ima objaviti.",
+
+  "summary": {
+    "title": "Ukratko",
+    "noCookies": "Bez kolačića. Bez analitike. Bez alata za praćenje. Bez oglašavanja.",
+    "localHistory": "Vaša povijest razgovora pohranjuje se samo u vašem pregledniku. Nikada se ne šalje na naše poslužitelje niti se na njima pohranjuje dulje od trenutka generiranja odgovora.",
+    "noAnonId": "Anonimnim posjetiteljima ne uzima se digitalni otisak, ne profilira ih se niti identificira."
+  },
+
+  "local": {
+    "title": "Što se pohranjuje u vašem pregledniku",
+    "intro": "Sve navedeno ostaje na vašem uređaju, postoji isključivo kako bi proizvod radio i može se u svakom trenutku ukloniti brisanjem podataka ove stranice u pregledniku.",
+    "item1": "Povijest razgovora, projekti i skice poruka — temeljno obećanje proizvoda jest da oni nikada ne napuštaju vaš preglednik.",
+    "item2": "Vaše postavke teme i jezika.",
+    "item3": "Oznaka sesije za obavijest o beti koju ste odbacili.",
+    "item4": "Ako se prijavite: vaš token sesije i — samo ako to izričito omogućite — API ključ za razgovor s ovog uređaja.",
+    "item5": "Anonimni brojač poruka koji provodi ograničenje besplatnog korištenja."
+  },
+
+  "account": {
+    "title": "Ako izradite račun",
+    "intro": "Računi postoje radi mjerenja potrošnje i sprječavanja zlouporabe, a ne radi profiliranja. Na poslužiteljskoj strani pohranjujemo:",
+    "item1": "Vašu adresu e-pošte (za prijavu, potvrdu i ponovno postavljanje lozinke) te posoljeni hash lozinke — nikada samu lozinku.",
+    "item2": "Mjerenje potrošnje: broj tokena po zahtjevu, potreban za provođenje ograničenja potrošnje i plaćanje operatera koji poslužuju vaše zahtjeve. Sadržaj upita i odgovora se ne zadržava.",
+    "item3": "Isključivo pri registraciji, jednokratni signal preglednika (hash digitalnog otiska) koji služi za otkrivanje zlouporabe besplatne razine putem više računa. Ne koristi se za praćenje, nikada se ne izračunava pri anonimnom pregledavanju i nakon registracije nema nikakvu daljnju ulogu."
+  },
+
+  "infra": {
+    "title": "Infrastruktura",
+    "body": "Inferencija se odvija na hardveru neovisnih europskih operatera, prema europskom pravu. Javno web-mjesto poslužuje se putem Cloudflarea, koji može postaviti vlastiti strogo nužni sigurnosni kolačić (npr. za obranu od botova) koji mi niti čitamo niti koristimo."
+  },
+
+  "rights": {
+    "title": "Vaša prava",
+    "body": "Prema GDPR-u u svakom trenutku možete zatražiti pristup podacima svojeg računa, njihov ispravak ili brisanje, a možete i podnijeti pritužbu svojem nadzornom tijelu. Brisanjem podataka preglednika uklanja se vaša povijest razgovora; brisanjem računa uklanja se sve što čuvamo na poslužiteljskoj strani."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Pitanja i zahtjevi u vezi s privatnošću: {{email}}"
+  }
+}

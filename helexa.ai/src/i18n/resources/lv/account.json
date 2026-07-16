@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Pieteikties",
+    "email": "E-pasts",
+    "password": "Parole",
+    "submit": "Pieteikties",
+    "noAccount": "Nav konta? Reģistrējieties"
+  },
+  "register": {
+    "title": "Izveidojiet savu kontu",
+    "email": "E-pasts",
+    "password": "Parole",
+    "submit": "Reģistrēties",
+    "haveAccount": "Jau ir konts? Piesakieties",
+    "checkEmail": "Gandrīz gatavs — pārbaudiet savu e-pastu, lai apstiprinātu kontu."
+  },
+  "verify": {
+    "verifying": "Notiek pārbaude…",
+    "ok": "E-pasts apstiprināts. Tagad varat pieteikties.",
+    "failed": "Šī apstiprinājuma saite ir nederīga vai tās derīguma termiņš ir beidzies.",
+    "toLogin": "Uz pieteikšanos"
+  },
+  "reset": {
+    "requestTitle": "Atiestatīt paroli",
+    "email": "E-pasts",
+    "requestSubmit": "Sūtīt atiestatīšanas saiti",
+    "requestDone": "Ja šim e-pastam ir konts, atiestatīšanas saite jau ir ceļā.",
+    "confirmTitle": "Izvēlieties jaunu paroli",
+    "newPassword": "Jaunā parole",
+    "confirmSubmit": "Iestatīt paroli",
+    "ok": "Parole atjaunināta. Tagad varat pieteikties."
+  },
+  "dashboard": {
+    "title": "Konts",
+    "balance": "Piešķīrums",
+    "total": "Kopā",
+    "spent": "Iztērēts",
+    "reserved": "Rezervēts",
+    "remaining": "Atlicis",
+    "manageKeys": "Pārvaldīt API atslēgas",
+    "redeemTitle": "Izmantot papildinājuma kodu",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Izmantot",
+    "redeemed": "Kods izmantots.",
+    "logout": "Iziet"
+  },
+  "keys": {
+    "title": "API atslēgas",
+    "create": "Izveidot atslēgu",
+    "label": "Nosaukums",
+    "limitKind": "Limits",
+    "percent": "% no piešķīruma",
+    "hardcap": "Stingrais limits (tokeni)",
+    "value": "Vērtība",
+    "none": "Vēl nav nevienas atslēgas.",
+    "createdTitle": "Jūsu jaunā API atslēga",
+    "createdWarn": "Nokopējiet to tagad — vairs to neredzēsiet.",
+    "copy": "Kopēt",
+    "copied": "Nokopēts",
+    "archive": "Arhivēt",
+    "save": "Saglabāt",
+    "status": "Statuss",
+    "usage": "Izlietots",
+    "useForChat": "Izmantot tērzēšanai šajā ierīcē",
+    "usedForChat": "Iespējota tērzēšanai ✓"
+  },
+  "error": {
+    "generic": "Kaut kas nogāja greizi.",
+    "unauthorized": "Lūdzu, piesakieties vēlreiz."
+  }
+}

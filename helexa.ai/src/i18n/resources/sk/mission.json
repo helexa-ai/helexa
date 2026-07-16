@@ -1,0 +1,103 @@
+{
+  "hero": {
+    "badge": "Suverénna európska AI inferencia",
+    "title": "Suverénna infraštruktúra",
+    "lead": "Veríme, že prevádzka pokročilých a schopných modelov na hardvéri, ktorý už máte, v malých a efektívnych prevádzkach, je cesta, ako môžu európske malé a stredné podniky konkurovať hyperscalerovému mysleniu, ktoré dnes ovláda globálny technologický ekosystém.",
+    "ctaJoinMesh": "Vyskúšajte teraz",
+    "ctaFollowProject": "Sledujte projekt",
+    "subcopy": "Vytvorené Európanmi pre Európanov.",
+    "imageAlt": "Vizuál špirály Helexa"
+  },
+
+  "intent": {
+    "title": "Prečo Helexa existuje",
+    "p1": "Dnešnej AI infraštruktúre dominujú hyperscalové dátové centrá, ktoré sa buď fyzicky nachádzajú v jurisdikciách mimo EÚ, alebo sú pod kontrolou právnych subjektov zodpovedajúcich sa jurisdikciám mimo EÚ — s agendami, praktikami a stratégiami, ktoré nemusia vždy spĺňať vysoké európske štandardy etiky a ochrany spotrebiteľa. Európske firmy musia čoraz častejšie spracúvať a chrániť dáta v rámci regulačného rámca EÚ, čo externé inferenčné stacky zohľadňujú len zriedka.",
+    "p2Intro": "Helexa využíva infraštruktúru, ktorú Európa už má, a open-weight modely, o ktoré si nemôžeme dovoliť prísť:",
+    "bullet1": "Pokročilé open-weight modely bežiace efektívne na bežných, profesionálnych aj datacentrových akcelerátoroch.",
+    "bullet2": "Rezidencia dát a súkromie ako predvolený stav. Inferencia beží na infraštruktúre v jurisdikcii zákazníka.",
+    "bullet3": "Využitie aktuálne dostupnej akcelerátorovej kapacity bez obetovania výkonu.",
+    "bullet4": "Nezávislosť od globálnych hyperscalerov s protichodnými záujmami.",
+    "closing": "Nie globálny cloud, ktorý má zhodou okolností dátové centrum v EÚ. Viacero nezávislých, suverénnych prevádzkovateľov v EÚ."
+  },
+
+  "whyNow": {
+    "title": "Prečo práve teraz",
+    "problemTitle": "Nesúlad",
+    "problemBullet1": "Dnešné inferenčné stacky predpokladajú hyperscalové dátové centrá, veľké GPU clustery a uzavreté LLM.",
+    "problemBullet2": "Európska regulácia (GDPR, akt o umelej inteligencii, sektorové pravidlá) smeruje pracovné záťaže on-premises a do regiónu.",
+    "problemBullet3": "Odosielanie dát do zahraničných cloudov predstavuje regulačné riziko, riziko pre súkromie aj nákladovú záťaž.",
+    "problemBullet4": "Prístup ku cloudovým GPU je drahý, obmedzený ponukou a riadený inde.",
+    "problemBullet5": "Schopný bežný a workstationový hardvér už dnes leží po celej Európe nevyužitý.",
+    "opportunityTitle": "Príležitosť",
+    "opportunityIntro": "Open-weight modely blízke špičke dnes bežia dobre na hardvéri, ktorý Európa už vlastní.",
+    "opportunityBullet1": "Pokročilé open-weight modely bežia na pracovných staniciach a bežných GPU bez datacentrových GPU clusterov.",
+    "opportunityBullet2": "Európske firmy chcú AI, ktorú môžu prevádzkovať lokálne, s predvídateľnými nákladmi a garantovaným budúcim prístupom.",
+    "opportunityBullet3": "Prevádzkovatelia so schopným hardvérom môžu obsluhovať inferenciu blízko zákazníkov.",
+    "opportunityBullet4": "Regulácia mení dátovú suverenitu z preferencie na požiadavku.",
+    "opportunityBullet5": "Efektívny inferenčný softvér je chýbajúca vrstva a protilátka proti ďalším a väčším dátovým centrám.",
+    "opportunityClosing": "Helexa je tou softvérovou vrstvou."
+  },
+
+  "howItWorks": {
+    "title": "Ako to funguje",
+    "operators": {
+      "eyebrow": "Nasadzujte lokálne",
+      "title": "Prevádzkujte pokročilé modely na vlastnom hardvéri.",
+      "body": "Helexa obsluhuje open-weight modely blízke špičke na bežných a workstationových GPU, on-premises, vo vašej vlastnej jurisdikcii. Žiadny cluster, žiadny hyperscaler, žiadna offshore závislosť. Dáta zostávajú tam, kde ich máte pod kontrolou."
+    },
+    "routing": {
+      "eyebrow": "Smerujte inteligentne",
+      "title": "Požiadavky zostávajú blízko domova.",
+      "body": "Helexa smeruje každú požiadavku na infraštruktúru s voľnou kapacitou a uprednostňuje regionálnu afinitu, takže prevádzka aj dáta zostávajú tam, kde ich očakávate. Jednotlivé nasadenia sa s rastom kapacity skladajú do širšej siete."
+    },
+    "value": {
+      "eyebrow": "Prevádzkujte nezávisle",
+      "title": "Práca je preukázateľná. Ekonomika je transparentná.",
+      "body": "Využitie sa meria transparentne a nezávislí prevádzkovatelia budú odmeňovaní za inteligenciu, ktorú poskytujú. Žiadna platformová daň, žiadne nepriehľadné účtovanie, žiadny lock-in."
+    }
+  },
+
+  "principles": {
+    "title": "Postavené na suverenite, nie na lock-ine",
+    "distributed": {
+      "title": "Suverénne od návrhu",
+      "body": "Európsky hardvér, európski prevádzkovatelia, európske právo. Žiadny jediný bod zlyhania a žiadna vonkajšia jurisdikcia, od ktorej by prístup závisel."
+    },
+    "participation": {
+      "title": "Beží na hardvéri, ktorý máte",
+      "body": "Od jednej pracovnej stanice po regionálne dátové centrum — schopný výpočtový výkon môže prevádzkovať Helexu. Nároky na infraštruktúru znižuje, namiesto toho, aby vyžadovala nové clustery."
+    },
+    "fairness": {
+      "title": "Súkromie a transparentnosť",
+      "body": "Natívne súkromie: história chatu žije iba v prehliadači, nikdy na serveri. Meranie využitia je transparentné; žiadne čierne skrinky a žiadne skryté poplatky."
+    },
+    "evolving": {
+      "title": "Odolnosť vďaka distribúcii",
+      "body": "Kapacitu rozloženú medzi mnoho nezávislých nasadení je ťažšie cenzurovať, škrtiť či vypnúť a je odolná voči zahraničnopolitickým otrasom aj zlyhaniu jediného dodávateľa."
+    }
+  },
+
+  "roadAhead": {
+    "title": "Kam Helexa smeruje",
+    "p1": "Naším dlhodobým cieľom je stať sa softvérovou vrstvou poháňajúcou distribuovanú sieť nezávisle prevádzkovanej európskej AI infraštruktúry.",
+    "p2": "Od podnikových nasadení prevádzkujúcich pokročilé modely na vlastnom hardvéri až po regionálne dátové centrá napájané z obnoviteľných zdrojov, ktoré slúžia svojim komunitám.",
+    "p3": "Európska inferenčná vrstva vlastnená a prevádzkovaná v Európe. Odolná voči výpadkom, zahraničnopolitickým otrasom, monopolom aj zlyhaniu jediného dodávateľa.",
+    "p4": "Infraštruktúra, ktorá posilňuje európsku autonómiu, namiesto toho, aby prehlbovala závislosť od hŕstky zahraničných poskytovateľov.",
+    "card": {
+      "eyebrow": "Vízia",
+      "title": "Softvérová vrstva pre európsku AI infraštruktúru",
+      "body": "Helexa je na začiatku, a to zámerne. Fungujúci inferenčný stack dnes, rastúci smerom k distribuovanej sieti nezávisle prevádzkovaných európskych nasadení."
+    }
+  },
+
+  "joinMesh": {
+    "badge": "Skorý prístup",
+    "title": "Suverénna AI infraštruktúra.",
+    "titleHighlight": "Postavená v Európe.",
+    "lead": "Či už prevádzkujete AI na vlastnom hardvéri, ponúkate kapacitu, alebo budujete európsku AI suverenitu, je tu miesto aj pre vás.",
+    "ctaRunNode": "Nasadiť uzol (čoskoro)",
+    "ctaJoinAnnouncements": "Sledovať prvé oznámenia",
+    "ctaExploreCode": "Preskúmať kód",
+    "footer": "Žiadne uzavreté záhrady. Softvérová vrstva pre suverénnu európsku AI. Od jednej pracovnej stanice po regionálne dátové centrá napájané z obnoviteľných zdrojov."
+  }
+}

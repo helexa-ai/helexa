@@ -1,0 +1,21 @@
+{
+  "title": "Delovni prostor za pogovore",
+  "badge": "Klepet",
+  "lead": "To je pogled klepeta. Na to stran priključite svojo pogovorno logiko in komponente uporabniškega vmesnika.",
+  "transcriptPlaceholder": "Tukaj se bo prikazal zapis klepeta. Sporočila modela in uporabnika izrišite v drsečem vsebniku, po želji združena po izmenjavah.",
+  "inputPlaceholder": "Vnesite sporočilo in začnite klepet …",
+  "send": "Pošlji",
+  "clear": "Počisti",
+  "newChat": "Nov klepet",
+  "newProject": "Nov projekt",
+  "newProjectName": "Nov projekt",
+  "unsorted": "Nerazvrščeno",
+  "emptyState": "Začnite pogovor. Vaša zgodovina ostane v tem brskalniku.",
+  "anonBanner": "Dosegli ste omejitev za anonimne uporabnike. Registrirajte se za brezplačno dodelitev.",
+  "signUp": "Registracija",
+  "stop": "Ustavi",
+  "topUp": "Dopolni",
+  "rateLimited": "Omejitev zahtev — počakajte trenutek in poskusite znova.",
+  "needsKey": "Ustvarite ključ API in ga omogočite za klepet, da boste pošiljali v svojem imenu.",
+  "manageKeysLink": "Upravljanje ključev"
+}

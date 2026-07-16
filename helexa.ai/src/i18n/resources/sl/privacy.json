@@ -1,0 +1,45 @@
+{
+  "title": "Zasebnost",
+  "updated": "Zadnja posodobitev: 16. julij 2026",
+  "intro": "Helexa je zgrajena tako, da vaši podatki ostanejo pri vas. Ta stran v celoti opisuje, kaj je shranjeno kje in zakaj. Kratka je zato, ker je za razkriti le malo.",
+
+  "summary": {
+    "title": "Kratka različica",
+    "noCookies": "Brez piškotkov. Brez analitike. Brez sledilnikov. Brez oglaševanja.",
+    "localHistory": "Vaša zgodovina klepetov je shranjena samo v vašem brskalniku. Nikoli se ne pošilja na naše strežnike niti se na njih ne shranjuje dlje od trenutka, ko nastaja odgovor.",
+    "noAnonId": "Anonimnih obiskovalcev ne prstno odtiskujemo, ne profiliramo in ne identificiramo."
+  },
+
+  "local": {
+    "title": "Kaj je shranjeno v vašem brskalniku",
+    "intro": "Vse spodaj našteto ostane na vaši napravi, obstaja izključno zato, da izdelek deluje, in ga lahko kadar koli odstranite tako, da v brskalniku počistite podatke tega spletnega mesta.",
+    "item1": "Zgodovina klepetov, projekti in osnutki sporočil — osrednja obljuba izdelka je, da ti nikoli ne zapustijo vašega brskalnika.",
+    "item2": "Vaše nastavitve teme in jezika.",
+    "item3": "Sejna oznaka za obvestilo o beti, ki ste ga zaprli.",
+    "item4": "Če se prijavite: vaš sejni žeton in — samo če to izrecno omogočite — ključ API za klepet s te naprave.",
+    "item5": "Anonimni števec sporočil, ki uveljavlja omejitev brezplačne uporabe."
+  },
+
+  "account": {
+    "title": "Če ustvarite račun",
+    "intro": "Računi obstajajo zaradi merjenja porabe in preprečevanja zlorab, ne zaradi profiliranja. Na strežniški strani shranjujemo:",
+    "item1": "Vaš e-poštni naslov (za prijavo, potrditev in ponastavitev gesla) ter soljeno zgoščeno vrednost gesla — nikoli gesla samega.",
+    "item2": "Merjenje porabe: število žetonov na zahtevo, potrebno za uveljavljanje proračunov in poplačilo operaterjev, ki strežejo vaše zahteve. Vsebina pozivov in odgovorov se ne hrani.",
+    "item3": "Samo ob registraciji enkraten brskalniški signal (zgoščena vrednost prstnega odtisa), ki se uporablja za zaznavanje zlorab brezplačne stopnje z več računi. Ne uporablja se za sledenje, pri anonimnem brskanju se nikoli ne izračunava in po registraciji nima nobene nadaljnje vloge."
+  },
+
+  "infra": {
+    "title": "Infrastruktura",
+    "body": "Inferenca teče na strojni opremi neodvisnih evropskih operaterjev v skladu z evropskim pravom. Javno spletno mesto je za storitvijo Cloudflare, ki lahko nastavi lasten nujno potreben varnostni piškotek (npr. za zaščito pred boti), ki ga mi ne beremo in ne uporabljamo."
+  },
+
+  "rights": {
+    "title": "Vaše pravice",
+    "body": "Po GDPR (Splošni uredbi o varstvu podatkov) lahko kadar koli zahtevate dostop do podatkov svojega računa, njihov popravek ali izbris, prav tako pa lahko vložite pritožbo pri svojem nadzornem organu. Z izbrisom podatkov brskalnika odstranite zgodovino klepetov; z izbrisom računa odstranite vse, kar hranimo na strežniški strani."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Vprašanja in zahteve glede zasebnosti: {{email}}"
+  }
+}

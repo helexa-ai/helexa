@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Inici",
+    "docs": "Documentació",
+    "chat": "Xat",
+    "mission": "Missió",
+    "login": "Inicia la sessió",
+    "register": "Registra't",
+    "account": "Compte",
+    "logout": "Tanca la sessió"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Canvia al mode clar",
+      "toDark": "Canvia al mode fosc"
+    }
+  },
+  "lang": {
+    "am": "amhàric",
+    "ar": "àrab",
+    "bg": "búlgar",
+    "ca": "català",
+    "cs": "txec",
+    "da": "danès",
+    "de": "alemany",
+    "el": "grec",
+    "en": "anglès",
+    "es": "espanyol",
+    "et": "estonià",
+    "fa": "persa",
+    "fi": "finès",
+    "fr": "francès",
+    "ga": "irlandès",
+    "ha": "haussa",
+    "he": "hebreu",
+    "hr": "croat",
+    "hu": "hongarès",
+    "ig": "igbo",
+    "it": "italià",
+    "ka": "georgià",
+    "kk": "kazakh",
+    "lt": "lituà",
+    "lv": "letó",
+    "ma": "dàrija",
+    "mt": "maltès",
+    "nl": "neerlandès",
+    "no": "noruec",
+    "om": "oromo",
+    "pl": "polonès",
+    "pt": "portuguès",
+    "ro": "romanès",
+    "ru": "rus",
+    "sk": "eslovac",
+    "sl": "eslovè",
+    "so": "somali",
+    "sr": "serbi",
+    "sv": "suec",
+    "sw": "suahili",
+    "ti": "tigrinya",
+    "tr": "turc",
+    "uk": "ucraïnès",
+    "uz": "uzbek",
+    "wo": "wòlof",
+    "yo": "ioruba",
+    "zu": "zulu"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privadesa"
+  },
+  "beta": {
+    "tag": "Beta pública",
+    "message": "helexa és en beta oberta — hi pot haver imperfeccions. Els vostres xats es queden al navegador.",
+    "dismiss": "Descarta"
+  }
+}

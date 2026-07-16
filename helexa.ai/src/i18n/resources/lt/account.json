@@ -1,0 +1,71 @@
+{
+  "login": {
+    "title": "Prisijungti",
+    "email": "El. paštas",
+    "password": "Slaptažodis",
+    "submit": "Prisijungti",
+    "noAccount": "Neturite paskyros? Registruokitės"
+  },
+  "register": {
+    "title": "Sukurkite paskyrą",
+    "email": "El. paštas",
+    "password": "Slaptažodis",
+    "submit": "Registruotis",
+    "haveAccount": "Jau turite paskyrą? Prisijunkite",
+    "checkEmail": "Beveik baigta — patikrinkite el. paštą ir patvirtinkite paskyrą."
+  },
+  "verify": {
+    "verifying": "Tikrinama…",
+    "ok": "El. paštas patvirtintas. Dabar galite prisijungti.",
+    "failed": "Ši patvirtinimo nuoroda negalioja arba jos galiojimas baigėsi.",
+    "toLogin": "Eiti į prisijungimą"
+  },
+  "reset": {
+    "requestTitle": "Atkurkite slaptažodį",
+    "email": "El. paštas",
+    "requestSubmit": "Siųsti atkūrimo nuorodą",
+    "requestDone": "Jei šiuo el. paštu yra paskyra, atkūrimo nuoroda jau keliauja.",
+    "confirmTitle": "Pasirinkite naują slaptažodį",
+    "newPassword": "Naujas slaptažodis",
+    "confirmSubmit": "Nustatyti slaptažodį",
+    "ok": "Slaptažodis atnaujintas. Dabar galite prisijungti."
+  },
+  "dashboard": {
+    "title": "Paskyra",
+    "balance": "Kvota",
+    "total": "Iš viso",
+    "spent": "Išleista",
+    "reserved": "Rezervuota",
+    "remaining": "Liko",
+    "manageKeys": "Tvarkyti API raktus",
+    "redeemTitle": "Panaudokite papildymo kodą",
+    "redeemPlaceholder": "helexa-topup-…",
+    "redeem": "Panaudoti",
+    "redeemed": "Kodas panaudotas.",
+    "logout": "Atsijungti"
+  },
+  "keys": {
+    "title": "API raktai",
+    "create": "Sukurti raktą",
+    "label": "Etiketė",
+    "limitKind": "Riba",
+    "percent": "% kvotos",
+    "hardcap": "Griežta riba (žetonai)",
+    "value": "Reikšmė",
+    "none": "Raktų dar nėra.",
+    "createdTitle": "Jūsų naujas API raktas",
+    "createdWarn": "Nukopijuokite jį dabar — daugiau jo nebematysite.",
+    "copy": "Kopijuoti",
+    "copied": "Nukopijuota",
+    "archive": "Archyvuoti",
+    "save": "Išsaugoti",
+    "status": "Būsena",
+    "usage": "Panaudota",
+    "useForChat": "Naudoti pokalbiams šiame įrenginyje",
+    "usedForChat": "Įjungta pokalbiams ✓"
+  },
+  "error": {
+    "generic": "Kažkas nepavyko.",
+    "unauthorized": "Prisijunkite dar kartą."
+  }
+}

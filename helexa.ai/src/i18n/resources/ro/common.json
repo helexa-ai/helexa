@@ -55,7 +55,17 @@
     "ru": "Rusă",
     "sr": "Sârbă",
     "tr": "Turcă",
-    "uk": "Ucraineană"
+    "uk": "Ucraineană",
+    "ca": "Catalană",
+    "cs": "Cehă",
+    "ga": "Irlandeză",
+    "hr": "Croată",
+    "hu": "Maghiară",
+    "lt": "Lituaniană",
+    "lv": "Letonă",
+    "mt": "Malteză",
+    "sk": "Slovacă",
+    "sl": "Slovenă"
   },
   "footer": {
     "copyright": "© {{year}} helexa.ai",

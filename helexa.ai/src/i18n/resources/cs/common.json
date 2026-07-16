@@ -1,0 +1,79 @@
+{
+  "app": {
+    "name": "helexa.ai"
+  },
+  "nav": {
+    "home": "Domů",
+    "docs": "Dokumentace",
+    "chat": "Chat",
+    "mission": "Mise",
+    "login": "Přihlásit se",
+    "register": "Registrovat se",
+    "account": "Účet",
+    "logout": "Odhlásit se"
+  },
+  "theme": {
+    "toggle": {
+      "toLight": "Přepnout na světlý režim",
+      "toDark": "Přepnout na tmavý režim"
+    }
+  },
+  "lang": {
+    "am": "amharština",
+    "ar": "arabština",
+    "bg": "bulharština",
+    "ca": "katalánština",
+    "cs": "čeština",
+    "da": "dánština",
+    "de": "němčina",
+    "el": "řečtina",
+    "en": "angličtina",
+    "es": "španělština",
+    "et": "estonština",
+    "fa": "perština",
+    "fi": "finština",
+    "fr": "francouzština",
+    "ga": "irština",
+    "ha": "hauština",
+    "he": "hebrejština",
+    "hr": "chorvatština",
+    "hu": "maďarština",
+    "ig": "igboština",
+    "it": "italština",
+    "ka": "gruzínština",
+    "kk": "kazaština",
+    "lt": "litevština",
+    "lv": "lotyština",
+    "ma": "darija",
+    "mt": "maltština",
+    "nl": "nizozemština",
+    "no": "norština",
+    "om": "oromština",
+    "pl": "polština",
+    "pt": "portugalština",
+    "ro": "rumunština",
+    "ru": "ruština",
+    "sk": "slovenština",
+    "sl": "slovinština",
+    "so": "somálština",
+    "sr": "srbština",
+    "sv": "švédština",
+    "sw": "svahilština",
+    "ti": "tigrinština",
+    "tr": "turečtina",
+    "uk": "ukrajinština",
+    "uz": "uzbečtina",
+    "wo": "wolofština",
+    "yo": "jorubština",
+    "zu": "zuluština"
+  },
+  "footer": {
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Soukromí"
+  },
+  "beta": {
+    "tag": "Veřejná beta",
+    "message": "helexa je v otevřené betě — počítejte s nedodělky. Vaše konverzace zůstávají ve vašem prohlížeči.",
+    "dismiss": "Zavřít"
+  }
+}
