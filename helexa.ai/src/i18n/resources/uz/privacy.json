@@ -1,0 +1,45 @@
+{
+  "title": "Maxfiylik",
+  "updated": "Oxirgi yangilanish: 2026-yil 16-iyul",
+  "intro": "Helexa maʼlumotlaringiz oʻzingizda qoladigan qilib qurilgan. Bu sahifa nima, qayerda va nima uchun saqlanishini toʻliq tavsiflaydi. Oshkor qilinadigan narsa kam boʻlgani uchun u qisqa.",
+
+  "summary": {
+    "title": "Qisqacha mazmuni",
+    "noCookies": "Cookie fayllari yoʻq. Analitika yoʻq. Trekerlar yoʻq. Reklama yoʻq.",
+    "localHistory": "Chat tarixingiz faqat brauzeringizda saqlanadi. U javob yaratilayotgan lahzadan tashqari serverlarimizga hech qachon yuborilmaydi va ularda saqlanmaydi.",
+    "noAnonId": "Anonim tashrif buyuruvchilarning raqamli izi olinmaydi, profili tuzilmaydi va ular identifikatsiya qilinmaydi."
+  },
+
+  "local": {
+    "title": "Brauzeringizda nima saqlanadi",
+    "intro": "Quyidagilarning barchasi qurilmangizda qoladi, faqat mahsulot ishlashi uchun mavjud va brauzeringizda ushbu sayt maʼlumotlarini tozalash orqali istalgan vaqtda oʻchirib tashlanishi mumkin.",
+    "item1": "Chat tarixi, loyihalar va xabar qoralamalari — mahsulotning asosiy vaʼdasi shuki, bular brauzeringizdan hech qachon chiqmaydi.",
+    "item2": "Mavzu va til sozlamalaringiz.",
+    "item3": "Siz yopgan beta-bildirishnoma uchun seans belgisi.",
+    "item4": "Tizimga kirsangiz: seans tokeningiz va — faqat uni oʻzingiz aniq yoqsangiz — ushbu qurilmadan suhbatlashish uchun API kaliti.",
+    "item5": "Bepul foydalanish chegarasini taʼminlaydigan anonim xabarlar hisoblagichi."
+  },
+
+  "account": {
+    "title": "Hisob yaratsangiz",
+    "intro": "Hisoblar profil tuzish uchun emas, hisobga olish va suiisteʼmollikning oldini olish uchun mavjud. Server tomonida biz quyidagilarni saqlaymiz:",
+    "item1": "Elektron pochta manzilingiz (kirish, tasdiqlash va parolni tiklash uchun) va tuzlangan parol xeshi — parolning oʻzi hech qachon saqlanmaydi.",
+    "item2": "Foydalanishni hisobga olish: har bir soʻrovdagi tokenlar soni — byudjetlarga rioya qilinishini taʼminlash va soʻrovlaringizga xizmat koʻrsatadigan operatorlarga haq toʻlash uchun zarur. Soʻrov va javob mazmuni saqlanmaydi.",
+    "item3": "Faqat roʻyxatdan oʻtish paytida — bepul tarifdan bir nechta hisob bilan suiisteʼmol qilishni aniqlash uchun ishlatiladigan bir martalik brauzer signali (raqamli iz xeshi). U kuzatuv uchun ishlatilmaydi, anonim koʻrish paytida hech qachon hisoblanmaydi va roʻyxatdan oʻtgandan keyin hech qanday rol oʻynamaydi."
+  },
+
+  "infra": {
+    "title": "Infratuzilma",
+    "body": "Inferens Yevropa qonunchiligiga boʻysunadigan mustaqil Yevropa operatorlarining uskunalarida bajariladi. Ochiq veb-sayt oldida Cloudflare turadi; u oʻzining qatʼiy zarur xavfsizlik cookie faylini (masalan, botlardan himoya uchun) oʻrnatishi mumkin — biz uni oʻqimaymiz ham, ishlatmaymiz ham."
+  },
+
+  "rights": {
+    "title": "Huquqlaringiz",
+    "body": "GDPR boʻyicha siz istalgan vaqtda hisob maʼlumotlaringizga kirish, ularni tuzatish yoki oʻchirishni soʻrashingiz, shuningdek nazorat organiga shikoyat qilishingiz mumkin. Brauzer maʼlumotlarini oʻchirish chat tarixingizni yoʻq qiladi; hisobingizni oʻchirish server tomonida saqlaydigan barcha narsani yoʻq qiladi."
+  },
+
+  "contact": {
+    "title": "Aloqa",
+    "body": "Maxfiylikka oid savollar va soʻrovlar: {{email}}"
+  }
+}

@@ -58,7 +58,8 @@
     "uk": "Ουκρανικά"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Απόρρητο"
   },
   "beta": {
     "tag": "Public beta",

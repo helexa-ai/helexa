@@ -58,7 +58,8 @@
     "uk": "Украин тілі"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Құпиялылық"
   },
   "beta": {
     "tag": "Public beta",

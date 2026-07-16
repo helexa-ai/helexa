@@ -10,7 +10,6 @@ import {
   listConversations,
   listProjects,
 } from "../data/repositories";
-import { getFingerprint } from "../lib/fingerprint";
 import { useChat } from "../lib/useChat";
 import { useAuth } from "../auth/context";
 
@@ -33,11 +32,6 @@ export default function Chat() {
   const authed = status === "authed" && !!accountId;
   const owner = authed ? accountId! : "anon";
   const model = authed ? AUTH_MODEL : ANON_MODEL;
-
-  // Namespace anonymous data to the fingerprint (best-effort) at mount.
-  useEffect(() => {
-    void getFingerprint();
-  }, []);
 
   // The user's API key for authenticated chat — stored client-side only,
   // captured from the create-key modal ("use for chat on this device").

@@ -58,7 +58,8 @@
     "uk": "Ukrain tili"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Maxfiylik"
   },
   "beta": {
     "tag": "Public beta",

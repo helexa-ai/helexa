@@ -1,0 +1,45 @@
+{
+  "title": "Privacy",
+  "updated": "Ultimo aggiornamento: 16 luglio 2026",
+  "intro": "Helexa è costruita in modo che i tuoi dati restino con te. Questa pagina descrive, in modo completo, che cosa viene memorizzato, dove e perché. È breve perché c'è poco da divulgare.",
+
+  "summary": {
+    "title": "La versione breve",
+    "noCookies": "Nessun cookie. Nessuna analisi. Nessun tracciante. Nessuna pubblicità.",
+    "localHistory": "La cronologia delle tue chat è memorizzata soltanto nel tuo browser. Non viene mai inviata ai nostri server, né su di essi conservata, oltre il momento in cui viene generata una risposta.",
+    "noAnonId": "I visitatori anonimi non vengono sottoposti a fingerprinting, profilati o identificati."
+  },
+
+  "local": {
+    "title": "Che cosa viene memorizzato nel tuo browser",
+    "intro": "Tutto quanto segue resta sul tuo dispositivo, esiste soltanto per far funzionare il prodotto e può essere rimosso in qualsiasi momento cancellando i dati di questo sito nel tuo browser.",
+    "item1": "Cronologia delle chat, progetti e bozze dei messaggi — la promessa centrale del prodotto è che non lascino mai il tuo browser.",
+    "item2": "Le tue preferenze di tema e di lingua.",
+    "item3": "Un contrassegno di sessione per l'avviso di beta che hai chiuso.",
+    "item4": "Se accedi: il tuo token di sessione e — solo se lo abiliti esplicitamente — una chiave API per chattare da questo dispositivo.",
+    "item5": "Un contatore anonimo dei messaggi che applica il limite di utilizzo gratuito."
+  },
+
+  "account": {
+    "title": "Se crei un account",
+    "intro": "Gli account esistono per la misurazione dell'utilizzo e la prevenzione degli abusi, non per la profilazione. Lato server memorizziamo:",
+    "item1": "Il tuo indirizzo e-mail (per l'accesso, la verifica e il ripristino della password) e un hash della password con salt — mai la password in sé.",
+    "item2": "Misurazione dell'utilizzo: conteggi dei token per richiesta, necessari per applicare i budget e compensare gli operatori che servono le tue richieste. Il contenuto delle richieste e delle risposte non viene conservato.",
+    "item3": "Soltanto al momento della registrazione, un segnale una tantum del browser (un hash di fingerprint) usato per rilevare l'abuso del livello gratuito tramite account multipli. Non viene usato per il tracciamento, non viene mai calcolato durante la navigazione anonima e non svolge alcun ruolo ulteriore dopo la registrazione."
+  },
+
+  "infra": {
+    "title": "Infrastruttura",
+    "body": "L'inferenza viene eseguita sull'hardware di operatori europei indipendenti, sotto il diritto europeo. Il sito web pubblico è protetto da Cloudflare, che può impostare un proprio cookie di sicurezza strettamente necessario (ad es. mitigazione dei bot) che noi non leggiamo né utilizziamo."
+  },
+
+  "rights": {
+    "title": "I tuoi diritti",
+    "body": "Ai sensi del GDPR puoi richiedere in qualsiasi momento l'accesso, la rettifica o la cancellazione dei dati del tuo account, e puoi presentare un reclamo alla tua autorità di controllo. Cancellare i dati del browser rimuove la cronologia delle chat; eliminare il tuo account rimuove tutto ciò che conserviamo lato server."
+  },
+
+  "contact": {
+    "title": "Contatti",
+    "body": "Domande e richieste sulla privacy: {{email}}"
+  }
+}

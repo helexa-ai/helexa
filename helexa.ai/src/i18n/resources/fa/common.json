@@ -58,7 +58,8 @@
     "zu": "زولو"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "حریم خصوصی"
   },
   "beta": {
     "tag": "Public beta",

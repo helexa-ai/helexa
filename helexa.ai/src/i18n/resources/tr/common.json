@@ -58,7 +58,8 @@
     "zu": "Zuluca"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Gizlilik"
   },
   "beta": {
     "tag": "Public beta",

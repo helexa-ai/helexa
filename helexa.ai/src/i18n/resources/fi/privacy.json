@@ -1,0 +1,45 @@
+{
+  "title": "Tietosuoja",
+  "updated": "Viimeksi päivitetty: 16. heinäkuuta 2026",
+  "intro": "Helexa on rakennettu niin, että tietosi pysyvät sinulla. Tämä sivu kuvaa kattavasti, mitä tallennetaan minne ja miksi. Sivu on lyhyt, koska kerrottavaa on vähän.",
+
+  "summary": {
+    "title": "Lyhyt versio",
+    "noCookies": "Ei evästeitä. Ei analytiikkaa. Ei seuraimia. Ei mainontaa.",
+    "localHistory": "Keskusteluhistoriasi tallennetaan vain selaimeesi. Sitä ei koskaan lähetetä palvelimillemme eikä tallenneta niille vastauksen tuottamishetkeä pidemmäksi ajaksi.",
+    "noAnonId": "Anonyymeistä kävijöistä ei oteta selainsormenjälkeä, heitä ei profiloida eikä tunnisteta."
+  },
+
+  "local": {
+    "title": "Mitä selaimeesi tallennetaan",
+    "intro": "Kaikki alla mainittu pysyy laitteellasi, on olemassa vain tuotteen toimintaa varten ja on poistettavissa milloin tahansa tyhjentämällä tämän sivuston tiedot selaimestasi.",
+    "item1": "Keskusteluhistoria, projektit ja viestiluonnokset — tuotteen keskeinen lupaus on, että nämä eivät koskaan poistu selaimestasi.",
+    "item2": "Teema- ja kieliasetuksesi.",
+    "item3": "Istuntomerkintä sulkemastasi beta-ilmoituksesta.",
+    "item4": "Jos kirjaudut sisään: istuntotunnisteesi ja — vain jos otat sen nimenomaisesti käyttöön — API-avain keskustelua varten tältä laitteelta.",
+    "item5": "Anonyymi viestilaskuri, joka valvoo maksuttoman käytön rajaa."
+  },
+
+  "account": {
+    "title": "Jos luot tilin",
+    "intro": "Tilit ovat olemassa käytön mittaamista ja väärinkäytön estämistä varten, eivät profilointia varten. Palvelinpuolella tallennamme:",
+    "item1": "Sähköpostiosoitteesi (kirjautumista, vahvistusta ja salasanan palautusta varten) ja suolatun salasanatiivisteen — emme koskaan itse salasanaa.",
+    "item2": "Käytön mittaus: tokenmäärät pyyntöä kohden, joita tarvitaan budjettien valvomiseen ja pyyntöjäsi palvelevien operaattoreiden korvaamiseen. Kehotteiden ja vastausten sisältöä ei säilytetä.",
+    "item3": "Vain rekisteröitymisen yhteydessä kertaluonteinen selainsignaali (sormenjälkitiiviste), jota käytetään maksuttoman tason monitiliväärinkäytön havaitsemiseen. Sitä ei käytetä seurantaan, sitä ei koskaan lasketa anonyymin selaamisen aikana, eikä sillä ole mitään roolia rekisteröitymisen jälkeen."
+  },
+
+  "infra": {
+    "title": "Infrastruktuuri",
+    "body": "Päättely ajetaan riippumattomien eurooppalaisten operaattoreiden laitteistolla eurooppalaisen lainsäädännön alaisuudessa. Julkisen verkkosivuston edessä on Cloudflare, joka voi asettaa oman, ehdottoman välttämättömän turvallisuusevästeen (esim. bottien torjuntaan), jota emme lue emmekä käytä."
+  },
+
+  "rights": {
+    "title": "Oikeutesi",
+    "body": "GDPR:n nojalla voit milloin tahansa pyytää pääsyä tilitietoihisi sekä niiden oikaisua tai poistamista, ja voit tehdä valituksen valvontaviranomaisellesi. Selaintietojen poistaminen poistaa keskusteluhistoriasi; tilin poistaminen poistaa kaiken, mitä säilytämme palvelinpuolella."
+  },
+
+  "contact": {
+    "title": "Yhteydenotto",
+    "body": "Tietosuojakysymykset ja -pyynnöt: {{email}}"
+  }
+}

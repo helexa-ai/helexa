@@ -1,0 +1,45 @@
+{
+  "title": "Privacidad",
+  "updated": "Última actualización: 16 de julio de 2026",
+  "intro": "Helexa está construida para que tus datos permanezcan contigo. Esta página describe, de forma completa, qué se almacena, dónde y por qué. Es breve porque hay poco que revelar.",
+
+  "summary": {
+    "title": "La versión corta",
+    "noCookies": "Sin cookies. Sin analítica. Sin rastreadores. Sin publicidad.",
+    "localHistory": "Tu historial de chat se almacena únicamente en tu navegador. Nunca se envía a nuestros servidores ni se almacena en ellos más allá del momento de generar una respuesta.",
+    "noAnonId": "Los visitantes anónimos no son identificados, perfilados ni sometidos a huella digital."
+  },
+
+  "local": {
+    "title": "Qué se almacena en tu navegador",
+    "intro": "Todo lo que sigue permanece en tu dispositivo, existe únicamente para que el producto funcione y puede eliminarse en cualquier momento borrando los datos de este sitio en tu navegador.",
+    "item1": "Historial de chat, proyectos y borradores de mensajes: la promesa central del producto es que nunca salen de tu navegador.",
+    "item2": "Tus preferencias de tema e idioma.",
+    "item3": "Un marcador de sesión para el aviso de beta que descartaste.",
+    "item4": "Si inicias sesión: tu token de sesión y — solo si lo activas explícitamente — una clave de API para chatear desde este dispositivo.",
+    "item5": "Un contador anónimo de mensajes que aplica el límite de uso gratuito."
+  },
+
+  "account": {
+    "title": "Si creas una cuenta",
+    "intro": "Las cuentas existen para la medición de uso y la prevención de abusos, no para la elaboración de perfiles. En el servidor almacenamos:",
+    "item1": "Tu dirección de correo electrónico (para el inicio de sesión, la verificación y el restablecimiento de contraseña) y un hash de contraseña con sal — nunca la contraseña en sí.",
+    "item2": "Medición de uso: recuentos de tokens por solicitud, necesarios para aplicar los presupuestos y compensar a los operadores que atienden tus solicitudes. El contenido de las peticiones y respuestas no se conserva.",
+    "item3": "Solo en el momento del registro, una señal única del navegador (un hash de huella digital) utilizada para detectar el abuso del nivel gratuito mediante múltiples cuentas. No se usa para el seguimiento, nunca se calcula durante la navegación anónima y no desempeña ningún papel adicional después del registro."
+  },
+
+  "infra": {
+    "title": "Infraestructura",
+    "body": "La inferencia se ejecuta en hardware de operadores europeos independientes, bajo la legislación europea. El sitio web público está protegido por Cloudflare, que puede establecer una cookie de seguridad estrictamente necesaria propia (p. ej., mitigación de bots) que nosotros ni leemos ni utilizamos."
+  },
+
+  "rights": {
+    "title": "Tus derechos",
+    "body": "En virtud del RGPD puedes solicitar en cualquier momento el acceso, la rectificación o la supresión de los datos de tu cuenta, y puedes presentar una reclamación ante tu autoridad de control. Borrar los datos de tu navegador elimina tu historial de chat; eliminar tu cuenta elimina todo lo que conservamos en el servidor."
+  },
+
+  "contact": {
+    "title": "Contacto",
+    "body": "Preguntas y solicitudes sobre privacidad: {{email}}"
+  }
+}

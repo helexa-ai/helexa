@@ -1,7 +1,15 @@
 // Browser fingerprint (FingerprintJS OSS) — best-effort, never auth.
-// Two uses: namespacing anonymous local data, and a soft client identifier
-// the router can use to throttle the anonymous public path. Cached in the
-// Dexie `meta` store so it's computed once.
+//
+// Computed ONLY at registration, where it is sent to the upstream as a
+// multi-account abuse signal. Anonymous visitors are never fingerprinted:
+// the chat page does not call this, anonymous local data is namespaced
+// under the literal "anon" owner, and the anonymous send path carries no
+// client identifier. Keeping the probe off the anonymous path is what
+// lets the privacy page say "no tracking" without an asterisk (ePrivacy
+// Art 5(3) treats fingerprinting like cookies; registration-time fraud
+// prevention is the defensible narrow use).
+//
+// Cached in the Dexie `meta` store so it's computed at most once.
 
 import FingerprintJS from "@fingerprintjs/fingerprintjs";
 import { db } from "../data/db";
@@ -21,7 +29,7 @@ export async function getFingerprint(): Promise<string> {
       id = result.visitorId;
     } catch {
       // Fingerprinting is best-effort; fall back to a random local id so
-      // anonymous data still has a stable namespace this session.
+      // registration still carries a stable per-browser signal.
       id = `local-${crypto.randomUUID()}`;
     }
     await db.meta.put({ key: META_KEY, value: id });

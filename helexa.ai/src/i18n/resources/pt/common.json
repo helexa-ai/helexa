@@ -58,7 +58,8 @@
     "uk": "Ucraniano"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Privacidade"
   },
   "beta": {
     "tag": "Public beta",

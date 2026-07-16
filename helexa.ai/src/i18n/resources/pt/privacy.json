@@ -1,0 +1,45 @@
+{
+  "title": "Privacidade",
+  "updated": "Última atualização: 16 de julho de 2026",
+  "intro": "A Helexa foi construída para que os seus dados fiquem consigo. Esta página descreve, de forma completa, o que é armazenado, onde e porquê. É curta porque há pouco a divulgar.",
+
+  "summary": {
+    "title": "A versão curta",
+    "noCookies": "Sem cookies. Sem análises. Sem rastreadores. Sem publicidade.",
+    "localHistory": "O seu histórico de conversas é armazenado apenas no seu navegador. Nunca é enviado para os nossos servidores nem neles armazenado para além do momento de gerar uma resposta.",
+    "noAnonId": "Os visitantes anónimos não são identificados, perfilados nem sujeitos a impressão digital."
+  },
+
+  "local": {
+    "title": "O que é armazenado no seu navegador",
+    "intro": "Tudo o que se segue permanece no seu dispositivo, existe apenas para que o produto funcione e pode ser removido a qualquer momento limpando os dados deste site no seu navegador.",
+    "item1": "Histórico de conversas, projetos e rascunhos de mensagens — a promessa central do produto é que estes nunca saem do seu navegador.",
+    "item2": "As suas preferências de tema e de idioma.",
+    "item3": "Um marcador de sessão para o aviso de beta que dispensou.",
+    "item4": "Se iniciar sessão: o seu token de sessão e — apenas se o ativar explicitamente — uma chave de API para conversar a partir deste dispositivo.",
+    "item5": "Um contador anónimo de mensagens que aplica o limite de utilização gratuita."
+  },
+
+  "account": {
+    "title": "Se criar uma conta",
+    "intro": "As contas existem para medição de utilização e prevenção de abusos, não para definição de perfis. Do lado do servidor armazenamos:",
+    "item1": "O seu endereço de e-mail (para início de sessão, verificação e reposição da palavra-passe) e um hash da palavra-passe com sal — nunca a palavra-passe em si.",
+    "item2": "Medição de utilização: contagens de tokens por pedido, necessárias para aplicar os orçamentos e compensar os operadores que servem os seus pedidos. O conteúdo dos pedidos e das respostas não é conservado.",
+    "item3": "Apenas no momento do registo, um sinal único do navegador (um hash de impressão digital) usado para detetar o abuso do nível gratuito através de múltiplas contas. Não é usado para rastreamento, nunca é calculado durante a navegação anónima e não desempenha qualquer papel adicional após o registo."
+  },
+
+  "infra": {
+    "title": "Infraestrutura",
+    "body": "A inferência é executada em hardware de operadores europeus independentes, ao abrigo da legislação europeia. O site público está protegido pela Cloudflare, que pode definir um cookie de segurança estritamente necessário da sua própria autoria (por exemplo, mitigação de bots) que nós não lemos nem utilizamos."
+  },
+
+  "rights": {
+    "title": "Os seus direitos",
+    "body": "Ao abrigo do RGPD pode, a qualquer momento, solicitar o acesso, a retificação ou o apagamento dos dados da sua conta, e pode apresentar uma reclamação junto da sua autoridade de controlo. Limpar os dados do seu navegador remove o seu histórico de conversas; eliminar a sua conta remove tudo o que conservamos do lado do servidor."
+  },
+
+  "contact": {
+    "title": "Contacto",
+    "body": "Questões e pedidos sobre privacidade: {{email}}"
+  }
+}

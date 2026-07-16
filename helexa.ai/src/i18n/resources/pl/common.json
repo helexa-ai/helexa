@@ -58,7 +58,8 @@
     "zu": "zulu"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Prywatność"
   },
   "beta": {
     "tag": "Public beta",

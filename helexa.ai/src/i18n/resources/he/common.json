@@ -58,7 +58,8 @@
     "zu": "זולו"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "פרטיות"
   },
   "beta": {
     "tag": "Public beta",

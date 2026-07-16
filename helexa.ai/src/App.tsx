@@ -6,6 +6,7 @@ import Header from "./components/Header";
 import Footer from "./components/Footer";
 import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
+import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -30,6 +31,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Chat />} />
               <Route path="/mission" element={<Mission />} />
+              <Route path="/privacy" element={<Privacy />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/verify" element={<VerifyEmail />} />

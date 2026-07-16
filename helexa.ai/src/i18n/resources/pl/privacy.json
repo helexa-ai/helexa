@@ -1,0 +1,45 @@
+{
+  "title": "Prywatność",
+  "updated": "Ostatnia aktualizacja: 16 lipca 2026",
+  "intro": "Helexa jest zbudowana tak, aby Twoje dane pozostawały u Ciebie. Ta strona opisuje w całości, co jest przechowywane, gdzie i dlaczego. Jest krótka, bo niewiele jest do ujawnienia.",
+
+  "summary": {
+    "title": "W skrócie",
+    "noCookies": "Żadnych plików cookie. Żadnej analityki. Żadnych trackerów. Żadnych reklam.",
+    "localHistory": "Historia Twoich rozmów jest przechowywana wyłącznie w Twojej przeglądarce. Nigdy nie jest wysyłana na nasze serwery ani na nich przechowywana — poza chwilą potrzebną do wygenerowania odpowiedzi.",
+    "noAnonId": "Anonimowi odwiedzający nie są poddawani fingerprintingowi, profilowaniu ani identyfikacji."
+  },
+
+  "local": {
+    "title": "Co jest przechowywane w Twojej przeglądarce",
+    "intro": "Wszystko poniżej pozostaje na Twoim urządzeniu, istnieje wyłącznie po to, aby produkt działał, i można to w każdej chwili usunąć, czyszcząc dane tej witryny w przeglądarce.",
+    "item1": "Historia rozmów, projekty i wersje robocze wiadomości — podstawową obietnicą produktu jest to, że nigdy nie opuszczają one Twojej przeglądarki.",
+    "item2": "Twoje preferencje motywu i języka.",
+    "item3": "Znacznik sesji dla zamkniętego przez Ciebie powiadomienia o wersji beta.",
+    "item4": "Jeśli się zalogujesz: token sesji oraz — tylko jeśli wyraźnie to włączysz — klucz API do rozmów z tego urządzenia.",
+    "item5": "Anonimowy licznik wiadomości egzekwujący limit bezpłatnego użycia."
+  },
+
+  "account": {
+    "title": "Jeśli utworzysz konto",
+    "intro": "Konta służą do rozliczania zużycia i zapobiegania nadużyciom, nie do profilowania. Po stronie serwera przechowujemy:",
+    "item1": "Twój adres e-mail (do logowania, weryfikacji i resetowania hasła) oraz solony skrót hasła — nigdy samo hasło.",
+    "item2": "Pomiar zużycia: liczbę tokenów na żądanie, potrzebną do egzekwowania budżetów i wynagradzania operatorów obsługujących Twoje żądania. Treść zapytań i odpowiedzi nie jest zachowywana.",
+    "item3": "Wyłącznie przy rejestracji — jednorazowy sygnał przeglądarki (skrót odcisku), używany do wykrywania nadużywania darmowego planu przez wiele kont. Nie służy do śledzenia, nigdy nie jest obliczany podczas anonimowego przeglądania i po rejestracji nie odgrywa żadnej dalszej roli."
+  },
+
+  "infra": {
+    "title": "Infrastruktura",
+    "body": "Inferencja działa na sprzęcie niezależnych europejskich operatorów, zgodnie z prawem europejskim. Publiczna witryna jest obsługiwana przez Cloudflare, który może ustawić własny, ściśle niezbędny plik cookie bezpieczeństwa (np. do ochrony przed botami), którego nie odczytujemy ani nie wykorzystujemy."
+  },
+
+  "rights": {
+    "title": "Twoje prawa",
+    "body": "Na mocy RODO możesz w każdej chwili zażądać dostępu do danych swojego konta, ich sprostowania lub usunięcia, a także wnieść skargę do organu nadzorczego. Usunięcie danych przeglądarki usuwa historię rozmów; usunięcie konta usuwa wszystko, co przechowujemy po stronie serwera."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Pytania i wnioski dotyczące prywatności: {{email}}"
+  }
+}

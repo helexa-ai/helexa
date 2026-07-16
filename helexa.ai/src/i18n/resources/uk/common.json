@@ -58,7 +58,8 @@
     "zu": "зулу"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Конфіденційність"
   },
   "beta": {
     "tag": "Public beta",

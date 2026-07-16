@@ -1,0 +1,45 @@
+{
+  "title": "Integritet",
+  "updated": "Senast uppdaterad: 16 juli 2026",
+  "intro": "Helexa är byggt så att dina data stannar hos dig. Den här sidan beskriver fullständigt vad som lagras var och varför. Den är kort eftersom det finns lite att redovisa.",
+
+  "summary": {
+    "title": "Den korta versionen",
+    "noCookies": "Inga kakor. Ingen analys. Inga spårare. Ingen reklam.",
+    "localHistory": "Din chatthistorik lagras endast i din webbläsare. Den skickas aldrig till, eller lagras på, våra servrar utöver ögonblicket då ett svar genereras.",
+    "noAnonId": "Anonyma besökare fingeravtrycksläses, profileras eller identifieras inte."
+  },
+
+  "local": {
+    "title": "Vad som lagras i din webbläsare",
+    "intro": "Allt nedan stannar på din enhet, finns enbart för att produkten ska fungera, och kan när som helst tas bort genom att rensa webbplatsens data i din webbläsare.",
+    "item1": "Chatthistorik, projekt och meddelandeutkast — produktens kärnlöfte är att dessa aldrig lämnar din webbläsare.",
+    "item2": "Dina tema- och språkinställningar.",
+    "item3": "En sessionsmarkering för betameddelandet du har avfärdat.",
+    "item4": "Om du loggar in: din sessionstoken, och — endast om du uttryckligen aktiverar det — en API-nyckel för att chatta från den här enheten.",
+    "item5": "En anonym meddelanderäknare som upprätthåller gränsen för fri användning."
+  },
+
+  "account": {
+    "title": "Om du skapar ett konto",
+    "intro": "Konton finns för mätning och missbruksskydd, inte för profilering. På serversidan lagrar vi:",
+    "item1": "Din e-postadress (för inloggning, verifiering och lösenordsåterställning) och en saltad lösenordshash — aldrig själva lösenordet.",
+    "item2": "Användningsmätning: tokenantal per förfrågan, vilket behövs för att upprätthålla budgetar och ersätta operatörerna som betjänar dina förfrågningar. Innehållet i frågor och svar sparas inte.",
+    "item3": "Endast vid registrering, en engångssignal från webbläsaren (en fingeravtryckshash) som används för att upptäcka missbruk av gratisnivån via flera konton. Den används inte för spårning, beräknas aldrig vid anonym surfning och spelar ingen vidare roll efter registreringen."
+  },
+
+  "infra": {
+    "title": "Infrastruktur",
+    "body": "Inferens körs på oberoende europeiska operatörers hårdvara under europeisk lag. Den publika webbplatsen ligger bakom Cloudflare, som kan sätta en strikt nödvändig säkerhetskaka av eget slag (t.ex. botskydd) som vi varken läser eller använder."
+  },
+
+  "rights": {
+    "title": "Dina rättigheter",
+    "body": "Enligt GDPR kan du när som helst begära tillgång till, rättelse av eller radering av dina kontouppgifter, och du kan lämna in ett klagomål till din tillsynsmyndighet. Att radera dina webbläsardata tar bort din chatthistorik; att radera ditt konto tar bort allt vi lagrar på serversidan."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Integritetsfrågor och förfrågningar: {{email}}"
+  }
+}

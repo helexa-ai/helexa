@@ -1,0 +1,45 @@
+{
+  "title": "Privaatsus",
+  "updated": "Viimati uuendatud: 16. juuli 2026",
+  "intro": "Helexa on ehitatud nii, et sinu andmed jäävad sinule. See leht kirjeldab täielikult, mida kus hoitakse ja miks. Leht on lühike, sest avaldada on vähe.",
+
+  "summary": {
+    "title": "Lühiversioon",
+    "noCookies": "Ei mingeid küpsiseid. Ei mingit analüütikat. Ei mingeid jälgijaid. Ei mingit reklaami.",
+    "localHistory": "Sinu vestluste ajalugu hoitakse ainult sinu brauseris. Seda ei saadeta kunagi meie serveritesse ega hoita seal kauem kui vastuse genereerimise hetkeks.",
+    "noAnonId": "Anonüümsetelt külastajatelt ei võeta brauserisõrmejälge, neid ei profileerita ega tuvastata."
+  },
+
+  "local": {
+    "title": "Mida hoitakse sinu brauseris",
+    "intro": "Kõik allpool loetletu jääb sinu seadmesse, eksisteerib üksnes toote toimimiseks ja on igal ajal eemaldatav, kustutades selle saidi andmed oma brauseris.",
+    "item1": "Vestluste ajalugu, projektid ja sõnumimustandid — toote põhilubadus on, et need ei lahku kunagi sinu brauserist.",
+    "item2": "Sinu teema- ja keele-eelistused.",
+    "item3": "Seansimärgis beetateate kohta, mille oled sulgenud.",
+    "item4": "Kui logid sisse: sinu seansitõend ja — ainult siis, kui selle sõnaselgelt lubad — API-võti sellest seadmest vestlemiseks.",
+    "item5": "Anonüümne sõnumiloendur, mis jõustab tasuta kasutuse piiri."
+  },
+
+  "account": {
+    "title": "Kui lood konto",
+    "intro": "Kontod on olemas mõõtmiseks ja kuritarvituste vältimiseks, mitte profileerimiseks. Serveripoolel hoiame:",
+    "item1": "Sinu e-posti aadressi (sisselogimiseks, kinnitamiseks ja parooli lähtestamiseks) ja soolaga paroolräsi — mitte kunagi parooli ennast.",
+    "item2": "Kasutuse mõõtmine: tokenite arv päringu kohta, mida on vaja eelarvete jõustamiseks ja sinu päringuid teenindavate operaatorite tasustamiseks. Päringute ja vastuste sisu ei säilitata.",
+    "item3": "Ainult registreerumisel ühekordne brauserisignaal (sõrmejäljeräsi), mida kasutatakse tasuta taseme mitme kontoga kuritarvitamise tuvastamiseks. Seda ei kasutata jälgimiseks, seda ei arvutata kunagi anonüümsel sirvimisel ja pärast registreerumist ei ole sellel mingit edasist rolli."
+  },
+
+  "infra": {
+    "title": "Taristu",
+    "body": "Järeldusarvutused töötavad sõltumatute Euroopa operaatorite riistvaral Euroopa õiguse alusel. Avaliku veebisaidi ees on Cloudflare, mis võib seada omaenda rangelt vajaliku turvaküpsise (nt robotitõrjeks), mida me ei loe ega kasuta."
+  },
+
+  "rights": {
+    "title": "Sinu õigused",
+    "body": "GDPR-i alusel võid igal ajal taotleda juurdepääsu oma kontoandmetele, nende parandamist või kustutamist, samuti võid esitada kaebuse oma järelevalveasutusele. Brauseriandmete kustutamine eemaldab sinu vestluste ajaloo; konto kustutamine eemaldab kõik, mida me serveripoolel hoiame."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Privaatsusküsimused ja -taotlused: {{email}}"
+  }
+}

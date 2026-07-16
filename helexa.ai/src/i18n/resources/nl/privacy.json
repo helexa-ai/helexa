@@ -1,0 +1,45 @@
+{
+  "title": "Privacy",
+  "updated": "Laatst bijgewerkt: 16 juli 2026",
+  "intro": "Helexa is zo gebouwd dat uw gegevens bij u blijven. Deze pagina beschrijft volledig wat waar wordt opgeslagen en waarom. Ze is kort, omdat er weinig te melden valt.",
+
+  "summary": {
+    "title": "De korte versie",
+    "noCookies": "Geen cookies. Geen analytics. Geen trackers. Geen advertenties.",
+    "localHistory": "Uw chatgeschiedenis wordt alleen in uw browser opgeslagen. Ze wordt nooit naar onze servers gestuurd of daar bewaard, behalve op het moment dat een antwoord wordt gegenereerd.",
+    "noAnonId": "Anonieme bezoekers worden niet gefingerprint, geprofileerd of geïdentificeerd."
+  },
+
+  "local": {
+    "title": "Wat er in uw browser wordt opgeslagen",
+    "intro": "Alles hieronder blijft op uw apparaat, bestaat uitsluitend om het product te laten werken en kan op elk moment worden verwijderd door de gegevens van deze site in uw browser te wissen.",
+    "item1": "Chatgeschiedenis, projecten en conceptberichten — de kernbelofte van het product is dat deze uw browser nooit verlaten.",
+    "item2": "Uw thema- en taalvoorkeuren.",
+    "item3": "Een sessiemarkering voor de bètamelding die u hebt gesloten.",
+    "item4": "Als u zich aanmeldt: uw sessietoken en — alleen als u dit uitdrukkelijk inschakelt — een API-sleutel om vanaf dit apparaat te chatten.",
+    "item5": "Een anonieme berichtenteller die de limiet voor gratis gebruik handhaaft."
+  },
+
+  "account": {
+    "title": "Als u een account aanmaakt",
+    "intro": "Accounts bestaan voor het meten van gebruik en het voorkomen van misbruik, niet voor profilering. Aan de serverkant slaan we op:",
+    "item1": "Uw e-mailadres (voor aanmelding, verificatie en het opnieuw instellen van uw wachtwoord) en een gezouten wachtwoordhash — nooit het wachtwoord zelf.",
+    "item2": "Gebruiksmeting: het aantal tokens per verzoek, nodig om budgetten te handhaven en de operators te vergoeden die uw verzoeken verwerken. De inhoud van prompts en antwoorden wordt niet bewaard.",
+    "item3": "Alleen bij registratie: een eenmalig browsersignaal (een fingerprint-hash) om misbruik van het gratis aanbod via meerdere accounts te detecteren. Het wordt niet gebruikt voor tracking, wordt nooit berekend bij anoniem browsen en speelt na registratie geen enkele rol meer."
+  },
+
+  "infra": {
+    "title": "Infrastructuur",
+    "body": "Inferentie draait op hardware van onafhankelijke Europese operators, onder Europees recht. De publieke website staat achter Cloudflare, dat een eigen strikt noodzakelijke beveiligingscookie kan plaatsen (bijv. voor botbestrijding), die wij lezen noch gebruiken."
+  },
+
+  "rights": {
+    "title": "Uw rechten",
+    "body": "Op grond van de AVG kunt u op elk moment inzage in, correctie van of verwijdering van uw accountgegevens vragen, en kunt u een klacht indienen bij uw toezichthoudende autoriteit. Het wissen van uw browsergegevens verwijdert uw chatgeschiedenis; het verwijderen van uw account verwijdert alles wat wij aan de serverkant bewaren."
+  },
+
+  "contact": {
+    "title": "Contact",
+    "body": "Privacyvragen en -verzoeken: {{email}}"
+  }
+}

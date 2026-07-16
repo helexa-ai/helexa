@@ -1,0 +1,45 @@
+{
+  "title": "Confidentialité",
+  "updated": "Dernière mise à jour : 16 juillet 2026",
+  "intro": "Helexa est conçu pour que vos données restent chez vous. Cette page décrit, de manière exhaustive, ce qui est stocké, où et pourquoi. Elle est courte, car il y a peu à divulguer.",
+
+  "summary": {
+    "title": "En bref",
+    "noCookies": "Pas de cookies. Pas de mesure d'audience. Pas de traceurs. Pas de publicité.",
+    "localHistory": "Votre historique de conversation n'est stocké que dans votre navigateur. Il n'est jamais envoyé à nos serveurs ni conservé sur ceux-ci au-delà du moment où une réponse est générée.",
+    "noAnonId": "Les visiteurs anonymes ne font l'objet d'aucune prise d'empreinte numérique, d'aucun profilage ni d'aucune identification."
+  },
+
+  "local": {
+    "title": "Ce qui est stocké dans votre navigateur",
+    "intro": "Tout ce qui suit reste sur votre appareil, existe uniquement pour faire fonctionner le produit et peut être supprimé à tout moment en effaçant les données de ce site dans votre navigateur.",
+    "item1": "L'historique de conversation, les projets et les brouillons de messages — la promesse centrale du produit est qu'ils ne quittent jamais votre navigateur.",
+    "item2": "Vos préférences de thème et de langue.",
+    "item3": "Un marqueur de session pour l'avis de bêta que vous avez fermé.",
+    "item4": "Si vous vous connectez : votre jeton de session et — uniquement si vous l'activez explicitement — une clé API pour converser depuis cet appareil.",
+    "item5": "Un compteur de messages anonyme qui applique le plafond d'utilisation gratuite."
+  },
+
+  "account": {
+    "title": "Si vous créez un compte",
+    "intro": "Les comptes existent pour la mesure de l'utilisation et la prévention des abus, pas pour le profilage. Côté serveur, nous stockons :",
+    "item1": "Votre adresse e-mail (pour la connexion, la vérification et la réinitialisation du mot de passe) et un hachage salé du mot de passe — jamais le mot de passe lui-même.",
+    "item2": "La mesure de l'utilisation : le nombre de jetons par requête, nécessaire pour appliquer les budgets et rémunérer les opérateurs qui servent vos requêtes. Le contenu des invites et des réponses n'est pas conservé.",
+    "item3": "Au moment de l'inscription uniquement, un signal unique du navigateur (un hachage d'empreinte) servant à détecter l'abus de l'offre gratuite par comptes multiples. Il n'est pas utilisé à des fins de suivi, n'est jamais calculé lors de la navigation anonyme et ne joue plus aucun rôle après l'inscription."
+  },
+
+  "infra": {
+    "title": "Infrastructure",
+    "body": "L'inférence s'exécute sur le matériel d'opérateurs européens indépendants, sous le droit européen. Le site web public est placé derrière Cloudflare, qui peut déposer son propre cookie de sécurité strictement nécessaire (p. ex. pour la lutte contre les bots), que nous ne lisons ni n'utilisons."
+  },
+
+  "rights": {
+    "title": "Vos droits",
+    "body": "En vertu du RGPD, vous pouvez à tout moment demander l'accès à vos données de compte, leur rectification ou leur suppression, et introduire une réclamation auprès de votre autorité de contrôle. La suppression des données de votre navigateur efface votre historique de conversation ; la suppression de votre compte efface tout ce que nous détenons côté serveur."
+  },
+
+  "contact": {
+    "title": "Contact",
+    "body": "Questions et demandes relatives à la confidentialité : {{email}}"
+  }
+}
