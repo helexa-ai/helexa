@@ -1,0 +1,45 @@
+{
+  "title": "Faragha",
+  "updated": "Ilisasishwa mwisho: 16 Julai 2026",
+  "intro": "Helexa imejengwa ili data yako ibaki kwako. Ukurasa huu unaeleza, kwa ukamilifu, ni nini kinahifadhiwa wapi na kwa nini. Ni mfupi kwa sababu hakuna mengi ya kufichua.",
+
+  "summary": {
+    "title": "Kwa kifupi",
+    "noCookies": "Hakuna vidakuzi. Hakuna takwimu za matumizi. Hakuna vifuatiliaji. Hakuna matangazo.",
+    "localHistory": "Historia ya mazungumzo yako inahifadhiwa katika kivinjari chako pekee. Kamwe haitumwi kwenye seva zetu wala kuhifadhiwa humo zaidi ya muda wa kutengeneza jibu.",
+    "noAnonId": "Wageni wasiojulikana hawachukuliwi alama za kidijitali, hawajengewi wasifu wala hawatambuliwi."
+  },
+
+  "local": {
+    "title": "Kinachohifadhiwa katika kivinjari chako",
+    "intro": "Kila kitu kilichoorodheshwa hapa chini kinabaki kwenye kifaa chako, kipo tu ili huduma ifanye kazi, na kinaweza kuondolewa wakati wowote kwa kufuta data ya tovuti hii katika kivinjari chako.",
+    "item1": "Historia ya mazungumzo, miradi na rasimu za ujumbe — ahadi kuu ya huduma hii ni kwamba hivi kamwe haviondoki kwenye kivinjari chako.",
+    "item2": "Mapendeleo yako ya mandhari na lugha.",
+    "item3": "Alama ya kipindi kwa taarifa ya beta uliyoifunga.",
+    "item4": "Ukiingia kwenye akaunti: tokeni yako ya kipindi, na — iwapo tu utaiwezesha wewe mwenyewe — ufunguo wa API kwa ajili ya kuzungumza kutoka kifaa hiki.",
+    "item5": "Kihesabio cha jumbe kisichomtambulisha mtu kinachotekeleza kikomo cha matumizi ya bure."
+  },
+
+  "account": {
+    "title": "Ukifungua akaunti",
+    "intro": "Akaunti zipo kwa ajili ya kupima matumizi na kuzuia matumizi mabaya, si kwa kujenga wasifu. Upande wa seva tunahifadhi:",
+    "item1": "Anwani yako ya barua pepe (kwa kuingia, uthibitisho na kuweka upya nenosiri) na hashi ya nenosiri iliyotiwa chumvi (salted hash) — kamwe si nenosiri lenyewe.",
+    "item2": "Vipimo vya matumizi: idadi ya tokeni kwa kila ombi, inayohitajika kutekeleza bajeti na kuwalipa waendeshaji wanaohudumia maombi yako. Maudhui ya maswali na majibu hayahifadhiwi.",
+    "item3": "Wakati wa usajili pekee, ishara ya kivinjari ya mara moja (hashi ya alama ya kivinjari) inayotumika kubaini matumizi mabaya ya akaunti nyingi katika kiwango cha bure. Haitumiki kwa ufuatiliaji, kamwe haikokotolewi kwa uvinjari usiojulikana, na haina jukumu lolote zaidi baada ya usajili."
+  },
+
+  "infra": {
+    "title": "Miundombinu",
+    "body": "Ukokotoaji wa majibu (inference) unafanyika kwenye vifaa vya waendeshaji huru wa Ulaya chini ya sheria za Ulaya. Tovuti ya umma inapitia Cloudflare, ambayo inaweza kuweka kidakuzi chake cha usalama kinacholazimu kabisa (kwa mfano, kuzuia roboti) ambacho sisi hatukisomi wala kukitumia."
+  },
+
+  "rights": {
+    "title": "Haki zako",
+    "body": "Chini ya GDPR unaweza kuomba kupata, kusahihisha au kufuta data ya akaunti yako wakati wowote, na unaweza kuwasilisha malalamiko kwa mamlaka yako ya usimamizi. Kufuta data ya kivinjari chako kunaondoa historia ya mazungumzo yako; kufuta akaunti yako kunaondoa kila kitu tunachohifadhi upande wa seva."
+  },
+
+  "contact": {
+    "title": "Mawasiliano",
+    "body": "Maswali na maombi kuhusu faragha: {{email}}"
+  }
+}

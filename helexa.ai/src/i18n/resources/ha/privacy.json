@@ -1,0 +1,45 @@
+{
+  "title": "Sirri",
+  "updated": "An sabunta ƙarshe: 16 ga Yuli 2026",
+  "intro": "An gina Helexa ne domin bayananka su kasance a hannunka. Wannan shafi ya bayyana, cikakke, abin da ake adanawa a ina da kuma dalilinsa. Gajere ne saboda babu abubuwa da yawa da za a bayyana.",
+
+  "summary": {
+    "title": "A taƙaice",
+    "noCookies": "Babu kukis. Babu nazarin amfani (analytics). Babu na'urorin sa ido. Babu talla.",
+    "localHistory": "Tarihin hirarka ana adana shi a cikin burauzarka kawai. Ba a taɓa aika shi zuwa sabar mu ko adana shi a can fiye da lokacin samar da amsa ba.",
+    "noAnonId": "Ba a ɗaukar sawun baƙi da ba a san su ba, ba a gina musu bayanan martaba, kuma ba a gano ko su waye."
+  },
+
+  "local": {
+    "title": "Abin da ake adanawa a burauzarka",
+    "intro": "Duk abin da ke ƙasa yana zama a na'urarka kawai, ya wanzu ne kawai domin sabis ɗin ya yi aiki, kuma ana iya cire shi a kowane lokaci ta hanyar share bayanan wannan shafi a burauzarka.",
+    "item1": "Tarihin hira, ayyuka (projects) da daftarin saƙonni — babban alkawarin sabis ɗin shi ne cewa waɗannan ba sa taɓa barin burauzarka.",
+    "item2": "Zaɓinka na yanayin kallo da harshe.",
+    "item3": "Alamar zama don sanarwar beta da ka rufe.",
+    "item4": "Idan ka shiga da asusu: alamar zamanka (session token), da kuma — sai idan ka kunna da kanka — maɓallin API don yin hira daga wannan na'ura.",
+    "item5": "Ƙidayar saƙonni marar suna wadda ke aiwatar da iyakar amfani na kyauta."
+  },
+
+  "account": {
+    "title": "Idan ka buɗe asusu",
+    "intro": "Asusu na nan don auna amfani da hana cin zarafi ne, ba don gina bayanan martaba ba. A gefen sabar muna adana:",
+    "item1": "Adireshin imel ɗinka (don shiga, tantancewa da sake saita kalmar sirri) da kuma hash ɗin kalmar sirri mai gishiri (salted hash) — ba kalmar sirrin kanta ba har abada.",
+    "item2": "Auna amfani: adadin token a kowace buƙata, da ake bukata don aiwatar da kasafi da kuma biyan masu gudanarwa da ke hidimar buƙatunka. Ba a riƙe abin da ke cikin tambayoyi da amsoshi ba.",
+    "item3": "A lokacin rajista kawai, alamar burauza ta sau ɗaya (hash na sawun burauza) da ake amfani da ita don gano cin zarafin buɗe asusu da yawa a matakin kyauta. Ba a amfani da ita don sa ido, ba a taɓa lissafa ta ga baƙi da ba su yi rajista ba, kuma ba ta da wani aiki bayan rajista."
+  },
+
+  "infra": {
+    "title": "Kayan more rayuwa",
+    "body": "Ana gudanar da lissafin amsa (inference) a kan na'urorin masu gudanarwa masu zaman kansu na Turai ƙarƙashin dokar Turai. Cloudflare ce ke gaban shafin yanar gizon jama'a, wadda za ta iya saita kuki na tsaro nata da ya zama dole kawai (misali, hana bot) wanda ba mu karantawa ko amfani da shi."
+  },
+
+  "rights": {
+    "title": "Haƙƙoƙinka",
+    "body": "A ƙarƙashin GDPR za ka iya neman samun dama ga bayanan asusunka, gyara su, ko goge su a kowane lokaci, kuma za ka iya kai ƙara ga hukumar kula da bayanai ta ƙasarka. Share bayanan burauzarka yana cire tarihin hirarka; goge asusunka yana cire duk abin da muke riƙe a gefen sabar."
+  },
+
+  "contact": {
+    "title": "Tuntuɓa",
+    "body": "Tambayoyi da buƙatu game da sirri: {{email}}"
+  }
+}

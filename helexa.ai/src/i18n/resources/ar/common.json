@@ -58,7 +58,8 @@
     "uk": "الأوكرانية"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "الخصوصية"
   },
   "beta": {
     "tag": "Public beta",

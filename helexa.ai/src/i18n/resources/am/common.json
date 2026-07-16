@@ -58,7 +58,8 @@
     "uk": "ዩክሬንኛ"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "ግላዊነት"
   },
   "beta": {
     "tag": "Public beta",

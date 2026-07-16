@@ -58,7 +58,8 @@
     "zu": "isiZulu"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Ubumfihlo"
   },
   "beta": {
     "tag": "Public beta",

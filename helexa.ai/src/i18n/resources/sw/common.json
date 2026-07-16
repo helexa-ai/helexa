@@ -58,7 +58,8 @@
     "zu": "Kizulu"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Faragha"
   },
   "beta": {
     "tag": "Public beta",

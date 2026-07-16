@@ -58,7 +58,8 @@
     "zu": "isiZulu"
   },
   "footer": {
-    "copyright": "© {{year}} helexa.ai"
+    "copyright": "© {{year}} helexa.ai",
+    "privacy": "Sirri"
   },
   "beta": {
     "tag": "Public beta",

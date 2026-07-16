@@ -1,0 +1,45 @@
+{
+  "title": "Àṣírí",
+  "updated": "Ìmúdójúìwọ̀n tó kẹ́yìn: 16 Oṣù Keje 2026",
+  "intro": "A kọ́ Helexa kí dátà rẹ lè wà lọ́wọ́ rẹ. Ojú-ìwé yìí ṣàlàyé, ní pípé, ohun tí a ń fi pamọ́ síbo àti ìdí rẹ̀. Ó kúrú nítorí pé kò sí púpọ̀ láti sọ.",
+
+  "summary": {
+    "title": "Ní ṣókí",
+    "noCookies": "Kò sí kúkì. Kò sí ìtúpalẹ̀ ìlò (analytics). Kò sí ohun ìtọpinpin. Kò sí ìpolówó.",
+    "localHistory": "Ìtàn ìjíròrò rẹ wà nínú aṣàwákiri (browser) rẹ nìkan. A kì í fi ránṣẹ́ sí àwọn sáfà wa, bẹ́ẹ̀ ni a kì í fi pamọ́ síbẹ̀ ju àkókò tí a fi ń ṣe ìdáhùn lọ.",
+    "noAnonId": "A kì í gba àmì-ìka àwọn àbẹ̀wò aláìlórúkọ, a kì í ṣe àkọsílẹ̀ ìwà wọn, bẹ́ẹ̀ ni a kì í dá wọn mọ̀."
+  },
+
+  "local": {
+    "title": "Ohun tí a ń fi pamọ́ sínú aṣàwákiri rẹ",
+    "intro": "Gbogbo ohun tó wà nísàlẹ̀ yìí wà lórí ẹ̀rọ rẹ nìkan, ó wà kìkì kí iṣẹ́ náà lè ṣiṣẹ́, a sì lè yọ ọ́ kúrò nígbàkúgbà nípa pípa dátà ojú-òpó yìí rẹ́ nínú aṣàwákiri rẹ.",
+    "item1": "Ìtàn ìjíròrò, àwọn iṣẹ́-akanṣe àti àkọsílẹ̀-ìpilẹ̀ ìránṣẹ́ — ìlérí pàtàkì iṣẹ́ yìí ni pé wọn kì í kúrò nínú aṣàwákiri rẹ láéláé.",
+    "item2": "Àwọn ìfẹ́ràn rẹ fún àwò àti èdè.",
+    "item3": "Àmì sáà fún ìkìlọ̀ beta tí o ti pa dé.",
+    "item4": "Bí o bá wọlé: tọ́kìnnì sáà rẹ, àti — kìkì bí ìwọ fúnra rẹ bá fi ṣiṣẹ́ — kọ́kọ́rọ́ API fún ìjíròrò láti orí ẹ̀rọ yìí.",
+    "item5": "Òǹkà ìránṣẹ́ aláìlórúkọ tí ó ń mú ìwọ̀n ìlò ọ̀fẹ́ ṣẹ."
+  },
+
+  "account": {
+    "title": "Bí o bá ṣí àkáǹtì",
+    "intro": "Àkáǹtì wà fún wíwọn ìlò àti dídènà ìlòkulò, kì í ṣe fún àkọsílẹ̀ ìwà. Ní ẹ̀gbẹ́ sáfà, a ń fi pamọ́:",
+    "item1": "Àdírẹ́sì ímeèlì rẹ (fún ìwọlé, ìfẹ̀rílẹ̀ àti àtúnto ọ̀rọ̀-aṣínà) àti hash ọ̀rọ̀-aṣínà tí a fi iyọ̀ pò (salted hash) — kì í ṣe ọ̀rọ̀-aṣínà fúnra rẹ̀ láéláé.",
+    "item2": "Ìwọ̀n ìlò: iye tọ́kìnnì fún ìbéèrè kọ̀ọ̀kan, tí a nílò láti mú ìsúná ṣẹ àti láti san àwọn olùdarí tí ń sin ìbéèrè rẹ lẹ́san. A kì í da àkóónú ìbéèrè àti ìdáhùn dúró.",
+    "item3": "Ní àkókò ìforúkọsílẹ̀ nìkan, àmì aṣàwákiri ẹ̀ẹ̀kan ṣoṣo (hash àmì-ìka aṣàwákiri) tí a ń lò láti ṣàwárí ìlòkulò ṣíṣí àkáǹtì púpọ̀ fún ipele ọ̀fẹ́. A kì í lò ó fún ìtọpinpin, a kì í ṣírò rẹ̀ fún àwọn tí ń ṣàbẹ̀wò láìlórúkọ, kò sì ní ipa kankan mọ́ lẹ́yìn ìforúkọsílẹ̀."
+  },
+
+  "infra": {
+    "title": "Àwọn ohun èlò ìpìlẹ̀",
+    "body": "Iṣẹ́ ìdáhùn (inference) ń ṣẹlẹ̀ lórí àwọn ẹ̀rọ àwọn olùdarí aládàáṣiṣẹ́ ti Yúróòpù lábẹ́ òfin Yúróòpù. Cloudflare ni ó wà níwájú ojú-òpó gbogbogbò, ó sì lè gbé kúkì ààbò tirẹ̀ tí ó jẹ́ dandan pátápátá kalẹ̀ (bí àpẹẹrẹ, dídènà bot) tí àwa kì í kà, tí a kì í sì í lò."
+  },
+
+  "rights": {
+    "title": "Àwọn ẹ̀tọ́ rẹ",
+    "body": "Lábẹ́ GDPR o lè béèrè láti rí, ṣàtúnṣe, tàbí pa dátà àkáǹtì rẹ rẹ́ nígbàkúgbà, o sì lè fi ẹ̀sùn sọ́dọ̀ àjọ alábojútó rẹ. Pípa dátà aṣàwákiri rẹ rẹ́ yóò yọ ìtàn ìjíròrò rẹ kúrò; pípa àkáǹtì rẹ rẹ́ yóò yọ gbogbo ohun tí a ní ní ẹ̀gbẹ́ sáfà kúrò."
+  },
+
+  "contact": {
+    "title": "Ìbánisọ̀rọ̀",
+    "body": "Àwọn ìbéèrè àti ẹ̀bẹ̀ nípa àṣírí: {{email}}"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "title": "Ubumfihlo",
+  "updated": "Kubuyekezwe okokugcina: 16 kuJulayi 2026",
+  "intro": "I-Helexa yakhelwe ukuthi idatha yakho ihlale nawe. Leli khasi lichaza, ngokuphelele, ukuthi yini egcinwa kuphi nangasiphi isizathu. Lifushane ngoba kuncane okumele kudalulwe.",
+
+  "summary": {
+    "title": "Ngamafuphi",
+    "noCookies": "Awekho amakhukhi. Akukho ukuhlaziywa kokusetshenziswa (analytics). Azikho izilandeleli. Akukho ukukhangisa.",
+    "localHistory": "Umlando wengxoxo yakho ugcinwa esipheqululini sakho kuphela. Awukaze uthunyelwe emaseva ethu noma ugcinwe kuwo ngale kwesikhathi sokwakha impendulo.",
+    "noAnonId": "Izivakashi ezingaziwa azithathelwa izigxivizo zeminwe zedijithali, azakhelwa iphrofayela futhi azihlonzwa."
+  },
+
+  "local": {
+    "title": "Okugcinwa esipheqululini sakho",
+    "intro": "Konke okungezansi kuhlala kudivayisi yakho, kukhona kuphela ukuze umkhiqizo usebenze, futhi kungasuswa noma nini ngokusula idatha yale sayithi esipheqululini sakho.",
+    "item1": "Umlando wengxoxo, amaphrojekthi nezinhlaka zemilayezo — isithembiso esiyinhloko somkhiqizo ukuthi lokhu akukaze kuphume esipheqululini sakho.",
+    "item2": "Okuthandwayo kwakho kwetimu nolimi.",
+    "item3": "Uphawu lweseshini lwesaziso se-beta osusichithile.",
+    "item4": "Uma ungena ngemvume: ithokheni yeseshini yakho, futhi — kuphela uma uyivumela ngokusobala — ukhiye we-API wokuxoxa usuka kule divayisi.",
+    "item5": "Isibali semilayezo esingahlonzi muntu esiphoqelela umkhawulo wokusetshenziswa kwamahhala."
+  },
+
+  "account": {
+    "title": "Uma udala i-akhawunti",
+    "intro": "Ama-akhawunti akhona ukuze kulinganiswe ukusetshenziswa futhi kuvinjelwe ukuhlukunyezwa, hhayi ukwakha amaphrofayela. Ohlangothini lweseva sigcina:",
+    "item1": "Ikheli lakho le-imeyili (lokungena, ukuqinisekisa nokusetha kabusha iphasiwedi) ne-hash yephasiwedi enosawoti (salted hash) — hhayi iphasiwedi uqobo lwayo.",
+    "item2": "Ukulinganiswa kokusetshenziswa: inani lamathokheni ngesicelo ngasinye, elidingekayo ukuphoqelela izabelomali nokukhokhela abaphathi abaphethe izicelo zakho. Okuqukethwe kwemibuzo nezimpendulo akugcinwa.",
+    "item3": "Ngesikhathi sokubhalisa kuphela, isignali yesiphequluli yesikhathi esisodwa (i-hash yesigxivizo somunwe) esetshenziselwa ukuthola ukuhlukunyezwa kwama-akhawunti amaningi ezingeni lamahhala. Ayisetshenziselwa ukulandelela, ayikaze ibalwe ekuphequluleni okungaziwa, futhi ayinandima eyidlalayo ngemva kokubhalisa."
+  },
+
+  "infra": {
+    "title": "Ingqalasizinda",
+    "body": "Ukwakhiwa kwezimpendulo (inference) kwenzeka kumahadiwe abaphathi abazimele base-Yurophu ngaphansi komthetho wase-Yurophu. Iwebhusayithi yomphakathi imelwe yi-Cloudflare, engase ibeke ikhukhi yayo yezokuphepha edingeka ngokuqinile (isibonelo, ukuvimbela amabhothi) esingayifundi futhi esingayisebenzisi."
+  },
+
+  "rights": {
+    "title": "Amalungelo akho",
+    "body": "Ngaphansi kwe-GDPR ungacela ukufinyelela, ukulungiswa, noma ukususwa kwedatha ye-akhawunti yakho noma nini, futhi ungafaka isikhalazo esiphathimandleni sakho sokwengamela. Ukususa idatha yesiphequluli sakho kususa umlando wengxoxo yakho; ukususa i-akhawunti yakho kususa konke esikugcine ohlangothini lweseva."
+  },
+
+  "contact": {
+    "title": "Xhumana nathi",
+    "body": "Imibuzo nezicelo ezimayelana nobumfihlo: {{email}}"
+  }
+}

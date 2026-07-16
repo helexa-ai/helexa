@@ -1,0 +1,45 @@
+{
+  "title": "Privacy",
+  "updated": "Last updated: 16 July 2026",
+  "intro": "Helexa is built so that your data stays with you. This page describes, completely, what is stored where and why. It is short because there is little to disclose.",
+
+  "summary": {
+    "title": "The short version",
+    "noCookies": "No cookies. No analytics. No trackers. No advertising.",
+    "localHistory": "Your chat history is stored only in your browser. It is never sent to, or stored on, our servers beyond the moment of generating a reply.",
+    "noAnonId": "Anonymous visitors are not fingerprinted, profiled or identified."
+  },
+
+  "local": {
+    "title": "What is stored in your browser",
+    "intro": "Everything below stays on your device, exists solely to make the product work, and can be removed at any time by clearing this site's data in your browser.",
+    "item1": "Chat history, projects and message drafts — the product's core promise is that these never leave your browser.",
+    "item2": "Your theme and language preferences.",
+    "item3": "A session marker for the beta notice you dismissed.",
+    "item4": "If you sign in: your session token, and — only if you explicitly enable it — an API key for chatting from this device.",
+    "item5": "An anonymous message counter that enforces the free-usage cap."
+  },
+
+  "account": {
+    "title": "If you create an account",
+    "intro": "Accounts exist for metering and abuse prevention, not profiling. Server-side we store:",
+    "item1": "Your email address (for sign-in, verification and password reset) and a salted password hash — never the password itself.",
+    "item2": "Usage metering: token counts per request, needed to enforce budgets and compensate the operators who serve your requests. Prompt and response content is not retained.",
+    "item3": "At registration only, a one-time browser signal (a fingerprint hash) used to detect multi-account abuse of the free tier. It is not used for tracking, is never computed for anonymous browsing, and plays no further role after registration."
+  },
+
+  "infra": {
+    "title": "Infrastructure",
+    "body": "Inference runs on independent European operators' hardware under European law. The public website is fronted by Cloudflare, which may set a strictly-necessary security cookie of its own (e.g. bot mitigation) that we neither read nor use."
+  },
+
+  "rights": {
+    "title": "Your rights",
+    "body": "Under the GDPR you can request access to, correction of, or deletion of your account data at any time, and you can lodge a complaint with your supervisory authority. Deleting your browser data removes your chat history; deleting your account removes everything we hold server-side."
+  },
+
+  "contact": {
+    "title": "Contact",
+    "body": "Privacy questions and requests: {{email}}"
+  }
+}

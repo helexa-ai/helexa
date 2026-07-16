@@ -1,0 +1,45 @@
+{
+  "title": "Privatliv",
+  "updated": "Senest opdateret: 16. juli 2026",
+  "intro": "Helexa er bygget, så dine data bliver hos dig. Denne side beskriver fuldstændigt, hvad der gemmes hvor og hvorfor. Den er kort, fordi der er lidt at oplyse.",
+
+  "summary": {
+    "title": "Den korte version",
+    "noCookies": "Ingen cookies. Ingen analyseværktøjer. Ingen trackere. Ingen reklamer.",
+    "localHistory": "Din chathistorik gemmes kun i din browser. Den sendes aldrig til og gemmes aldrig på vores servere ud over det øjeblik, hvor et svar genereres.",
+    "noAnonId": "Anonyme besøgende bliver ikke fingerprintet, profileret eller identificeret."
+  },
+
+  "local": {
+    "title": "Hvad der gemmes i din browser",
+    "intro": "Alt nedenstående bliver på din enhed, findes udelukkende for at få produktet til at fungere og kan til enhver tid fjernes ved at rydde dette websteds data i din browser.",
+    "item1": "Chathistorik, projekter og beskedkladder — produktets kerneløfte er, at disse aldrig forlader din browser.",
+    "item2": "Dine tema- og sprogindstillinger.",
+    "item3": "En sessionsmarkør for den betameddelelse, du har lukket.",
+    "item4": "Hvis du logger ind: dit sessionstoken og — kun hvis du udtrykkeligt aktiverer det — en API-nøgle til at chatte fra denne enhed.",
+    "item5": "En anonym beskedtæller, der håndhæver loftet for gratis brug."
+  },
+
+  "account": {
+    "title": "Hvis du opretter en konto",
+    "intro": "Konti findes til måling af forbrug og forebyggelse af misbrug, ikke til profilering. På serversiden gemmer vi:",
+    "item1": "Din e-mailadresse (til login, verificering og nulstilling af adgangskode) og en saltet adgangskode-hash — aldrig selve adgangskoden.",
+    "item2": "Forbrugsmåling: antal tokens pr. forespørgsel, som er nødvendigt for at håndhæve budgetter og betale de operatører, der betjener dine forespørgsler. Indholdet af prompts og svar opbevares ikke.",
+    "item3": "Kun ved registrering: et engangssignal fra browseren (en fingerprint-hash), der bruges til at opdage misbrug af den gratis ordning via flere konti. Det bruges ikke til sporing, beregnes aldrig ved anonym browsing og spiller ingen rolle efter registreringen."
+  },
+
+  "infra": {
+    "title": "Infrastruktur",
+    "body": "Inferens kører på uafhængige europæiske operatørers hardware under europæisk lovgivning. Det offentlige websted ligger bag Cloudflare, som kan sætte sin egen strengt nødvendige sikkerhedscookie (f.eks. til botbekæmpelse), som vi hverken læser eller bruger."
+  },
+
+  "rights": {
+    "title": "Dine rettigheder",
+    "body": "I henhold til GDPR kan du til enhver tid anmode om indsigt i, berigtigelse af eller sletning af dine kontodata, og du kan indgive en klage til din tilsynsmyndighed. Sletning af dine browserdata fjerner din chathistorik; sletning af din konto fjerner alt, hvad vi opbevarer på serversiden."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Spørgsmål og anmodninger om privatliv: {{email}}"
+  }
+}

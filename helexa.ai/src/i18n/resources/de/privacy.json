@@ -1,0 +1,45 @@
+{
+  "title": "Datenschutz",
+  "updated": "Zuletzt aktualisiert: 16. Juli 2026",
+  "intro": "Helexa ist so gebaut, dass Ihre Daten bei Ihnen bleiben. Diese Seite beschreibt vollständig, was wo und warum gespeichert wird. Sie ist kurz, weil es wenig offenzulegen gibt.",
+
+  "summary": {
+    "title": "Die Kurzfassung",
+    "noCookies": "Keine Cookies. Keine Analyse. Keine Tracker. Keine Werbung.",
+    "localHistory": "Ihr Chatverlauf wird nur in Ihrem Browser gespeichert. Er wird — über den Moment der Antworterzeugung hinaus — niemals an unsere Server gesendet oder dort gespeichert.",
+    "noAnonId": "Anonyme Besucher werden nicht per Fingerprinting erfasst, profiliert oder identifiziert."
+  },
+
+  "local": {
+    "title": "Was in Ihrem Browser gespeichert wird",
+    "intro": "Alles Folgende bleibt auf Ihrem Gerät, existiert ausschließlich, damit das Produkt funktioniert, und kann jederzeit entfernt werden, indem Sie die Daten dieser Website in Ihrem Browser löschen.",
+    "item1": "Chatverlauf, Projekte und Nachrichtenentwürfe — das zentrale Versprechen des Produkts ist, dass diese Ihren Browser nie verlassen.",
+    "item2": "Ihre Design- und Spracheinstellungen.",
+    "item3": "Eine Sitzungsmarkierung für den von Ihnen geschlossenen Beta-Hinweis.",
+    "item4": "Wenn Sie sich anmelden: Ihr Sitzungstoken und — nur wenn Sie es ausdrücklich aktivieren — ein API-Schlüssel zum Chatten von diesem Gerät.",
+    "item5": "Ein anonymer Nachrichtenzähler, der die Obergrenze der kostenlosen Nutzung durchsetzt."
+  },
+
+  "account": {
+    "title": "Wenn Sie ein Konto erstellen",
+    "intro": "Konten dienen der Nutzungsmessung und der Missbrauchsprävention, nicht der Profilbildung. Serverseitig speichern wir:",
+    "item1": "Ihre E-Mail-Adresse (für Anmeldung, Verifizierung und Passwort-Zurücksetzung) und einen gesalzenen Passwort-Hash — niemals das Passwort selbst.",
+    "item2": "Nutzungsmessung: Token-Zahlen pro Anfrage, erforderlich zur Durchsetzung von Budgets und zur Vergütung der Betreiber, die Ihre Anfragen bedienen. Prompt- und Antwortinhalte werden nicht aufbewahrt.",
+    "item3": "Nur bei der Registrierung: ein einmaliges Browsersignal (ein Fingerprint-Hash) zur Erkennung von Mehrfachkonten-Missbrauch des kostenlosen Kontingents. Es wird nicht zum Tracking verwendet, wird beim anonymen Surfen nie berechnet und spielt nach der Registrierung keine weitere Rolle."
+  },
+
+  "infra": {
+    "title": "Infrastruktur",
+    "body": "Die Inferenz läuft auf der Hardware unabhängiger europäischer Betreiber unter europäischem Recht. Der öffentlichen Website ist Cloudflare vorgeschaltet, das ein eigenes, unbedingt erforderliches Sicherheits-Cookie setzen kann (z. B. zur Bot-Abwehr), das wir weder lesen noch verwenden."
+  },
+
+  "rights": {
+    "title": "Ihre Rechte",
+    "body": "Nach der DSGVO können Sie jederzeit Auskunft über Ihre Kontodaten sowie deren Berichtigung oder Löschung verlangen und Beschwerde bei Ihrer Aufsichtsbehörde einlegen. Das Löschen Ihrer Browserdaten entfernt Ihren Chatverlauf; das Löschen Ihres Kontos entfernt alles, was wir serverseitig speichern."
+  },
+
+  "contact": {
+    "title": "Kontakt",
+    "body": "Fragen und Anfragen zum Datenschutz: {{email}}"
+  }
+}

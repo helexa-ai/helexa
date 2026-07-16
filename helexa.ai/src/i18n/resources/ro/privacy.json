@@ -1,0 +1,45 @@
+{
+  "title": "Confidențialitate",
+  "updated": "Ultima actualizare: 16 iulie 2026",
+  "intro": "Helexa este construită astfel încât datele tale să rămână la tine. Această pagină descrie, în mod complet, ce se stochează, unde și de ce. Este scurtă pentru că sunt puține de dezvăluit.",
+
+  "summary": {
+    "title": "Versiunea scurtă",
+    "noCookies": "Fără cookie-uri. Fără analize. Fără instrumente de urmărire. Fără publicitate.",
+    "localHistory": "Istoricul conversațiilor tale este stocat doar în browserul tău. Nu este niciodată trimis către serverele noastre și nici stocat pe acestea dincolo de momentul generării unui răspuns.",
+    "noAnonId": "Vizitatorii anonimi nu sunt supuși amprentării digitale, profilați sau identificați."
+  },
+
+  "local": {
+    "title": "Ce se stochează în browserul tău",
+    "intro": "Tot ce urmează rămâne pe dispozitivul tău, există exclusiv pentru ca produsul să funcționeze și poate fi eliminat oricând prin ștergerea datelor acestui site din browserul tău.",
+    "item1": "Istoricul conversațiilor, proiectele și ciornele de mesaje — promisiunea centrală a produsului este că acestea nu părăsesc niciodată browserul tău.",
+    "item2": "Preferințele tale de temă și de limbă.",
+    "item3": "Un marcaj de sesiune pentru notificarea de versiune beta pe care ai închis-o.",
+    "item4": "Dacă te autentifici: tokenul tău de sesiune și — doar dacă o activezi explicit — o cheie API pentru a conversa de pe acest dispozitiv.",
+    "item5": "Un contor anonim de mesaje care aplică limita de utilizare gratuită."
+  },
+
+  "account": {
+    "title": "Dacă îți creezi un cont",
+    "intro": "Conturile există pentru contorizarea utilizării și prevenirea abuzurilor, nu pentru profilare. Pe server stocăm:",
+    "item1": "Adresa ta de e-mail (pentru autentificare, verificare și resetarea parolei) și un hash al parolei cu salt — niciodată parola în sine.",
+    "item2": "Contorizarea utilizării: numărul de tokenuri per cerere, necesar pentru aplicarea bugetelor și pentru compensarea operatorilor care deservesc cererile tale. Conținutul cererilor și al răspunsurilor nu este păstrat.",
+    "item3": "Doar la înregistrare, un semnal unic al browserului (un hash de amprentă digitală) folosit pentru a detecta abuzul nivelului gratuit prin conturi multiple. Nu este folosit pentru urmărire, nu este niciodată calculat în timpul navigării anonime și nu joacă niciun rol suplimentar după înregistrare."
+  },
+
+  "infra": {
+    "title": "Infrastructură",
+    "body": "Inferența rulează pe hardware-ul unor operatori europeni independenți, sub incidența legislației europene. Site-ul public este protejat de Cloudflare, care poate seta un cookie de securitate strict necesar propriu (de ex. combaterea boților), pe care noi nu îl citim și nu îl folosim."
+  },
+
+  "rights": {
+    "title": "Drepturile tale",
+    "body": "În temeiul GDPR poți solicita oricând accesul la datele contului tău, rectificarea sau ștergerea acestora și poți depune o plângere la autoritatea ta de supraveghere. Ștergerea datelor din browser elimină istoricul conversațiilor; ștergerea contului elimină tot ce păstrăm pe server."
+  },
+
+  "contact": {
+    "title": "Contact",
+    "body": "Întrebări și solicitări privind confidențialitatea: {{email}}"
+  }
+}

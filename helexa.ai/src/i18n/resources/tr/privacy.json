@@ -1,0 +1,45 @@
+{
+  "title": "Gizlilik",
+  "updated": "Son güncelleme: 16 Temmuz 2026",
+  "intro": "Helexa, verileriniz sizde kalacak şekilde tasarlanmıştır. Bu sayfa neyin, nerede ve neden saklandığını eksiksiz olarak açıklar. Kısa olmasının nedeni, açıklanacak çok az şey olmasıdır.",
+
+  "summary": {
+    "title": "Kısa özet",
+    "noCookies": "Çerez yok. Analitik yok. İzleyici yok. Reklam yok.",
+    "localHistory": "Sohbet geçmişiniz yalnızca tarayıcınızda saklanır. Bir yanıtın üretildiği an dışında sunucularımıza asla gönderilmez ve sunucularımızda saklanmaz.",
+    "noAnonId": "Anonim ziyaretçilerin parmak izi alınmaz, profilleri çıkarılmaz ve kimlikleri belirlenmez."
+  },
+
+  "local": {
+    "title": "Tarayıcınızda neler saklanır",
+    "intro": "Aşağıdakilerin tümü cihazınızda kalır, yalnızca ürünün çalışması için vardır ve tarayıcınızda bu sitenin verilerini temizleyerek istediğiniz zaman kaldırılabilir.",
+    "item1": "Sohbet geçmişi, projeler ve mesaj taslakları — ürünün temel vaadi, bunların tarayıcınızdan asla çıkmamasıdır.",
+    "item2": "Tema ve dil tercihleriniz.",
+    "item3": "Kapattığınız beta bildirimi için bir oturum işareti.",
+    "item4": "Oturum açarsanız: oturum belirteciniz ve — yalnızca açıkça etkinleştirirseniz — bu cihazdan sohbet etmek için bir API anahtarı.",
+    "item5": "Ücretsiz kullanım sınırını uygulayan anonim bir mesaj sayacı."
+  },
+
+  "account": {
+    "title": "Hesap oluşturursanız",
+    "intro": "Hesaplar profil çıkarmak için değil, kullanım ölçümü ve kötüye kullanımın önlenmesi için vardır. Sunucu tarafında şunları saklarız:",
+    "item1": "E-posta adresiniz (oturum açma, doğrulama ve parola sıfırlama için) ve tuzlanmış (salted) bir parola özeti — asla parolanın kendisi değil.",
+    "item2": "Kullanım ölçümü: istek başına token sayıları; bütçeleri uygulamak ve isteklerinize hizmet veren operatörlere ödeme yapmak için gereklidir. İstem (prompt) ve yanıt içeriği saklanmaz.",
+    "item3": "Yalnızca kayıt sırasında, ücretsiz kademenin çoklu hesapla kötüye kullanımını tespit etmek için kullanılan tek seferlik bir tarayıcı sinyali (bir parmak izi karması). İzleme için kullanılmaz, anonim gezinme sırasında asla hesaplanmaz ve kayıttan sonra başka hiçbir rol oynamaz."
+  },
+
+  "infra": {
+    "title": "Altyapı",
+    "body": "Çıkarım (inference), bağımsız Avrupalı operatörlerin donanımında ve Avrupa hukuku kapsamında çalışır. Herkese açık web sitesinin önünde Cloudflare bulunur; Cloudflare, bizim ne okuduğumuz ne de kullandığımız, kendine ait kesinlikle gerekli bir güvenlik çerezi (ör. bot önleme) ayarlayabilir."
+  },
+
+  "rights": {
+    "title": "Haklarınız",
+    "body": "GDPR kapsamında, hesap verilerinize erişilmesini, bunların düzeltilmesini veya silinmesini istediğiniz zaman talep edebilir ve denetim makamınıza şikayette bulunabilirsiniz. Tarayıcı verilerinizi silmek sohbet geçmişinizi kaldırır; hesabınızı silmek sunucu tarafında tuttuğumuz her şeyi kaldırır."
+  },
+
+  "contact": {
+    "title": "İletişim",
+    "body": "Gizlilikle ilgili sorular ve talepler: {{email}}"
+  }
+}
