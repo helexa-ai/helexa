@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Alert, Button, Container, Form } from "react-bootstrap";
+import { Alert, Form } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { accountApi } from "../../api/account";
+import AuthCard from "../../components/AuthCard";
 
 export default function RequestReset() {
   const { t } = useTranslation("account");
@@ -23,13 +24,12 @@ export default function RequestReset() {
   }
 
   return (
-    <Container className="py-5 flex-grow-1" style={{ maxWidth: 420 }}>
-      <h1 className="h3 mb-4">{t("reset.requestTitle")}</h1>
+    <AuthCard title={t("reset.requestTitle")}>
       {done ? (
         <Alert variant="info">{t("reset.requestDone")}</Alert>
       ) : (
         <Form onSubmit={submit}>
-          <Form.Group className="mb-3">
+          <Form.Group className="mb-4">
             <Form.Label>{t("reset.email")}</Form.Label>
             <Form.Control
               type="email"
@@ -38,11 +38,15 @@ export default function RequestReset() {
               required
             />
           </Form.Group>
-          <Button type="submit" disabled={busy} className="w-100">
+          <button
+            type="submit"
+            disabled={busy}
+            className="hx-btn-primary w-100"
+          >
             {t("reset.requestSubmit")}
-          </Button>
+          </button>
         </Form>
       )}
-    </Container>
+    </AuthCard>
   );
 }

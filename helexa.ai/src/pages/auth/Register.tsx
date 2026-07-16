@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Alert, Button, Container, Form } from "react-bootstrap";
+import { Alert, Form } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/context";
 import { ApiError } from "../../api/types";
+import AuthCard from "../../components/AuthCard";
 
 export default function Register() {
   const { t } = useTranslation("account");
@@ -29,8 +30,7 @@ export default function Register() {
   }
 
   return (
-    <Container className="py-5 flex-grow-1" style={{ maxWidth: 420 }}>
-      <h1 className="h3 mb-4">{t("register.title")}</h1>
+    <AuthCard title={t("register.title")}>
       {done ? (
         <Alert variant="success">{t("register.checkEmail")}</Alert>
       ) : (
@@ -46,7 +46,7 @@ export default function Register() {
                 required
               />
             </Form.Group>
-            <Form.Group className="mb-3">
+            <Form.Group className="mb-4">
               <Form.Label>{t("register.password")}</Form.Label>
               <Form.Control
                 type="password"
@@ -56,15 +56,19 @@ export default function Register() {
                 required
               />
             </Form.Group>
-            <Button type="submit" disabled={busy} className="w-100">
+            <button
+              type="submit"
+              disabled={busy}
+              className="hx-btn-primary w-100"
+            >
               {t("register.submit")}
-            </Button>
+            </button>
           </Form>
-          <p className="mt-3 small">
+          <p className="mt-4 small mb-0">
             <Link to="/login">{t("register.haveAccount")}</Link>
           </p>
         </>
       )}
-    </Container>
+    </AuthCard>
   );
 }

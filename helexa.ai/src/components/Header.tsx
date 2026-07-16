@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, NavLink } from "react-router-dom";
 import { Navbar, Container, Nav, Dropdown } from "react-bootstrap";
-import { FaRegMoon, FaRegSun, FaGithub } from "react-icons/fa6";
+import { FaRegMoon, FaRegSun, FaGithub, FaRegUser, FaCircleUser } from "react-icons/fa6";
 import { useTheme } from "../layout/theme";
 import { useTranslation } from "react-i18next";
 import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages";
@@ -78,30 +78,47 @@ const Header: React.FC = () => {
           </Nav>
 
           <div className="d-flex align-items-center gap-1">
-            {/* Auth-aware cluster. */}
-            {status === "authed" ? (
-              <>
-                <NavLink to="/account" className="nav-link">
-                  {t("nav.account")}
-                </NavLink>
-                <button
-                  type="button"
-                  className="hx-icon-btn hx-icon-btn-wide"
-                  onClick={logout}
-                >
-                  {t("nav.logout")}
-                </button>
-              </>
-            ) : (
-              <>
-                <NavLink to="/login" className="nav-link">
-                  {t("nav.login")}
-                </NavLink>
-                <NavLink to="/register" className="hx-pill-cta mx-1">
-                  {t("nav.register")}
-                </NavLink>
-              </>
-            )}
+            {/* One user control for the whole auth surface: outline icon
+                when anonymous (menu: sign in / sign up), accent-coloured
+                filled icon when signed in (menu: account / sign out). */}
+            <Dropdown align={isRtl ? "start" : "end"}>
+              <Dropdown.Toggle
+                as="button"
+                type="button"
+                className={`hx-icon-btn ${status === "authed" ? "hx-user-authed" : ""}`}
+                id="user-menu"
+                aria-label={
+                  status === "authed" ? t("nav.account") : t("nav.login")
+                }
+              >
+                {status === "authed" ? (
+                  <FaCircleUser size={18} />
+                ) : (
+                  <FaRegUser size={16} />
+                )}
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+                {status === "authed" ? (
+                  <>
+                    <Dropdown.Item as={Link} to="/account">
+                      {t("nav.account")}
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={logout}>
+                      {t("nav.logout")}
+                    </Dropdown.Item>
+                  </>
+                ) : (
+                  <>
+                    <Dropdown.Item as={Link} to="/login">
+                      {t("nav.login")}
+                    </Dropdown.Item>
+                    <Dropdown.Item as={Link} to="/register">
+                      {t("nav.register")}
+                    </Dropdown.Item>
+                  </>
+                )}
+              </Dropdown.Menu>
+            </Dropdown>
 
             <a
               href="https://github.com/helexa-ai"
