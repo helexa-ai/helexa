@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, NavLink } from "react-router-dom";
-import { Navbar, Container, Nav, Button, Dropdown } from "react-bootstrap";
-import { FaRegMoon, FaRegSun } from "react-icons/fa6";
+import { Navbar, Container, Nav, Dropdown } from "react-bootstrap";
+import { FaRegMoon, FaRegSun, FaGithub } from "react-icons/fa6";
 import { useTheme } from "../layout/theme";
 import { useTranslation } from "react-i18next";
 import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages";
@@ -10,14 +10,15 @@ import { useAuth } from "../auth/context";
 
 /**
  * Top navigation: brand, primary routes (chat at `/`, `/mission`), an
- * auth-aware cluster (Account/Sign out when signed in, else Sign in/up),
- * the theme toggle, and the language selector.
+ * auth-aware cluster (Account/Sign out when signed in, else Sign in +
+ * a Sign-up pill), then a quiet icon cluster: GitHub, theme toggle,
+ * language selector. Icon buttons are borderless (`hx-icon-btn`) so the
+ * header stays calm; the sign-up pill is the single emphasised control.
  *
  * The language picker is ordered by **estimated usage**
- * (getLanguageOptionsByUsage), not alphabetically — a deliberate choice that
- * foregrounds helexa's international grounding. Each item shows the autonym
- * (language in its own script) plus a secondary label in the current
- * language; RTL-aware alignment.
+ * (getLanguageOptionsByUsage), not alphabetically — a deliberate choice
+ * that foregrounds helexa's international grounding. Each item shows the
+ * autonym plus a secondary label in the current language; RTL-aware.
  */
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -32,10 +33,10 @@ const Header: React.FC = () => {
   return (
     <Navbar
       expand="lg"
-      className="app-header border-bottom"
+      className="app-header"
       variant={theme === "dark" ? "dark" : "light"}
     >
-      <Container fluid>
+      <Container fluid className="px-4">
         <Navbar.Brand
           as={Link}
           to="/"
@@ -76,65 +77,66 @@ const Header: React.FC = () => {
             </NavLink>
           </Nav>
 
-          <div className="d-flex align-items-center gap-2">
+          <div className="d-flex align-items-center gap-1">
             {/* Auth-aware cluster. */}
             {status === "authed" ? (
               <>
                 <NavLink to="/account" className="nav-link">
                   {t("nav.account")}
                 </NavLink>
-                <Button
-                  size="sm"
-                  variant="outline-secondary"
+                <button
+                  type="button"
+                  className="hx-icon-btn hx-icon-btn-wide"
                   onClick={logout}
-                  className="me-1"
                 >
                   {t("nav.logout")}
-                </Button>
+                </button>
               </>
             ) : (
               <>
                 <NavLink to="/login" className="nav-link">
                   {t("nav.login")}
                 </NavLink>
-                <NavLink to="/register" className="nav-link">
+                <NavLink to="/register" className="hx-pill-cta mx-1">
                   {t("nav.register")}
                 </NavLink>
               </>
             )}
 
-            <Button
-              size="sm"
-              variant="outline-secondary"
+            <a
+              href="https://github.com/helexa-ai"
+              target="_blank"
+              rel="noreferrer"
+              className="hx-icon-btn"
+              aria-label="GitHub"
+            >
+              <FaGithub size={17} />
+            </a>
+
+            <button
               type="button"
+              className="hx-icon-btn"
               onClick={toggleTheme}
               aria-label={
                 theme === "dark"
                   ? t("theme.toggle.toLight")
                   : t("theme.toggle.toDark")
               }
-              className="d-inline-flex align-items-center justify-content-center"
             >
               {theme === "dark" ? <FaRegSun size={16} /> : <FaRegMoon size={16} />}
-            </Button>
+            </button>
 
-            <Dropdown
-              align={isRtl ? "start" : "end"}
-              className={theme === "dark" ? "dropdown-menu-dark-context" : ""}
-            >
+            <Dropdown align={isRtl ? "start" : "end"}>
               <Dropdown.Toggle
-                size="sm"
-                variant={theme === "dark" ? "secondary" : "outline-secondary"}
+                as="button"
+                type="button"
+                className="hx-icon-btn hx-icon-btn-wide"
                 id="language-switcher"
               >
-                <span className="me-1" aria-hidden="true">
-                  文A
-                </span>
+                <span aria-hidden="true">文A</span>
                 <span>{AUTONYM_MAP[currentLanguage]}</span>
               </Dropdown.Toggle>
-              <Dropdown.Menu
-                className={theme === "dark" ? "dropdown-menu-dark" : ""}
-              >
+              <Dropdown.Menu>
                 {languageOptions.map(({ code, autonym }) => (
                   <Dropdown.Item
                     key={code}

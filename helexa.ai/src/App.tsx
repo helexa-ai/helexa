@@ -24,7 +24,7 @@ export default function App() {
     <ThemeProvider>
       <BrowserRouter>
         <AuthProvider>
-          <div className="d-flex flex-column min-vh-100">
+          <div className="app-shell d-flex flex-column min-vh-100">
             <BetaBanner />
             <Header />
             <Routes>

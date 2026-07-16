@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
-import { Alert, Badge, Button, Form } from "react-bootstrap";
+import { Alert, Form } from "react-bootstrap";
+import { FaPlus, FaFolderPlus, FaArrowUp, FaStop } from "react-icons/fa6";
 import { db } from "../data/db";
 import {
   createConversation,
@@ -125,21 +126,27 @@ export default function Chat() {
   return (
     <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
       {/* Sidebar */}
-      <aside
-        className="border-end p-3 d-flex flex-column gap-2"
-        style={{ width: 280, overflowY: "auto" }}
-      >
+      <aside className="hx-chat-sidebar">
         <div className="d-flex gap-2">
-          <Button size="sm" variant="primary" onClick={() => void newChat()}>
+          <button
+            type="button"
+            className="hx-btn-ghost flex-grow-1 justify-content-center"
+            style={{ fontSize: "0.9rem", paddingBlock: "0.45rem" }}
+            onClick={() => void newChat()}
+          >
+            <FaPlus size={12} />
             {t("newChat")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline-secondary"
+          </button>
+          <button
+            type="button"
+            className="hx-icon-btn"
+            style={{ width: "2.35rem", height: "2.35rem" }}
+            title={t("newProject")}
+            aria-label={t("newProject")}
             onClick={() => void createProject(owner, t("newProjectName"))}
           >
-            {t("newProject")}
-          </Button>
+            <FaFolderPlus size={15} />
+          </button>
         </div>
 
         <ConversationGroup
@@ -163,10 +170,8 @@ export default function Chat() {
       <section className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
         <div ref={threadRef} className="flex-grow-1 p-3 overflow-auto">
           {(messages ?? []).length === 0 ? (
-            <div className="text-muted text-center mt-5">
-              <Badge bg="secondary" className="mb-2">
-                {t("badge")}
-              </Badge>
+            <div className="hx-chat-empty">
+              <img src="/logo.png" alt="" aria-hidden="true" />
               <p>{t("emptyState")}</p>
             </div>
           ) : (
@@ -176,8 +181,7 @@ export default function Chat() {
                 className={`mb-3 d-flex ${m.role === "user" ? "justify-content-end" : "justify-content-start"}`}
               >
                 <div
-                  className={`surface-elevated p-2 px-3 rounded-3 ${m.role === "user" ? "bg-body-tertiary" : ""}`}
-                  style={{ maxWidth: "80%", whiteSpace: "pre-wrap" }}
+                  className={`hx-bubble ${m.role === "user" ? "hx-bubble-user" : ""}`}
                 >
                   {m.content}
                   {m.status === "streaming" && <span className="opacity-50"> ▋</span>}
@@ -219,7 +223,7 @@ export default function Chat() {
         )}
 
         <Form
-          className="d-flex gap-2 p-2 border-top"
+          className="hx-composer"
           onSubmit={(e) => {
             e.preventDefault();
             void onSend();
@@ -242,13 +246,25 @@ export default function Chat() {
             }}
           />
           {streaming ? (
-            <Button variant="outline-danger" onClick={stop}>
-              {t("stop")}
-            </Button>
+            <button
+              type="button"
+              className="hx-send-btn hx-stop"
+              onClick={stop}
+              aria-label={t("stop")}
+              title={t("stop")}
+            >
+              <FaStop size={13} />
+            </button>
           ) : (
-            <Button type="submit" variant="primary" disabled={capped || needsKey || !draft.trim()}>
-              {t("send")}
-            </Button>
+            <button
+              type="submit"
+              className="hx-send-btn"
+              disabled={capped || needsKey || !draft.trim()}
+              aria-label={t("send")}
+              title={t("send")}
+            >
+              <FaArrowUp size={15} />
+            </button>
           )}
         </Form>
       </section>
@@ -278,9 +294,7 @@ function ConversationGroup({
           key={c.id}
           type="button"
           onClick={() => onSelect(c.id)}
-          className={`btn btn-sm w-100 text-start text-truncate ${
-            c.id === activeId ? "btn-secondary" : "btn-link text-body"
-          }`}
+          className={`hx-chat-item ${c.id === activeId ? "active" : ""}`}
         >
           {c.title}
         </button>

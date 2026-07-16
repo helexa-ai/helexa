@@ -1,32 +1,50 @@
+/* helexa.ai design system.
+ *
+ * Dark-first, layered deep-navy surfaces with ONE accent story: the helix
+ * gradient (cyan → indigo → violet) used sparingly — eyebrows, hairlines,
+ * focus rings, small marks. Everything else is neutral so the accent
+ * reads as identity, not decoration. Bootstrap stays for layout/forms;
+ * visual identity lives in the `hx-` classes + CSS variables below.
+ */
+
 :root {
-    --color-bg: #f5f7fb;
+    --color-bg: #f6f8fc;
     --color-bg-elevated: #ffffff;
     --color-bg-subtle: #eef1f7;
-    --color-border-subtle: rgba(15, 23, 42, 0.12);
-    --color-text: #020617;
-    --color-text-muted: #64748b;
-    --color-accent: #22d3ee;
-    --color-accent-hot: #ec4899;
-    --color-accent-soft: rgba(34, 211, 238, 0.12);
-    --color-navbar-bg: rgba(255, 255, 255, 0.85);
+    --color-border-subtle: rgba(15, 23, 42, 0.1);
+    --color-border-strong: rgba(15, 23, 42, 0.18);
+    --color-text: #0b1220;
+    --color-text-muted: #5b6474;
+    --color-accent: #0891b2;
+    --color-accent-2: #6366f1;
+    --color-accent-hot: #db2777;
+    --color-accent-soft: rgba(8, 145, 178, 0.1);
+    --color-navbar-bg: rgba(255, 255, 255, 0.82);
     --color-footer-bg: rgba(255, 255, 255, 0.9);
-    --shadow-soft: 0 18px 45px rgba(15, 23, 42, 0.08);
+    --gradient-helix: linear-gradient(135deg, #0891b2 0%, #6366f1 55%, #9333ea 100%);
+    --shadow-soft: 0 12px 40px rgba(15, 23, 42, 0.07);
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05);
     --transition-fast: 150ms ease-out;
 }
 
 /* Dark theme overrides, driven by ThemeProvider via [data-theme] */
 :root[data-theme="dark"] {
-    --color-bg: #000618;
-    --color-bg-elevated: #020617;
-    --color-bg-subtle: #020617;
-    --color-border-subtle: rgba(148, 163, 184, 0.24);
-    --color-text: #e2e8f0;
-    --color-text-muted: #cbd5f5;
-    --color-accent: #22d3ee;
-    --color-accent-soft: rgba(34, 211, 238, 0.18);
-    --color-navbar-bg: rgba(2, 6, 23, 0.92);
-    --color-footer-bg: rgba(2, 6, 23, 0.96);
-    --shadow-soft: 0 22px 55px rgba(15, 23, 42, 0.8);
+    --color-bg: #070b16;
+    --color-bg-elevated: #0d1424;
+    --color-bg-subtle: #0a1020;
+    --color-border-subtle: rgba(148, 163, 184, 0.14);
+    --color-border-strong: rgba(148, 163, 184, 0.28);
+    --color-text: #e7ecf5;
+    --color-text-muted: #94a0b8;
+    --color-accent: #67e8f9;
+    --color-accent-2: #818cf8;
+    --color-accent-hot: #f472b6;
+    --color-accent-soft: rgba(103, 232, 249, 0.1);
+    --color-navbar-bg: rgba(7, 11, 22, 0.82);
+    --color-footer-bg: rgba(7, 11, 22, 0.9);
+    --gradient-helix: linear-gradient(135deg, #22d3ee 0%, #818cf8 55%, #c084fc 100%);
+    --shadow-soft: 0 20px 60px rgba(2, 6, 23, 0.55);
+    --shadow-card: 0 1px 2px rgba(2, 6, 23, 0.4);
 }
 
 /* Global base styles */
@@ -52,7 +70,6 @@ body {
     text-rendering: optimizeLegibility;
 }
 
-/* Basic RTL reset: when the root document is RTL, ensure logical direction */
 html[dir="rtl"] body {
     direction: rtl;
 }
@@ -66,41 +83,100 @@ html[dir="rtl"] body {
         color var(--transition-fast);
 }
 
-/* Typography helpers */
+/* Ambient page glow: two very-low-alpha radial washes anchored to the
+ * viewport so the dark theme reads as depth, not void. Light theme gets
+ * a fainter cool wash. */
+.app-shell {
+    position: relative;
+    isolation: isolate;
+}
+.app-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(60rem 40rem at 85% -10%, rgba(129, 140, 248, 0.07), transparent 60%),
+        radial-gradient(50rem 36rem at -10% 30%, rgba(34, 211, 238, 0.05), transparent 60%);
+}
+:root[data-theme="light"] .app-shell::before,
+:root:not([data-theme="dark"]) .app-shell::before {
+    background:
+        radial-gradient(60rem 40rem at 85% -10%, rgba(99, 102, 241, 0.05), transparent 60%),
+        radial-gradient(50rem 36rem at -10% 30%, rgba(8, 145, 178, 0.04), transparent 60%);
+}
+
+/* ── Typography ──────────────────────────────────────────────────────── */
 
 .app-main h1,
 .app-main h2,
 .app-main h3,
 .app-main h4,
 .app-main h5 {
-    letter-spacing: 0.02em;
+    letter-spacing: -0.015em;
+    font-weight: 650;
 }
 
 .app-main p.lead {
     color: var(--color-text-muted);
+    font-size: 1.15rem;
+    line-height: 1.65;
+    font-weight: 400;
 }
 
-/* Hot pink accent utility for occasional emphasis */
+.hx-display {
+    font-size: clamp(2.3rem, 5vw, 3.4rem);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+}
+
+.hx-gradient-text {
+    background: var(--gradient-helix);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Small-caps gradient eyebrow above section titles. */
+.hx-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--color-accent);
+}
+.hx-eyebrow::before {
+    content: "";
+    width: 1.4rem;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--gradient-helix);
+}
+
 .text-hot-pink {
     color: var(--color-accent-hot) !important;
 }
 
-/* Header / Navbar */
+/* ── Header / Navbar ─────────────────────────────────────────────────── */
 
 .app-header {
     background-color: var(--color-navbar-bg);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 1px 0 var(--color-border-subtle);
     transition:
         background-color var(--transition-fast),
-        box-shadow var(--transition-fast),
-        border-color var(--transition-fast);
+        box-shadow var(--transition-fast);
 }
 
 .app-header .navbar-brand {
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     font-size: 0.85rem;
     color: var(--color-text);
@@ -114,6 +190,7 @@ html[dir="rtl"] body {
     color: var(--color-text-muted);
     font-weight: 500;
     font-size: 0.9rem;
+    border-radius: 0.5rem;
     transition:
         color var(--transition-fast),
         background-color var(--transition-fast);
@@ -121,7 +198,7 @@ html[dir="rtl"] body {
 
 .app-header .nav-link:hover,
 .app-header .nav-link:focus {
-    color: var(--color-accent);
+    color: var(--color-text);
     background-color: transparent;
 }
 
@@ -129,20 +206,63 @@ html[dir="rtl"] body {
     color: var(--color-accent);
 }
 
-.app-header .btn.btn-outline-secondary {
-    --bs-btn-color: var(--color-text-muted);
-    --bs-btn-border-color: var(--color-border-subtle);
-    --bs-btn-hover-bg: var(--color-accent-soft);
-    --bs-btn-hover-border-color: var(--color-accent);
-    --bs-btn-hover-color: var(--color-accent);
-    --bs-btn-focus-shadow-rgb: 34, 211, 238;
-    padding-inline: 0.55rem;
-    padding-block: 0.3rem;
+/* Borderless icon buttons (theme toggle, GitHub, language) — quiet by
+ * default, accent on hover. */
+.hx-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    width: 2.1rem;
+    height: 2.1rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: var(--color-text-muted);
+    transition:
+        color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+.hx-icon-btn:hover,
+.hx-icon-btn:focus-visible {
+    color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+    text-decoration: none;
+}
+.hx-icon-btn.hx-icon-btn-wide {
+    width: auto;
+    padding-inline: 0.6rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+/* Sign-up pill: the single accented control in the header. */
+.hx-pill-cta {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.32rem 0.9rem;
     border-radius: 999px;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-weight: 550;
+    background: transparent;
+    transition:
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+.hx-pill-cta:hover,
+.hx-pill-cta:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+    text-decoration: none;
 }
 
 /* Language dropdown: theme-aware styling */
-.app-header .dropdown-menu-dark {
+.app-header .dropdown-menu {
     --bs-dropdown-bg: var(--color-bg-elevated);
     --bs-dropdown-link-color: var(--color-text);
     --bs-dropdown-link-hover-bg: var(--color-accent-soft);
@@ -153,42 +273,32 @@ html[dir="rtl"] body {
     background-color: var(--color-bg-elevated);
     border-color: var(--color-border-subtle);
     color: var(--color-text);
+    box-shadow: var(--shadow-soft);
+    max-height: 70vh;
+    overflow-y: auto;
 }
 
-/* Prevent language dropdown from overflowing off-screen in RTL */
 html[dir="rtl"] .app-header .dropdown-menu-end {
     left: auto;
     right: 0;
     transform: none;
 }
 
-.app-header .dropdown-menu-dark .dropdown-item.active,
-.app-header .dropdown-menu-dark .dropdown-item:active {
+.app-header .dropdown-menu .dropdown-item.active,
+.app-header .dropdown-menu .dropdown-item:active {
     background-color: var(--color-accent-soft);
     color: var(--color-accent);
 }
 
-.app-header .dropdown-menu-dark-context .dropdown-toggle.btn-secondary {
-    --bs-btn-bg: transparent;
-    --bs-btn-border-color: var(--color-border-subtle);
-    --bs-btn-color: var(--color-text-muted);
-    --bs-btn-hover-bg: var(--color-accent-soft);
-    --bs-btn-hover-border-color: var(--color-accent);
-    --bs-btn-hover-color: var(--color-accent);
-    --bs-btn-focus-shadow-rgb: 34, 211, 238;
+/* Language toggle rendered as an icon button, not a Bootstrap button. */
+.app-header .dropdown-toggle.hx-icon-btn::after {
+    display: none;
 }
 
-.app-header .btn.btn-outline-secondary svg {
-    display: block;
-}
-
-/* Generic helper class for mirroring directional icons in RTL.
-   Used by DirectionalIcon when `mirrorInRtl` is enabled. */
 html[dir="rtl"] .diricon-mirror-rtl {
     transform: scaleX(-1);
 }
 
-/* Provide a visible toggler icon when using default Bootstrap styles */
 .navbar-toggler {
     border-color: var(--color-border-subtle);
 }
@@ -223,7 +333,7 @@ html[dir="rtl"] .diricon-mirror-rtl {
     bottom: 0.25rem;
 }
 
-/* Footer */
+/* ── Footer ──────────────────────────────────────────────────────────── */
 
 .app-footer {
     background-color: var(--color-footer-bg);
@@ -232,39 +342,38 @@ html[dir="rtl"] .diricon-mirror-rtl {
     box-shadow: 0 -1px 0 var(--color-border-subtle);
     transition:
         background-color var(--transition-fast),
-        box-shadow var(--transition-fast),
-        border-color var(--transition-fast);
+        box-shadow var(--transition-fast);
 }
 
-/* Main content layout */
+.app-footer a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--transition-fast);
+}
+.app-footer a:hover {
+    color: var(--color-accent);
+    text-decoration: none;
+}
+
+/* ── Main content layout ─────────────────────────────────────────────── */
 
 .app-main {
     max-width: 1120px;
 }
 
-/* When in RTL mode, flip common flex directions and alignment where needed */
 html[dir="rtl"] .app-root {
     direction: rtl;
     text-align: right;
-}
-
-html[dir="rtl"] .app-header .navbar-brand {
-    flex-direction: row-reverse;
 }
 
 html[dir="rtl"] .app-header .nav-link {
     text-align: right;
 }
 
-html[dir="rtl"] .app-header .d-flex.align-items-center.gap-2 {
-    flex-direction: row-reverse;
-}
-
 html[dir="rtl"] .app-main .card-body {
     text-align: right;
 }
 
-/* Ensure footer content also respects RTL direction */
 html[dir="rtl"] .app-footer {
     direction: rtl;
     text-align: right;
@@ -276,83 +385,238 @@ html[dir="rtl"] .app-footer {
     border-color: var(--color-border-subtle);
 }
 
-/* Generic utility styles */
+/* ── Surfaces / cards ────────────────────────────────────────────────── */
 
 .surface-elevated {
     background-color: var(--color-bg-elevated);
     border-radius: 1rem;
     border: 1px solid var(--color-border-subtle);
+    box-shadow: var(--shadow-card);
+}
+
+/* Interactive card: lifts and brightens its border on hover. */
+.hx-card {
+    background-color: var(--color-bg-elevated);
+    border-radius: 1rem;
+    border: 1px solid var(--color-border-subtle);
+    box-shadow: var(--shadow-card);
+    transition:
+        transform var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast);
+}
+.hx-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--color-border-strong);
     box-shadow: var(--shadow-soft);
 }
 
-/* Mesh / principle icon containers */
-.mesh-icon,
-.principle-icon {
+/* ── Sections (mission page) ─────────────────────────────────────────── */
+
+.hx-section {
+    margin-block: 4.5rem;
+}
+.hx-section:first-child {
+    margin-block-start: 2.5rem;
+}
+
+.hx-section-head {
+    margin-bottom: 1.75rem;
+}
+.hx-section-head h2 {
+    margin-block: 0.5rem 0;
+    font-size: clamp(1.5rem, 2.6vw, 1.9rem);
+}
+
+/* Custom bullet list: gradient dot markers, roomier line spacing. */
+.hx-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+.hx-list li {
+    position: relative;
+    padding-inline-start: 1.35rem;
+    line-height: 1.55;
+}
+.hx-list li::before {
+    content: "";
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0.55em;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--gradient-helix);
+    opacity: 0.9;
+}
+html[dir="rtl"] .hx-list li {
+    padding-inline-start: 1.35rem;
+}
+
+/* Small icon tile on principle cards. */
+.hx-card-icon {
+    flex-shrink: 0;
     width: 2.25rem;
     height: 2.25rem;
-    border-radius: 999px;
+    border-radius: 0.7rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border: 1px solid var(--color-border-subtle);
-    background: radial-gradient(
-        circle,
-        var(--color-accent-soft),
-        transparent 60%
-    );
+    background: radial-gradient(circle at 30% 30%, var(--color-accent-soft), transparent 70%);
     color: var(--color-accent);
-    margin-bottom: 0.35rem;
-    flex-shrink: 0;
 }
 
-.principle-icon {
+/* Numbered step marker (How It Works). */
+.hx-step-num {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+}
+.hx-step-num::after {
+    content: "";
+    display: block;
     width: 2rem;
-    height: 2rem;
+    height: 2px;
+    margin-top: 0.4rem;
+    border-radius: 2px;
+    background: var(--gradient-helix);
 }
 
-/* CTA background texture */
-.join-mesh-cta {
+/* ── Hero ────────────────────────────────────────────────────────────── */
+
+.hx-hero-visual {
+    position: relative;
+    border-radius: 1.25rem;
+    border: 1px solid var(--color-border-subtle);
     background:
-        radial-gradient(
-            circle at top,
-            rgba(34, 211, 238, 0.18),
-            transparent 60%
-        ),
-        url("/bg-logo-right.png") center/cover no-repeat,
-        var(--color-bg-elevated);
-    background-blend-mode: screen, normal;
+        radial-gradient(120% 130% at 30% 20%, rgba(34, 211, 238, 0.08), transparent 55%),
+        radial-gradient(120% 130% at 75% 85%, rgba(147, 51, 234, 0.1), transparent 55%),
+        var(--color-bg-subtle);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    padding: 2.5rem 2rem;
+    min-height: 320px;
+}
+.hx-hero-visual img {
+    height: 260px;
+    width: auto;
+    /* logo.png carries its own dark background — frame it as a
+     * deliberate inset rather than fighting the rectangle. */
+    border-radius: 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    box-shadow: 0 0 40px rgba(103, 232, 249, 0.14);
+}
+.hx-hero-wordmark {
+    letter-spacing: 0.28em;
+    font-weight: 700;
+    font-size: 1.35rem;
+    color: var(--color-text);
+}
+.hx-hero-tagline {
+    color: var(--color-text-muted);
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+}
+
+/* Ghost button — bordered, neutral, accent on hover. The only button
+ * shape used on marketing pages. */
+.hx-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border-strong);
+    background: transparent;
+    color: var(--color-text);
+    font-size: 0.95rem;
+    font-weight: 550;
+    transition:
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+.hx-btn-ghost:hover,
+.hx-btn-ghost:focus-visible {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+    text-decoration: none;
+}
+
+/* Muted "coming soon" pill — communicates roadmap without pretending to
+ * be a button. */
+.hx-soon-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    border-radius: 0.75rem;
+    border: 1px dashed var(--color-border-subtle);
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
 }
 
 .badge-accent {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     background-color: var(--color-accent-soft);
     color: var(--color-accent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
     border-radius: 999px;
-    padding: 0.1rem 0.55rem;
-    font-size: 0.7rem;
+    padding: 0.25rem 0.8rem;
+    font-size: 0.72rem;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
 }
 
-/* Ensure muted text uses our theme variable instead of Bootstrap defaults */
 .text-muted,
 small {
     color: var(--color-text-muted) !important;
 }
 
-/* Small cyan dot used inside hero and CTA badges */
 .bg-cyan-500-dot {
     display: inline-block;
-    width: 0.45rem;
-    height: 0.45rem;
+    width: 0.4rem;
+    height: 0.4rem;
     border-radius: 999px;
-    background: radial-gradient(
-        circle,
-        var(--color-accent) 0%,
-        transparent 65%
-    );
+    background: var(--color-accent);
+    box-shadow: 0 0 8px var(--color-accent);
 }
 
-/* Links */
+/* Closing CTA panel: gradient hairline on top, soft glow. */
+.join-mesh-cta {
+    position: relative;
+    background:
+        radial-gradient(60% 120% at 50% 0%, var(--color-accent-soft), transparent 70%),
+        var(--color-bg-elevated);
+    border-radius: 1.25rem;
+    border: 1px solid var(--color-border-subtle);
+    overflow: hidden;
+}
+.join-mesh-cta::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--gradient-helix);
+}
+
+/* ── Links ───────────────────────────────────────────────────────────── */
 
 a {
     color: var(--color-accent);
@@ -364,7 +628,156 @@ a:hover {
     text-decoration: underline;
 }
 
-/* Scrollbar theming (WebKit) */
+/* ── Chat workspace ──────────────────────────────────────────────────── */
+
+.hx-chat-sidebar {
+    width: 280px;
+    overflow-y: auto;
+    background-color: var(--color-bg-subtle);
+    border-inline-end: 1px solid var(--color-border-subtle);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.hx-chat-item {
+    display: block;
+    width: 100%;
+    text-align: start;
+    padding: 0.45rem 0.7rem;
+    border: none;
+    border-radius: 0.6rem;
+    background: transparent;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition:
+        background-color var(--transition-fast),
+        color var(--transition-fast);
+}
+.hx-chat-item:hover {
+    background-color: var(--color-accent-soft);
+    color: var(--color-text);
+}
+.hx-chat-item.active {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+    font-weight: 550;
+}
+
+.hx-chat-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    height: 100%;
+    text-align: center;
+}
+.hx-chat-empty img {
+    height: 96px;
+    opacity: 0.9;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-border-subtle);
+    box-shadow: 0 0 28px rgba(103, 232, 249, 0.18);
+}
+.hx-chat-empty h2 {
+    font-size: 1.25rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0;
+}
+.hx-chat-empty p {
+    color: var(--color-text-muted);
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+/* Composer: one bordered rounded container; the textarea inside is
+ * borderless so the container reads as the input. */
+.hx-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.5rem;
+    margin: 0.75rem 1rem 1rem;
+    padding: 0.5rem 0.5rem 0.5rem 1rem;
+    border-radius: 1rem;
+    border: 1px solid var(--color-border-strong);
+    background-color: var(--color-bg-elevated);
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.hx-composer:focus-within {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+.hx-composer textarea.form-control {
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    box-shadow: none;
+    resize: none;
+    padding: 0.35rem 0;
+}
+.hx-composer textarea.form-control:focus {
+    box-shadow: none;
+    background: transparent;
+    color: var(--color-text);
+}
+.hx-composer textarea.form-control::placeholder {
+    color: var(--color-text-muted);
+    opacity: 0.7;
+}
+
+/* Circular send/stop button with the helix gradient. */
+.hx-send-btn {
+    flex-shrink: 0;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 999px;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    background: var(--gradient-helix);
+    opacity: 1;
+    transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.hx-send-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+.hx-send-btn:disabled {
+    opacity: 0.35;
+}
+.hx-send-btn.hx-stop {
+    background: transparent;
+    border: 1px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+}
+.hx-send-btn.hx-stop:hover {
+    border-color: var(--color-accent-hot);
+    color: var(--color-accent-hot);
+}
+
+/* Message bubbles. */
+.hx-bubble {
+    max-width: 80%;
+    white-space: pre-wrap;
+    padding: 0.65rem 1rem;
+    border-radius: 1rem;
+    line-height: 1.55;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+}
+.hx-bubble-user {
+    background-color: var(--color-accent-soft);
+    border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+/* ── Scrollbar theming (WebKit) ──────────────────────────────────────── */
 
 *::-webkit-scrollbar {
     width: 8px;
@@ -372,15 +785,15 @@ a:hover {
 }
 
 *::-webkit-scrollbar-thumb {
-    background-color: rgba(148, 163, 184, 0.6);
+    background-color: rgba(148, 163, 184, 0.4);
     border-radius: 999px;
 }
 
 :root[data-theme="dark"] *::-webkit-scrollbar-thumb {
-    background-color: rgba(148, 163, 184, 0.8);
+    background-color: rgba(148, 163, 184, 0.35);
 }
 
-/* Code blocks / preformatted text placeholders */
+/* ── Code blocks ─────────────────────────────────────────────────────── */
 
 pre,
 code {
@@ -397,7 +810,7 @@ pre {
     overflow-x: auto;
 }
 
-/* Small-screen adjustments */
+/* ── Small screens ───────────────────────────────────────────────────── */
 
 @media (max-width: 576px) {
     .app-main {
@@ -408,16 +821,29 @@ pre {
     .app-header .navbar-brand {
         font-size: 0.8rem;
     }
+
+    .hx-chat-sidebar {
+        width: 220px;
+    }
+
+    .hx-hero-visual {
+        min-height: 220px;
+        padding: 1.5rem 1rem;
+        gap: 1rem;
+    }
+    .hx-hero-visual img {
+        height: 160px;
+    }
 }
 
-/* Public-beta banner (F6) — slim accent strip above the header. */
+/* ── Public-beta banner (F6) ─────────────────────────────────────────── */
 .beta-banner {
-  background: var(--bs-warning-bg-subtle, #fff3cd);
-  color: var(--bs-warning-text-emphasis, #664d03);
-  border-bottom: 1px solid var(--bs-warning-border-subtle, #ffe69c);
+    background: rgba(255, 193, 7, 0.08);
+    color: #b8860b;
+    border-bottom: 1px solid rgba(255, 193, 7, 0.2);
 }
-[data-bs-theme="dark"] .beta-banner {
-  background: rgba(255, 193, 7, 0.12);
-  color: #ffda6a;
-  border-bottom-color: rgba(255, 193, 7, 0.25);
+:root[data-theme="dark"] .beta-banner {
+    background: rgba(255, 193, 7, 0.08);
+    color: #e8c56a;
+    border-bottom-color: rgba(255, 193, 7, 0.18);
 }
