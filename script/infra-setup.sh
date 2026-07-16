@@ -505,11 +505,14 @@ if ! ssh "${svc_host}" '
         sudo dnf config-manager setopt lair-cafe-unstable.enabled=1
         echo "  lair-cafe-unstable enabled"
     fi
-    # gallumbits is on Fedora 42 while rpm.lair.cafe publishes only a
-    # fedora/43 tree; the fc43 helexa binaries need at most GLIBC_2.34
-    # (host has 2.41), so pin the repo to the 43 path until the host is
-    # upgraded to F43. Remove this once it is.
-    sudo dnf config-manager setopt lair-cafe-unstable.baseurl=https://rpm.lair.cafe/fedora/43/x86_64/unstable/
+    # rpm.lair.cafe publishes only a fedora/43 tree. A host still on F42
+    # needs the repo pinned to the 43 path (the fc43 helexa binaries need
+    # at most GLIBC_2.34, so they run fine there); on F43+ the stock
+    # $releasever URL is already correct and pinning would mask future
+    # release bumps, so only pin when actually on 42.
+    if [ "$(rpm -E %fedora)" = "42" ]; then
+        sudo dnf config-manager setopt lair-cafe-unstable.baseurl=https://rpm.lair.cafe/fedora/43/x86_64/unstable/
+    fi
     sudo install -d -o root -g root -m 0755 /etc/helexa-router
     sudo install -d -o root -g root -m 0755 /etc/helexa-upstream
 '; then
