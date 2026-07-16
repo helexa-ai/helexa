@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Nowa forma inteligencji",
-    "title": "Nowa forma inteligencji",
-    "lead": "Helexa to samoorganizująca się sieć SI zasilana przez niezależnych operatorów. Otwarta. Rozproszona. Ewoluująca.",
-    "ctaJoinMesh": "Dołącz do sieci",
+    "badge": "Suwerenna europejska inferencja AI",
+    "title": "Suwerenna infrastruktura",
+    "lead": "Wierzymy, że uruchamianie zaawansowanych, wydajnych modeli na sprzęcie, który już posiadasz — w małych, efektywnych obiektach — to sposób, w jaki europejskie MŚP mogą konkurować z hiperskalowym podejściem dominującym w dzisiejszym globalnym ekosystemie technologicznym.",
+    "ctaJoinMesh": "Wypróbuj teraz",
     "ctaFollowProject": "Śledź projekt",
-    "subcopy": "Zbudowana dla operatorów, twórców i społeczności, które wierzą, że SI powinna być otwarta, odporna i współdzielona.",
-    "imageAlt": "Wizualizacja helisy Helexa"
+    "subcopy": "Stworzone przez Europejczyków, dla Europejczyków.",
+    "imageAlt": "Grafika helisy Helexa"
   },
 
   "intent": {
     "title": "Dlaczego istnieje Helexa",
-    "p1": "Sztuczna inteligencja staje się najpotężniejszą infrastrukturą na Ziemi. Dziś jednak ta moc jest skoncentrowana w rękach kilku korporacji, kształtowana przez prywatne priorytety, ograniczenia geograficzne i kruche modele gospodarcze.",
-    "p2Intro": "Helexa wyobraża sobie coś innego:",
-    "bullet1": "Inteligencję, która wyrasta z wielu miejsc, a nie z jednego centrum.",
-    "bullet2": "Sieć, w której każdy może wnieść swój wkład i czerpać korzyści.",
-    "bullet3": "System, który dostosowuje się do popytu, a nie do odgórnych dyrektyw.",
-    "bullet4": "Technologię, która wzmacnia społeczności zamiast je zastępować.",
-    "closing": "Helexa nie jest platformą. Nie jest chmurą.\nTo sieć — żywa, ewoluująca struktura niezależnych operatorów, tworząca nowy rodzaj inteligencji."
+    "p1": "Dzisiejsza infrastruktura AI jest zdominowana przez hiperskalowe centra danych — fizycznie zlokalizowane w jurysdykcjach poza UE albo kontrolowane przez podmioty prawne odpowiadające przed jurysdykcjami spoza UE — z agendami, praktykami i strategiami, które nie zawsze odpowiadają wysokim europejskim standardom etyki i ochrony konsumentów. Europejskie firmy muszą w coraz większym stopniu przetwarzać i chronić dane w ramach unijnych regulacji, czego zewnętrzne stosy inferencyjne rzadko traktują priorytetowo.",
+    "p2Intro": "Helexa wykorzystuje infrastrukturę, którą Europa już ma, oraz modele o otwartych wagach, których nie możemy sobie pozwolić stracić:",
+    "bullet1": "Zaawansowane modele o otwartych wagach działające wydajnie na akceleratorach klasy konsumenckiej, profesjonalnej i datacenter.",
+    "bullet2": "Rezydencja danych i prywatność domyślnie. Inferencja działa na infrastrukturze w jurysdykcji konsumenta.",
+    "bullet3": "Wykorzystanie dostępnej już dziś mocy akceleratorów bez utraty wydajności.",
+    "bullet4": "Niezależność od globalnych hyperscalerów o konkurencyjnych interesach.",
+    "closing": "Nie globalna chmura, która akurat ma centrum danych w UE. Wielu niezależnych, suwerennych operatorów w UE."
   },
 
   "whyNow": {
-    "title": "Punkt zwrotny dla SI",
-    "problemTitle": "Problem",
-    "problemBullet1": "SI centralizuje się szybciej niż jakakolwiek wcześniejsza technologia.",
-    "problemBullet2": "Dostęp do mocy obliczeniowej definiuje możliwości, a ten dostęp się zawęża.",
-    "problemBullet3": "Bariery kosztowe wykluczają badaczy, startupy i społeczności.",
-    "problemBullet4": "Napięcia geopolityczne i regulacyjne zagrażają globalnej dostępności.",
-    "problemBullet5": "Twórcy modeli i operatorzy sprzętu rzadko dzielą się wartością, którą współtworzą.",
+    "title": "Dlaczego teraz",
+    "problemTitle": "Niedopasowanie",
+    "problemBullet1": "Dzisiejsze stosy inferencyjne zakładają hiperskalowe centra danych, wielkie klastry GPU i zamknięte LLM-y.",
+    "problemBullet2": "Europejskie regulacje — RODO, AI Act, przepisy sektorowe — kierują obciążenia do infrastruktury lokalnej i do własnego regionu.",
+    "problemBullet3": "Wysyłanie danych do zagranicznych chmur to ryzyko regulacyjne, prywatnościowe i kosztowe.",
+    "problemBullet4": "Dostęp do GPU w chmurze jest drogi, ograniczony podażowo i zarządzany gdzie indziej.",
+    "problemBullet5": "Wydajny sprzęt konsumencki i stacje robocze już dziś stoją w Europie niedostatecznie wykorzystane.",
     "opportunityTitle": "Szansa",
-    "opportunityIntro": "Ale rozproszony świat jest możliwy.",
-    "opportunityBullet1": "Tysiące GPU na całym świecie jest już dziś niedostatecznie wykorzystywanych.",
-    "opportunityBullet2": "Operatorzy chcą uczciwego wynagrodzenia za moc obliczeniową.",
-    "opportunityBullet3": "Deweloperzy potrzebują otwartej infrastruktury odpornej na cenzurę.",
-    "opportunityBullet4": "Społeczności oczekują suwerenności i odporności w systemach cyfrowych.",
-    "opportunityBullet5": "Wzrost SI wyprzedził tradycyjne chmury — potrzebne są nowe kształty.",
-    "opportunityClosing": "Helexa jest momentem, w którym te siły się spotykają."
+    "opportunityIntro": "Modele o otwartych wagach, bliskie czołówce, działają już dobrze na sprzęcie, którym Europa dysponuje.",
+    "opportunityBullet1": "Zaawansowane modele o otwartych wagach działają na stacjach roboczych i konsumenckich GPU bez klastrów GPU klasy datacenter.",
+    "opportunityBullet2": "Europejskie firmy chcą AI, którą mogą uruchamiać lokalnie, z przewidywalnymi kosztami i gwarancją dostępu w przyszłości.",
+    "opportunityBullet3": "Operatorzy dysponujący wydajnym sprzętem mogą serwować inferencję blisko konsumentów.",
+    "opportunityBullet4": "Regulacje zmieniają suwerenność danych z preferencji w wymóg.",
+    "opportunityBullet5": "Wydajne oprogramowanie inferencyjne to brakująca warstwa — i antidotum na kolejne, coraz większe centra danych.",
+    "opportunityClosing": "Helexa jest tą warstwą oprogramowania."
   },
 
   "howItWorks": {
-    "title": "Jak formuje się sieć",
+    "title": "Jak to działa",
     "operators": {
-      "eyebrow": "Operatorzy uruchamiają węzły",
-      "title": "Każdy może wnieść moc obliczeniową.",
-      "body": "Operatorzy uruchamiają węzły Helexa. Sami decydują, jakie modele hostować. Zachowują kontrolę nad swoim sprzętem i ekonomią. Bez zgód z góry, bez strażników przy bramie."
+      "eyebrow": "Wdrażaj lokalnie",
+      "title": "Uruchamiaj zaawansowane modele na własnym sprzęcie.",
+      "body": "Helexa serwuje modele o otwartych wagach, bliskie czołówce, na GPU klasy konsumenckiej i stacjach roboczych — lokalnie, w Twojej jurysdykcji. Bez klastra, bez hyperscalera, bez zależności od podmiotów zagranicznych. Dane pozostają tam, gdzie masz nad nimi kontrolę."
     },
     "routing": {
-      "eyebrow": "Sieć routuje inteligencję",
-      "title": "Popyt przepływa przez całą sieć.",
-      "body": "Helexa uczy się, gdzie istnieją zasoby, gdzie rośnie zapotrzebowanie i które węzły najlepiej nadają się do obsługi żądań. Sieć dostosowuje się organicznie — jak rosnąca helisa."
+      "eyebrow": "Kieruj inteligentnie",
+      "title": "Zapytania zostają blisko domu.",
+      "body": "Helexa kieruje każde zapytanie do infrastruktury z wolną mocą, preferując bliskość regionalną, więc ruch i dane pozostają tam, gdzie tego oczekujesz. Wdrożenia łączą się w szerszą sieć w miarę wzrostu mocy."
     },
     "value": {
-      "eyebrow": "Wartość wraca z powrotem",
-      "title": "Praca jest udowodniona. Wynagrodzenie jest uczciwe.",
-      "body": "Każde zadanie posiada kryptograficzny paragon. Operatorzy zarabiają na inteligencji, w tworzeniu której pomagają. Bez podatku platformowego. Bez nieprzejrzystego rozliczania."
+      "eyebrow": "Działaj niezależnie",
+      "title": "Wykonana praca jest weryfikowalna. Ekonomia jest przejrzysta.",
+      "body": "Zużycie jest mierzone w sposób przejrzysty, a niezależni operatorzy będą wynagradzani za inteligencję, którą serwują. Bez podatku platformowego, nieprzejrzystych rozliczeń i uzależnienia od dostawcy."
     }
   },
 
   "principles": {
-    "title": "Zbudowana na zasadach, nie na platformach",
+    "title": "Zbudowana na suwerenności, nie na uzależnieniu",
     "distributed": {
-      "title": "Rozproszona z założenia",
-      "body": "Brak pojedynczego punktu awarii. Brak centralnego organu. Sieć, która z każdym nowym operatorem staje się silniejsza."
+      "title": "Suwerenna z założenia",
+      "body": "Europejski sprzęt, europejscy operatorzy, europejskie prawo. Bez pojedynczego punktu awarii i bez zewnętrznej jurysdykcji, od której zależy dostęp."
     },
     "participation": {
-      "title": "Otwarta partycypacja",
-      "body": "Jeśli masz moc obliczeniową, możesz ją wnieść. Sieć wita wszystkich — od edge, przez serwery domowe, po centra danych."
+      "title": "Działa na sprzęcie, który masz",
+      "body": "Od pojedynczej stacji roboczej po regionalne centrum danych — wydajna moc obliczeniowa wystarczy, by uruchomić Helexę. Zmniejsza ona wymagania infrastrukturalne, zamiast wymagać nowych klastrów."
     },
     "fairness": {
-      "title": "Sprawiedliwość i transparentność",
-      "body": "Zyski opierają się na realnej pracy, kryptograficznie weryfikowanej. Bez czarnych skrzynek. Bez ukrytych opłat."
+      "title": "Prywatność i przejrzystość",
+      "body": "Prywatność w standardzie: historia rozmów żyje wyłącznie w przeglądarce, nigdy na serwerze. Pomiar zużycia jest przejrzysty; nie ma czarnych skrzynek ani ukrytych opłat."
     },
     "evolving": {
-      "title": "Ewoluująca inteligencja",
-      "body": "Sieć uczy się z popytu. Modele są ładowane tam, gdzie są potrzebne. Inteligencja rozprzestrzenia się dzięki współpracy."
+      "title": "Odporna dzięki rozproszeniu",
+      "body": "Moc rozproszoną między wieloma niezależnymi wdrożeniami trudniej cenzurować, dławić czy wyłączyć; jest też odporna na zwroty w polityce zagranicznej i awarię pojedynczego dostawcy."
     }
   },
 
   "roadAhead": {
-    "title": "Czym Helexa chce się stać",
-    "p1": "Globalną warstwą inteligencji, która należy do wszystkich, napędzaną przez helisę węzłów i społeczności.",
-    "p2": "Siecią odporną na awarie, politykę, monopole i błędy.",
-    "p3": "Nowym modelem ekonomicznym, w którym operatorzy, twórcy i użytkownicy wspólnie korzystają z wytworzonej wartości.",
-    "p4": "Ekosystemem, w którym innowacja wyrasta z obrzeży — a nie z centrum.",
+    "title": "Dokąd zmierza Helexa",
+    "p1": "Naszym długofalowym celem jest stać się warstwą oprogramowania napędzającą rozproszoną sieć niezależnie zarządzanej europejskiej infrastruktury AI.",
+    "p2": "Od wdrożeń korporacyjnych uruchamiających zaawansowane modele na własnym sprzęcie, po zasilane energią odnawialną regionalne centra danych służące swoim społecznościom.",
+    "p3": "Europejska warstwa inferencyjna, posiadana i zarządzana w Europie. Odporna na awarie, zwroty w polityce zagranicznej, monopole i upadek pojedynczego dostawcy.",
+    "p4": "Infrastruktura, która wzmacnia europejską autonomię, zamiast pogłębiać zależność od garstki zagranicznych dostawców.",
     "card": {
-      "eyebrow": "Migawka wizji",
-      "title": "W stronę współdzielonej sieci inteligencji",
-      "body": "Helexa jest na wczesnym etapie. Idee są większe niż obecna implementacja — i to celowe. Sieć będzie rosła iteracyjnie, a jej ewolucję będą kształtować operatorzy i twórcy."
+      "eyebrow": "Wizja",
+      "title": "Warstwa oprogramowania dla europejskiej infrastruktury AI",
+      "body": "Helexa jest na wczesnym etapie — celowo. Działający stos inferencyjny już dziś, rozwijający się w stronę rozproszonej sieci niezależnie zarządzanych europejskich wdrożeń."
     }
   },
 
   "joinMesh": {
-    "badge": "Wczesna faza",
-    "title": "Sieć właśnie się formuje.",
-    "titleHighlight": "Możesz być jej częścią.",
-    "lead": "Niezależnie od tego, czy zarządzasz sprzętem, budujesz modele, czy po prostu zależy Ci na tym, jak zarządza się SI — w tej sieci jest dla Ciebie miejsce.",
+    "badge": "Wczesny dostęp",
+    "title": "Suwerenna infrastruktura AI.",
+    "titleHighlight": "Zbudowana w Europie.",
+    "lead": "Niezależnie od tego, czy uruchamiasz AI na własnym sprzęcie, zarządzasz mocą obliczeniową, czy budujesz europejską suwerenność AI — jest tu miejsce dla Ciebie.",
     "ctaRunNode": "Uruchom węzeł (wkrótce)",
-    "ctaJoinAnnouncements": "Dołącz do wczesnych ogłoszeń",
+    "ctaJoinAnnouncements": "Śledź pierwsze ogłoszenia",
     "ctaExploreCode": "Poznaj kod",
-    "footer": "Bez zamkniętych ogrodów. Bez jednego właściciela. Tylko sieć ludzi, sprzętu i idei — tworząca inną przyszłość dla inteligencji."
+    "footer": "Bez zamkniętych ogrodów. Warstwa oprogramowania dla suwerennej europejskiej AI. Od pojedynczej stacji roboczej po regionalne centra danych zasilane energią odnawialną."
   }
 }

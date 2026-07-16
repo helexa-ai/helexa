@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Umbo jipya la akili",
-    "title": "Umbo Jipya la Akili",
-    "lead": "Helexa ni wavu wa AI unaojiandaa wenyewe unaoendeshwa na waendeshaji huru. Wazi. Uliosambazwa. Unaobadilika.",
-    "ctaJoinMesh": "Jiunge na wavu",
-    "ctaFollowProject": "Fuata mradi",
-    "subcopy": "Imetengenezwa kwa ajili ya waendeshaji, wajenzi na jamii zinazoiamini kuwa AI inapaswa kuwa wazi, thabiti na inayoshirikiwa.",
-    "imageAlt": "Taswira ya heliksi ya Helexa"
+    "badge": "Uendeshaji Huru wa AI wa Ulaya",
+    "title": "Miundombinu huru",
+    "lead": "Tunaamini kwamba kuendesha miundo ya hali ya juu na yenye uwezo kwenye vifaa ulivyo navyo tayari — katika vituo vidogo na vyenye ufanisi — ndiyo njia ya biashara ndogo na za kati za Ulaya kushindana na fikra ya hyperscaler inayotawala mfumo wa teknolojia wa dunia leo.",
+    "ctaJoinMesh": "Ijaribu sasa",
+    "ctaFollowProject": "Fuatilia mradi",
+    "subcopy": "Imeundwa na Waeuropa, kwa ajili ya Waeuropa.",
+    "imageAlt": "Mchoro wa heliksi ya Helexa"
   },
 
   "intent": {
     "title": "Kwa Nini Helexa Ipo",
-    "p1": "AI inageuka kuwa miundombinu yenye nguvu zaidi duniani. Lakini leo, nguvu hiyo imeshikiliwa na mashirika machache, ikiumbwa na vipaumbele binafsi, mipaka ya kijiografia na uchumi dhaifu.",
-    "p2Intro": "Helexa inawaza kitu tofauti:",
-    "bullet1": "Akili inayokua kutoka kila mahali, si mahali pamoja.",
-    "bullet2": "Mtandao ambao mtu yeyote anaweza kuchangia na kunufaika nao.",
-    "bullet3": "Mfumo unaojibadilisha kulingana na mahitaji, si maagizo.",
-    "bullet4": "Teknolojia inayotia nguvu jamii badala ya kuziacha kando.",
-    "closing": "Helexa si jukwaa. Si \"wingu\" pia.\nNi wavu — mtandao hai, unaobadilika wa waendeshaji huru unaounda aina mpya ya akili."
+    "p1": "Miundombinu ya AI ya leo inatawaliwa na datacentre kubwa za hyperscale zilizoko kimwili katika mamlaka za nje ya Umoja wa Ulaya (EU), au zinazodhibitiwa na taasisi za kisheria zinazowajibika kwa mamlaka za nje ya EU — zikiwa na ajenda, mienendo na mikakati ambayo si mara zote hukidhi viwango vya juu vya Ulaya vya maadili na ulinzi wa mtumiaji. Biashara za Ulaya zinazidi kulazimika kuchakata na kulinda data ndani ya mfumo wa kisheria wa EU — jambo ambalo mifumo ya inference ya nje mara chache huipa kipaumbele.",
+    "p2Intro": "Helexa inatumia miundombinu ambayo Ulaya inayo tayari pamoja na miundo ya open-weight ambayo hatuwezi kumudu kuipoteza:",
+    "bullet1": "Miundo ya hali ya juu ya open-weight inayofanya kazi kwa ufanisi kwenye accelerators za kawaida, za kitaalamu na za daraja la datacentre.",
+    "bullet2": "Ukaaji wa data na faragha kwa chaguo-msingi. Inference hufanyika kwenye miundombinu iliyo ndani ya mamlaka ya mtumiaji.",
+    "bullet3": "Kutumia uwezo wa accelerators uliopo sasa bila kupunguza utendaji.",
+    "bullet4": "Kujitegemea mbali na hyperscalers za kimataifa zenye maslahi yanayokinzana.",
+    "closing": "Si wingu la kimataifa ambalo kwa bahati lina datacentre ndani ya EU. Ni waendeshaji wengi wa EU walio huru na wenye mamlaka kamili."
   },
 
   "whyNow": {
-    "title": "Kipindi cha Mabadiliko kwa AI",
-    "problemTitle": "Tatizo",
-    "problemBullet1": "AI inajikita katikati kwa kasi kuliko teknolojia yoyote iliyotangulia.",
-    "problemBullet2": "Upatikanaji wa rasilimali za kompyuta ndio unaoamua uwezo, na upatikanaji huo unazidi kupungua.",
-    "problemBullet3": "Vizuizi vya gharama vinawaondoa watafiti, kampuni changa na jamii.",
-    "problemBullet4": "Misukumo ya kisiasa na ya kisheria inatishia upatikanaji wa kimataifa.",
-    "problemBullet5": "Watengenezaji wa miundo na waendeshaji wa vifaa mara chache hushiriki katika thamani wanayoiumba.",
+    "title": "Kwa Nini Sasa",
+    "problemTitle": "Kutolingana",
+    "problemBullet1": "Mifumo ya inference ya leo hudhania datacentre kubwa za hyperscale, makundi makubwa ya GPU na LLM za chanzo-funge.",
+    "problemBullet2": "Kanuni za Ulaya — GDPR, AI Act, sheria za kisekta — zinaelekeza kazi zifanyike kwenye vituo vya ndani na ndani ya kanda.",
+    "problemBullet3": "Kupeleka data kwenye mawingu ya kigeni ni hatari ya kikanuni, ya faragha na ya gharama.",
+    "problemBullet4": "Upatikanaji wa GPU za wingu ni ghali, una uhaba wa ugavi na unaongozwa kutoka nje.",
+    "problemBullet5": "Vifaa vya kawaida na vya workstation vyenye uwezo tayari vipo Ulaya kote bila kutumika ipasavyo.",
     "opportunityTitle": "Fursa",
-    "opportunityIntro": "Lakini dunia iliyo sambamba inawezekana.",
-    "opportunityBullet1": "Maelfu ya GPU tayari zipo na hazitumiki kikamilifu kote duniani.",
-    "opportunityBullet2": "Waendeshaji wanataka malipo ya haki kwa kompyuta wanayotoa.",
-    "opportunityBullet3": "Watengenezaji wanataka miundombinu iliyo wazi na isiyodhibitiwa kwa urahisi.",
-    "opportunityBullet4": "Jamii zinahitaji mamlaka na uimara katika mifumo yao ya kidijitali.",
-    "opportunityBullet5": "Ukuaji wa AI umeizidi kasi miundombinu ya jadi ya wingu — miundo mipya inahitajika.",
-    "opportunityClosing": "Helexa ndiyo wakati ambapo nguvu hizi zinajipanga pamoja."
+    "opportunityIntro": "Miundo ya open-weight inayokaribia kilele sasa inafanya kazi vizuri kwenye vifaa ambavyo Ulaya inavimiliki tayari.",
+    "opportunityBullet1": "Miundo ya hali ya juu ya open-weight huendeshwa kwenye workstations na GPU za kawaida bila makundi ya GPU ya datacentre.",
+    "opportunityBullet2": "Biashara za Ulaya zinataka AI wanayoweza kuiendesha ndani, kwa gharama zinazotabirika na uhakika wa upatikanaji wa baadaye.",
+    "opportunityBullet3": "Waendeshaji wenye vifaa vyenye uwezo wanaweza kutoa inference karibu na watumiaji.",
+    "opportunityBullet4": "Kanuni zinabadilisha umiliki huru wa data kutoka kuwa chaguo hadi kuwa hitaji la lazima.",
+    "opportunityBullet5": "Programu ya inference yenye ufanisi ndiyo tabaka linalokosekana na dawa dhidi ya datacentre nyingi na kubwa zaidi.",
+    "opportunityClosing": "Helexa ndiyo tabaka hilo la programu."
   },
 
   "howItWorks": {
-    "title": "Wavu Unavyoundwa",
+    "title": "Jinsi Inavyofanya Kazi",
     "operators": {
-      "eyebrow": "Waendeshaji Huwasha Nodi",
-      "title": "Mtu yeyote anaweza kuchangia nguvu ya kompyuta.",
-      "body": "Waendeshaji huendesha nodi za Helexa. Wao huamua ni miundo gani ya kuikaribisha. Wanasalia na udhibiti wa vifaa vyao na uchumi wao. Hakuna vibali, hakuna walinzi wa lango."
+      "eyebrow": "Sakinisha Ndani",
+      "title": "Endesha miundo ya hali ya juu kwenye vifaa vyako mwenyewe.",
+      "body": "Helexa hutoa miundo ya open-weight inayokaribia kilele kwenye GPU za kawaida na za daraja la workstation, kwenye vituo vyako, ndani ya mamlaka yako mwenyewe. Hakuna cluster, hakuna hyperscaler, hakuna utegemezi wa nje ya nchi. Data hubaki mahali unapoidhibiti."
     },
     "routing": {
-      "eyebrow": "Wavu Huelekeza Akili",
-      "title": "Mahitaji hupita kwenye mtandao.",
-      "body": "Helexa hujifunza ni wapi kuna uwezo, wapi mahitaji yanaongezeka, na ni nodi zipi zinafaa zaidi kuhudumia maombi. Wavu hubadilika kiasili — kama heliksi inayokua."
+      "eyebrow": "Elekeza kwa Busara",
+      "title": "Maombi hubaki karibu na nyumbani.",
+      "body": "Helexa huelekeza kila ombi kwenye miundombinu yenye uwezo, ikipendelea ukaribu wa kanda, ili trafiki na data zibaki mahali unapotarajia. Usakinishaji huungana kuwa mtandao mpana kadri uwezo unavyoongezeka."
     },
     "value": {
-      "eyebrow": "Thamani Hurudi Nyuma",
-      "title": "Kazi inathibitishwa. Malipo ni ya haki.",
-      "body": "Kila kazi hubeba risiti ya kriptografia. Waendeshaji hupata kipato kutokana na akili wanayosaidia kutoa. Hakuna ushuru wa jukwaa. Hakuna bili zisizo wazi."
+      "eyebrow": "Endesha kwa Kujitegemea",
+      "title": "Kazi inathibitishwa. Uchumi uko wazi.",
+      "body": "Matumizi hupimwa kwa uwazi na waendeshaji huru watalipwa kwa akili wanayotoa. Hakuna kodi ya jukwaa, hakuna ankara zisizoeleweka, hakuna kufungiwa."
     }
   },
 
   "principles": {
-    "title": "Imejengwa juu ya Kanuni, Siyo Majukwaa",
+    "title": "Imejengwa juu ya Uhuru, Si Kufungiwa",
     "distributed": {
-      "title": "Imesambazwa kwa Muundo",
-      "body": "Hakuna sehemu moja ya kushindwa. Hakuna mamlaka ya kati. Mtandao unaokuwa imara zaidi kwa kila mwendeshaji mpya."
+      "title": "Huru kwa Muundo",
+      "body": "Vifaa vya Ulaya, waendeshaji wa Ulaya, sheria za Ulaya. Hakuna kitovu kimoja cha kushindwa wala mamlaka ya nje ambayo upatikanaji unaitegemea."
     },
     "participation": {
-      "title": "Ushiriki Wazi",
-      "body": "Kama una kompyuta, unaweza kuchangia. Wavu unamkaribisha kila mtu — kutoka kwenye vifaa vya ukingo, seva za nyumbani hadi vituo vya data."
+      "title": "Huendeshwa kwenye Vifaa Ulivyo Navyo",
+      "body": "Kuanzia workstation moja hadi datacentre ya kanda, vifaa vya kompyuta vyenye uwezo vinaweza kuendesha Helexa. Inapunguza mahitaji ya miundombinu badala ya kudai clusters mpya."
     },
     "fairness": {
-      "title": "Uadilifu na Uwazi",
-      "body": "Mapato yanategemea kazi halisi, iliyothibitishwa kwa kriptografia. Hakuna visanduku vyeusi. Hakuna ada zilizofichwa."
+      "title": "Faragha na Uwazi",
+      "body": "Faragha ya asili: historia ya mazungumzo huhifadhiwa kwenye kivinjari pekee, kamwe si kwenye seva. Upimaji wa matumizi uko wazi; hakuna masanduku meusi wala ada zilizofichwa."
     },
     "evolving": {
-      "title": "Akili Inayobadilika",
-      "body": "Wavu hujifunza kutokana na mahitaji. Miundo hupakiwa pale inapohitajika. Akili huenea kupitia ushirikiano."
+      "title": "Imara kwa Usambazaji",
+      "body": "Uwezo uliosambazwa kwenye usakinishaji mwingi huru ni mgumu zaidi kudhibitiwa, kubanwa au kuzimwa, na ni imara dhidi ya mabadiliko ya sera za kigeni na kushindwa kwa muuzaji mmoja."
     }
   },
 
   "roadAhead": {
-    "title": "Helexa Inalenga Kuwa Nini",
-    "p1": "Tabaka la akili ya kimataifa linalomilikiwa na kila mtu, likiendeshwa na heliksi ya nodi na jamii.",
-    "p2": "Mtandao wenye ustahimilivu dhidi ya hitilafu, siasa, ukiritimba na kushindwa.",
-    "p3": "Mfumo mpya wa kiuchumi ambapo waendeshaji, wajenzi na watumiaji wote hunufaika.",
-    "p4": "Mfumo ikolojia ambamo ubunifu unakua kutoka pembezoni — si katikati.",
+    "title": "Helexa Inakoelekea",
+    "p1": "Lengo letu la muda mrefu ni kuwa tabaka la programu linaloendesha mtandao uliosambazwa wa miundombinu ya AI ya Ulaya inayoendeshwa kwa uhuru.",
+    "p2": "Kuanzia usakinishaji wa makampuni yanayoendesha miundo ya hali ya juu kwenye vifaa vyao wenyewe, hadi datacentre za kanda zinazotumia nishati mbadala zikihudumia jamii zao.",
+    "p3": "Tabaka la inference la Ulaya linalomilikiwa na kuendeshwa Ulaya. Imara dhidi ya kukatika kwa huduma, mabadiliko ya sera za kigeni, ukiritimba na kushindwa kwa muuzaji mmoja.",
+    "p4": "Miundombinu inayoimarisha uhuru wa Ulaya badala ya kuongeza utegemezi kwa watoa huduma wachache wa kigeni.",
     "card": {
-      "eyebrow": "Muhtasari wa maono",
-      "title": "Kuelekea wavu wa akili ya pamoja",
-      "body": "Helexa bado ipo hatua za awali. Mawazo ni makubwa kuliko utekelezaji wa sasa — na hilo limekusudiwa. Mtandao utakua hatua kwa hatua, ukiundwa na maoni ya waendeshaji na wajenzi."
+      "eyebrow": "Dira",
+      "title": "Tabaka la programu kwa miundombinu ya AI ya Ulaya",
+      "body": "Helexa iko katika hatua za mwanzo, na hivyo kwa makusudi. Mfumo wa inference unaofanya kazi leo, ukikua kuelekea mtandao uliosambazwa wa usakinishaji wa Ulaya unaoendeshwa kwa uhuru."
     }
   },
 
   "joinMesh": {
-    "badge": "Hatua ya mwanzo",
-    "title": "Wavu Unaundwa.",
-    "titleHighlight": "Unaweza Kuwa Sehemu Yake.",
-    "lead": "Ikiwa unaendesha vifaa, unajenga miundo, au unajali tu jinsi AI inavyoendeshwa, kuna nafasi yako ndani ya wavu.",
-    "ctaRunNode": "Endesha nodi (hivi karibuni)",
-    "ctaJoinAnnouncements": "Jiunge na tangazo za mwanzo",
+    "badge": "Ufikiaji wa mapema",
+    "title": "Miundombinu Huru ya AI.",
+    "titleHighlight": "Imejengwa Ulaya.",
+    "lead": "Iwe unaendesha AI kwenye vifaa vyako mwenyewe, unaendesha uwezo wa kompyuta, au unajenga kuelekea uhuru wa AI wa Ulaya, kuna nafasi yako hapa.",
+    "ctaRunNode": "Sakinisha nodi (hivi karibuni)",
+    "ctaJoinAnnouncements": "Fuatilia matangazo ya mapema",
     "ctaExploreCode": "Chunguza msimbo",
-    "footer": "Hakuna bustani za uzio. Hakuna mmiliki mmoja. Ni wavu wa watu, vifaa na mawazo — unaoumba mustakabali tofauti wa akili."
+    "footer": "Hakuna bustani zilizozungushiwa ukuta. Tabaka la programu kwa AI huru ya Ulaya. Kuanzia workstation moja hadi datacentre za kanda zinazotumia nishati mbadala."
   }
 }

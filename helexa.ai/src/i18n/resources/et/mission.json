@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Uus intelligentsuse vorm",
-    "title": "Uus intelligentsuse vorm",
-    "lead": "Helexa on iseorganiseeruv tehisintellekti võrk, mida juhivad sõltumatud operaatorid. Avatud. Hajutatud. Arenev.",
-    "ctaJoinMesh": "Liitu võrgustikuga",
+    "badge": "Suveräänne Euroopa AI-inferents",
+    "title": "Suveräänne taristu",
+    "lead": "Usume, et arenenud ja võimekate mudelite käitamine juba olemasoleval riistvaral — väikestes ja tõhusates rajatistes — on viis, kuidas Euroopa VKEd konkureerivad tänast globaalset tehnoloogiaökosüsteemi valitseva hyperscaler-mõtteviisiga.",
+    "ctaJoinMesh": "Proovi kohe",
     "ctaFollowProject": "Jälgi projekti",
-    "subcopy": "Loodud operaatoritele, ehitajatele ja kogukondadele, kes usuvad, et tehisintellekt peab olema avatud, vastupidav ja jagatud.",
+    "subcopy": "Loodud eurooplaste poolt, eurooplastele.",
     "imageAlt": "Helexa heeliksi visuaal"
   },
 
   "intent": {
-    "title": "Miks Helexa olemas on",
-    "p1": "Tehisintellektist saab Maa võimsaim taristu. Kuid täna on see jõud koondunud väheste korporatsioonide kätte, mida kujundavad eraeesmärgid, geograafilised piirangud ja habras majandus.",
-    "p2Intro": "Helexa kujutab ette midagi teistsugust:",
-    "bullet1": "Intelligents, mis kasvab igalt poolt, mitte ühest kohast.",
-    "bullet2": "Võrk, kus igaüks saab panustada ja kasu saada.",
-    "bullet3": "Süsteem, mis kohaneb nõudluse, mitte korralduste järgi.",
-    "bullet4": "Tehnoloogia, mis tugevdab kogukondi, mitte ei asenda neid.",
-    "closing": "Helexa ei ole platvorm. See ei ole pilv.\nSee on võrk — elav, arenev iseseisvate operaatorite võrgustik, mis loob uutmoodi intelligentsi."
+    "title": "Miks Helexa on olemas",
+    "p1": "Tänast AI-taristut valitsevad hüperskaala andmekeskused, mis asuvad kas füüsiliselt EL-välistes jurisdiktsioonides või on selliste juriidiliste isikute kontrolli all, kes vastutavad EL-väliste jurisdiktsioonide ees — agendade, praktikate ja strateegiatega, mis ei pruugi alati vastata Euroopa kõrgetele eetika- ja tarbijakaitsestandarditele. Euroopa ettevõtted peavad üha enam töötlema ja kaitsma andmeid ELi õigusraamistikus — midagi, mida välised inferentsipinud harva esikohale seavad.",
+    "p2Intro": "Helexa kasutab taristut, mis Euroopal juba on, ja avatud kaaludega mudeleid, mille kaotamist me endale lubada ei saa:",
+    "bullet1": "Arenenud avatud kaaludega mudelid töötavad tõhusalt tarbija-, professionaalse ja andmekeskuse klassi kiirenditel.",
+    "bullet2": "Andmete paiknemine oma piirkonnas ja privaatsus vaikimisi. Inferents toimub taristul tarbija jurisdiktsioonis.",
+    "bullet3": "Juba olemasoleva kiirendivõimsuse ärakasutamine jõudlust ohverdamata.",
+    "bullet4": "Sõltumatus globaalsetest hyperscaler'itest, kellel on konkureerivad huvid.",
+    "closing": "Mitte globaalne pilv, millel juhtub olema andmekeskus ELis. Mitu sõltumatut, suveräänset ELi operaatorit."
   },
 
   "whyNow": {
-    "title": "Pöördepunkt tehisintellekti jaoks",
-    "problemTitle": "Probleem",
-    "problemBullet1": "Tehisintellekt tsentraliseerub kiiremini kui ükski varasem tehnoloogia.",
-    "problemBullet2": "Arvutusvõimsuse kättesaadavus määrab võimekuse ja ligipääs kitseneb.",
-    "problemBullet3": "Kulubarjäärid jätavad kõrvale uurijad, idufirmad ja kogukonnad.",
-    "problemBullet4": "Geopoliitiline ja regulatiivne surve ohustab globaalset kättesaadavust.",
-    "problemBullet5": "Mudeliloojatel ja riistvara operaatoritel on harva osa väärtusest, mille nad loovad.",
+    "title": "Miks just nüüd",
+    "problemTitle": "Ebakõla",
+    "problemBullet1": "Tänased inferentsipinud eeldavad hüperskaala andmekeskusi, suuri GPU-klastreid ja suletud LLM-e.",
+    "problemBullet2": "Euroopa regulatsioon — GDPR, tehisintellekti määrus, valdkondlikud reeglid — suunab töökoormused kohapeale ja oma piirkonda.",
+    "problemBullet3": "Andmete saatmine välismaistesse pilvedesse on regulatiivne, privaatsus- ja kulurisk.",
+    "problemBullet4": "GPU-võimsus pilves on kallis, piiratud pakkumisega ja mujalt juhitud.",
+    "problemBullet5": "Võimekas tarbija- ja tööjaamariistvara seisab juba praegu üle Euroopa alakasutatuna.",
     "opportunityTitle": "Võimalus",
-    "opportunityIntro": "Kuid hajutatud maailm on võimalik.",
-    "opportunityBullet1": "Tuhanded GPU-d on juba täna üle maailma alakasutatud.",
-    "opportunityBullet2": "Operaatorid soovivad arvutusvõimsuse eest õiglast tasu.",
-    "opportunityBullet3": "Arendajad tahavad avatud, tsensuurikindlat infrastruktuuri.",
-    "opportunityBullet4": "Kogukonnad soovivad suveräänsust ja vastupidavust digitaalsüsteemides.",
-    "opportunityBullet5": "Tehisintellekti kasv on traditsioonilisi pilvi edestanud — vaja on uusi vorme.",
-    "opportunityClosing": "Helexa on hetk, mil need jõud joondavad end."
+    "opportunityIntro": "Tipptaseme lähedased avatud kaaludega mudelid töötavad nüüd hästi riistvaral, mis Euroopal juba olemas on.",
+    "opportunityBullet1": "Arenenud avatud kaaludega mudelid töötavad tööjaamadel ja tarbija-GPU-del ilma andmekeskuse GPU-klastriteta.",
+    "opportunityBullet2": "Euroopa ettevõtted tahavad AI-d, mida saab käitada kohapeal — prognoositavate kuludega ja tagatud tulevase juurdepääsuga.",
+    "opportunityBullet3": "Võimeka riistvaraga operaatorid saavad pakkuda inferentsi tarbijate lähedal.",
+    "opportunityBullet4": "Regulatsioon muudab andmesuveräänsuse eelistusest nõudeks.",
+    "opportunityBullet5": "Tõhus inferentsitarkvara on puuduv kiht — ja vastumürk üha arvukamatele ja suurematele andmekeskustele.",
+    "opportunityClosing": "Helexa ongi see tarkvarakiht."
   },
 
   "howItWorks": {
-    "title": "Kuidas võrk kujuneb",
+    "title": "Kuidas see töötab",
     "operators": {
-      "eyebrow": "Operaatorid käitavad sõlmi",
-      "title": "Igaüks saab panustada arvutusvõimsusega.",
-      "body": "Operaatorid käitavad Helexa sõlmi. Nad otsustavad, milliseid mudeleid hostida. Nad jäävad kontrollima oma riistvara ja oma majandust. Ilma kinnitusteta, ilma väravavahtideta."
+      "eyebrow": "Juuruta kohapeal",
+      "title": "Käita arenenud mudeleid oma riistvaral.",
+      "body": "Helexa serveerib tipptaseme lähedasi avatud kaaludega mudeleid tarbija- ja tööjaamaklassi GPU-del, kohapeal, sinu enda jurisdiktsioonis. Ei mingit klastrit, ei hyperscaler'it, ei sõltuvust välismaast. Andmed jäävad sinna, kus sina neid kontrollid."
     },
     "routing": {
-      "eyebrow": "Võrk suunab intelligentsi",
-      "title": "Nõudlus liigub läbi võrgustiku.",
-      "body": "Helexa õpib, kus on vaba võimsust, kus nõudlus kasvab ja millised sõlmed sobivad päringutele kõige paremini. Võrk kohaneb orgaaniliselt — nagu kasvav spiraal."
+      "eyebrow": "Suuna nutikalt",
+      "title": "Päringud püsivad kodu lähedal.",
+      "body": "Helexa suunab iga päringu vaba võimsusega taristule, eelistades piirkondlikku lähedust, nii et liiklus ja andmed püsivad seal, kus sa neid ootad. Juurutused kasvavad võimsuse lisandudes kokku laiemaks võrgustikuks."
     },
     "value": {
-      "eyebrow": "Väärtus voolab tagasi",
-      "title": "Töö on tõendatav. Tasustamine on õiglane.",
-      "body": "Iga tööülesanne kannab endas krüptograafilist kviitungit. Operaatorid teenivad intelligentsi eest, mille loomises nad osalevad. Ilma platvormimaksuta. Ilma läbipaistmatu arvelduseta."
+      "eyebrow": "Tegutse sõltumatult",
+      "title": "Töö on tõendatud. Majandus on läbipaistev.",
+      "body": "Kasutust mõõdetakse läbipaistvalt ja sõltumatutele operaatoritele makstakse tasu nende pakutava intelligentsuse eest. Ei platvormimaksu, ei läbipaistmatut arveldust, ei lukustumist."
     }
   },
 
   "principles": {
-    "title": "Ehitame põhimõtete, mitte platvormide peale",
+    "title": "Ehitatud suveräänsusele, mitte lukustumisele",
     "distributed": {
-      "title": "Hajutatud juba disainist",
-      "body": "Ei mingeid üksikuid tõrkepunkte. Ei mingit keskust. Võrk, mis muutub iga uue operaatoriga tugevamaks."
+      "title": "Olemuselt suveräänne",
+      "body": "Euroopa riistvara, Euroopa operaatorid, Euroopa õigus. Mitte ühtegi üksikut tõrkepunkti ega välist jurisdiktsiooni, millest juurdepääs sõltuks."
     },
     "participation": {
-      "title": "Avatud osalus",
-      "body": "Kui sul on arvutusressursse, saad panustada. Võrk tervitab kõiki — servaseadmeid, koduservereid ja andmekeskusi."
+      "title": "Töötab riistvaral, mis sul juba on",
+      "body": "Üksikust tööjaamast piirkondliku andmekeskuseni — võimekas arvutusvõimsus suudab Helexat käitada. See vähendab taristunõudeid, selle asemel et nõuda uusi klastreid."
     },
     "fairness": {
-      "title": "Õiglus ja läbipaistvus",
-      "body": "Tulu põhineb tegelikul, krüptograafiliselt tõendatud tööl. Ei mingeid musti kaste. Ei mingeid varjatud tasusid."
+      "title": "Privaatsus ja läbipaistvus",
+      "body": "Privaatsus on sisse ehitatud: vestluste ajalugu elab ainult brauseris, mitte kunagi serveris. Kasutuse mõõtmine on läbipaistev; pole musti kaste ega varjatud tasusid."
     },
     "evolving": {
-      "title": "Arenev intelligentsus",
-      "body": "Võrk õpib nõudlusest. Mudeleid laetakse sinna, kus neid on vaja. Intelligentsus levib koostöö kaudu."
+      "title": "Vastupidav tänu hajutatusele",
+      "body": "Paljude sõltumatute juurutuste vahel hajutatud võimsust on raskem tsenseerida, piirata või välja lülitada ning see peab vastu välispoliitilistele muutustele ja üheainsa tarnija tõrkele."
     }
   },
 
   "roadAhead": {
-    "title": "Milleks Helexa pürgib",
-    "p1": "Globaalne intelligentsuskiht, mis kuulub kõigile, mida kannab sõlmede ja kogukondade heeliks.",
-    "p2": "Võrk, mis on vastupidav katkestustele, poliitikale, monopooliale ja riketele.",
-    "p3": "Uus majandusmudel, kus operaatorid, loojad ja kasutajad võidavad koos.",
-    "p4": "Ökosüsteem, kus uuendused kasvavad servast — mitte keskmest.",
+    "title": "Kuhu Helexa liigub",
+    "p1": "Meie pikaajaline eesmärk on saada tarkvarakihiks, mis käitab sõltumatult opereeritava Euroopa AI-taristu hajutatud võrgustikku.",
+    "p2": "Ettevõtete juurutustest, mis käitavad arenenud mudeleid oma riistvaral, kuni taastuvenergial töötavate piirkondlike andmekeskusteni, mis teenindavad oma kogukondi.",
+    "p3": "Euroopa inferentsikiht, mida omatakse ja opereeritakse Euroopas. Vastupidav katkestustele, välispoliitilistele muutustele, monopolidele ja üheainsa tarnija tõrkele.",
+    "p4": "Taristu, mis tugevdab Euroopa autonoomiat, selle asemel et süvendada sõltuvust käputäiest välismaistest teenusepakkujatest.",
     "card": {
-      "eyebrow": "Visiooni hetkeseis",
-      "title": "Teel jagatud intelligentsusvõrguni",
-      "body": "Helexa on algusjärgus. Ideed on suuremad kui praegune teostus — ja see on taotluslik. Võrk kasvab järk-järgult, kujundatuna operaatorite ja ehitajate poolt."
+      "eyebrow": "Visioon",
+      "title": "Tarkvarakiht Euroopa AI-taristule",
+      "body": "Helexa on varajases faasis — teadlikult. Töötav inferentsipinu juba täna, kasvamas sõltumatult opereeritavate Euroopa juurutuste hajutatud võrgustikuks."
     }
   },
 
   "joinMesh": {
-    "badge": "Varajane etapp",
-    "title": "Võrk on kujunemas.",
-    "titleHighlight": "Sina võid olla selle osa.",
-    "lead": "Olenemata sellest, kas haldad riistvara, ehitad mudeleid või hoolid lihtsalt sellest, kuidas tehisintellekti juhitakse, sinu jaoks on võrgus koht.",
-    "ctaRunNode": "Käivita sõlm (varsti)",
-    "ctaJoinAnnouncements": "Liitu varajaste teadetega",
+    "badge": "Varajane juurdepääs",
+    "title": "Suveräänne AI-taristu.",
+    "titleHighlight": "Ehitatud Euroopas.",
+    "lead": "Ükskõik kas käitad AI-d oma riistvaral, opereerid võimsust või ehitad Euroopa AI-suveräänsuse suunas — siin on sulle koht.",
+    "ctaRunNode": "Juuruta sõlm (peagi)",
+    "ctaJoinAnnouncements": "Jälgi esimesi teadaandeid",
     "ctaExploreCode": "Uuri koodi",
-    "footer": "Ilma suletud aedadeta. Ilma ühe omanikuta. Vaid võrk inimestest, riistvarast ja ideedest — mis koos loovad teistsuguse tuleviku intelligentsusele."
+    "footer": "Ei mingeid suletud aedu. Tarkvarakiht suveräänse Euroopa AI jaoks. Üksikust tööjaamast taastuvenergial töötavate piirkondlike andmekeskusteni."
   }
 }

@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Ifomu elisha lobuhlakani",
-    "title": "Ifomu Elisha Lobuhlakani",
-    "lead": "I-Helexa iyinethiwekhi ye-AI ezihlela yona uqobo, esekelwa ngabadlali abazimele. Ivulekile. Isakazekile. Iyaguquka.",
-    "ctaJoinMesh": "Joyina inethiwekhi",
+    "badge": "I-AI Inference Ezimele Yase-Yurophu",
+    "title": "Ingqalasizinda ezimele",
+    "lead": "Sikholelwa ukuthi ukusebenzisa amamodeli athuthukile, anamandla kumahadiwe osunawo kakade — ezikhungweni ezincane, ezisebenza kahle — kuyindlela amabhizinisi amancane naphakathi ase-Yurophu ancintisana ngayo nomqondo we-hyperscaler obusa umkhakha wezobuchwepheshe womhlaba namuhla.",
+    "ctaJoinMesh": "Zama manje",
     "ctaFollowProject": "Landela iphrojekthi",
-    "subcopy": "Yakhelwe abadlali, abakhi, nemiphakathi ekholwa ukuthi i-AI kufanele ibe evulekile, iqine, futhi yabelwane ngayo.",
-    "imageAlt": "Isithombe se-helix ye-Helexa"
+    "subcopy": "Yakhiwe abantu base-Yurophu, yabantu base-Yurophu.",
+    "imageAlt": "Umfanekiso we-helix ka-Helexa"
   },
 
   "intent": {
     "title": "Kungani i-Helexa Ikhona",
-    "p1": "I-AI isiba isakhiwo esinamandla kunazo zonke emhlabeni. Kodwa namuhla, la mandla agxile ezinkampanini ezimbalwa, enzelwe izinqumo zangasese, imingcele yendawo, nezomnotho ezibucayi.",
-    "p2Intro": "I-Helexa icabanga okunye okuhlukile:",
-    "bullet1": "Uhlakaniphile olukhula luvela yonke indawo, hhayi endaweni eyodwa kuphela.",
-    "bullet2": "Inethiwekhi lapho noma ubani angafaka isandla futhi azuze khona.",
-    "bullet3": "Uhlelo oluzivumelanisa nesidingo, hhayi neziqondiso ezivela phezulu.",
-    "bullet4": "Ubuchwepheshe obuqinisa imiphakathi kunokuba buyifake esikhundleni.",
-    "closing": "I-Helexa akuyona ipulatifomu. Akusona “ifu”.\nYinethiwekhi — uhlobo oluphilayo, olusha, olwakhiwe abadlali abazimele abakhela uhlobo olusha lobuhlakani."
+    "p1": "Ingqalasizinda ye-AI yanamuhla ibuswa ama-datacentre amakhulu (hyperscale) atholakala ngokwendawo emazweni angaphandle kwe-EU, noma alawulwa yizinkampani eziphendula emithethweni yamazwe angaphandle kwe-EU — anezinhloso, izindlela zokusebenza namasu okungahlali kuhlangabezana namazinga aphezulu ase-Yurophu okuziphatha nokuvikelwa kwabathengi. Amabhizinisi ase-Yurophu kufanele ngokwengeziwe acubungule futhi avikele idatha ngaphakathi kohlaka lomthetho lwe-EU — into izinhlelo ze-inference zangaphandle okungavamile ukuthi ziyibeke phambili.",
+    "p2Intro": "I-Helexa isebenzisa ingqalasizinda i-Yurophu esinayo kakade kanye namamodeli e-open-weight esingakwazi ukumelana nokuwalahlekelwa:",
+    "bullet1": "Amamodeli athuthukile e-open-weight asebenza kahle kuma-accelerator ajwayelekile, awochwepheshe nawezinga le-datacentre.",
+    "bullet2": "Ukuhlala kwedatha nobumfihlo njengokuzenzakalelayo. I-inference ihlala engqalasizindeni engaphakathi kwendawo yomthetho yomthengi.",
+    "bullet3": "Ukusebenzisa amandla ama-accelerator akhona njengamanje ngaphandle kokudela ukusebenza kahle.",
+    "bullet4": "Ukuzimela kuma-hyperscaler omhlaba anezintshisekelo ezingqubuzanayo.",
+    "closing": "Akulona ifu lomhlaba wonke elivele libe ne-datacentre e-EU. Ngabaphathi abaningi be-EU abazimele, abazibusayo."
   },
 
   "whyNow": {
-    "title": "Iphuzu Lokushintsha le-AI",
-    "problemTitle": "Inkinga",
-    "problemBullet1": "I-AI iyagxila ngokushesha kakhulu kunanoma iyiphi enye ubuchwepheshe obake babakhona.",
-    "problemBullet2": "Ukufinyelela emandleni okucubungula kuyakwazi ukunquma amakhono, futhi lokho kufinyelela kuya kuncipha.",
-    "problemBullet3": "Izindleko ziphoqa ososayensi, amabhizinisi amasha, nemiphakathi ukuba bahlale ngaphandle.",
-    "problemBullet4": "Ingcindezi yezombusazwe nemithetho ingasongela ukufinyelela komhlaba wonke.",
-    "problemBullet5": "Abakhi bamamodeli nabadlali bezinsiza bavame ukungabi yingxenye yenani abazalayo.",
+    "title": "Kungani Manje",
+    "problemTitle": "Ukungahambisani",
+    "problemBullet1": "Izinhlelo ze-inference zanamuhla zicabanga ama-datacentre amakhulu (hyperscale), amaqoqo amakhulu ama-GPU nama-LLM omthombo ovaliwe.",
+    "problemBullet2": "Imithetho yase-Yurophu — i-GDPR, i-AI Act, imithetho yemikhakha — iqondisa imisebenzi endaweni yangaphakathi nasesifundeni.",
+    "problemBullet3": "Ukuthumela idatha emafini angaphandle kuyingozi yomthetho, yobumfihlo neyezindleko.",
+    "problemBullet4": "Ukufinyelela kuma-GPU efu kuyabiza, kunokushoda kokuhlinzekwa, futhi kulawulwa kwenye indawo.",
+    "problemBullet5": "Amahadiwe ajwayelekile nawe-workstation anamandla asevele ekhona kulo lonke elase-Yurophu engasetshenziswa ngokugcwele.",
     "opportunityTitle": "Ithuba",
-    "opportunityIntro": "Kodwa umhlaba osakazekile uyenzeka.",
-    "opportunityBullet1": "Izinkulungwane zama-GPU emhlabeni wonke azisetshenziswa ngokuphelele njengamanje.",
-    "opportunityBullet2": "Abadlali bafuna ukukhokhelwa ngendlela efanele ngomsebenzi wabo wokucubungula.",
-    "opportunityBullet3": "Abathuthukisi bafuna ingqalasizinda evulekile, emelana nokucindezelwa.",
-    "opportunityBullet4": "Imiphakathi ifuna ubukhosi nokumelana nezinselelo ohlelweni lwayo lwedijithali.",
-    "opportunityBullet5": "Ukukhula kwe-AI kudlule izinkundla zakudala “zefu” — kudingeka izimo ezintsha.",
-    "opportunityClosing": "I-Helexa yileso sikhathi lapho la mandla ehambisana khona."
+    "opportunityIntro": "Amamodeli e-open-weight asondele ezingeni eliphambili manje asebenza kahle kumahadiwe i-Yurophu esinawo kakade.",
+    "opportunityBullet1": "Amamodeli athuthukile e-open-weight asebenza kuma-workstation nakuma-GPU ajwayelekile ngaphandle kwamaqoqo ama-GPU e-datacentre.",
+    "opportunityBullet2": "Amabhizinisi ase-Yurophu afuna i-AI angayisebenzisa endaweni yawo, ngezindleko ezibikezelekayo nokufinyelela okuqinisekisiwe kwesikhathi esizayo.",
+    "opportunityBullet3": "Abaphathi abanamahadiwe anamandla bangahlinzeka nge-inference eduze nabathengi.",
+    "opportunityBullet4": "Imithetho iguqula ukuzimela kwedatha kusuka ekukhetheni kuye esidingweni.",
+    "opportunityBullet5": "Isofthiwe ye-inference esebenza kahle iyisendlalelo esishodayo futhi iyikhambi lama-datacentre amaningi namakhulu ngokwengeziwe.",
+    "opportunityClosing": "I-Helexa iyileso sendlalelo sesofthiwe."
   },
 
   "howItWorks": {
-    "title": "Indlela Inethiwekhi Ezakheka Ngayo",
+    "title": "Indlela Esebenza Ngayo",
     "operators": {
-      "eyebrow": "Abadlali Balawula Ama-Node",
-      "title": "Noma ubani anganikela ngamandla e-compute.",
-      "body": "Abadlali basebenzisa ama-node e-Helexa. Bona banquma ukuthi yimaphi amamodeli abazowamukela. Bahlala besenkonzweni yawo womabili amathuluzi abo nomnotho wabo. Azikho izigunyazo, azikho izivimbeli ezisesangweni."
+      "eyebrow": "Faka Endaweni Yakho",
+      "title": "Sebenzisa amamodeli athuthukile kumahadiwe akho.",
+      "body": "I-Helexa iletha amamodeli e-open-weight asondele ezingeni eliphambili kuma-GPU ajwayelekile nawezinga le-workstation, endaweni yakho, ngaphansi komthetho wakho. Ayikho i-cluster, ayikho i-hyperscaler, akukho ukuncika phesheya. Idatha ihlala lapho uyilawula khona."
     },
     "routing": {
-      "eyebrow": "Inethiwekhi Idlulisa Uhlakanipho",
-      "title": "Isidingo sidlula ngaphakathi kwenethiwekhi.",
-      "body": "I-Helexa ifunda ukuthi kuphi lapho kukhona amandla akhululekile, kuphi lapho isidingo sikhula khona, futhi yimaphi ama-node afaneleka kakhulu ukuphendula izicelo. Inethiwekhi iyavumelana ngokwemvelo — njengama-helix akhula njalo."
+      "eyebrow": "Qondisa Ngokuhlakanipha",
+      "title": "Izicelo zihlala eduze nekhaya.",
+      "body": "I-Helexa iqondisa isicelo ngasinye engqalasizindeni enamandla, ikhetha ukusondelana kwesifunda, ukuze ithrafikhi nedatha kuhlale lapho ukulindele khona. Ukufakwa kuhlangana kube inethiwekhi ebanzi njengoba amandla ekhula."
     },
     "value": {
-      "eyebrow": "Inani Libuya Emuva",
-      "title": "Umsebenzi uyabonakala. Inkokhelo ilingana.",
-      "body": "Umsebenzi ngamunye uphethe irisidi ye-cryptographic. Abadlali bathola imali ngohlakanipho abasiza ukululethela umhlaba. Akukho “intela yeplatifomu”. Akukho ukubalwa kwezindleko okungacacile."
+      "eyebrow": "Sebenza Ngokuzimela",
+      "title": "Umsebenzi uyafakazelwa. Ezomnotho zisobala.",
+      "body": "Ukusetshenziswa kukalwa ngokusobala futhi abaphathi abazimele bazokhokhelwa ngobuhlakani ababuhlinzekayo. Ayikho intela yeplathifomu, akukho ukukhokhiswa okufihlekile, akukho ukuboshelwa."
     }
   },
 
   "principles": {
-    "title": "Yakhelwe Imigomo, Hhayi Amapulatifomu",
+    "title": "Yakhelwe Phezu Kokuzimela, Hhayi Ukuboshelwa",
     "distributed": {
-      "title": "Isatshalaliswe Ngokuklanywa",
-      "body": "Akunamgogodla owodwa wephutha. Akukho gunya elilodwa elisemqoka. Inethiwekhi eqina nsuku zonke njengoba kwengezwa umdlali omusha ngamunye."
+      "title": "Ezimele Ngokwakhiwa",
+      "body": "Amahadiwe ase-Yurophu, abaphathi base-Yurophu, umthetho wase-Yurophu. Alikho iphuzu elilodwa lokwehluleka futhi ayikho indawo yomthetho yangaphandle ukufinyelela okuncike kuyo."
     },
     "participation": {
-      "title": "Ukubamba Iqhaza Okuvulekile",
-      "body": "Uma unamandla e-compute, ungafaka isandla. Inethiwekhi yamukele wonke umuntu — kusukela kumadivayisi asemaphethelweni, kuya kumaseva asekhaya, kuya emapulazini edatha."
+      "title": "Isebenza Kumahadiwe Onawo",
+      "body": "Kusukela ku-workstation eyodwa kuye ku-datacentre yesifunda, ikhompyutha enamandla ingasebenzisa i-Helexa. Yehlisa izidingo zengqalasizinda kunokuba ifune amaqoqo amasha."
     },
     "fairness": {
-      "title": "Ubulungisa Nobala",
-      "body": "Imali engenayo isekelwe emsebenzini wangempela, oqinisekiswe nge-cryptography. Azikho iziqukathi eziyimfihlo. Azikho izimali ezifihlekile."
+      "title": "Ubumfihlo Nokusobala",
+      "body": "Ubumfihlo kusukela ekuqaleni: umlando wengxoxo uhlala kusiphequluli kuphela, awulokothi uhlale kuseva. Ukukalwa kokusetshenziswa kusobala; awekho amabhokisi amnyama futhi azikho izimali ezifihliwe."
     },
     "evolving": {
-      "title": "Uhlakanipho Oluguqukayo",
-      "body": "Inethiwekhi ifunda kusuka esidingweni. Amamodeli alayishwa lapho edingeka khona. Uhlakanipho lusabalala ngokubambisana."
+      "title": "Eqinile Ngokusabalala",
+      "body": "Amandla asabalele kokufakwa okuningi okuzimele kunzima ukuwavimba, ukuwanciphisa noma ukuwacisha, futhi amelana nezinguquko zenqubomgomo yangaphandle nokwehluleka komthengisi oyedwa."
     }
   },
 
   "roadAhead": {
-    "title": "Lokho I-Helexa Ehlosile Ukuba Yikho",
-    "p1": "Ungqimba lobuhlakani bomhlaba wonke obungelabo bonke abantu, obusekelwa i-helix yama-node nemiphakathi.",
-    "p2": "Inethiwekhi emelana nokuma phansi, ezombusazwe, ama-monopoly, nokwehluleka.",
-    "p3": "Uhlobo olusha lomnotho lapho abadlali, abakhi, nabasetshenziswa bonke bezuza khona.",
-    "p4": "Ukuhlalisana kwemvelo lapho ukusungula okusha kukhula kusukela emaphethelweni — hhayi emaphakathi.",
+    "title": "Lapho i-Helexa Iya Khona",
+    "p1": "Umgomo wethu wesikhathi eside uwukuba yisendlalelo sesofthiwe esiqhuba inethiwekhi esabalalisiwe yengqalasizinda ye-AI yase-Yurophu ephethwe ngokuzimela.",
+    "p2": "Kusukela ekufakweni kwamabhizinisi asebenzisa amamodeli athuthukile kumahadiwe awo, kuye kuma-datacentre ezifunda asebenzisa amandla avuselelekayo akhonza imiphakathi yawo.",
+    "p3": "Isendlalelo se-inference sase-Yurophu esiphethwe futhi sisetshenzwa e-Yurophu. Simelana nokuphazamiseka, izinguquko zenqubomgomo yangaphandle, ukubusa kwenkampani eyodwa nokwehluleka komthengisi oyedwa.",
+    "p4": "Ingqalasizinda eqinisa ukuzimela kwe-Yurophu esikhundleni sokujulisa ukuncika kubahlinzeki abambalwa bangaphandle.",
     "card": {
-      "eyebrow": "Isithombe esifingqiwe sombono",
-      "title": "Uhambo Oluya Enethiwikhi Yobuhlakani Ebambene",
-      "body": "I-Helexa isesigabeni sokuqala. Imibono mikukhulu kunezinto ezivele zisetshenzisiwe — lokho kwenziwe ngenhloso. Inethiwekhi izokhula kancane kancane, abadlali nabakhi beqopha indlela yokuziphendukela kwayo."
+      "eyebrow": "Umbono",
+      "title": "Isendlalelo sesofthiwe sengqalasizinda ye-AI yase-Yurophu",
+      "body": "I-Helexa isesekuqaleni, futhi ngamabomu. Uhlelo lwe-inference olusebenzayo namuhla, olukhula lube inethiwekhi esabalalisiwe yokufakwa kwase-Yurophu okuphethwe ngokuzimela."
     }
   },
 
   "joinMesh": {
-    "badge": "Isigaba sokuqala",
-    "title": "Inethiwekhi Iyazakha.",
-    "titleHighlight": "Wena Nje Ungaba Ingxenye Yayo.",
-    "lead": "Noma ngabe uphethe amathuluzi, wakha amamodeli, noma ukhathazekile ngokuthi i-AI ilawulwa kanjani, kunendawo yakho kule nethiwekhi.",
-    "ctaRunNode": "Qalisa i-node (maduzane)",
-    "ctaJoinAnnouncements": "Joyina izaziso zokuqala",
+    "badge": "Ukufinyelela kokuqala",
+    "title": "Ingqalasizinda ye-AI Ezimele.",
+    "titleHighlight": "Yakhiwe e-Yurophu.",
+    "lead": "Noma ngabe usebenzisa i-AI kumahadiwe akho, uphethe amandla okubala, noma wakhela ekuzimeleni kwe-AI yase-Yurophu, kukhona indawo yakho lapha.",
+    "ctaRunNode": "Faka i-node (maduze)",
+    "ctaJoinAnnouncements": "Landela izimemezelo zokuqala",
     "ctaExploreCode": "Hlola ikhodi",
-    "footer": "Azikho izingadi ezivalekile. Akekho umnikazi oyedwa. Kungumthungo wabantu, amathuluzi, nemicabango — okuhlanganisa ikusasa elihlukile lobuhlakani."
+    "footer": "Azikho izingadi ezibiyelwe. Isendlalelo sesofthiwe se-AI ezimele yase-Yurophu. Kusukela ku-workstation eyodwa kuye kuma-datacentre ezifunda asebenzisa amandla avuselelekayo."
   }
 }

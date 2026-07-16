@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Een nieuwe vorm van intelligentie",
-    "title": "Een nieuwe vorm van intelligentie",
-    "lead": "Helexa is een zelforganiserend AI‑netwerk, aangedreven door onafhankelijke operators. Open. Gedistribueerd. Evoluerend.",
-    "ctaJoinMesh": "Sluit je aan bij het netwerk",
+    "badge": "Soevereine Europese AI-inferentie",
+    "title": "Soevereine infrastructuur",
+    "lead": "Wij geloven dat geavanceerde, capabele modellen draaien op hardware die je al hebt — in kleine, efficiënte faciliteiten — dé manier is waarop het Europese mkb kan concurreren met de hyperscaler-mentaliteit die het huidige mondiale technologie-ecosysteem domineert.",
+    "ctaJoinMesh": "Probeer het nu",
     "ctaFollowProject": "Volg het project",
-    "subcopy": "Gebouwd voor operators, bouwers en communities die geloven dat AI open, veerkrachtig en gedeeld moet zijn.",
-    "imageAlt": "Helexa‑helix visualisatie"
+    "subcopy": "Gemaakt door Europeanen, voor Europeanen.",
+    "imageAlt": "Visual van de Helexa-helix"
   },
 
   "intent": {
     "title": "Waarom Helexa bestaat",
-    "p1": "AI wordt de krachtigste infrastructuur op aarde. Maar vandaag is die macht geconcentreerd in de handen van een paar bedrijven, gevormd door private prioriteiten, geografische beperkingen en kwetsbare economieën.",
-    "p2Intro": "Helexa ziet het anders voor zich:",
-    "bullet1": "Intelligentie die overal kan groeien, niet op één plek.",
-    "bullet2": "Een netwerk waarin iedereen kan bijdragen en profiteren.",
-    "bullet3": "Een systeem dat zich aanpast aan vraag, niet aan bevelen.",
-    "bullet4": "Technologie die gemeenschappen versterkt in plaats van ze te vervangen.",
-    "closing": "Helexa is geen platform. Het is geen cloud.\nHet is een netwerk — een levend, zich ontwikkelend weefsel van onafhankelijke operators dat een nieuw soort intelligentie vormt."
+    "p1": "De huidige AI-infrastructuur wordt gedomineerd door hyperscale-datacenters die ofwel fysiek in jurisdicties buiten de EU staan, ofwel worden beheerst door rechtspersonen die verantwoording afleggen aan jurisdicties buiten de EU — met agenda's, praktijken en strategieën die niet altijd voldoen aan de hoge Europese normen voor ethiek en consumentenbescherming. Europese bedrijven moeten data steeds vaker binnen het EU-regelgevingskader verwerken en beschermen — iets waar externe inferentie-stacks zelden prioriteit aan geven.",
+    "p2Intro": "Helexa benut de infrastructuur die Europa al heeft en de open-weight-modellen die we ons niet kunnen veroorloven te verliezen:",
+    "bullet1": "Geavanceerde open-weight-modellen die efficiënt draaien op consumenten-, professionele en datacenter-accelerators.",
+    "bullet2": "Dataresidentie en privacy als standaard. Inferentie draait op infrastructuur binnen de jurisdictie van de afnemer.",
+    "bullet3": "Benutting van nu al beschikbare acceleratorcapaciteit zonder prestaties op te offeren.",
+    "bullet4": "Onafhankelijkheid van mondiale hyperscalers met tegenstrijdige belangen.",
+    "closing": "Geen wereldwijde cloud die toevallig een EU-datacenter heeft. Meerdere onafhankelijke, soevereine EU-operators."
   },
 
   "whyNow": {
-    "title": "Een kantelpunt voor AI",
-    "problemTitle": "Het probleem",
-    "problemBullet1": "AI centraliseert sneller dan welke technologie ook vóór haar.",
-    "problemBullet2": "Toegang tot rekenkracht bepaalt het vermogen, en die toegang wordt schaarser.",
-    "problemBullet3": "Kostenbarrières sluiten onderzoekers, startups en gemeenschappen uit.",
-    "problemBullet4": "Geopolitieke en regelgevende druk bedreigen de wereldwijde beschikbaarheid.",
-    "problemBullet5": "Makers van modellen en beheerders van hardware delen zelden in de waarde die zij creëren.",
+    "title": "Waarom nu",
+    "problemTitle": "De mismatch",
+    "problemBullet1": "De huidige inferentie-stacks gaan uit van hyperscale-datacenters, grote GPU-clusters en closed-source-LLM's.",
+    "problemBullet2": "Europese regelgeving — AVG, de AI-verordening, sectorale regels — stuurt workloads naar on-premises en de eigen regio.",
+    "problemBullet3": "Data naar buitenlandse clouds sturen is een risico op het gebied van regelgeving, privacy en kosten.",
+    "problemBullet4": "Toegang tot cloud-GPU's is duur, schaars en wordt elders bestuurd.",
+    "problemBullet5": "Capabele consumenten- en workstationhardware staat in heel Europa al onderbenut te wachten.",
     "opportunityTitle": "De kans",
-    "opportunityIntro": "Maar een gedistribueerde wereld is mogelijk.",
-    "opportunityBullet1": "Duizenden GPU’s staan wereldwijd al onderbenut.",
-    "opportunityBullet2": "Operators willen eerlijke vergoeding voor rekenkracht.",
-    "opportunityBullet3": "Developers willen open, censuurbestendige infrastructuur.",
-    "opportunityBullet4": "Gemeenschappen willen soevereiniteit en veerkracht in digitale systemen.",
-    "opportunityBullet5": "De groei van AI is sneller dan die van traditionele clouds — er zijn nieuwe vormen nodig.",
-    "opportunityClosing": "Helexa is het moment waarop deze krachten samenkomen."
+    "opportunityIntro": "Open-weight-modellen op vrijwel topniveau draaien inmiddels goed op hardware die Europa al bezit.",
+    "opportunityBullet1": "Geavanceerde open-weight-modellen draaien op workstations en consumenten-GPU's, zonder GPU-clusters in datacenters.",
+    "opportunityBullet2": "Europese bedrijven willen AI die ze lokaal kunnen draaien, met voorspelbare kosten en gegarandeerde toekomstige toegang.",
+    "opportunityBullet3": "Operators met capabele hardware kunnen inferentie dicht bij de afnemer leveren.",
+    "opportunityBullet4": "Regelgeving maakt van datasoevereiniteit een vereiste in plaats van een voorkeur.",
+    "opportunityBullet5": "Efficiënte inferentiesoftware is de ontbrekende laag — en het tegengif voor steeds meer en steeds grotere datacenters.",
+    "opportunityClosing": "Helexa is die softwarelaag."
   },
 
   "howItWorks": {
-    "title": "Hoe het netwerk ontstaat",
+    "title": "Hoe het werkt",
     "operators": {
-      "eyebrow": "Operators draaien nodes",
-      "title": "Iedereen kan rekenkracht bijdragen.",
-      "body": "Operators draaien Helexa‑nodes. Zij beslissen welke modellen ze hosten. Ze houden de controle over hun hardware en hun economie. Geen goedkeuringen, geen poortwachters."
+      "eyebrow": "Lokaal draaien",
+      "title": "Draai geavanceerde modellen op je eigen hardware.",
+      "body": "Helexa serveert open-weight-modellen op vrijwel topniveau op consumenten- en workstation-GPU's, on-premises, in je eigen jurisdictie. Geen cluster, geen hyperscaler, geen offshore-afhankelijkheid. Data blijft waar jij de controle hebt."
     },
     "routing": {
-      "eyebrow": "Het netwerk routeert intelligentie",
-      "title": "Vraag stroomt door het netwerk.",
-      "body": "Helexa leert waar capaciteit beschikbaar is, waar de vraag toeneemt en welke nodes het best geschikt zijn om verzoeken te bedienen. Het netwerk past zich organisch aan — als een groeiende helix."
+      "eyebrow": "Slim routeren",
+      "title": "Verzoeken blijven dicht bij huis.",
+      "body": "Helexa routeert elk verzoek naar infrastructuur met capaciteit, met een voorkeur voor regionale nabijheid, zodat verkeer en data blijven waar je ze verwacht. Deployments groeien samen tot een breder netwerk naarmate de capaciteit toeneemt."
     },
     "value": {
-      "eyebrow": "Waarde stroomt terug",
-      "title": "Werk is aantoonbaar. Betaling is eerlijk.",
-      "body": "Elke taak draagt een cryptografisch ontvangstbewijs. Operators verdienen aan de intelligentie die zij helpen leveren. Geen platformbelasting. Geen ondoorzichtige facturatie."
+      "eyebrow": "Onafhankelijk opereren",
+      "title": "Het werk is aantoonbaar. De economie is transparant.",
+      "body": "Gebruik wordt transparant gemeten en onafhankelijke operators worden vergoed voor de intelligentie die ze leveren. Geen platformbelasting, geen ondoorzichtige facturatie, geen lock-in."
     }
   },
 
   "principles": {
-    "title": "Gebouwd op principes, niet op platforms",
+    "title": "Gebouwd op soevereiniteit, niet op lock-in",
     "distributed": {
-      "title": "Gedistribueerd by design",
-      "body": "Geen single point of failure. Geen centrale autoriteit. Een netwerk dat met elke nieuwe operator sterker wordt."
+      "title": "Soeverein by design",
+      "body": "Europese hardware, Europese operators, Europees recht. Geen single point of failure en geen externe jurisdictie waarvan de toegang afhangt."
     },
     "participation": {
-      "title": "Open participatie",
-      "body": "Als je rekenkracht hebt, kun je bijdragen. Het netwerk verwelkomt iedereen — edge, thuisserver, datacenter."
+      "title": "Draait op hardware die je al hebt",
+      "body": "Van een enkele workstation tot een regionaal datacenter: capabele rekenkracht kan Helexa draaien. Het verlaagt de infrastructuureisen in plaats van nieuwe clusters te eisen."
     },
     "fairness": {
-      "title": "Eerlijkheid en transparantie",
-      "body": "Inkomsten zijn gebaseerd op echt werk, cryptografisch geverifieerd. Geen black boxes. Geen verborgen kosten."
+      "title": "Privacy & transparantie",
+      "body": "Privacy-native: chatgeschiedenis leeft alleen in de browser, nooit op een server. Gebruiksmeting is transparant; er zijn geen black boxes en geen verborgen kosten."
     },
     "evolving": {
-      "title": "Evoluerende intelligentie",
-      "body": "Het netwerk leert van de vraag. Modellen worden geladen waar ze nodig zijn. Intelligentie verspreidt zich door samenwerking."
+      "title": "Veerkrachtig door spreiding",
+      "body": "Capaciteit verspreid over veel onafhankelijke deployments is moeilijker te censureren, af te knijpen of uit te schakelen, en bestand tegen buitenlandpolitieke verschuivingen en het falen van één leverancier."
     }
   },
 
   "roadAhead": {
-    "title": "Wat Helexa wil worden",
-    "p1": "Een wereldwijde intelligentielaag die van iedereen is, aangedreven door een helix van nodes en communities.",
-    "p2": "Een netwerk dat bestand is tegen storingen, politiek, monopolies en uitval.",
-    "p3": "Een nieuw economisch model waarin operators, bouwers en gebruikers allemaal profiteren.",
-    "p4": "Een ecosysteem waarin innovatie groeit vanuit de randen — niet vanuit het centrum.",
+    "title": "Waar Helexa naartoe gaat",
+    "p1": "Ons langetermijndoel is de softwarelaag te worden die een gedistribueerd netwerk van onafhankelijk beheerde Europese AI-infrastructuur aandrijft.",
+    "p2": "Van enterprise-deployments die geavanceerde modellen op eigen hardware draaien tot regionale datacenters op hernieuwbare energie die hun gemeenschappen bedienen.",
+    "p3": "Een Europese inferentielaag, in Europa in eigendom en beheer. Bestand tegen storingen, buitenlandpolitieke verschuivingen, monopolies en het falen van één leverancier.",
+    "p4": "Infrastructuur die de Europese autonomie versterkt in plaats van de afhankelijkheid van een handvol buitenlandse aanbieders te verdiepen.",
     "card": {
-      "eyebrow": "Momentopname van de visie",
-      "title": "Op weg naar een gedeeld intelligentienetwerk",
-      "body": "Helexa staat nog aan het begin. De ideeën zijn groter dan de implementatie — en dat is bewust zo. Het netwerk zal iteratief groeien, terwijl operators en bouwers de evolutie vormgeven."
+      "eyebrow": "Visie",
+      "title": "De softwarelaag voor Europese AI-infrastructuur",
+      "body": "Helexa staat aan het begin, en dat is bewust. Vandaag een werkende inferentie-stack, groeiend naar een gedistribueerd netwerk van onafhankelijk beheerde Europese deployments."
     }
   },
 
   "joinMesh": {
-    "badge": "Vroege fase",
-    "title": "Het netwerk vormt zich.",
-    "titleHighlight": "Jij kunt er deel van uitmaken.",
-    "lead": "Of je nu hardware runt, modellen bouwt of je simpelweg bekommert om de governance van AI — er is een plek voor jou in het netwerk.",
-    "ctaRunNode": "Draai een node (binnenkort)",
-    "ctaJoinAnnouncements": "Sluit je aan bij vroege aankondigingen",
+    "badge": "Early access",
+    "title": "Soevereine AI-infrastructuur.",
+    "titleHighlight": "Gebouwd in Europa.",
+    "lead": "Of je nu AI op eigen hardware draait, capaciteit beheert of bouwt aan Europese AI-soevereiniteit: hier is een plek voor jou.",
+    "ctaRunNode": "Deploy een node (binnenkort)",
+    "ctaJoinAnnouncements": "Volg de eerste aankondigingen",
     "ctaExploreCode": "Verken de code",
-    "footer": "Geen ommuurde tuinen. Geen enkele eigenaar. Alleen een netwerk van mensen, hardware en ideeën — dat een ander toekomstbeeld voor intelligentie componeert."
+    "footer": "Geen walled gardens. Een softwarelaag voor soevereine Europese AI. Van een enkele workstation tot regionale datacenters op hernieuwbare energie."
   }
 }

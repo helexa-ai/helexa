@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Uudenlainen älykkyys",
-    "title": "Uudenlainen älykkyys",
-    "lead": "Helexa on itseorganisoituva AI‑verkko, jota pyörittävät riippumattomat operaattorit. Avoin. Hajautettu. Jatkuvasti kehittyvä.",
-    "ctaJoinMesh": "Liity verkkoon",
+    "badge": "Suvereeni eurooppalainen tekoälyinferenssi",
+    "title": "Suvereeni infrastruktuuri",
+    "lead": "Uskomme, että edistyneiden, suorituskykyisten mallien ajaminen jo olemassa olevalla laitteistolla — pienissä, tehokkaissa laitoksissa — on tapa, jolla eurooppalaiset pk-yritykset kilpailevat nykyistä globaalia teknologiaekosysteemiä hallitsevan hyperscaler-ajattelun kanssa.",
+    "ctaJoinMesh": "Kokeile nyt",
     "ctaFollowProject": "Seuraa projektia",
-    "subcopy": "Rakennettu operaattoreille, rakentajille ja yhteisöille, jotka uskovat, että tekoälyn tulee olla avointa, kestävää ja jaettua.",
-    "imageAlt": "Helexa‑heliksin visualisointi"
+    "subcopy": "Eurooppalaisten tekemä, eurooppalaisille.",
+    "imageAlt": "Helexa-helix-kuvitus"
   },
 
   "intent": {
     "title": "Miksi Helexa on olemassa",
-    "p1": "Tekoälystä on tulossa maailman voimakkain infrastruktuuri. Tällä hetkellä valta on kuitenkin keskittynyt harvoille yrityksille, joita ohjaavat yksityiset intressit, maantieteelliset rajoitteet ja hauras talous.",
-    "p2Intro": "Helexa kuvittelee jotain muuta:",
-    "bullet1": "Älykkyys, joka kasvaa kaikkialta – ei yhdestä paikasta.",
-    "bullet2": "Verkko, johon kuka tahansa voi osallistua ja josta kuka tahansa voi hyötyä.",
-    "bullet3": "Järjestelmä, joka mukautuu kysyntään, ei käskyihin.",
-    "bullet4": "Teknologia, joka vahvistaa yhteisöjä sen sijaan, että korvaisi ne.",
-    "closing": "Helexa ei ole alusta. Se ei ole pilvi.\nSe on verkko – elävä, kehittyvä kudelma riippumattomia operaattoreita, jotka muodostavat uudenlaisen älykkyyden."
+    "p1": "Nykyistä tekoälyinfrastruktuuria hallitsevat hyperskaalan datakeskukset, jotka joko sijaitsevat fyysisesti EU:n ulkopuolisilla lainkäyttöalueilla tai ovat EU:n ulkopuolisille lainkäyttöalueille vastuussa olevien oikeushenkilöiden hallinnassa — agendoineen, käytäntöineen ja strategioineen, jotka eivät aina täytä Euroopan korkeita eettisiä ja kuluttajansuojan standardeja. Eurooppalaisten yritysten on yhä useammin käsiteltävä ja suojattava data EU:n sääntelykehyksen sisällä — asia, jota ulkopuoliset inferenssipinot harvoin priorisoivat.",
+    "p2Intro": "Helexa hyödyntää infrastruktuuria, joka Euroopalla jo on, ja avoimien painojen malleja, joita meillä ei ole varaa menettää:",
+    "bullet1": "Edistyneet avoimien painojen mallit toimivat tehokkaasti kuluttaja-, ammattilais- ja datakeskusluokan kiihdyttimillä.",
+    "bullet2": "Datan säilytys omalla alueella ja yksityisyys oletuksena. Inferenssi tapahtuu infrastruktuurissa kuluttajan lainkäyttöalueella.",
+    "bullet3": "Jo saatavilla oleva kiihdytinkapasiteetti hyödynnetään suorituskyvystä tinkimättä.",
+    "bullet4": "Riippumattomuus globaaleista hyperscalereista, joilla on kilpailevia intressejä.",
+    "closing": "Ei globaali pilvi, jolla sattuu olemaan datakeskus EU:ssa. Useita itsenäisiä, suvereeneja EU-operaattoreita."
   },
 
   "whyNow": {
-    "title": "Käännekohta tekoälylle",
-    "problemTitle": "Ongelma",
-    "problemBullet1": "Tekoäly keskittyy nopeammin kuin mikään aiempi teknologia.",
-    "problemBullet2": "Laskentateho määrittää kyvykkyyden, ja siihen pääsy kapenee.",
-    "problemBullet3": "Kustannuskynnykset sulkevat ulos tutkijoita, startup‑yrityksiä ja yhteisöjä.",
-    "problemBullet4": "Geopoliittiset ja sääntelyyn liittyvät paineet uhkaavat globaalia saatavuutta.",
-    "problemBullet5": "Mallien kehittäjät ja laitteiston operaattorit pääsevät harvoin osallisiksi arvosta, jonka he luovat.",
-    "opportunityTitle": "Mahdollisuus",
-    "opportunityIntro": "Mutta hajautettu maailma on mahdollinen.",
-    "opportunityBullet1": "Tuhannet GPU:t ovat jo nyt vajaakäytöllä ympäri maailmaa.",
-    "opportunityBullet2": "Operaattorit haluavat reilun korvauksen laskentatehostaan.",
-    "opportunityBullet3": "Kehittäjät kaipaavat avointa, sensuurinkestävää infrastruktuuria.",
-    "opportunityBullet4": "Yhteisöt haluavat itsemääräämisoikeutta ja joustavuutta digitaalisiin järjestelmiin.",
-    "opportunityBullet5": "Tekoälyn kasvu on ohittanut perinteiset pilvet – tarvitaan uudenlaisia rakenteita.",
-    "opportunityClosing": "Helexa on hetki, jolloin nämä voimat kohtaavat."
+    "title": "Miksi nyt",
+    "problemTitle": "Epäsuhta",
+    "problemBullet1": "Nykyiset inferenssipinot olettavat hyperskaalan datakeskuksia, suuria GPU-klustereita ja suljettuja LLM-malleja.",
+    "problemBullet2": "Eurooppalainen sääntely — GDPR, tekoälyasetus, toimialakohtaiset säännöt — ohjaa työkuormat omiin tiloihin ja omalle alueelle.",
+    "problemBullet3": "Datan lähettäminen ulkomaisiin pilviin on rasite sääntelyn, yksityisyyden ja kustannusten kannalta.",
+    "problemBullet4": "Pilven GPU-kapasiteetti on kallista, niukkaa ja muualta hallittua.",
+    "problemBullet5": "Suorituskykyistä kuluttaja- ja työasemalaitteistoa seisoo jo vajaakäytöllä ympäri Eurooppaa.",
+    "opportunityTitle": "Tilaisuus",
+    "opportunityIntro": "Lähes huipputason avoimien painojen mallit toimivat nyt hyvin laitteistolla, jonka Eurooppa jo omistaa.",
+    "opportunityBullet1": "Edistyneet avoimien painojen mallit toimivat työasemilla ja kuluttaja-GPU:illa ilman datakeskusten GPU-klustereita.",
+    "opportunityBullet2": "Eurooppalaiset yritykset haluavat tekoälyä, jota voi ajaa paikallisesti — ennustettavin kustannuksin ja taatulla tulevalla saatavuudella.",
+    "opportunityBullet3": "Operaattorit, joilla on suorituskykyistä laitteistoa, voivat tarjota inferenssiä lähellä kuluttajia.",
+    "opportunityBullet4": "Sääntely muuttaa datasuvereniteetin mieltymyksestä vaatimukseksi.",
+    "opportunityBullet5": "Tehokas inferenssiohjelmisto on puuttuva kerros — ja vastalääke yhä useammille ja suuremmille datakeskuksille.",
+    "opportunityClosing": "Helexa on se ohjelmistokerros."
   },
 
   "howItWorks": {
-    "title": "Näin verkko muodostuu",
+    "title": "Näin se toimii",
     "operators": {
-      "eyebrow": "Operaattorit ajavat solmuja",
-      "title": "Kuka tahansa voi tarjota laskentatehoa.",
-      "body": "Operaattorit ajavat Helexa‑solmuja. He päättävät, mitä malleja ajetaan. He pitävät hallinnan omasta laitteistostaan ja taloudestaan. Ei hyväksyntäprosesseja, ei portinvartijoita."
+      "eyebrow": "Ota käyttöön paikallisesti",
+      "title": "Aja edistyneitä malleja omalla laitteistollasi.",
+      "body": "Helexa tarjoilee lähes huipputason avoimien painojen malleja kuluttaja- ja työasemaluokan GPU:illa, omissa tiloissa, omalla lainkäyttöalueellasi. Ei klusteria, ei hyperscaleria, ei riippuvuutta ulkomaista. Data pysyy siellä, missä sinä hallitset sitä."
     },
     "routing": {
-      "eyebrow": "Verkko ohjaa älykkyyttä",
-      "title": "Kysyntä virtaa verkon läpi.",
-      "body": "Helexa oppii, missä kapasiteettia on, missä kysyntä kasvaa ja mitkä solmut sopivat parhaiten pyyntöjen käsittelyyn. Verkko mukautuu orgaanisesti – kuin kasvava heliksi."
+      "eyebrow": "Reititä älykkäästi",
+      "title": "Pyynnöt pysyvät lähellä kotia.",
+      "body": "Helexa reitittää jokaisen pyynnön infrastruktuuriin, jossa on kapasiteettia, suosien alueellista läheisyyttä, joten liikenne ja data pysyvät siellä, missä odotat niiden olevan. Käyttöönotot kasvavat laajemmaksi verkostoksi kapasiteetin karttuessa."
     },
     "value": {
-      "eyebrow": "Arvo virtaa takaisin",
-      "title": "Työ todistetaan. Korvaus on reilu.",
-      "body": "Jokaisella tehtävällä on kryptografinen kuitti. Operaattorit saavat tuloa siitä älykkyydestä, jonka tuottamiseen he osallistuvat. Ei alustaveroa. Ei läpinäkymäistä laskutusta."
+      "eyebrow": "Toimi itsenäisesti",
+      "title": "Työ todennetaan. Talous on läpinäkyvää.",
+      "body": "Käyttö mitataan läpinäkyvästi, ja itsenäisille operaattoreille maksetaan korvaus heidän tarjoamastaan älykkyydestä. Ei alustaveroa, ei läpinäkymätöntä laskutusta, ei lukkiutumista."
     }
   },
 
   "principles": {
-    "title": "Rakennettu periaatteiden, ei alustojen varaan",
+    "title": "Perustana suvereniteetti, ei lukkiutuminen",
     "distributed": {
-      "title": "Hajautettu suunnittelusta lähtien",
-      "body": "Ei yhtä kriittistä vikaantumispistettä. Ei keskitettyä auktoriteettia. Verkko, joka vahvistuu jokaisen uuden operaattorin myötä."
+      "title": "Suvereeni lähtökohtaisesti",
+      "body": "Eurooppalainen laitteisto, eurooppalaiset operaattorit, eurooppalainen laki. Ei yksittäistä vikaantumispistettä eikä ulkopuolista lainkäyttöaluetta, josta pääsy riippuisi."
     },
     "participation": {
-      "title": "Avoin osallistuminen",
-      "body": "Jos sinulla on laskentatehoa, voit osallistua. Verkko toivottaa tervetulleeksi kaikki – reunalaitteet, kotipalvelimet ja konesalit."
+      "title": "Toimii laitteistolla, joka sinulla jo on",
+      "body": "Yksittäisestä työasemasta alueelliseen datakeskukseen — suorituskykyinen laskentakapasiteetti voi ajaa Helexaa. Se keventää infrastruktuurivaatimuksia sen sijaan, että vaatisi uusia klustereita."
     },
     "fairness": {
-      "title": "Reiluus ja läpinäkyvyys",
-      "body": "Tulot perustuvat todelliseen työhön, kryptografisesti varmennettuna. Ei mustia laatikoita. Ei piilokuluja."
+      "title": "Yksityisyys ja läpinäkyvyys",
+      "body": "Yksityisyys sisäänrakennettuna: keskusteluhistoria elää vain selaimessa, ei koskaan palvelimella. Käytön mittaus on läpinäkyvää; ei mustia laatikoita eikä piilomaksuja."
     },
     "evolving": {
-      "title": "Kehittyvä älykkyys",
-      "body": "Verkko oppii kysynnästä. Malit latautuvat sinne, missä niitä tarvitaan. Älykkyys leviää yhteistyön kautta."
+      "title": "Kestävä hajautuksen ansiosta",
+      "body": "Monien itsenäisten käyttöönottojen kesken hajautettua kapasiteettia on vaikeampi sensuroida, rajoittaa tai sammuttaa, ja se kestää ulkopolitiikan käänteet ja yksittäisen toimittajan kaatumisen."
     }
   },
 
   "roadAhead": {
-    "title": "Mihin Helexa pyrkii",
-    "p1": "Globaali älykkyyskerros, joka kuuluu kaikille ja jota pyörittää solmujen ja yhteisöjen heliksi.",
-    "p2": "Verkko, joka kestää katkoksia, politiikkaa, monopoleja ja virheitä.",
-    "p3": "Uusi taloudellinen malli, jossa operaattorit, rakentajat ja käyttäjät hyötyvät kaikki.",
-    "p4": "Ekosysteemi, jossa innovaatio kasvaa reunoilta – ei keskuksesta.",
+    "title": "Minne Helexa on menossa",
+    "p1": "Pitkän aikavälin tavoitteemme on olla ohjelmistokerros, joka pyörittää itsenäisesti operoidun eurooppalaisen tekoälyinfrastruktuurin hajautettua verkostoa.",
+    "p2": "Yritysten käyttöönotoista, jotka ajavat edistyneitä malleja omalla laitteistollaan, uusiutuvalla energialla toimiviin alueellisiin datakeskuksiin, jotka palvelevat yhteisöjään.",
+    "p3": "Eurooppalainen inferenssikerros, joka omistetaan ja operoidaan Euroopassa. Kestää katkokset, ulkopolitiikan käänteet, monopolit ja yksittäisen toimittajan kaatumisen.",
+    "p4": "Infrastruktuuria, joka vahvistaa Euroopan autonomiaa sen sijaan, että syventäisi riippuvuutta kourallisesta ulkomaisia toimittajia.",
     "card": {
-      "eyebrow": "Vision yhteenveto",
-      "title": "Kohti jaettua älyverkkoa",
-      "body": "Helexa on varhaisessa vaiheessa. Ideat ovat suurempia kuin toteutus – ja se on tarkoituksellista. Verkko kasvaa vaiheittain, kun operaattorit ja rakentajat muovaavat sen kehitystä yhdessä."
+      "eyebrow": "Visio",
+      "title": "Ohjelmistokerros eurooppalaiselle tekoälyinfrastruktuurille",
+      "body": "Helexa on varhaisessa vaiheessa — tarkoituksella. Toimiva inferenssipino jo tänään, kasvamassa kohti itsenäisesti operoitujen eurooppalaisten käyttöönottojen hajautettua verkostoa."
     }
   },
 
   "joinMesh": {
-    "badge": "Varhainen vaihe",
-    "title": "Verkko on muodostumassa.",
-    "titleHighlight": "Voit olla osa sitä.",
-    "lead": "Olipa roolisi laitteiston ylläpitäjänä, mallien rakentajana tai vain tekoälyn hallinnasta kiinnostuneena, sinulle on paikka verkossa.",
-    "ctaRunNode": "Aja solmu (tulossa pian)",
-    "ctaJoinAnnouncements": "Liity varhaisiin ilmoituksiin",
+    "badge": "Ennakkokäyttö",
+    "title": "Suvereenia tekoälyinfrastruktuuria.",
+    "titleHighlight": "Rakennettu Euroopassa.",
+    "lead": "Ajatpa tekoälyä omalla laitteistollasi, operoit kapasiteettia tai rakennat kohti eurooppalaista tekoälysuvereniteettia — täällä on paikka sinulle.",
+    "ctaRunNode": "Ota solmu käyttöön (tulossa)",
+    "ctaJoinAnnouncements": "Seuraa ensimmäisiä julkistuksia",
     "ctaExploreCode": "Tutustu koodiin",
-    "footer": "Ei suljettuja puutarhoja. Ei yhtä omistajaa. Vain verkko ihmisiä, laitteistoa ja ideoita – rakentamassa erilaista tulevaisuutta älykkyydelle."
+    "footer": "Ei suljettuja puutarhoja. Ohjelmistokerros suvereenille eurooppalaiselle tekoälylle. Yksittäisestä työasemasta uusiutuvalla energialla toimiviin alueellisiin datakeskuksiin."
   }
 }

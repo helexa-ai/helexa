@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "En ny form for intelligens",
-    "title": "En ny form for intelligens",
-    "lead": "Helexa er et selvorganiserende AI‑mesh drevet af uafhængige operatører. Åbent. Distribueret. Under udvikling.",
-    "ctaJoinMesh": "Deltag i mesh'en",
+    "badge": "Suveræn europæisk AI-inferens",
+    "title": "Suveræn infrastruktur",
+    "lead": "Vi tror på, at det at køre avancerede, kapable modeller på hardware, man allerede har — i små, effektive anlæg — er vejen til, at europæiske SMV'er kan konkurrere med den hyperscaler-tankegang, der dominerer nutidens globale teknologiøkosystem.",
+    "ctaJoinMesh": "Prøv det nu",
     "ctaFollowProject": "Følg projektet",
-    "subcopy": "Bygget til operatører, udviklere og fællesskaber, der mener, at AI skal være åbent, robust og delt.",
-    "imageAlt": "Helexa helix‑visualisering"
+    "subcopy": "Skabt af europæere, for europæere.",
+    "imageAlt": "Helexa-helix-grafik"
   },
 
   "intent": {
     "title": "Hvorfor Helexa findes",
-    "p1": "AI er ved at blive den mest magtfulde infrastruktur på Jorden. Men i dag er den magt koncentreret hos en håndfuld virksomheder, formet af private prioriteter, geografiske begrænsninger og skrøbelig økonomi.",
-    "p2Intro": "Helexa forestiller sig noget andet:",
-    "bullet1": "Intelligens, der vokser frem overalt – ikke ét sted.",
-    "bullet2": "Et netværk, hvor alle kan bidrage og få gavn.",
-    "bullet3": "Et system, der tilpasser sig efter efterspørgsel, ikke direktiver.",
-    "bullet4": "Teknologi, der styrker fællesskaber i stedet for at erstatte dem.",
-    "closing": "Helexa er ikke en platform. Det er ikke en cloud.\nDet er et mesh – et levende, udviklende gitter af uafhængige operatører, der danner en ny form for intelligens."
+    "p1": "Nutidens AI-infrastruktur domineres af hyperscale-datacentre, der enten fysisk ligger i jurisdiktioner uden for EU eller kontrolleres af juridiske enheder, som står til ansvar over for jurisdiktioner uden for EU — med dagsordener, praksisser og strategier, der ikke altid lever op til Europas høje standarder for etik og forbrugerbeskyttelse. Europæiske virksomheder skal i stigende grad behandle og beskytte data inden for EU's regulatoriske rammer — noget, eksterne inferens-stacks sjældent prioriterer.",
+    "p2Intro": "Helexa udnytter den infrastruktur, Europa allerede har, og de open-weight-modeller, vi ikke har råd til at miste:",
+    "bullet1": "Avancerede open-weight-modeller, der kører effektivt på forbruger-, professionelle og datacenterklasse-acceleratorer.",
+    "bullet2": "Dataresidens og privatliv som standard. Inferens kører på infrastruktur inden for kundens jurisdiktion.",
+    "bullet3": "Udnyttelse af allerede tilgængelig acceleratorkapacitet uden at gå på kompromis med ydelsen.",
+    "bullet4": "Uafhængighed af globale hyperscalere med modstridende interesser.",
+    "closing": "Ikke en global cloud, der tilfældigvis har et EU-datacenter. Flere uafhængige, suveræne EU-operatører."
   },
 
   "whyNow": {
-    "title": "Et vendepunkt for AI",
-    "problemTitle": "Problemet",
-    "problemBullet1": "AI centraliseres hurtigere end nogen tidligere teknologi.",
-    "problemBullet2": "Adgang til compute definerer kapacitet, og adgangen bliver snævrere.",
-    "problemBullet3": "Omkostninger udelukker forskere, startups og fællesskaber.",
-    "problemBullet4": "Geopolitiske og regulatoriske pres truer global tilgængelighed.",
-    "problemBullet5": "Skaberne af modeller og operatørerne af hardware deler sjældent i den værdi, de producerer.",
+    "title": "Hvorfor nu",
+    "problemTitle": "Misforholdet",
+    "problemBullet1": "Nutidens inferens-stacks forudsætter hyperscale-datacentre, store GPU-klynger og closed source-LLM'er.",
+    "problemBullet2": "Europæisk regulering — GDPR, AI-forordningen, sektorregler — driver workloads on-premises og ind i regionen.",
+    "problemBullet3": "At sende data til udenlandske clouds er en regulatorisk, privatlivs- og omkostningsmæssig risiko.",
+    "problemBullet4": "Adgang til cloud-GPU'er er dyr, udbudsbegrænset og styret andetsteds.",
+    "problemBullet5": "Kapabel forbruger- og workstation-hardware står allerede underudnyttet rundt om i Europa.",
     "opportunityTitle": "Muligheden",
-    "opportunityIntro": "Men en distribueret verden er mulig.",
-    "opportunityBullet1": "Tusindvis af GPU'er står allerede uudnyttede rundt om i verden.",
-    "opportunityBullet2": "Operatører ønsker retfærdig kompensation for compute.",
-    "opportunityBullet3": "Udviklere ønsker åben, censurresistent infrastruktur.",
-    "opportunityBullet4": "Fællesskaber ønsker suverænitet og robusthed i digitale systemer.",
-    "opportunityBullet5": "AI's vækst har overhalet traditionelle clouds – der er brug for nye former.",
-    "opportunityClosing": "Helexa er øjeblikket, hvor disse kræfter mødes."
+    "opportunityIntro": "Open-weight-modeller på næsten højeste niveau kører nu godt på hardware, som Europa allerede ejer.",
+    "opportunityBullet1": "Avancerede open-weight-modeller kører på workstations og forbruger-GPU'er uden GPU-klynger i datacentre.",
+    "opportunityBullet2": "Europæiske virksomheder vil have AI, de kan køre lokalt, med forudsigelige omkostninger og garanteret fremtidig adgang.",
+    "opportunityBullet3": "Operatører med kapabel hardware kan levere inferens tæt på kunderne.",
+    "opportunityBullet4": "Regulering gør datasuverænitet til et krav frem for en præference.",
+    "opportunityBullet5": "Effektiv inferenssoftware er det manglende lag — og modgiften mod flere og større datacentre.",
+    "opportunityClosing": "Helexa er det softwarelag."
   },
 
   "howItWorks": {
-    "title": "Sådan dannes mesh'en",
+    "title": "Sådan fungerer det",
     "operators": {
-      "eyebrow": "Operatører kører noder",
-      "title": "Alle kan bidrage med compute.",
-      "body": "Operatører kører Helexa‑noder. De beslutter, hvilke modeller der skal hostes. De bevarer kontrollen over deres hardware og økonomi. Ingen godkendelser, ingen gatekeepere."
+      "eyebrow": "Udrul lokalt",
+      "title": "Kør avancerede modeller på din egen hardware.",
+      "body": "Helexa serverer open-weight-modeller på næsten højeste niveau på forbruger- og workstation-GPU'er, on-premises, i din egen jurisdiktion. Ingen klynge, ingen hyperscaler, ingen offshore-afhængighed. Data bliver, hvor du har kontrollen."
     },
     "routing": {
-      "eyebrow": "Mesh'en dirigerer intelligens",
-      "title": "Efterspørgslen flyder gennem netværket.",
-      "body": "Helexa lærer, hvor kapacitet findes, hvor efterspørgslen stiger, og hvilke noder der er bedst egnet til at håndtere forespørgsler. Mesh'en tilpasser sig organisk – som en voksende helix."
+      "eyebrow": "Rutér intelligent",
+      "title": "Forespørgsler bliver i nærområdet.",
+      "body": "Helexa ruter hver forespørgsel til infrastruktur med kapacitet og foretrækker regional nærhed, så trafik og data bliver, hvor du forventer det. Udrulninger vokser sammen til et bredere netværk, efterhånden som kapaciteten vokser."
     },
     "value": {
-      "eyebrow": "Værdien flyder tilbage",
-      "title": "Arbejdet bevises. Betalingen er retfærdig.",
-      "body": "Hver opgave bærer en kryptografisk kvittering. Operatører tjener på den intelligens, de hjælper med at levere. Ingen platformsskat. Ingen uigennemsigtig fakturering."
+      "eyebrow": "Operér uafhængigt",
+      "title": "Arbejdet er dokumenteret. Økonomien er gennemsigtig.",
+      "body": "Forbruget måles gennemsigtigt, og uafhængige operatører vil blive kompenseret for den intelligens, de leverer. Ingen platformsskat, ingen uigennemsigtig fakturering, ingen lock-in."
     }
   },
 
   "principles": {
-    "title": "Bygget på principper, ikke platforme",
+    "title": "Bygget på suverænitet, ikke lock-in",
     "distributed": {
-      "title": "Distribueret fra starten",
-      "body": "Ingen enkelt fejlkilde. Ingen central autoritet. Et netværk, der bliver stærkere for hver ny operatør."
+      "title": "Suveræn by design",
+      "body": "Europæisk hardware, europæiske operatører, europæisk lov. Intet single point of failure og ingen ekstern jurisdiktion, som adgangen afhænger af."
     },
     "participation": {
-      "title": "Åben deltagelse",
-      "body": "Hvis du har compute, kan du bidrage. Mesh'en byder alle velkommen – edge, hjemmeserver, datacenter."
+      "title": "Kører på den hardware, du har",
+      "body": "Fra en enkelt workstation til et regionalt datacenter: kapabel regnekraft kan køre Helexa. Det sænker infrastrukturkravene i stedet for at kræve nye klynger."
     },
     "fairness": {
-      "title": "Retfærdighed og gennemsigtighed",
-      "body": "Indtjening er baseret på reelt arbejde, kryptografisk verificeret. Ingen sorte bokse. Ingen skjulte gebyrer."
+      "title": "Privatliv & gennemsigtighed",
+      "body": "Privacy-native: chathistorik lever kun i browseren, aldrig på en server. Forbrugsmålingen er gennemsigtig; der er ingen sorte bokse og ingen skjulte gebyrer."
     },
     "evolving": {
-      "title": "Udviklende intelligens",
-      "body": "Mesh'en lærer af efterspørgslen. Modeller loades dér, hvor de behøves. Intelligens spredes gennem samarbejde."
+      "title": "Robust gennem distribution",
+      "body": "Kapacitet fordelt på mange uafhængige udrulninger er sværere at censurere, drosle eller slukke — og robust over for udenrigspolitiske skift og en enkelt leverandørs svigt."
     }
   },
 
   "roadAhead": {
-    "title": "Hvad Helexa sigter mod at blive",
-    "p1": "Et globalt intelligenslag, der tilhører alle, drevet af en helix af noder og fællesskaber.",
-    "p2": "Et netværk, der er robust over for nedbrud, politik, monopoler og fejl.",
-    "p3": "En ny økonomisk model, hvor operatører, udviklere og brugere alle får udbytte.",
-    "p4": "Et økosystem, hvor innovation vokser ud fra kanterne – ikke centrum.",
+    "title": "Hvor Helexa er på vej hen",
+    "p1": "Vores langsigtede mål er at blive det softwarelag, der driver et distribueret netværk af uafhængigt drevet europæisk AI-infrastruktur.",
+    "p2": "Fra enterprise-udrulninger, der kører avancerede modeller på egen hardware, til regionale datacentre drevet af vedvarende energi, som betjener deres lokalsamfund.",
+    "p3": "Et europæisk inferenslag, ejet og drevet i Europa. Robust over for nedbrud, udenrigspolitiske skift, monopoler og en enkelt leverandørs svigt.",
+    "p4": "Infrastruktur, der styrker europæisk autonomi i stedet for at uddybe afhængigheden af en håndfuld udenlandske udbydere.",
     "card": {
-      "eyebrow": "Visionsoversigt",
-      "title": "Mod et delt intelligens‑mesh",
-      "body": "Helexa er i en tidlig fase. Idéerne er større end implementationen – og det er med vilje. Netværket vil vokse gradvist, hvor operatører og udviklere sammen former dets udvikling."
+      "eyebrow": "Vision",
+      "title": "Softwarelaget for europæisk AI-infrastruktur",
+      "body": "Helexa er tidligt på vej — og det er bevidst. En fungerende inferens-stack i dag, på vej mod et distribueret netværk af uafhængigt drevne europæiske udrulninger."
     }
   },
 
   "joinMesh": {
-    "badge": "Tidlig fase",
-    "title": "Mesh'en tager form.",
-    "titleHighlight": "Du kan være en del af den.",
-    "lead": "Uanset om du kører hardware, bygger modeller eller blot går op i, hvordan AI styres, er der en plads til dig i mesh'en.",
-    "ctaRunNode": "Kør en node (snart)",
-    "ctaJoinAnnouncements": "Deltag i tidlige annonceringer",
+    "badge": "Tidlig adgang",
+    "title": "Suveræn AI-infrastruktur.",
+    "titleHighlight": "Bygget i Europa.",
+    "lead": "Uanset om du kører AI på egen hardware, driver kapacitet eller bygger mod europæisk AI-suverænitet, er der en plads til dig her.",
+    "ctaRunNode": "Udrul en node (snart)",
+    "ctaJoinAnnouncements": "Følg de første annonceringer",
     "ctaExploreCode": "Udforsk koden",
-    "footer": "Ingen lukkede haver. Ingen enkelt ejer. Bare et mesh af mennesker, hardware og idéer – der sammen former en anderledes fremtid for intelligens."
+    "footer": "Ingen walled gardens. Et softwarelag for suveræn europæisk AI. Fra en enkelt workstation til regionale datacentre drevet af vedvarende energi."
   }
 }

@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "European digital sovereignty",
-    "title": "Sovereign AI, Run by Europe",
-    "lead": "helexa is a sovereign AI mesh: near-frontier models served by independent European operators, on European hardware, under European law. Open. Distributed. Yours.",
-    "ctaJoinMesh": "Start chatting",
+    "badge": "Sovereign European AI Inference",
+    "title": "Sovereign infrastructure",
+    "lead": "We believe running advanced, capable models on hardware you already have — in small, efficient facilities — is how European SMEs compete with the hyperscaler mindset dominating today's global technology ecosystem.",
+    "ctaJoinMesh": "Try it now",
     "ctaFollowProject": "Follow the project",
-    "subcopy": "For people and organisations who refuse to make their thinking a dependency of a foreign hyperscaler.",
-    "imageAlt": "helexa helix visual"
+    "subcopy": "Created by Europeans, for Europeans.",
+    "imageAlt": "Helexa helix visual"
   },
 
   "intent": {
-    "title": "Why helexa Exists",
-    "p1": "AI is becoming the most consequential infrastructure on Earth — and Europe runs almost none of it. The models, the GPUs, the clouds, and the terms of service belong to a handful of US corporations, leaving European users, researchers, and businesses renting their own intelligence back from someone else's jurisdiction.",
-    "p2Intro": "helexa is built for a different settlement:",
-    "bullet1": "Data residency by default — your prompts stay on operators you can locate on a map.",
-    "bullet2": "GDPR-native, not GDPR-retrofitted: no server-side chat history, ever.",
-    "bullet3": "Capacity owned by independent operators, not a single hyperscaler.",
-    "bullet4": "Infrastructure that strengthens European autonomy instead of deepening dependency.",
-    "closing": "helexa is not a platform. It is not a US cloud with an EU region.\nIt is a mesh — a lattice of independent European operators serving frontier-class intelligence under European law."
+    "title": "Why Helexa Exists",
+    "p1": "Today's AI infrastructure is dominated by hyperscale datacentres either physically located in jurisdictions outside the EU or under the control of legal entities that are answerable to jurisdictions outside the EU — with agendas, practices and strategies that may not always meet Europe's high ethical and consumer protection standards. European businesses must increasingly process and protect data within the EU regulatory framework, something external inference stacks rarely prioritise.",
+    "p2Intro": "Helexa leverages the infrastructure Europe already has and the open-weight models we cannot afford to lose:",
+    "bullet1": "Advanced, open-weight models running efficiently on commodity, professional and datacentre-class accelerators.",
+    "bullet2": "Data residency and privacy by default. Inference lives on infrastructure within the consumer's jurisdiction.",
+    "bullet3": "Leveraging currently available accelerator capacity without sacrificing performance.",
+    "bullet4": "Independence from global hyperscalers with competing interests.",
+    "closing": "Not a global cloud that happens to have an EU datacentre. Multiple independent, sovereign EU operators."
   },
 
   "whyNow": {
-    "title": "A Turning Point for European AI",
-    "problemTitle": "The Dependency",
-    "problemBullet1": "Frontier AI is centralising faster than any technology before it — almost entirely outside Europe.",
-    "problemBullet2": "Compute access defines capability, and that access is gated by a few foreign providers.",
-    "problemBullet3": "Cross-border data flows and shifting US policy put European data and availability at risk.",
-    "problemBullet4": "Terms, prices, and model availability can change overnight, decided elsewhere.",
-    "problemBullet5": "European operators who own capable hardware rarely share in the value it could produce.",
-    "opportunityTitle": "The Sovereign Opportunity",
-    "opportunityIntro": "A European alternative is already within reach.",
-    "opportunityBullet1": "Capable consumer GPUs sit underutilised across European homes, labs, and datacentres.",
-    "opportunityBullet2": "Operators want fair compensation for serving compute close to users.",
-    "opportunityBullet3": "Developers want open, censorship-resistant infrastructure under known law.",
-    "opportunityBullet4": "Communities and institutions want sovereignty and resilience in their digital systems.",
-    "opportunityBullet5": "Near-frontier open-weight models now run well on consumer hardware — no hyperscaler required.",
-    "opportunityClosing": "helexa is the moment these forces align — in Europe's favour."
+    "title": "Why Now",
+    "problemTitle": "The Mismatch",
+    "problemBullet1": "Today's inference stacks assume hyperscale datacentres, large GPU clusters and closed-source LLMs.",
+    "problemBullet2": "European regulation — GDPR, the AI Act, sectoral rules — directs workloads on-premises and in-region.",
+    "problemBullet3": "Sending data to foreign clouds is a regulatory, privacy and cost liability.",
+    "problemBullet4": "Cloud GPU access is expensive, supply-constrained and governed elsewhere.",
+    "problemBullet5": "Capable commodity and workstation hardware already sits underutilised across Europe.",
+    "opportunityTitle": "The Opening",
+    "opportunityIntro": "Near-frontier open-weight models now run well on hardware Europe already owns.",
+    "opportunityBullet1": "Advanced open-weight models run on workstations and commodity GPUs without datacentre GPU clusters.",
+    "opportunityBullet2": "European businesses want AI they can run locally, with predictable costs and guaranteed future access.",
+    "opportunityBullet3": "Operators with capable hardware can serve inference close to consumers.",
+    "opportunityBullet4": "Regulation is turning data sovereignty from a preference into a requirement.",
+    "opportunityBullet5": "Efficient inference software is the missing layer and the antidote to more and larger datacentres.",
+    "opportunityClosing": "Helexa is that software layer."
   },
 
   "howItWorks": {
-    "title": "How the Mesh Forms",
+    "title": "How It Works",
     "operators": {
-      "eyebrow": "Operators Run Nodes",
-      "title": "European compute, locally owned.",
-      "body": "Independent operators run helexa nodes on their own hardware, in their own jurisdiction. They choose what to host and keep control of their economics. No approvals, no gatekeepers, no offshore dependency."
+      "eyebrow": "Deploy Locally",
+      "title": "Run advanced models on your own hardware.",
+      "body": "Helexa serves near-frontier open-weight models on commodity and workstation-class GPUs, on-premises, in your own jurisdiction. No cluster, no hyperscaler, no offshore dependency. Data stays where you control it."
     },
     "routing": {
-      "eyebrow": "The Mesh Routes Intelligence",
+      "eyebrow": "Route Intelligently",
       "title": "Requests stay close to home.",
-      "body": "helexa routes each request to an operator with capacity, preferring region affinity — so traffic and data stay where you expect. The mesh adapts organically, like a growing helix."
+      "body": "Helexa routes each request to infrastructure with capacity, preferring region affinity, so traffic and data stay where you expect. Deployments compose into a wider network as capacity grows."
     },
     "value": {
-      "eyebrow": "Value Flows Back",
-      "title": "Work is proven. Payment is fair.",
-      "body": "Usage is metered transparently and operators are compensated for the intelligence they serve. No platform taxation, no opaque billing, no lock-in."
+      "eyebrow": "Operate Independently",
+      "title": "Work is proven. Economics are transparent.",
+      "body": "Usage is metered transparently and independent operators will be compensated for the intelligence they serve. No platform tax, no opaque billing, no lock-in."
     }
   },
 
   "principles": {
-    "title": "Built on Sovereignty, Not Platforms",
+    "title": "Built on Sovereignty, Not Lock-In",
     "distributed": {
       "title": "Sovereign by Design",
-      "body": "European hardware, European operators, European law. No single point of failure and no foreign control plane your access depends on."
+      "body": "European hardware, European operators, European law. No single point of failure and no external jurisdiction that access depends on."
     },
     "participation": {
-      "title": "Open Participation",
-      "body": "If you have capable compute, you can contribute — edge, home server, or datacentre. The mesh welcomes every European operator."
+      "title": "Runs on Hardware You Have",
+      "body": "From a single workstation to a regional datacentre, capable compute can run Helexa. It reduces infrastructure requirements rather than demanding new clusters."
     },
     "fairness": {
       "title": "Privacy & Transparency",
-      "body": "GDPR-native: chat history lives only in your browser, never on a server. Usage metering is transparent; there are no black boxes and no hidden fees."
+      "body": "Privacy-native: chat history lives only in the browser, never on a server. Usage metering is transparent; there are no black boxes and no hidden fees."
     },
     "evolving": {
-      "title": "Resilient Intelligence",
-      "body": "The mesh learns from demand and loads models where they're needed. Capacity spread across many operators is harder to censor, throttle, or switch off."
+      "title": "Resilient by Distribution",
+      "body": "Capacity spread across many independent deployments is harder to censor, throttle or switch off, and resilient to foreign-policy shifts and single-vendor failure."
     }
   },
 
   "roadAhead": {
-    "title": "What helexa Aims to Become",
-    "p1": "A European intelligence layer that belongs to its users and operators, powered by a helix of independent nodes.",
-    "p2": "A network resilient to outages, foreign policy shifts, monopolies, and single-vendor failure.",
-    "p3": "A fair economic model where European operators, builders, and users all benefit.",
-    "p4": "An ecosystem where innovation grows from the edges of Europe — not the centre of someone else's market.",
+    "title": "Where Helexa Is Going",
+    "p1": "Our long-term goal is to become the software layer powering a distributed network of independently operated European AI infrastructure.",
+    "p2": "From enterprise deployments running advanced models on their own hardware, to renewable-powered regional datacentres serving their communities.",
+    "p3": "A European inference layer owned and operated in Europe. Resilient to outages, foreign-policy shifts, monopolies and single-vendor failure.",
+    "p4": "Infrastructure that strengthens European autonomy instead of deepening dependency on a handful of foreign providers.",
     "card": {
-      "eyebrow": "Vision snapshot",
-      "title": "Toward a sovereign intelligence mesh",
-      "body": "helexa is early, and deliberately so. The network grows iteratively, with European operators and builders shaping its evolution — not a roadmap dictated from abroad."
+      "eyebrow": "Vision",
+      "title": "The software layer for European AI infrastructure",
+      "body": "Helexa is early, and deliberately so. A working inference stack today, growing toward a distributed network of independently operated European deployments."
     }
   },
 
   "joinMesh": {
-    "badge": "Early phase",
-    "title": "The Mesh Is Forming.",
-    "titleHighlight": "You Can Be Part of It.",
-    "lead": "Whether you run hardware, build models, or simply care about who governs your AI, there is a place for you in the mesh.",
-    "ctaRunNode": "Run a node (soon)",
-    "ctaJoinAnnouncements": "Join early announcements",
+    "badge": "Early access",
+    "title": "Sovereign AI Infrastructure.",
+    "titleHighlight": "Built in Europe.",
+    "lead": "Whether you run AI on your own hardware, operate capacity, or are building toward European AI sovereignty, there is a place for you here.",
+    "ctaRunNode": "Deploy a node (soon)",
+    "ctaJoinAnnouncements": "Follow early announcements",
     "ctaExploreCode": "Explore the code",
-    "footer": "No walled gardens. No foreign owner. A mesh of European people, hardware, and ideas — composing a sovereign future for intelligence."
+    "footer": "No walled gardens. A software layer for sovereign European AI. From a single workstation to renewable-powered regional datacentres."
   }
 }

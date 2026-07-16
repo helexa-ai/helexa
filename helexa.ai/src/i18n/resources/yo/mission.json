@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Ìrísí tuntun ti ìmọ̀lára (intelligence)",
-    "title": "Ìrísí Tuntun ti Ìmọ̀lára",
-    "lead": "Helexa jẹ́ àwọ̀n wẹẹbu AI tó ń ṣe ìṣètò ara rẹ̀, tí àwọn oníṣẹ́ aláyẹ̀lújára ń ṣàgbékalẹ̀. Òde. Tó tan ká. Tó ń dàgbà sí i.",
-    "ctaJoinMesh": "Darapọ̀ mọ́ àwọ̀n wẹẹbu",
-    "ctaFollowProject": "Tẹ̀lé ètò yìí",
-    "subcopy": "A dá a sílẹ̀ fún àwọn oníṣẹ́, àwọn akẹ́kọ̀ọ́-ṣíṣe, àti àwọn àwùjọ tí wọ́n gbà pé AI gbọ́dọ̀ jẹ́ òde, tó lágbára, tí a sì lè pín.",
+    "badge": "Iṣẹ́ Inference AI Olómìnira ti Yúróòpù",
+    "title": "Ohun amáyédẹrùn olómìnira",
+    "lead": "A gbà pé ṣíṣe àwọn àwòṣe tó ga, tó sì lágbára lórí ẹ̀rọ tí o ti ní tẹ́lẹ̀ — nínú àwọn ilé-iṣẹ́ kékeré tó gbéṣẹ́ — ni ọ̀nà tí àwọn ilé-iṣẹ́ kékeré àti alabọ́dé ti Yúróòpù fi lè bá èrò hyperscaler tó ń jọba lórí ètò ìmọ̀-ẹ̀rọ àgbáyé lónìí díje.",
+    "ctaJoinMesh": "Gbìyànjú rẹ̀ báyìí",
+    "ctaFollowProject": "Tẹ̀lé iṣẹ́-akanṣe náà",
+    "subcopy": "Àwọn ará Yúróòpù ló ṣẹ̀dá rẹ̀, fún àwọn ará Yúróòpù.",
     "imageAlt": "Àwòrán helix Helexa"
   },
 
   "intent": {
-    "title": "Èéṣe tí Helexa fi wà",
-    "p1": "AI ń di àkànṣe pátá jùlọ nínú àwùjọ ènìyàn. Ṣùgbọ́n lónìí, agbára yìí ti wà ní ọwọ́ díẹ̀ lára àwọn ilé-ìṣòwò ńlá, tí ìfẹ́ ara ẹni, ààlà ilẹ̀-òkèèrè àti ìṣúná alágbára-kúrò ti ń darí.",
-    "p2Intro": "Helexa ń ronú nípa nǹkan mìíràn:",
-    "bullet1": "Ìmọ̀lára tó ń dàgbà láti gbogbo ibi, kì í ṣe láti ibi kan ṣoṣo.",
-    "bullet2": "Àwùjọ tó jẹ́ pé ẹnikẹ́ni lè ṣàfikún sí i, tí gbogbo ènìyàn sì lè rí àǹfààní rẹ̀.",
-    "bullet3": "Ètò tó ń fara da ìbéèrè àti ìbéèrè ọjà, kì í ṣe ìlànà lókè-lókè.",
-    "bullet4": "Ìmọ̀ sáyẹ́nsì tó ń fún àwọn àwùjọ ní agbára dípò pípa wọn rọ́pò.",
-    "closing": "Helexa kì í ṣe pátípọ́ọ̀mù. Kò sì ṣe ‘ilẹ̀ awọsanma’ (cloud).\nÀwọn wẹẹbu ni — àkópọ̀ alààyè, tó ń yípadà nípasẹ̀ àwọn oníṣẹ́ aláyẹ̀lújára tó ń dá àwo tuntun ti ìmọ̀lára sílẹ̀."
+    "title": "Ìdí Tí Helexa Fi Wà",
+    "p1": "Àwọn datacentre hyperscale ló ń jọba lórí ohun amáyédẹrùn AI lónìí — èyí tí ó wà ní ti ara ní àwọn agbègbè àṣẹ tí kò sí nínú EU, tàbí tí ó wà lábẹ́ àkóso àwọn ilé-iṣẹ́ tí wọ́n ní láti jíhìn fún àwọn agbègbè àṣẹ tí kò sí nínú EU — pẹ̀lú àwọn èrò, ìṣesí àti ète tí kò fi gbogbo ìgbà bá àwọn ìlànà gíga ti Yúróòpù nípa ìwà-rere àti ààbò oníbàárà mu. Àwọn ilé-iṣẹ́ Yúróòpù túbọ̀ ń ní láti ṣe ìtọ́jú àti ààbò dátà nínú ìlànà òfin EU — ohun tí àwọn ètò inference ti òde kì í sábà fi ṣe pàtàkì.",
+    "p2Intro": "Helexa ń lo ohun amáyédẹrùn tí Yúróòpù ti ní tẹ́lẹ̀ àti àwọn àwòṣe open-weight tí a kò lè fara da pípàdánù wọn:",
+    "bullet1": "Àwọn àwòṣe open-weight tó ga ń ṣiṣẹ́ dáadáa lórí àwọn accelerator ti gbogbogbò, ti akọ́ṣẹ́mọṣẹ́ àti ti ipele datacentre.",
+    "bullet2": "Ibùgbé dátà àti àṣírí gẹ́gẹ́ bí ìpilẹ̀. Inference ń gbé lórí ohun amáyédẹrùn tó wà nínú agbègbè àṣẹ oníbàárà.",
+    "bullet3": "Lílo agbára accelerator tó wà lọ́wọ́lọ́wọ́ láìdín iṣẹ́ ṣíṣe kù.",
+    "bullet4": "Òmìnira kúrò lọ́wọ́ àwọn hyperscaler àgbáyé tí wọ́n ní èrò tó ta kora.",
+    "closing": "Kì í ṣe àwọsánmà àgbáyé kan tó kàn ní datacentre kan ní EU. Ọ̀pọ̀ àwọn olùṣàkóso EU olómìnira, adáwà."
   },
 
   "whyNow": {
-    "title": "Àkókò pàtàkì fún AI",
-    "problemTitle": "Ìṣòro náà",
-    "problemBullet1": "AI ń di ààrín gbòngbò kíákíá ju gbogbo ìmọ̀ sáyẹ́nsì tó ṣáájú rẹ̀ lọ.",
-    "problemBullet2": "Ìrísí ìṣàkóso àgbára kọ̀m̀pútà ni ń pinnu agbára, tí ì wọlé sí i sì ń dínkù.",
-    "problemBullet3": "Ìdènà owó ń yọ àwọn onímọ̀, àwọn ilé-iṣẹ́ tuntun àti àwọn àwùjọ kúrò.",
-    "problemBullet4": "Àwọn ìṣòro ìpò ológun àti ìlànà òfin ń lé ewu lórí bí a ṣe lè fi mú un káàkiri ayé.",
-    "problemBullet5": "Àwọn tó ń dá àwòrán àfọwọ́kọ (models) àti àwọn tó ń ṣiṣẹ́ pẹ̀lú irinṣẹ́ lásán kì í jẹ́ apá pátá nínú èrè tí wọ́n ń dá.",
-    "opportunityTitle": "Ànfààní tó wà",
-    "opportunityIntro": "Ṣùgbọ́n ayé tó yàtọ̀-tó-yàtọ̀ sí ara wọn lè ṣeé ṣe.",
-    "opportunityBullet1": "Ẹgbàá GPU ló ti wà káàkiri ayé tí a ò fi nítorí-hàn-rárá.",
-    "opportunityBullet2": "Àwọn oníṣẹ́ fẹ́ ìsanwó tó dá lórí òtítọ́ fún agbára kọ̀m̀pútà tí wọ́n ń pèsè.",
-    "opportunityBullet3": "Àwọn onígbésẹ (developers) ń wá amáyédẹrùn òde tó ṣòfò sí ìdènà (censorship).",
-    "opportunityBullet4": "Àwọn àwùjọ nílò àṣẹ ara wọn àti àfarawà nínú àwọn ètò oní-nọ́ńbà.",
-    "opportunityBullet5": "Ìdàgbàsókè AI ti kọjá àwòrán ìṣàkóso “awọsanma” àtijọ́ — a nílò àwọn fọ́ọ̀mù tuntun.",
-    "opportunityClosing": "Helexa ni àkókò tí gbogbo agbára wọ̀nyí ti ń bá ara wọn pàdé."
+    "title": "Kí Nìdí Tí Ó Fi Jẹ́ Báyìí",
+    "problemTitle": "Àìbáramu",
+    "problemBullet1": "Àwọn ètò inference lónìí ń retí datacentre hyperscale, àkójọpọ̀ GPU ńlá àti àwọn LLM tí orísun wọn wà ní pípadé.",
+    "problemBullet2": "Òfin Yúróòpù — GDPR, AI Act, àwọn ìlànà ẹ̀ka-iṣẹ́ — ń darí àwọn iṣẹ́ sí orí ilẹ̀ ẹni àti sí àgbègbè ẹni.",
+    "problemBullet3": "Fífi dátà ránṣẹ́ sí àwọsánmà ilẹ̀ òkèèrè jẹ́ ewu ní ti òfin, àṣírí àti ìnáwó.",
+    "problemBullet4": "Wíwọlé sí GPU àwọsánmà gbówó lórí, ó ní àìtó ìpèsè, a sì ń ṣàkóso rẹ̀ láti ibòmíràn.",
+    "problemBullet5": "Ẹ̀rọ gbogbogbò àti ti workstation tó lágbára ti wà káàkiri Yúróòpù láìjẹ́ lílò dáadáa.",
+    "opportunityTitle": "Àǹfààní",
+    "opportunityIntro": "Àwọn àwòṣe open-weight tó súnmọ́ ipele gíga jùlọ ti ń ṣiṣẹ́ dáadáa báyìí lórí ẹ̀rọ tí Yúróòpù ti ní tẹ́lẹ̀.",
+    "opportunityBullet1": "Àwọn àwòṣe open-weight tó ga ń ṣiṣẹ́ lórí workstation àti GPU gbogbogbò láìsí àkójọpọ̀ GPU datacentre.",
+    "opportunityBullet2": "Àwọn ilé-iṣẹ́ Yúróòpù fẹ́ AI tí wọ́n lè ṣiṣẹ́ ní àdúgbò wọn, pẹ̀lú iye owó tí a lè sọ tẹ́lẹ̀ àti ìdánilójú wíwọlé lọ́jọ́ iwájú.",
+    "opportunityBullet3": "Àwọn olùṣàkóso tó ní ẹ̀rọ tó lágbára lè pèsè inference nítòsí àwọn oníbàárà.",
+    "opportunityBullet4": "Òfin ń yí ipò-ọba-aláṣẹ lórí dátà padà láti inú àṣàyàn sí ohun tí ó jẹ́ dandan.",
+    "opportunityBullet5": "Sọ́fítíwéà inference tó gbéṣẹ́ ni ìpele tó ń sọnù, òun sì ni oògùn fún kíkọ́ datacentre púpọ̀ àti ńlá sí i.",
+    "opportunityClosing": "Helexa ni ìpele sọ́fítíwéà yẹn."
   },
 
   "howItWorks": {
-    "title": "Báwo ni wẹẹbu ṣe ń dá sílẹ̀",
+    "title": "Bí Ó Ṣe Ń Ṣiṣẹ́",
     "operators": {
-      "eyebrow": "Àwọn oníṣẹ́ ló ń ṣiṣẹ́ pẹ̀lú àwọn nod",
-      "title": "Ẹnikẹ́ni lè fi agbára kọ̀m̀pútà fún un.",
-      "body": "Àwọn oníṣẹ́ ni wọ́n ń ṣíṣe àwọn nod Helexa. Wọ́n ni yóò pinnu àwọn àwòrán àfọwọ́kọ tí wọ́n fẹ́ gbà lórí. Wọ́n sì ń bójú tó irinṣẹ́ àti ètò-òṣèlú-òṣùwọ̀n wọn. Kò sí ìforúkọsílẹ̀ pàtàkì, kò sí olùdábòbò ẹnu-ọ̀nà."
+      "eyebrow": "Gbé Kalẹ̀ Ní Àdúgbò",
+      "title": "Mú àwọn àwòṣe gíga ṣiṣẹ́ lórí ẹ̀rọ tìrẹ fúnra rẹ.",
+      "body": "Helexa ń pèsè àwọn àwòṣe open-weight tó súnmọ́ ipele gíga jùlọ lórí GPU gbogbogbò àti ti ipele workstation, lórí ilẹ̀ rẹ, nínú agbègbè àṣẹ tìrẹ. Kò sí cluster, kò sí hyperscaler, kò sí ìgbáralé ilẹ̀ òkèèrè. Dátà dúró síbi tí o ti ń ṣàkóso rẹ̀."
     },
     "routing": {
-      "eyebrow": "Wẹẹbu ló ń darí ìmọ̀lára",
-      "title": "Ìbéèrè ló ń sáré káàkiri nínú nẹ́tíwọ́ọ̀kì.",
-      "body": "Helexa ń kọ́ ẹ̀kọ́ nípa ibo ni àfiyèsí (capacity) wà, ibo ni ìbéèrè ṣe ń pò sí i, àti èwo lára àwọn nod ló dára jù lọ láti dáhùn sí ìbéèrè. Wẹẹbu ń ṣe àtúnṣe ara rẹ̀ láìfẹ́fú — bí helix tó ń dàgbà."
+      "eyebrow": "Darí Pẹ̀lú Ọgbọ́n",
+      "title": "Àwọn ìbéèrè dúró nítòsí ilé.",
+      "body": "Helexa ń darí ìbéèrè kọ̀ọ̀kan sí ohun amáyédẹrùn tó ní ààyè, ó sì ń fẹ́ràn ìsúnmọ́ agbègbè, kí ìrìnnà àti dátà lè dúró síbi tí o retí. Àwọn ìgbékalẹ̀ ń para pọ̀ di nẹ́tíwọ́ọ̀kì tó gbòòrò bí agbára ṣe ń pọ̀ sí i."
     },
     "value": {
-      "eyebrow": "Ìyelórí ń padà sọdọ́ àwọn tó fi ṣiṣẹ́",
-      "title": "A ń fi hàn pé iṣẹ́ ti wáyé. Ìsanwó sì dá lórí òtítọ́.",
-      "body": "Gbogbo iṣẹ́ ló ń rú ìwé-ẹ̀rí àkọsílẹ̀ (cryptographic receipt). Àwọn oníṣẹ́ ń rí owó fún ìmọ̀lára tí wọ́n ṣe iranwọ́ láti mú wa. Kò sí owó-ori pátípọ́ọ̀mù. Kò sí ìwé-ìsanwó (billing) tí kò ye."
+      "eyebrow": "Ṣiṣẹ́ Lómìnira",
+      "title": "Iṣẹ́ ní ẹ̀rí. Ètò ọrọ̀-ajé wà ní gbangba.",
+      "body": "A ń wọn ìlò ní gbangba, a ó sì san àwọn olùṣàkóso olómìnira lẹ́san fún ọgbọ́n-inú tí wọ́n ń pèsè. Kò sí owó-orí pílátífọ́ọ̀mù, kò sí ìṣirò owó tó ṣókùnkùn, kò sí ìdèkùn."
     }
   },
 
   "principles": {
-    "title": "A dá a lórí ìlànà, kì í ṣe lórí pátípọ́ọ̀mù",
+    "title": "A Kọ́ Ọ Lórí Ipò-Ọba-Aláṣẹ, Kì Í Ṣe Ìdèkùn",
     "distributed": {
-      "title": "A ti tú ka látìbẹrẹ",
-      "body": "Kò sí àyè kan ṣoṣo tí ó bá ṣòfo gbogbo nǹkan máa ṣu. Kò sí agbára àárín gbòngbò. Àwọn wẹẹbu ni tó ń lágbára sí i pẹ̀lú gbogbo oníṣẹ́ tuntun."
+      "title": "Olómìnira Láti Ìpilẹ̀ṣẹ̀",
+      "body": "Ẹ̀rọ Yúróòpù, àwọn olùṣàkóso Yúróòpù, òfin Yúróòpù. Kò sí ojú-kan tí ìkùnà lè ti wọlé, kò sì sí agbègbè àṣẹ òkèèrè tí wíwọlé gbáralé."
     },
     "participation": {
-      "title": "Ìpinnu àpapọ̀ tí ó ṣí sí gbogbo ènìyàn",
-      "body": "Tí o bá ní agbára kọ̀m̀pútà, o lè ṣe àfikún. Wẹẹbu ń gba gbogbo ènìyàn — láti ọ̀dọ̀ ohun èlò eti-nẹ́tíwọ́ọ̀kì, sí àwọn sẹ́fà ilé, sí ilé iṣé data."
+      "title": "Ó Ń Ṣiṣẹ́ Lórí Ẹ̀rọ Tí O Ní",
+      "body": "Láti workstation kan ṣoṣo dé datacentre agbègbè, ẹ̀rọ ìṣírò tó lágbára lè mú Helexa ṣiṣẹ́. Ó ń dín àwọn ohun tí ohun amáyédẹrùn nílò kù dípò bíbéèrè fún àwọn cluster tuntun."
     },
     "fairness": {
-      "title": "Ìdájọ́ òdodo àti kedere",
-      "body": "Èrè ń bẹ lórí iṣẹ́ gidi, tí a sì ń fìdí rẹ̀ múlẹ̀ nípasẹ̀ ìmúlòlùú ṣíṣi (cryptography). Kò sí apótí dídúdú. Kò sí owó ìfilọ́lẹ̀ tí a fi pamọ́."
+      "title": "Àṣírí àti Ìṣípayá",
+      "body": "Àṣírí láti ìpilẹ̀: ìtàn ìjíròrò ń gbé inú browser nìkan, kò dé orí sáfà láé. Wíwọn ìlò wà ní gbangba; kò sí àpótí dúdú, kò sì sí owó ìkọ̀kọ̀."
     },
     "evolving": {
-      "title": "Ìmọ̀lára tó ń dàgbà lẹ́sẹ̀kẹsẹ̀",
-      "body": "Wẹẹbu ń kọ́ ẹ̀kọ́ láti inú ìbéèrè. Àwọn àwòrán àfọwọ́kọ ń gbé kalẹ̀ níbi tí wọ́n ti nílò wọn jù lọ. Ìmọ̀lára ń tàn ká nípasẹ̀ ìfowósowópò."
+      "title": "Alágbára Nípa Pípínká",
+      "body": "Agbára tí a pín ká sí ọ̀pọ̀ ìgbékalẹ̀ olómìnira ṣòro láti dí lọ́nà, láti fà sẹ́yìn tàbí láti pa, ó sì lè fara da àyípadà ìlànà-ìbáṣepọ̀ òkèèrè àti ìkùnà olùtajà kan ṣoṣo."
     }
   },
 
   "roadAhead": {
-    "title": "Ìtòsí Helexa sí ìwọ̀n tó fẹ́ dé",
-    "p1": "Fílá (layer) ìmọ̀lára àgbáyé tí gbogbo ènìyàn ní apá nínú rẹ̀, tí helix àwọn nod àti àwọn àwùjọ ṣe ń fún ní agbára.",
-    "p2": "Nẹ́tíwọ́ọ̀kì tó ní agbára láti koju ìdínkù iṣẹ́, ìṣèlú, ìtajà àpapọ̀, àti ìṣòro kópọ̀.",
-    "p3": "Àwòrán ètò-òṣùwọ̀ tuntun tí àwọn oníṣẹ́, àwọn akẹ́kọ̀ọ́-ṣíṣe àti àwọn olùlò gbogbo ti ń rí èrè.",
-    "p4": "Ayíká ìmọ̀-sáyẹ́nsì tí ìmọ̀ ẹ̀dá tuntun ti ń wá láti ẹ̀gbè — kì í ṣe láti àárín gbòngbò.",
+    "title": "Ibi Tí Helexa Ń Lọ",
+    "p1": "Ète wa fún ọjọ́ pípẹ́ ni láti di ìpele sọ́fítíwéà tó ń mú nẹ́tíwọ́ọ̀kì pípínká ti ohun amáyédẹrùn AI Yúróòpù tí a ń ṣàkóso lómìnira ṣiṣẹ́.",
+    "p2": "Láti àwọn ìgbékalẹ̀ ilé-iṣẹ́ tó ń ṣiṣẹ́ àwọn àwòṣe gíga lórí ẹ̀rọ tiwọn, dé àwọn datacentre agbègbè tó ń lo agbára ìsọdọ̀tun tó ń sin àwùjọ wọn.",
+    "p3": "Ìpele inference Yúróòpù tí Yúróòpù ni, tí a sì ń ṣàkóso ní Yúróòpù. Ó lè fara da ìdíwọ́ iṣẹ́, àyípadà ìlànà-ìbáṣepọ̀ òkèèrè, ìjọba-anìkanjọpọ́n àti ìkùnà olùtajà kan ṣoṣo.",
+    "p4": "Ohun amáyédẹrùn tó ń fún òmìnira Yúróòpù lókun dípò kí ó jinlẹ̀ sí ìgbáralé àwọn olùpèsè òkèèrè díẹ̀.",
     "card": {
-      "eyebrow": "Àkótán ìran àtijọ́",
-      "title": "Sí wẹẹbu ìmọ̀lára tí a fi jọ pín",
-      "body": "Helexa ṣi wà ní ìpele ìpilẹ̀. Àwọn èrò tó wà lẹ́yìn rẹ̀ tóbi ju àpẹẹrẹ ìmọ̀lára òde òní lọ — èyí sì jẹ́ ètò. Nẹ́tíwọ́ọ̀kì yìí máa dàgbà díẹ̀díẹ̀, nígbà tí àwọn oníṣẹ́ àti àwọn akẹ́kọ̀ọ́-ṣíṣe yóò máa dásílẹ̀ ìtàn ìdàgbàsókè rẹ̀."
+      "eyebrow": "Ìran",
+      "title": "Ìpele sọ́fítíwéà fún ohun amáyédẹrùn AI Yúróòpù",
+      "body": "Helexa ṣì wà ní ìbẹ̀rẹ̀, ó sì mọ̀ọ́mọ̀ rí bẹ́ẹ̀. Ètò inference tó ń ṣiṣẹ́ lónìí, tó ń dàgbà sí nẹ́tíwọ́ọ̀kì pípínká ti àwọn ìgbékalẹ̀ Yúróòpù tí a ń ṣàkóso lómìnira."
     }
   },
 
   "joinMesh": {
-    "badge": "Ìpele ìbẹ̀rẹ̀",
-    "title": "Wẹẹbu ń dá sílẹ̀.",
-    "titleHighlight": "Ìwọ náà lè jẹ́ apá rẹ̀.",
-    "lead": "Bóyá o ń ṣiṣẹ́ pẹ̀lú irinṣẹ́ kọ̀m̀pútà, o ń ṣe amùlò àwòrán àfọwọ́kọ, tàbí o kan ń bikita nípa bí a ṣe ń ṣàkóso AI, ibì kan wà fún ẹ nínú wẹẹbu yìí.",
-    "ctaRunNode": "Ṣíṣè nod kan (láìpẹ́)",
-    "ctaJoinAnnouncements": "Darapọ̀ mọ́ ìkéde ìbẹ̀rẹ̀",
-    "ctaExploreCode": "Ṣàwárí kóòdù",
-    "footer": "Kò sí ọgbà tí a yí ká. Kò sí onílé kan ṣoṣo. Wẹẹbu àwọn ènìyàn, irinṣẹ́ àti èrò ni — tí ń dá ìwàláàyè tuntun fún ìmọ̀lára."
+    "badge": "Ìráyè kùtùkùtù",
+    "title": "Ohun Amáyédẹrùn AI Olómìnira.",
+    "titleHighlight": "A Kọ́ Ọ Ní Yúróòpù.",
+    "lead": "Yálà o ń ṣiṣẹ́ AI lórí ẹ̀rọ tìrẹ, o ń ṣàkóso agbára ìṣírò, tàbí o ń kọ́ sí ọ̀nà ipò-ọba-aláṣẹ AI Yúróòpù, ààyè wà fún ọ níbí.",
+    "ctaRunNode": "Gbé node kalẹ̀ (láìpẹ́)",
+    "ctaJoinAnnouncements": "Tẹ̀lé àwọn ìkéde àkọ́kọ́",
+    "ctaExploreCode": "Ṣàwárí kóòdù náà",
+    "footer": "Kò sí ọgbà aládèénà. Ìpele sọ́fítíwéà fún AI olómìnira Yúróòpù. Láti workstation kan ṣoṣo dé àwọn datacentre agbègbè tó ń lo agbára ìsọdọ̀tun."
   }
 }

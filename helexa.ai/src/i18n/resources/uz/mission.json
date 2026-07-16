@@ -1,103 +1,103 @@
 {
   "hero": {
-    "badge": "Yangi intellekt shakli",
-    "title": "Intellektning yangi shakli",
-    "lead": "Helexa — mustaqil operatorlar boshqaradigan, oʻzi tashkil topadigan AI tarmogʻi. Ochiq. Tarqatilgan. Doimiy rivojlanishda.",
-    "ctaJoinMesh": "Tarmoqqa qoʻshilish",
-    "ctaFollowProject": "Loyihani kuzatish",
-    "subcopy": "AI ochiq, barqaror va umumiy boʻlishi kerak deb hisoblaydigan operatorlar, bunyodkorlar va hamjamiyatlar uchun yaratilgan.",
-    "imageAlt": "Helexa geliksi vizualizatsiyasi"
+    "badge": "Suveren Yevropa AI inferensiyasi",
+    "title": "Suveren infratuzilma",
+    "lead": "Ilgʻor, qobiliyatli modellarni qoʻlingizdagi uskunalarda — kichik va samarali obyektlarda — ishga tushirish Yevropa kichik va oʻrta bizneslari uchun bugungi global texnologiya ekotizimida hukmron boʻlgan giperskeyler tafakkuri bilan raqobatlashish yoʻlidir, deb ishonamiz.",
+    "ctaJoinMesh": "Hozir sinab koʻring",
+    "ctaFollowProject": "Loyihani kuzatib boring",
+    "subcopy": "Yevropaliklar tomonidan, yevropaliklar uchun yaratilgan.",
+    "imageAlt": "Helexa spirali tasviri"
   },
 
   "intent": {
-    "title": "Nega Helexa mavjud",
-    "p1": "AI Yer yuzidagi eng kuchli infratuzilmaga aylanib bormoqda. Ammo bugun bu quvvat shaxsiy ustuvorliklar, geografik cheklovlar va beqaror iqtisodiyot bilan shakllangan bir nechta korporatsiyalar qoʻlida jamlangan.",
-    "p2Intro": "Helexa boshqacha kelajakni tasavvur qiladi:",
-    "bullet1": "Bitta markazdan emas, har tomondan oʻsib keladigan intellekt.",
-    "bullet2": "Har kim hissa qoʻshishi va foyda olishi mumkin boʻlgan tarmoq.",
-    "bullet3": "Buyruqlarga emas, talabga qarab moslashadigan tizim.",
-    "bullet4": "Hamjamiyatlarni almashtirish emas, ularni mustahkamlovchi texnologiya.",
-    "closing": "Helexa — bu platforma ham emas, bulut ham emas.\nBu — mustaqil operatorlarning tirik, doimo oʻzgarib boradigan tarmogʻi bo‘lib, u yangi turdagi intellektni shakllantiradi."
+    "title": "Helexa nega mavjud",
+    "p1": "Bugungi AI infratuzilmasida yo jismonan Yevropa Ittifoqidan tashqaridagi yurisdiksiyalarda joylashgan, yo YI tashqarisidagi yurisdiksiyalarga hisobdor yuridik shaxslar nazoratidagi gipermasshtabli data-markazlar hukmronlik qiladi — ularning kun tartibi, amaliyoti va strategiyasi Yevropaning yuqori axloqiy va isteʼmolchi huquqlarini himoya qilish standartlariga har doim ham javob beravermasligi mumkin. Yevropa bizneslari maʼlumotlarni tobora YI huquqiy doirasida qayta ishlashi va himoya qilishi shart — tashqi inferensiya steklari buni kamdan-kam ustuvor deb biladi.",
+    "p2Intro": "Helexa Yevropada allaqachon mavjud infratuzilmadan va biz yoʻqotishga haqqimiz boʻlmagan ochiq vaznli (open-weight) modellardan foydalanadi:",
+    "bullet1": "Ilgʻor ochiq vaznli modellar oddiy, professional va data-markaz darajasidagi akseleratorlarda samarali ishlaydi.",
+    "bullet2": "Maʼlumotlar rezidentligi va maxfiylik — standart holatda. Inferensiya isteʼmolchi yurisdiksiyasidagi infratuzilmada joylashadi.",
+    "bullet3": "Mavjud akselerator quvvatidan unumdorlikni qurbon qilmasdan foydalanish.",
+    "bullet4": "Manfaatlari zid boʻlgan global giperskeylerlardan mustaqillik.",
+    "closing": "YIda data-markazi bor global bulut emas. Bir nechta mustaqil, suveren YI operatorlari."
   },
 
   "whyNow": {
-    "title": "AI uchun burilish nuqtasi",
-    "problemTitle": "Muammo",
-    "problemBullet1": "AI tarixdagi istalgan texnologiyadan tezroq markazlashmoqda.",
-    "problemBullet2": "Hisoblash quvvatiga kirish imkoniyati qobiliyatni belgilaydi va bu imkoniyat tobora torayib bormoqda.",
-    "problemBullet3": "Xarajat toʻsiqlari tadqiqotchilar, startaplar va mahalliy hamjamiyatlarni chetda qoldiradi.",
-    "problemBullet4": "Geosiyosiy va tartibga soluvchi bosimlar global mavjudlikka tahdid soladi.",
-    "problemBullet5": "Model yaratuvchilari va temir‑tuzilma operatorlari koʻpincha oʻzlari yaratgan qiymatdan ulush olmaydi.",
+    "title": "Nega aynan hozir",
+    "problemTitle": "Nomuvofiqlik",
+    "problemBullet1": "Bugungi inferensiya steklari gipermasshtabli data-markazlar, yirik GPU klasterlari va yopiq LLMlarni nazarda tutadi.",
+    "problemBullet2": "Yevropa tartibga solish tizimi — GDPR, AI Act, tarmoq qoidalari — ish yuklamalarini joyida va mintaqa ichida bajarishga yoʻnaltiradi.",
+    "problemBullet3": "Maʼlumotlarni xorijiy bulutlarga yuborish — tartibga solish, maxfiylik va xarajat nuqtai nazaridan xatar.",
+    "problemBullet4": "Bulutdagi GPU quvvatiga kirish qimmat, taqchil va boshqa joydan boshqariladi.",
+    "problemBullet5": "Qobiliyatli oddiy va ish stansiyasi uskunalari Yevropa boʻylab allaqachon toʻliq foydalanilmay turibdi.",
     "opportunityTitle": "Imkoniyat",
-    "opportunityIntro": "Ammo tarqatilgan dunyo qurish mumkin.",
-    "opportunityBullet1": "Dunyo boʻylab minglab GPU qurilmalari yetarli darajada ishlatilmayapti.",
-    "opportunityBullet2": "Operatorlar hisoblash quvvati uchun adolatli haq olishni xohlaydi.",
-    "opportunityBullet3": "Dasturchilarga ochiq, senzura bardoshli infratuzilma kerak.",
-    "opportunityBullet4": "Hamjamiyatlar raqamli tizimlarda suverenitet va barqarorlikni xohlaydi.",
-    "opportunityBullet5": "AI oʻsish sur’ati an’anaviy bulutlardan oshib ketdi — yangi shakllar zarur.",
-    "opportunityClosing": "Helexa — ana shu kuchlar birlashadigan on."
+    "opportunityIntro": "Frontirga yaqin ochiq vaznli modellar endi Yevropada allaqachon mavjud uskunalarda yaxshi ishlaydi.",
+    "opportunityBullet1": "Ilgʻor ochiq vaznli modellar data-markazdagi GPU klasterlarisiz ish stansiyalari va oddiy GPUlarda ishlaydi.",
+    "opportunityBullet2": "Yevropa bizneslari mahalliy ishga tushirish mumkin boʻlgan, xarajatlari bashorat qilinadigan va kelajakdagi kirish kafolatlangan AIni xohlaydi.",
+    "opportunityBullet3": "Qobiliyatli uskunalarga ega operatorlar inferensiyani isteʼmolchilarga yaqin joydan taqdim eta oladi.",
+    "opportunityBullet4": "Tartibga solish maʼlumotlar suverenitetini istakdan talabga aylantirmoqda.",
+    "opportunityBullet5": "Samarali inferensiya dasturiy taʼminoti — yetishmayotgan qatlam va yanada koʻproq, yirikroq data-markazlarga qarshi davo.",
+    "opportunityClosing": "Helexa — ana shu dasturiy qatlam."
   },
 
   "howItWorks": {
-    "title": "Tarmoq qanday shakllanadi",
+    "title": "Qanday ishlaydi",
     "operators": {
-      "eyebrow": "Operatorlar tugunlarni boshqaradi",
-      "title": "Har kim hisoblash quvvatini qoʻsha oladi.",
-      "body": "Operatorlar Helexa tugunlarini ishga tushiradi. Qaysi modellarga xizmat koʻrsatishni ular oʻzlari belgilaydi. Ular oʻz temir‑tuzilmasi va iqtisodiyotini nazoratida saqlab qoladi. Ruxsat kutish yoʻq, eshikbonlar yoʻq."
+      "eyebrow": "Mahalliy joylashtiring",
+      "title": "Ilgʻor modellarni oʻz uskunangizda ishga tushiring.",
+      "body": "Helexa frontirga yaqin ochiq vaznli modellarni oddiy va ish stansiyasi darajasidagi GPUlarda, oʻz obyektingizda, oʻz yurisdiksiyangizda taqdim etadi. Klaster yoʻq, giperskeyler yoʻq, xorijga qaramlik yoʻq. Maʼlumotlar siz nazorat qiladigan joyda qoladi."
     },
     "routing": {
-      "eyebrow": "Tarmoq intellektni yoʻnaltiradi",
-      "title": "Talab tarmoq orqali oqib oʻtadi.",
-      "body": "Helexa quvvat qayerda mavjudligini, talab qayerda oshayotganini va qaysi tugunlar soʻrovlarni eng yaxshi bajarishini oʻrganadi. Tarmoq oʻsib borayotgan geliks singari tabiiy ravishda moslashadi."
+      "eyebrow": "Aqlli yoʻnaltirish",
+      "title": "Soʻrovlar uydan uzoqlashmaydi.",
+      "body": "Helexa har bir soʻrovni quvvati bor infratuzilmaga yoʻnaltiradi, mintaqaviy yaqinlikni afzal koʻradi — trafik va maʼlumotlar siz kutgan joyda qoladi. Quvvat oshgani sari joylashtirishlar kengroq tarmoqqa birlashadi."
     },
     "value": {
-      "eyebrow": "Qiymat ortga qaytadi",
-      "title": "Ish isbotlanadi. Toʻlov adolatli taqsimlanadi.",
-      "body": "Har bir ishga kriptografik kvitansiya biriktiriladi. Operatorlar oʻzlari yetkazib berishga yordam bergan intellekt uchun daromad oladi. Platforma soligʻi yoʻq. Tushunarsiz hisob‑fakturalar yoʻq."
+      "eyebrow": "Mustaqil ishlang",
+      "title": "Ish isbotlanadi. Iqtisod shaffof.",
+      "body": "Foydalanish shaffof oʻlchanadi va mustaqil operatorlarga taqdim etgan intellekti uchun haq toʻlanadi. Platforma soligʻi yoʻq, noshaffof hisob-kitob yoʻq, bogʻlanib qolish yoʻq."
     }
   },
 
   "principles": {
-    "title": "Platformalarga emas, tamoyillarga asoslangan",
+    "title": "Asosi — suverenitet, vendorga bogʻlanish emas",
     "distributed": {
-      "title": "Avvaldan tarqatilgan",
-      "body": "Yagona nosozlik nuqtasi yoʻq. Markaziy hokimiyat yoʻq. Har bir yangi operator qoʻshilganda kuchayib boradigan tarmoq."
+      "title": "Dizaynidanoq suveren",
+      "body": "Yevropa uskunalari, Yevropa operatorlari, Yevropa qonuni. Yagona zaif nuqta yoʻq, kirish bogʻliq boʻladigan tashqi yurisdiksiya ham yoʻq."
     },
     "participation": {
-      "title": "Ochiq ishtirok",
-      "body": "Agar sizda hisoblash quvvati boʻlsa, hissa qoʻsha olasiz. Tarmoq chekka qurilmalarni ham, uy serverlarini ham, ma’lumotlar markazlarini ham qabul qiladi."
+      "title": "Qoʻlingizdagi uskunada ishlaydi",
+      "body": "Bitta ish stansiyasidan mintaqaviy data-markazgacha — qobiliyatli hisoblash quvvati Helexa-ni ishga tushira oladi. U yangi klasterlar talab qilish oʻrniga infratuzilma talablarini kamaytiradi."
     },
     "fairness": {
-      "title": "Adolat va oshkoralik",
-      "body": "Daromad haqiqiy ishga, kriptografik tasdiqqa asoslanadi. Qora qutilar yoʻq. Yashirin toʻlovlar yoʻq."
+      "title": "Maxfiylik va shaffoflik",
+      "body": "Tabiatan maxfiy: suhbat tarixi faqat brauzerda saqlanadi, serverda hech qachon saqlanmaydi. Foydalanish oʻlchovi shaffof; qora qutilar ham, yashirin toʻlovlar ham yoʻq."
     },
     "evolving": {
-      "title": "Rivojlanib boradigan intellekt",
-      "body": "Tarmoq talabdan saboq oladi. Modellar kerak boʻlgan joyga yuklanadi. Intellekt hamkorlik orqali tarqaladi."
+      "title": "Taqsimlanish tufayli bardoshli",
+      "body": "Koʻplab mustaqil joylashtirishlarga taqsimlangan quvvatni senzura qilish, cheklash yoki oʻchirish qiyin, u tashqi siyosat oʻzgarishlari va yagona vendor nosozligiga ham bardoshli."
     }
   },
 
   "roadAhead": {
-    "title": "Helexa nimaga intilmoqda",
-    "p1": "Har kimga tegishli boʻlgan, tugunlar va hamjamiyatlar geliksi tomonidan quvvatlanadigan global intellekt qatlami.",
-    "p2": "Nosozliklarga, uzilishlarga, siyosatga va monopoliyalarga bardosh bera oladigan tarmoq.",
-    "p3": "Operatorlar, bunyodkorlar va foydalanuvchilar barchasi foyda koʻradigan yangi iqtisodiy model.",
-    "p4": "Innovatsiya markazdan emas, chekkalardan oʻsib chiqadigan ekotizim.",
+    "title": "Helexa qayoqqa yoʻl olgan",
+    "p1": "Uzoq muddatli maqsadimiz — mustaqil boshqariladigan Yevropa AI infratuzilmasining taqsimlangan tarmogʻini harakatga keltiruvchi dasturiy qatlam boʻlish.",
+    "p2": "Ilgʻor modellarni oʻz uskunalarida ishga tushiruvchi korporativ joylashtirishlardan tortib, oʻz hamjamiyatlariga xizmat qiluvchi qayta tiklanadigan energiya bilan ishlaydigan mintaqaviy data-markazlargacha.",
+    "p3": "Yevropada egalik qilinadigan va boshqariladigan Yevropa inferensiya qatlami. Uzilishlarga, tashqi siyosat oʻzgarishlariga, monopoliyalarga va yagona vendor nosozligiga bardoshli.",
+    "p4": "Bir hovuch xorijiy provayderlarga qaramlikni chuqurlashtirish oʻrniga Yevropa mustaqilligini mustahkamlaydigan infratuzilma.",
     "card": {
-      "eyebrow": "Tasavvur manzarasi",
-      "title": "Umumiy intellekt tarmogʻiga tomon",
-      "body": "Helexa hali erta bosqichda. Gʻoyalar joriy amalga oshirishdan kattaroq — bu ataylab qilingan tanlov. Tarmoq bosqichma‑bosqich oʻsadi, uning rivojlanishini operatorlar va bunyodkorlar birgalikda shakllantiradi."
+      "eyebrow": "Vizyon",
+      "title": "Yevropa AI infratuzilmasi uchun dasturiy qatlam",
+      "body": "Helexa hali erta bosqichda — va bu ataylab shunday. Bugun ishlab turgan inferensiya steki mustaqil boshqariladigan Yevropa joylashtirishlarining taqsimlangan tarmogʻi sari oʻsib bormoqda."
     }
   },
 
   "joinMesh": {
-    "badge": "Erta bosqich",
-    "title": "Tarmoq shakllanib bormoqda.",
-    "titleHighlight": "Siz ham uning bir qismi boʻlishingiz mumkin.",
-    "lead": "Agar siz temir‑tuzilma boshqarsangiz, modellarga ishlov bersangiz yoki shunchaki AI qanday boshqarilishi muhim deb bilsangiz, tarmoqda siz uchun ham joy bor.",
-    "ctaRunNode": "Tugunni ishga tushirish (tez orada)",
-    "ctaJoinAnnouncements": "Dastlabki yangiliklarga obuna boʻlish",
-    "ctaExploreCode": "Kod bilan tanishish",
-    "footer": "Toʻsiqli bogʻlar yoʻq. Yagona egasi yoʻq. Intellektning boshqacha kelajagini birgalikda yaratadigan odamlar, temir‑tuzilma va gʻoyalar tarmogʻi xolos."
+    "badge": "Erta kirish",
+    "title": "Suveren AI infratuzilmasi.",
+    "titleHighlight": "Yevropada qurilgan.",
+    "lead": "AIni oʻz uskunangizda ishga tushirasizmi, quvvat operatorimisiz yoki Yevropa AI suvereniteti sari qurayotgan boʻlsangiz — bu yerda sizga joy bor.",
+    "ctaRunNode": "Tugun joylashtirish (tez orada)",
+    "ctaJoinAnnouncements": "Dastlabki eʼlonlarni kuzatib boring",
+    "ctaExploreCode": "Kodni oʻrganing",
+    "footer": "Devor bilan oʻralgan bogʻlar yoʻq. Suveren Yevropa AI uchun dasturiy qatlam. Bitta ish stansiyasidan qayta tiklanadigan energiya bilan ishlaydigan mintaqaviy data-markazlargacha."
   }
 }
