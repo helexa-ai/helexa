@@ -76,6 +76,9 @@ html[dir="rtl"] body {
 
 .app-root {
     min-height: 100vh;
+    /* Mobile browsers: track the dynamic viewport (URL bar show/hide) so
+     * the chat composer isn't pushed under the chrome. */
+    min-height: 100dvh;
     background-color: var(--color-bg);
     color: var(--color-text);
     transition:
@@ -89,6 +92,10 @@ html[dir="rtl"] body {
 .app-shell {
     position: relative;
     isolation: isolate;
+    /* min-vh-100 equivalent, preferring the dynamic viewport unit so
+     * mobile URL-bar chrome doesn't push the chat composer offscreen. */
+    min-height: 100vh;
+    min-height: 100dvh;
 }
 .app-shell::before {
     content: "";
@@ -692,6 +699,19 @@ a:hover {
     gap: 0.5rem;
 }
 
+/* Drawer toggle — only exists on small screens (see media query). */
+.hx-sidebar-toggle {
+    display: none;
+}
+
+/* Backdrop behind the mobile drawer. */
+.hx-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1040;
+    background: rgba(2, 6, 23, 0.45);
+}
+
 .hx-chat-item {
     display: block;
     width: 100%;
@@ -863,6 +883,53 @@ pre {
 
 /* ── Small screens ───────────────────────────────────────────────────── */
 
+/* Chat on phone-width screens: the sidebar becomes an off-canvas drawer
+ * so the thread gets the full width. Slide direction follows the writing
+ * direction (inset-inline + translate flip for RTL). */
+@media (max-width: 768px) {
+    .hx-chat-sidebar {
+        position: fixed;
+        inset-block: 0;
+        inset-inline-start: 0;
+        z-index: 1045;
+        width: min(78vw, 320px);
+        transform: translateX(-100%);
+        transition: transform 200ms ease-out;
+        box-shadow: var(--shadow-soft);
+        border-inline-end: 1px solid var(--color-border-strong);
+    }
+    html[dir="rtl"] .hx-chat-sidebar {
+        transform: translateX(100%);
+    }
+    .hx-chat-sidebar.open {
+        transform: translateX(0);
+    }
+
+    .hx-sidebar-toggle {
+        display: inline-flex;
+        position: absolute;
+        top: 0.6rem;
+        inset-inline-start: 0.6rem;
+        z-index: 10;
+        background-color: var(--color-bg-elevated);
+        border: 1px solid var(--color-border-subtle);
+        box-shadow: var(--shadow-card);
+    }
+
+    .hx-composer {
+        margin: 0.5rem 0.6rem 0.6rem;
+        padding-inline-start: 0.75rem;
+    }
+
+    .hx-bubble {
+        max-width: 92%;
+    }
+
+    .hx-chat-empty img {
+        height: 72px;
+    }
+}
+
 @media (max-width: 576px) {
     .app-main {
         padding-left: 1rem !important;
@@ -871,10 +938,6 @@ pre {
 
     .app-header .navbar-brand {
         font-size: 0.8rem;
-    }
-
-    .hx-chat-sidebar {
-        width: 220px;
     }
 
     .hx-hero-visual {

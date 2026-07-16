@@ -6,11 +6,11 @@
     "home": "Главная",
     "docs": "Документация",
     "chat": "Чат",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Миссия",
+    "login": "Войти",
+    "register": "Регистрация",
+    "account": "Аккаунт",
+    "logout": "Выйти"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Конфиденциальность"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Открытая бета",
+    "message": "helexa в открытой бете — возможны шероховатости. Ваши чаты остаются в вашем браузере.",
+    "dismiss": "Скрыть"
   }
 }

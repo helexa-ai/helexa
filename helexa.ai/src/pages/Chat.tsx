@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Alert, Form } from "react-bootstrap";
-import { FaPlus, FaFolderPlus, FaArrowUp, FaStop } from "react-icons/fa6";
+import { FaPlus, FaFolderPlus, FaArrowUp, FaStop, FaBarsStaggered } from "react-icons/fa6";
 import { db } from "../data/db";
 import {
   createConversation,
@@ -47,6 +47,9 @@ export default function Chat() {
   const projects = useLiveQuery(() => listProjects(owner), [owner], []);
   const conversations = useLiveQuery(() => listConversations(owner), [owner], []);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Phone-width screens render the sidebar as an off-canvas drawer;
+  // this state only has visible effect under the 768px media query.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Reset the active conversation when the owner changes (login/logout).
   useEffect(() => {
@@ -89,6 +92,12 @@ export default function Chat() {
   async function newChat(projectId: string | null = null) {
     const id = await createConversation(owner, model, projectId);
     setActiveId(id);
+    setSidebarOpen(false);
+  }
+
+  function selectConversation(id: string) {
+    setActiveId(id);
+    setSidebarOpen(false);
   }
 
   async function onSend() {
@@ -119,8 +128,15 @@ export default function Chat() {
 
   return (
     <div className="d-flex flex-grow-1" style={{ minHeight: 0 }}>
-      {/* Sidebar */}
-      <aside className="hx-chat-sidebar">
+      {/* Sidebar — off-canvas drawer under 768px, static column above. */}
+      {sidebarOpen && (
+        <div
+          className="hx-drawer-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <aside className={`hx-chat-sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="d-flex gap-2">
           <button
             type="button"
@@ -147,7 +163,7 @@ export default function Chat() {
           label={t("unsorted")}
           items={grouped.get(null) ?? []}
           activeId={activeId}
-          onSelect={setActiveId}
+          onSelect={selectConversation}
         />
         {(projects ?? []).map((p) => (
           <ConversationGroup
@@ -155,13 +171,25 @@ export default function Chat() {
             label={p.name}
             items={grouped.get(p.id) ?? []}
             activeId={activeId}
-            onSelect={setActiveId}
+            onSelect={selectConversation}
           />
         ))}
       </aside>
 
       {/* Main */}
-      <section className="d-flex flex-column flex-grow-1" style={{ minWidth: 0 }}>
+      <section
+        className="d-flex flex-column flex-grow-1 position-relative"
+        style={{ minWidth: 0 }}
+      >
+        <button
+          type="button"
+          className="hx-icon-btn hx-sidebar-toggle"
+          aria-label={t("sidebarToggle")}
+          title={t("sidebarToggle")}
+          onClick={() => setSidebarOpen(true)}
+        >
+          <FaBarsStaggered size={15} />
+        </button>
         <div ref={threadRef} className="flex-grow-1 p-3 overflow-auto">
           {(messages ?? []).length === 0 ? (
             <div className="hx-chat-empty">

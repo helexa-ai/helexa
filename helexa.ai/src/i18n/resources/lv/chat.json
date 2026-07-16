@@ -17,5 +17,6 @@
   "topUp": "Papildināt",
   "rateLimited": "Pieprasījumu limits sasniegts — uzgaidiet brīdi un mēģiniet vēlreiz.",
   "needsKey": "Izveidojiet API atslēgu un iespējojiet to tērzēšanai, lai sūtītu ziņojumus savā vārdā.",
-  "manageKeysLink": "Pārvaldīt atslēgas"
+  "manageKeysLink": "Pārvaldīt atslēgas",
+  "sidebarToggle": "Sarunas"
 }
