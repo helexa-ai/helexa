@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, NavLink } from "react-router-dom";
-import { Navbar, Container, Nav, Button, Dropdown } from "react-bootstrap";
-import { FaRegMoon, FaRegSun } from "react-icons/fa6";
+import { Navbar, Container, Nav, Dropdown } from "react-bootstrap";
+import { FaRegMoon, FaRegSun, FaGithub, FaRegUser, FaCircleUser } from "react-icons/fa6";
 import { useTheme } from "../layout/theme";
 import { useTranslation } from "react-i18next";
 import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages";
@@ -10,14 +10,15 @@ import { useAuth } from "../auth/context";
 
 /**
  * Top navigation: brand, primary routes (chat at `/`, `/mission`), an
- * auth-aware cluster (Account/Sign out when signed in, else Sign in/up),
- * the theme toggle, and the language selector.
+ * auth-aware cluster (Account/Sign out when signed in, else Sign in +
+ * a Sign-up pill), then a quiet icon cluster: GitHub, theme toggle,
+ * language selector. Icon buttons are borderless (`hx-icon-btn`) so the
+ * header stays calm; the sign-up pill is the single emphasised control.
  *
  * The language picker is ordered by **estimated usage**
- * (getLanguageOptionsByUsage), not alphabetically — a deliberate choice that
- * foregrounds helexa's international grounding. Each item shows the autonym
- * (language in its own script) plus a secondary label in the current
- * language; RTL-aware alignment.
+ * (getLanguageOptionsByUsage), not alphabetically — a deliberate choice
+ * that foregrounds helexa's international grounding. Each item shows the
+ * autonym plus a secondary label in the current language; RTL-aware.
  */
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
@@ -32,10 +33,10 @@ const Header: React.FC = () => {
   return (
     <Navbar
       expand="lg"
-      className="app-header border-bottom"
+      className="app-header"
       variant={theme === "dark" ? "dark" : "light"}
     >
-      <Container fluid>
+      <Container fluid className="px-4">
         <Navbar.Brand
           as={Link}
           to="/"
@@ -76,65 +77,83 @@ const Header: React.FC = () => {
             </NavLink>
           </Nav>
 
-          <div className="d-flex align-items-center gap-2">
-            {/* Auth-aware cluster. */}
-            {status === "authed" ? (
-              <>
-                <NavLink to="/account" className="nav-link">
-                  {t("nav.account")}
-                </NavLink>
-                <Button
-                  size="sm"
-                  variant="outline-secondary"
-                  onClick={logout}
-                  className="me-1"
-                >
-                  {t("nav.logout")}
-                </Button>
-              </>
-            ) : (
-              <>
-                <NavLink to="/login" className="nav-link">
-                  {t("nav.login")}
-                </NavLink>
-                <NavLink to="/register" className="nav-link">
-                  {t("nav.register")}
-                </NavLink>
-              </>
-            )}
+          <div className="d-flex align-items-center gap-1">
+            {/* One user control for the whole auth surface: outline icon
+                when anonymous (menu: sign in / sign up), accent-coloured
+                filled icon when signed in (menu: account / sign out). */}
+            <Dropdown align={isRtl ? "start" : "end"}>
+              <Dropdown.Toggle
+                as="button"
+                type="button"
+                className={`hx-icon-btn ${status === "authed" ? "hx-user-authed" : ""}`}
+                id="user-menu"
+                aria-label={
+                  status === "authed" ? t("nav.account") : t("nav.login")
+                }
+              >
+                {status === "authed" ? (
+                  <FaCircleUser size={18} />
+                ) : (
+                  <FaRegUser size={16} />
+                )}
+              </Dropdown.Toggle>
+              <Dropdown.Menu>
+                {status === "authed" ? (
+                  <>
+                    <Dropdown.Item as={Link} to="/account">
+                      {t("nav.account")}
+                    </Dropdown.Item>
+                    <Dropdown.Item onClick={logout}>
+                      {t("nav.logout")}
+                    </Dropdown.Item>
+                  </>
+                ) : (
+                  <>
+                    <Dropdown.Item as={Link} to="/login">
+                      {t("nav.login")}
+                    </Dropdown.Item>
+                    <Dropdown.Item as={Link} to="/register">
+                      {t("nav.register")}
+                    </Dropdown.Item>
+                  </>
+                )}
+              </Dropdown.Menu>
+            </Dropdown>
 
-            <Button
-              size="sm"
-              variant="outline-secondary"
+            <a
+              href="https://github.com/helexa-ai"
+              target="_blank"
+              rel="noreferrer"
+              className="hx-icon-btn"
+              aria-label="GitHub"
+            >
+              <FaGithub size={17} />
+            </a>
+
+            <button
               type="button"
+              className="hx-icon-btn"
               onClick={toggleTheme}
               aria-label={
                 theme === "dark"
                   ? t("theme.toggle.toLight")
                   : t("theme.toggle.toDark")
               }
-              className="d-inline-flex align-items-center justify-content-center"
             >
               {theme === "dark" ? <FaRegSun size={16} /> : <FaRegMoon size={16} />}
-            </Button>
+            </button>
 
-            <Dropdown
-              align={isRtl ? "start" : "end"}
-              className={theme === "dark" ? "dropdown-menu-dark-context" : ""}
-            >
+            <Dropdown align={isRtl ? "start" : "end"}>
               <Dropdown.Toggle
-                size="sm"
-                variant={theme === "dark" ? "secondary" : "outline-secondary"}
+                as="button"
+                type="button"
+                className="hx-icon-btn hx-icon-btn-wide"
                 id="language-switcher"
               >
-                <span className="me-1" aria-hidden="true">
-                  文A
-                </span>
+                <span aria-hidden="true">文A</span>
                 <span>{AUTONYM_MAP[currentLanguage]}</span>
               </Dropdown.Toggle>
-              <Dropdown.Menu
-                className={theme === "dark" ? "dropdown-menu-dark" : ""}
-              >
+              <Dropdown.Menu>
                 {languageOptions.map(({ code, autonym }) => (
                   <Dropdown.Item
                     key={code}

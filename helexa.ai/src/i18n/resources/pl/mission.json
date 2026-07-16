@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suwerenna europejska inferencja AI",
     "title": "Suwerenna infrastruktura",
-    "lead": "Wierzymy, że uruchamianie zaawansowanych, wydajnych modeli na sprzęcie, który już posiadasz — w małych, efektywnych obiektach — to sposób, w jaki europejskie MŚP mogą konkurować z hiperskalowym podejściem dominującym w dzisiejszym globalnym ekosystemie technologicznym.",
+    "lead": "Wierzymy, że uruchamianie zaawansowanych, wydajnych modeli na sprzęcie, który już posiadasz, w małych, efektywnych obiektach, to sposób, w jaki europejskie MŚP mogą konkurować z hiperskalowym podejściem dominującym w dzisiejszym globalnym ekosystemie technologicznym.",
     "ctaJoinMesh": "Wypróbuj teraz",
     "ctaFollowProject": "Śledź projekt",
     "subcopy": "Stworzone przez Europejczyków, dla Europejczyków.",
@@ -24,7 +24,7 @@
     "title": "Dlaczego teraz",
     "problemTitle": "Niedopasowanie",
     "problemBullet1": "Dzisiejsze stosy inferencyjne zakładają hiperskalowe centra danych, wielkie klastry GPU i zamknięte LLM-y.",
-    "problemBullet2": "Europejskie regulacje — RODO, AI Act, przepisy sektorowe — kierują obciążenia do infrastruktury lokalnej i do własnego regionu.",
+    "problemBullet2": "Europejskie regulacje (RODO, AI Act, przepisy sektorowe) kierują obciążenia do infrastruktury lokalnej i do własnego regionu.",
     "problemBullet3": "Wysyłanie danych do zagranicznych chmur to ryzyko regulacyjne, prywatnościowe i kosztowe.",
     "problemBullet4": "Dostęp do GPU w chmurze jest drogi, ograniczony podażowo i zarządzany gdzie indziej.",
     "problemBullet5": "Wydajny sprzęt konsumencki i stacje robocze już dziś stoją w Europie niedostatecznie wykorzystane.",

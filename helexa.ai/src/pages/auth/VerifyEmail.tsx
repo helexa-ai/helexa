@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Alert, Container, Spinner } from "react-bootstrap";
+import { Alert, Spinner } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { accountApi } from "../../api/account";
+import AuthCard from "../../components/AuthCard";
 
 export default function VerifyEmail() {
   const { t } = useTranslation("account");
@@ -18,23 +19,23 @@ export default function VerifyEmail() {
   }, [params]);
 
   return (
-    <Container className="py-5 flex-grow-1" style={{ maxWidth: 480 }}>
+    <AuthCard title={t("verify.verifying")}>
       {state === "verifying" && (
-        <p>
+        <p className="text-muted mb-0">
           <Spinner size="sm" className="me-2" />
           {t("verify.verifying")}
         </p>
       )}
       {state === "ok" && (
-        <Alert variant="success">
+        <Alert variant="success" className="mb-0">
           {t("verify.ok")} <Link to="/login">{t("verify.toLogin")}</Link>
         </Alert>
       )}
       {state === "failed" && (
-        <Alert variant="warning">
+        <Alert variant="warning" className="mb-0">
           {t("verify.failed")} <Link to="/login">{t("verify.toLogin")}</Link>
         </Alert>
       )}
-    </Container>
+    </AuthCard>
   );
 }

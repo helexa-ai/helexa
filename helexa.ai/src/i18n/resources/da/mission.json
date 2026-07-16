@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suveræn europæisk AI-inferens",
     "title": "Suveræn infrastruktur",
-    "lead": "Vi tror på, at det at køre avancerede, kapable modeller på hardware, man allerede har — i små, effektive anlæg — er vejen til, at europæiske SMV'er kan konkurrere med den hyperscaler-tankegang, der dominerer nutidens globale teknologiøkosystem.",
+    "lead": "Vi tror på, at det at køre avancerede, kapable modeller på hardware, man allerede har, i små, effektive anlæg, er vejen til, at europæiske SMV'er kan konkurrere med den hyperscaler-tankegang, der dominerer nutidens globale teknologiøkosystem.",
     "ctaJoinMesh": "Prøv det nu",
     "ctaFollowProject": "Følg projektet",
     "subcopy": "Skabt af europæere, for europæere.",
@@ -24,7 +24,7 @@
     "title": "Hvorfor nu",
     "problemTitle": "Misforholdet",
     "problemBullet1": "Nutidens inferens-stacks forudsætter hyperscale-datacentre, store GPU-klynger og closed source-LLM'er.",
-    "problemBullet2": "Europæisk regulering — GDPR, AI-forordningen, sektorregler — driver workloads on-premises og ind i regionen.",
+    "problemBullet2": "Europæisk regulering (GDPR, AI-forordningen, sektorregler) driver workloads on-premises og ind i regionen.",
     "problemBullet3": "At sende data til udenlandske clouds er en regulatorisk, privatlivs- og omkostningsmæssig risiko.",
     "problemBullet4": "Adgang til cloud-GPU'er er dyr, udbudsbegrænset og styret andetsteds.",
     "problemBullet5": "Kapabel forbruger- og workstation-hardware står allerede underudnyttet rundt om i Europa.",

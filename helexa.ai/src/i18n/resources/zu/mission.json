@@ -2,7 +2,7 @@
   "hero": {
     "badge": "I-AI Inference Ezimele Yase-Yurophu",
     "title": "Ingqalasizinda ezimele",
-    "lead": "Sikholelwa ukuthi ukusebenzisa amamodeli athuthukile, anamandla kumahadiwe osunawo kakade — ezikhungweni ezincane, ezisebenza kahle — kuyindlela amabhizinisi amancane naphakathi ase-Yurophu ancintisana ngayo nomqondo we-hyperscaler obusa umkhakha wezobuchwepheshe womhlaba namuhla.",
+    "lead": "Sikholelwa ukuthi ukusebenzisa amamodeli athuthukile, anamandla kumahadiwe osunawo kakade, ezikhungweni ezincane, ezisebenza kahle, kuyindlela amabhizinisi amancane naphakathi ase-Yurophu ancintisana ngayo nomqondo we-hyperscaler obusa umkhakha wezobuchwepheshe womhlaba namuhla.",
     "ctaJoinMesh": "Zama manje",
     "ctaFollowProject": "Landela iphrojekthi",
     "subcopy": "Yakhiwe abantu base-Yurophu, yabantu base-Yurophu.",
@@ -24,7 +24,7 @@
     "title": "Kungani Manje",
     "problemTitle": "Ukungahambisani",
     "problemBullet1": "Izinhlelo ze-inference zanamuhla zicabanga ama-datacentre amakhulu (hyperscale), amaqoqo amakhulu ama-GPU nama-LLM omthombo ovaliwe.",
-    "problemBullet2": "Imithetho yase-Yurophu — i-GDPR, i-AI Act, imithetho yemikhakha — iqondisa imisebenzi endaweni yangaphakathi nasesifundeni.",
+    "problemBullet2": "Imithetho yase-Yurophu (i-GDPR, i-AI Act, imithetho yemikhakha) iqondisa imisebenzi endaweni yangaphakathi nasesifundeni.",
     "problemBullet3": "Ukuthumela idatha emafini angaphandle kuyingozi yomthetho, yobumfihlo neyezindleko.",
     "problemBullet4": "Ukufinyelela kuma-GPU efu kuyabiza, kunokushoda kokuhlinzekwa, futhi kulawulwa kwenye indawo.",
     "problemBullet5": "Amahadiwe ajwayelekile nawe-workstation anamandla asevele ekhona kulo lonke elase-Yurophu engasetshenziswa ngokugcwele.",

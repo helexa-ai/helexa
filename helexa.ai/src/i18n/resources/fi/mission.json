@@ -2,7 +2,7 @@
   "hero": {
     "badge": "Suvereeni eurooppalainen tekoälyinferenssi",
     "title": "Suvereeni infrastruktuuri",
-    "lead": "Uskomme, että edistyneiden, suorituskykyisten mallien ajaminen jo olemassa olevalla laitteistolla — pienissä, tehokkaissa laitoksissa — on tapa, jolla eurooppalaiset pk-yritykset kilpailevat nykyistä globaalia teknologiaekosysteemiä hallitsevan hyperscaler-ajattelun kanssa.",
+    "lead": "Uskomme, että edistyneiden, suorituskykyisten mallien ajaminen jo olemassa olevalla laitteistolla, pienissä, tehokkaissa laitoksissa, on tapa, jolla eurooppalaiset pk-yritykset kilpailevat nykyistä globaalia teknologiaekosysteemiä hallitsevan hyperscaler-ajattelun kanssa.",
     "ctaJoinMesh": "Kokeile nyt",
     "ctaFollowProject": "Seuraa projektia",
     "subcopy": "Eurooppalaisten tekemä, eurooppalaisille.",
@@ -24,7 +24,7 @@
     "title": "Miksi nyt",
     "problemTitle": "Epäsuhta",
     "problemBullet1": "Nykyiset inferenssipinot olettavat hyperskaalan datakeskuksia, suuria GPU-klustereita ja suljettuja LLM-malleja.",
-    "problemBullet2": "Eurooppalainen sääntely — GDPR, tekoälyasetus, toimialakohtaiset säännöt — ohjaa työkuormat omiin tiloihin ja omalle alueelle.",
+    "problemBullet2": "Eurooppalainen sääntely (GDPR, tekoälyasetus, toimialakohtaiset säännöt) ohjaa työkuormat omiin tiloihin ja omalle alueelle.",
     "problemBullet3": "Datan lähettäminen ulkomaisiin pilviin on rasite sääntelyn, yksityisyyden ja kustannusten kannalta.",
     "problemBullet4": "Pilven GPU-kapasiteetti on kallista, niukkaa ja muualta hallittua.",
     "problemBullet5": "Suorituskykyistä kuluttaja- ja työasemalaitteistoa seisoo jo vajaakäytöllä ympäri Eurooppaa.",

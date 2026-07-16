@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Alert, Button, Container, Form } from "react-bootstrap";
+import { Alert, Form } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/context";
 import { ApiError } from "../../api/types";
+import AuthCard from "../../components/AuthCard";
 
 export default function Login() {
   const { t } = useTranslation("account");
@@ -30,8 +31,7 @@ export default function Login() {
   }
 
   return (
-    <Container className="py-5 flex-grow-1" style={{ maxWidth: 420 }}>
-      <h1 className="h3 mb-4">{t("login.title")}</h1>
+    <AuthCard title={t("login.title")}>
       {error && <Alert variant="warning">{error}</Alert>}
       <Form onSubmit={submit}>
         <Form.Group className="mb-3">
@@ -43,7 +43,7 @@ export default function Login() {
             required
           />
         </Form.Group>
-        <Form.Group className="mb-3">
+        <Form.Group className="mb-4">
           <Form.Label>{t("login.password")}</Form.Label>
           <Form.Control
             type="password"
@@ -52,13 +52,13 @@ export default function Login() {
             required
           />
         </Form.Group>
-        <Button type="submit" disabled={busy} className="w-100">
+        <button type="submit" disabled={busy} className="hx-btn-primary w-100">
           {t("login.submit")}
-        </Button>
+        </button>
       </Form>
-      <p className="mt-3 small">
+      <p className="mt-4 small mb-0">
         <Link to="/register">{t("login.noAccount")}</Link>
       </p>
-    </Container>
+    </AuthCard>
   );
 }
