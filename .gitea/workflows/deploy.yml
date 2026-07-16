@@ -479,3 +479,53 @@ jobs:
             --rsync-path 'sudo rsync' \
             bench/dist/ \
             gitea_ci@hanzalova.internal:/var/www/bench.helexa.ai/
+
+  # Build the helexa.ai website and publish it to the public nginx
+  # vhosts on BOTH edge proxies (oolon.kosherinata.internal for the DC
+  # site, hanzalova.internal for the office site). Cloudflare DNS load
+  # balancing routes helexa.ai to the two site WAN IPs; mesh clients use
+  # https://helexa.internal (hanzalova only). The vhosts + certs are
+  # one-time host setup (script/infra-setup.sh); this job just
+  # refreshes the static assets. Independent of the other deploy jobs.
+  deploy-website:
+    runs-on: fedora-43
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build website
+        run: |
+          cd helexa.ai
+          npm ci
+          npm run i18n:check
+          npm run build
+
+      - name: SSH init
+        run: |
+          mkdir -p ~/.ssh
+          echo "${DEPLOY_KEY}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          for host in hanzalova.internal oolon.kosherinata.internal; do
+            ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
+                "gitea_ci@${host}" 'hostname -f'
+          done
+
+      # Both proxies serve the same build; a failed rsync to one host
+      # fails the job (Cloudflare LB health checks paper over a stale
+      # instance, but the job exit code should still tell the truth).
+      - name: Rsync built site to edge webroots
+        run: |
+          for host in hanzalova.internal oolon.kosherinata.internal; do
+            rsync --archive --compress --delete \
+              --rsync-path 'sudo rsync' \
+              helexa.ai/dist/ \
+              "gitea_ci@${host}:/var/www/helexa.ai/"
+          done

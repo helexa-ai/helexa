@@ -27,7 +27,10 @@ bench_host=bob.hanzalova.internal
 pubkey="${HOME}/.ssh/id_gitea_ci.pub"
 if [[ ! -f "${pubkey}" ]]; then
     echo "fatal: ${pubkey} not found" >&2
-    echo "  generate with: ssh-keygen -t ed25519 -f ${pubkey%.pub} -C gitea_ci" >&2
+    echo "  copy ~/.ssh/id_gitea_ci{,.pub} from the operator workstation (roosta)." >&2
+    echo "  Do NOT generate a new key: every project's RSYNC_SSH_KEY secret and every" >&2
+    echo "  host's gitea_ci authorized_keys carry this one shared key — a fresh key" >&2
+    echo "  silently breaks all other projects' deploys." >&2
     exit 1
 fi
 
@@ -322,4 +325,150 @@ if ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
     fi
 else
     echo "  ${int_domain} cert still absent — vhost not installed"
+fi
+
+# ── helexa.ai website: public vhost on BOTH edge proxies (#161) ────────
+# The built SPA (helexa.ai/dist) is rsynced to the webroot by
+# deploy.yml's deploy-website job; each site's edge proxy serves it
+# under server_name helexa.ai with its own Let's Encrypt cert.
+# Cloudflare DNS load balancing (operator-managed) routes the public
+# name to both site WAN IPs. Conventions per
+# architecture/reverse-proxies.md §4. Idempotent.
+web_domain="helexa.ai"
+web_webroot="/var/www/${web_domain}"
+web_hosts=("${cortex_host}" "oolon.kosherinata.internal")
+
+# oolon's gitea_ci is shared with other projects' CI — append our
+# runner key only if missing rather than overwriting authorized_keys
+# (the provisioning loop above owns the helexa-fleet hosts, where
+# overwrite is fine; it is NOT fine on a shared host).
+ensure_ci_key() {
+    local host="$1"
+    ssh "${host}" "
+        set -eu
+        sudo install -d -o gitea_ci -g gitea_ci -m 0700 /var/lib/gitea_ci/.ssh
+        sudo touch /var/lib/gitea_ci/.ssh/authorized_keys
+        sudo chown gitea_ci:gitea_ci /var/lib/gitea_ci/.ssh/authorized_keys
+        sudo chmod 0600 /var/lib/gitea_ci/.ssh/authorized_keys
+        grep -qF '$(awk '{print $2}' "${pubkey}")' /var/lib/gitea_ci/.ssh/authorized_keys 2>/dev/null \
+            || echo '$(cat "${pubkey}")' | sudo tee -a /var/lib/gitea_ci/.ssh/authorized_keys >/dev/null
+    " && echo "  gitea_ci key present" || echo "  WARNING: failed to ensure gitea_ci key on ${host}"
+}
+
+echo "==> oolon.kosherinata.internal: gitea_ci key + website sudoers"
+ensure_ci_key oolon.kosherinata.internal
+install_sudoers oolon.kosherinata.internal \
+    "${repo_path}/asset/sudoers.d/web-host.conf"
+
+for web_host in "${web_hosts[@]}"; do
+    echo "==> ${web_host}: website nginx vhost (${web_domain})"
+    ssh "${web_host}" "sudo install -d -o root -g root -m 0755 '${web_webroot}'"
+    ssh "${web_host}" "test -f '${web_webroot}/index.html' || \
+        echo 'helexa.ai — not yet deployed' | sudo tee '${web_webroot}/index.html' >/dev/null"
+    # SELinux (enforcing): label the webroot httpd_sys_content_t so nginx
+    # can read it (else 403). Files rsynced in later inherit the type.
+    ssh "${web_host}" "sudo restorecon -R '${web_webroot}'"
+
+    # Obtain the cert (idempotent: --keep-until-expiring). Cloudflare
+    # DNS-01, so it works even while nginx is stopped. /root/.certbot-
+    # internal must hold a token scoped to the helexa.ai zone.
+    if ! ssh "${web_host}" "sudo test -d '/etc/letsencrypt/live/${web_domain}'"; then
+        echo "  obtaining Let's Encrypt cert via Cloudflare DNS-01…"
+        ssh "${web_host}" "sudo certbot certonly \
+            -m '${le_email}' --agree-tos --no-eff-email --noninteractive \
+            --cert-name '${web_domain}' --key-type ecdsa \
+            --dns-cloudflare --dns-cloudflare-credentials '${cf_creds}' \
+            --dns-cloudflare-propagation-seconds 60 \
+            --keep-until-expiring -d '${web_domain}'" \
+            || echo "  WARNING: certbot failed (Cloudflare creds for ${web_domain}?) — review on ${web_host}"
+    fi
+
+    # Install the matching vhost: full TLS config once the cert exists,
+    # otherwise the http-only bootstrap (never reference a missing cert
+    # — nginx -t fails and blocks the whole server).
+    if ssh "${web_host}" "sudo test -d '/etc/letsencrypt/live/${web_domain}'"; then
+        web_cfg="${web_domain}.conf"
+    else
+        web_cfg="${web_domain}.bootstrap.conf"
+    fi
+    if rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/${web_cfg}" \
+        "${web_host}:/etc/nginx/sites-available/${web_domain}.conf"; then
+        ssh "${web_host}" "
+            set -eu
+            sudo ln -sf ../sites-available/${web_domain}.conf \
+                /etc/nginx/sites-enabled/${web_domain}.conf
+            sudo nginx -t
+        " && echo "  vhost installed (${web_cfg})"
+        if ssh "${web_host}" "systemctl is-active --quiet nginx"; then
+            ssh "${web_host}" "sudo systemctl reload nginx"
+        else
+            echo "  NOTE: nginx is inactive on ${web_host} — start it to serve ${web_domain}"
+        fi
+    else
+        echo "  failed to install ${web_domain} vhost"
+    fi
+done
+
+# ── helexa website: internal vhost (helexa.internal) on the gateway ────
+# Mesh clients can't reach the public helexa.ai (hairpin gotcha —
+# reverse-proxies.md §2). Same SPA webroot, internal-CA cert renewed by
+# step@helexa.timer. hanzalova only; both site routers carry the
+# split-horizon helexa.internal → hanzalova host override.
+web_int_domain="helexa.internal"
+web_int_cert="/etc/nginx/tls/cert/${web_int_domain}.pem"
+web_int_key="/etc/nginx/tls/key/${web_int_domain}.pem"
+
+echo "==> ${cortex_host}: internal vhost (${web_int_domain}) + step renewal"
+# step@ units + tls dirs are installed by the bench.internal section
+# above; re-assert the dirs in case sections are ever reordered.
+ssh "${cortex_host}" "
+    set -eu
+    sudo install -d -o root -g root -m 0755 /etc/nginx/tls/cert
+    sudo install -d -o root -g root -m 0700 /etc/nginx/tls/key
+"
+
+if ! ssh "${cortex_host}" "sudo test -f '${web_int_cert}'"; then
+    prov_pw_local="${HOME}/.step/secrets/provisioner"
+    prov_pw_remote="/root/.helexa-provisioner-pw"
+    if [[ -f "${prov_pw_local}" ]]; then
+        echo "  issuing ${web_int_domain} cert (JWK 'lair' provisioner)…"
+        if rsync --archive --chown root:root --chmod 0600 --rsync-path 'sudo rsync' \
+            "${prov_pw_local}" "${cortex_host}:${prov_pw_remote}"; then
+            ssh "${cortex_host}" "
+                trap 'sudo rm -f ${prov_pw_remote}' EXIT
+                sudo step ca certificate ${web_int_domain} ${web_int_cert} ${web_int_key} \
+                    --ca-url https://ca.internal \
+                    --root /etc/pki/ca-trust/source/anchors/root-internal.pem \
+                    --provisioner lair \
+                    --provisioner-password-file ${prov_pw_remote} \
+                    --force
+            " || echo "  WARNING: cert issuance failed — review on ${cortex_host}"
+            ssh "${cortex_host}" "sudo rm -f ${prov_pw_remote}"
+        else
+            echo "  failed to transfer provisioner secret to ${cortex_host}"
+        fi
+    else
+        echo "  NOTE: no provisioner secret at ${prov_pw_local}; issue ${web_int_domain} cert manually."
+    fi
+fi
+
+if ssh "${cortex_host}" "sudo test -f '${web_int_cert}'"; then
+    if rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/${web_int_domain}.conf" \
+        "${cortex_host}:/etc/nginx/sites-available/${web_int_domain}.conf"; then
+        ssh "${cortex_host}" "
+            set -eu
+            sudo ln -sf ../sites-available/${web_int_domain}.conf \
+                /etc/nginx/sites-enabled/${web_int_domain}.conf
+            sudo nginx -t
+            systemctl is-active --quiet nginx && sudo systemctl reload nginx || true
+            sudo systemctl enable --now step@helexa.timer
+        " && echo "  ${web_int_domain} vhost installed + step@helexa.timer enabled"
+    else
+        echo "  failed to install ${web_int_domain} vhost"
+    fi
+else
+    echo "  ${web_int_domain} cert still absent — vhost not installed"
 fi
