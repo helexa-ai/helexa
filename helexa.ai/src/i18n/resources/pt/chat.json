@@ -17,5 +17,6 @@
   "topUp": "Top up",
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
-  "manageKeysLink": "Manage keys"
+  "manageKeysLink": "Manage keys",
+  "sidebarToggle": "Conversas"
 }

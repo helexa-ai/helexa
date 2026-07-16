@@ -17,5 +17,6 @@
   "topUp": "Dobít",
   "rateLimited": "Příliš mnoho požadavků — chvíli počkejte a zkuste to znovu.",
   "needsKey": "Vytvořte si API klíč a povolte ho pro chat, abyste mohli odesílat pod vlastním účtem.",
-  "manageKeysLink": "Spravovat klíče"
+  "manageKeysLink": "Spravovat klíče",
+  "sidebarToggle": "Konverzace"
 }

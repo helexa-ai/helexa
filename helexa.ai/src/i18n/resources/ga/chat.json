@@ -17,5 +17,6 @@
   "topUp": "Breisigh",
   "rateLimited": "Ráta teoranta — fan nóiméad agus bain triail eile as.",
   "needsKey": "Cruthaigh eochair API agus cumasaigh don chomhrá í chun seoladh mar thú féin.",
-  "manageKeysLink": "Bainistigh eochracha"
+  "manageKeysLink": "Bainistigh eochracha",
+  "sidebarToggle": "Comhráite"
 }

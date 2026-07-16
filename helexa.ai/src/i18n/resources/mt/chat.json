@@ -17,5 +17,6 @@
   "topUp": "Żid kreditu",
   "rateLimited": "Ir-rata hija limitata — stenna ftit u erġa' pprova.",
   "needsKey": "Oħloq ċavetta API u attivaha għall-chat biex tibgħat f'ismek.",
-  "manageKeysLink": "Immaniġġja ċ-ċwievet"
+  "manageKeysLink": "Immaniġġja ċ-ċwievet",
+  "sidebarToggle": "Konversazzjonijiet"
 }

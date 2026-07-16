@@ -17,5 +17,6 @@
   "topUp": "Feltöltés",
   "rateLimited": "Túl sok kérés — várj egy pillanatot, majd próbáld újra.",
   "needsKey": "Hozz létre egy API-kulcsot, és engedélyezd a csevegéshez, hogy a saját nevedben küldhess.",
-  "manageKeysLink": "Kulcsok kezelése"
+  "manageKeysLink": "Kulcsok kezelése",
+  "sidebarToggle": "Beszélgetések"
 }

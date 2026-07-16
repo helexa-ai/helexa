@@ -17,5 +17,6 @@
   "topUp": "Papildyti",
   "rateLimited": "Užklausų riba viršyta — palaukite akimirką ir bandykite dar kartą.",
   "needsKey": "Sukurkite API raktą ir įjunkite jį pokalbiams, kad siųstumėte savo vardu.",
-  "manageKeysLink": "Tvarkyti raktus"
+  "manageKeysLink": "Tvarkyti raktus",
+  "sidebarToggle": "Pokalbiai"
 }

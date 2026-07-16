@@ -17,5 +17,6 @@
   "topUp": "Dopolni",
   "rateLimited": "Omejitev zahtev — počakajte trenutek in poskusite znova.",
   "needsKey": "Ustvarite ključ API in ga omogočite za klepet, da boste pošiljali v svojem imenu.",
-  "manageKeysLink": "Upravljanje ključev"
+  "manageKeysLink": "Upravljanje ključev",
+  "sidebarToggle": "Pogovori"
 }
