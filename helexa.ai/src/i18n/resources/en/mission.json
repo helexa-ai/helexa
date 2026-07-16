@@ -1,40 +1,40 @@
 {
   "hero": {
-    "badge": "Sovereign European AI infrastructure",
-    "title": "Sovereign AI Inference, Run in Europe",
-    "lead": "Helexa is an AI inference platform designed for sovereign European AI deployment — running advanced models efficiently on commodity and workstation-class hardware, without hyperscale datacenters or massive GPU clusters.",
+    "badge": "Sovereign European AI Inference",
+    "title": "Sovereign infrastructure, ",
+    "lead": "We believe that running advanced, capable models on available hardware, in small, efficient facilities, is the competitive SME answer to the hyper-scaler mindset dominating today's global technology ecosystem.",
     "ctaJoinMesh": "Try it now",
     "ctaFollowProject": "Follow the project",
-    "subcopy": "For European businesses that need to run AI locally — for regulatory, privacy, and cost reasons.",
+    "subcopy": "Created by Europeans, for Europeans.",
     "imageAlt": "helexa helix visual"
   },
 
   "intent": {
     "title": "Why Helexa Exists",
-    "p1": "Today's AI infrastructure assumes hyperscale datacenters and massive GPU clusters. European businesses increasingly need to run AI locally — for regulatory, privacy, and cost reasons — but existing inference stacks are optimised for very different environments.",
-    "p2Intro": "Helexa is built for the infrastructure Europe actually has:",
-    "bullet1": "Advanced models running efficiently on commodity and workstation-class hardware.",
-    "bullet2": "Data residency and privacy by default — inference stays on infrastructure you control.",
-    "bullet3": "Lower infrastructure requirements, without sacrificing performance.",
-    "bullet4": "Independence from a small group of foreign hyperscalers.",
-    "closing": "Not a US cloud with an EU region — a software layer for sovereign European AI deployment."
+    "p1": "Today's AI infrastructure is dominated by hyperscale datacentres either physically located in jurisdictions outside of the EU or under the control of legal entities that are answerable to jurisdictions outside of the EU. With agendas, practices and strategies that may not always meet Europe's high ethical and consumer protection standards. European businesses increasingly must process and protect data within the EU regulatory framework that external inference stacks often fail to prioritise.",
+    "p2Intro": "Helexa leverages the infrastructure Europe already has and the open weights we cannot lose:",
+    "bullet1": "Advanced, open-weight models running efficiently on commodity, professional and frontier accelerators.",
+    "bullet2": "Data residency and privacy by default. Inference lives on infrastructure within consumer juridiction.",
+    "bullet3": "Leveraging currently available accellerator capacity, without sacrificing performance.",
+    "bullet4": "Independence from global hyperscalers with opposing interests.",
+    "closing": "Not a global cloud that happens to have an EU datacentre. Multiple independent, sovereign, EU operators."
   },
 
   "whyNow": {
     "title": "Why Now",
     "problemTitle": "The Mismatch",
-    "problemBullet1": "Today's inference stacks assume hyperscale datacenters and large GPU clusters.",
-    "problemBullet2": "European regulation — GDPR, the AI Act, sectoral rules — pushes workloads on-premise and in-region.",
+    "problemBullet1": "Today's inference stacks assume hyperscale datacentres, large GPU clusters and closed source LLMs.",
+    "problemBullet2": "European regulation, GDPR, the AI Act, sectoral rules, directs workloads on-premise and in-region.",
     "problemBullet3": "Sending data to foreign clouds is a regulatory, privacy, and cost liability.",
     "problemBullet4": "Cloud GPU access is expensive, supply-constrained, and governed elsewhere.",
-    "problemBullet5": "Capable commodity and workstation hardware already sits underused across Europe.",
+    "problemBullet5": "Capable commodity and workstation hardware already sits underutilised across Europe.",
     "opportunityTitle": "The Opening",
-    "opportunityIntro": "Near-frontier open-weight models now run well on hardware Europe already owns.",
-    "opportunityBullet1": "Advanced models run on single workstations and commodity GPUs — no cluster required.",
-    "opportunityBullet2": "European businesses want AI they can run locally, under their own control.",
-    "opportunityBullet3": "Operators with capable hardware can serve inference close to users.",
+    "opportunityIntro": "Near frontier, open-weight models now run well on hardware Europe already owns.",
+    "opportunityBullet1": "Advanced open-weight models run on workstations and commodity GPUs without datacentre GPU clusters",
+    "opportunityBullet2": "European businesses want AI they can run locally, with predictable and protected future access guarantees.",
+    "opportunityBullet3": "Operators with capable hardware can serve inference in close proximity to consumers.",
     "opportunityBullet4": "Regulation is turning data sovereignty from a preference into a requirement.",
-    "opportunityBullet5": "Efficient inference software is the missing layer — not more datacenters.",
+    "opportunityBullet5": "Efficient inference software is the missing layer and the antidote to more and larger datacentres.",
     "opportunityClosing": "Helexa is that software layer."
   },
 
@@ -43,12 +43,12 @@
     "operators": {
       "eyebrow": "Deploy Locally",
       "title": "Run advanced models on your own hardware.",
-      "body": "Helexa serves near-frontier open-weight models on commodity and workstation-class GPUs — on-premise, in your own jurisdiction. No cluster, no hyperscaler, no offshore dependency. Data stays where you control it."
+      "body": "Helexa serves near-frontier open-weight models on commodity and workstation-class GPUs, on-premise, in your own jurisdiction. No cluster, no hyperscaler, no offshore dependency. Data stays where you control it."
     },
     "routing": {
       "eyebrow": "Route Intelligently",
       "title": "Requests stay close to home.",
-      "body": "Helexa routes each request to infrastructure with capacity, preferring region affinity — so traffic and data stay where you expect. Deployments compose into a wider network as capacity grows."
+      "body": "Helexa routes each request to infrastructure with capacity, preferring region affinity. So traffic and data stay where you expect. Deployments compose into a wider network as capacity grows."
     },
     "value": {
       "eyebrow": "Operate Independently",
@@ -61,11 +61,11 @@
     "title": "Built on Sovereignty, Not Lock-In",
     "distributed": {
       "title": "Sovereign by Design",
-      "body": "European hardware, European operators, European law. No single point of failure and no foreign control plane your access depends on."
+      "body": "European hardware, European operators, European law. No single point of failure and no external jurisdiction that access depends on."
     },
     "participation": {
       "title": "Runs on Hardware You Have",
-      "body": "From a single workstation to a regional datacenter, capable compute can run helexa — reducing infrastructure requirements rather than demanding new clusters."
+      "body": "From a single workstation to a regional datacentre, capable compute can run helexa. Reducing infrastructure requirements rather than demanding new clusters."
     },
     "fairness": {
       "title": "Privacy & Transparency",
@@ -73,20 +73,20 @@
     },
     "evolving": {
       "title": "Resilient by Distribution",
-      "body": "Capacity spread across many independent deployments is harder to censor, throttle, or switch off — and resilient to foreign policy shifts and single-vendor failure."
+      "body": "Capacity spread across many independent deployments is harder to censor, throttle, or switch off and resilient to foreign policy shifts and single-vendor failure."
     }
   },
 
   "roadAhead": {
     "title": "Where Helexa Is Going",
     "p1": "Our long-term goal is to become the software layer powering a distributed network of independently operated European AI infrastructure.",
-    "p2": "From enterprise deployments running advanced models on their own hardware, to renewable-powered regional datacenters serving their communities.",
-    "p3": "A European inference layer owned and operated in Europe — resilient to outages, foreign policy shifts, monopolies, and single-vendor failure.",
+    "p2": "From enterprise deployments running advanced models on their own hardware, to renewable-powered regional datacentres serving their communities.",
+    "p3": "A European inference layer owned and operated in Europe. Resilient to outages, foreign policy shifts, monopolies, and single-vendor failure.",
     "p4": "Infrastructure that strengthens European autonomy instead of deepening dependency on a handful of foreign providers.",
     "card": {
       "eyebrow": "Vision",
       "title": "The software layer for European AI infrastructure",
-      "body": "Helexa is early, and deliberately so — a working inference stack today, growing toward a distributed network of independently operated European deployments."
+      "body": "Helexa is early, and deliberately so. A working inference stack today, growing toward a distributed network of independently operated European deployments."
     }
   },
 
@@ -98,6 +98,6 @@
     "ctaRunNode": "Deploy a node (soon)",
     "ctaJoinAnnouncements": "Follow early announcements",
     "ctaExploreCode": "Explore the code",
-    "footer": "No walled gardens. No foreign owner. A software layer for sovereign European AI — from a single workstation to renewable-powered regional datacenters."
+    "footer": "No walled gardens. A software layer for sovereign European AI. From a single workstation to renewable-powered regional datacentres."
   }
 }
