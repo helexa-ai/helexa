@@ -18,5 +18,10 @@
   "rateLimited": "Pieprasījumu limits sasniegts — uzgaidiet brīdi un mēģiniet vēlreiz.",
   "needsKey": "Izveidojiet API atslēgu un iespējojiet to tērzēšanai, lai sūtītu ziņojumus savā vārdā.",
   "manageKeysLink": "Pārvaldīt atslēgas",
-  "sidebarToggle": "Sarunas"
+  "sidebarToggle": "Sarunas",
+  "rename": "Pārdēvēt",
+  "delete": "Dzēst",
+  "cancel": "Atcelt",
+  "moveTo": "Pārvietot uz…",
+  "deleteThreadConfirm": "Vai dzēst šo sarunu un tās ziņojumus?"
 }

@@ -18,5 +18,10 @@
   "rateLimited": "Previše zahtjeva — pričekajte trenutak i pokušajte ponovno.",
   "needsKey": "Izradite API ključ i omogućite ga za razgovor kako biste slali u svoje ime.",
   "manageKeysLink": "Upravljanje ključevima",
-  "sidebarToggle": "Razgovori"
+  "sidebarToggle": "Razgovori",
+  "rename": "Preimenuj",
+  "delete": "Izbriši",
+  "cancel": "Odustani",
+  "moveTo": "Premjesti u…",
+  "deleteThreadConfirm": "Izbrisati ovaj razgovor i njegove poruke?"
 }

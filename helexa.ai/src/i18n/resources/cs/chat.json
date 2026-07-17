@@ -18,5 +18,10 @@
   "rateLimited": "Příliš mnoho požadavků — chvíli počkejte a zkuste to znovu.",
   "needsKey": "Vytvořte si API klíč a povolte ho pro chat, abyste mohli odesílat pod vlastním účtem.",
   "manageKeysLink": "Spravovat klíče",
-  "sidebarToggle": "Konverzace"
+  "sidebarToggle": "Konverzace",
+  "rename": "Přejmenovat",
+  "delete": "Smazat",
+  "cancel": "Zrušit",
+  "moveTo": "Přesunout do…",
+  "deleteThreadConfirm": "Smazat tento chat a jeho zprávy?"
 }

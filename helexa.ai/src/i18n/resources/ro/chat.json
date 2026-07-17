@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Conversații"
+  "sidebarToggle": "Conversații",
+  "rename": "Redenumește",
+  "delete": "Șterge",
+  "cancel": "Anulează",
+  "moveTo": "Mută în…",
+  "deleteThreadConfirm": "Ștergi această conversație și mesajele ei?"
 }

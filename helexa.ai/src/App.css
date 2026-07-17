@@ -739,6 +739,93 @@ a:hover {
     font-weight: 550;
 }
 
+/* Sidebar management rows: actions reveal on hover/focus (always visible
+ * on touch widths, where hover doesn't exist). */
+.hx-group-label {
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin-block: 0.6rem 0.15rem;
+    padding-inline-start: 0.35rem;
+    min-height: 1.6rem;
+}
+
+.hx-row .hx-row-actions {
+    display: none;
+    flex-shrink: 0;
+    align-items: center;
+}
+.hx-row:hover .hx-row-actions,
+.hx-row:focus-within .hx-row-actions {
+    display: inline-flex;
+}
+
+.hx-row-btn {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 0.45rem;
+}
+
+.hx-sidebar-action {
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+}
+
+.hx-inline-edit {
+    padding: 0.15rem 0.35rem;
+}
+.hx-inline-edit input {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.45rem;
+    border: 1px solid var(--color-accent);
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+/* Tiny move-to-topic popover, anchored to the thread row. */
+.hx-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+}
+.hx-move-menu {
+    position: absolute;
+    top: 100%;
+    inset-inline-end: 0;
+    z-index: 1051;
+    min-width: 10rem;
+    max-width: 100%;
+    padding: 0.3rem;
+    border-radius: 0.7rem;
+    border: 1px solid var(--color-border-strong);
+    background-color: var(--color-bg-elevated);
+    box-shadow: var(--shadow-soft);
+    display: flex;
+    flex-direction: column;
+}
+.hx-move-item {
+    border: none;
+    background: transparent;
+    color: var(--color-text);
+    text-align: start;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.45rem;
+}
+.hx-move-item:hover {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+}
+
 .hx-chat-empty {
     display: flex;
     flex-direction: column;
@@ -927,6 +1014,11 @@ pre {
 
     .hx-chat-empty img {
         height: 72px;
+    }
+
+    /* No hover on touch — keep row actions visible. */
+    .hx-row .hx-row-actions {
+        display: inline-flex;
     }
 }
 

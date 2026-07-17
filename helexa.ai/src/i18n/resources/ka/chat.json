@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "საუბრები"
+  "sidebarToggle": "საუბრები",
+  "rename": "გადარქმევა",
+  "delete": "წაშლა",
+  "cancel": "გაუქმება",
+  "moveTo": "გადატანა…",
+  "deleteThreadConfirm": "წაიშალოს ეს ჩატი და მისი შეტყობინებები?"
 }

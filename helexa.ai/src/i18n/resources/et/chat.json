@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Vestlused"
+  "sidebarToggle": "Vestlused",
+  "rename": "Nimeta ümber",
+  "delete": "Kustuta",
+  "cancel": "Tühista",
+  "moveTo": "Teisalda…",
+  "deleteThreadConfirm": "Kas kustutada see vestlus ja selle sõnumid?"
 }

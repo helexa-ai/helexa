@@ -18,5 +18,10 @@
   "rateLimited": "Omejitev zahtev — počakajte trenutek in poskusite znova.",
   "needsKey": "Ustvarite ključ API in ga omogočite za klepet, da boste pošiljali v svojem imenu.",
   "manageKeysLink": "Upravljanje ključev",
-  "sidebarToggle": "Pogovori"
+  "sidebarToggle": "Pogovori",
+  "rename": "Preimenuj",
+  "delete": "Izbriši",
+  "cancel": "Prekliči",
+  "moveTo": "Premakni v …",
+  "deleteThreadConfirm": "Ali želite izbrisati ta klepet in njegova sporočila?"
 }

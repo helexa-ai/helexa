@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Samtaler"
+  "sidebarToggle": "Samtaler",
+  "rename": "Gi nytt navn",
+  "delete": "Slett",
+  "cancel": "Avbryt",
+  "moveTo": "Flytt til…",
+  "deleteThreadConfirm": "Slette denne chatten og meldingene i den?"
 }

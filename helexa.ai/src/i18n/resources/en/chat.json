@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Conversations"
+  "sidebarToggle": "Conversations",
+  "rename": "Rename",
+  "delete": "Delete",
+  "cancel": "Cancel",
+  "moveTo": "Move to…",
+  "deleteThreadConfirm": "Delete this chat and its messages?"
 }

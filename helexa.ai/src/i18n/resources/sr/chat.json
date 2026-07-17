@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Razgovori"
+  "sidebarToggle": "Razgovori",
+  "rename": "Preimenuj",
+  "delete": "Izbriši",
+  "cancel": "Otkaži",
+  "moveTo": "Premesti u…",
+  "deleteThreadConfirm": "Izbrisati ovo ćaskanje i njegove poruke?"
 }

@@ -18,5 +18,10 @@
   "rateLimited": "Ir-rata hija limitata — stenna ftit u erġa' pprova.",
   "needsKey": "Oħloq ċavetta API u attivaha għall-chat biex tibgħat f'ismek.",
   "manageKeysLink": "Immaniġġja ċ-ċwievet",
-  "sidebarToggle": "Konversazzjonijiet"
+  "sidebarToggle": "Konversazzjonijiet",
+  "rename": "Ibdel l-isem",
+  "delete": "Ħassar",
+  "cancel": "Ikkanċella",
+  "moveTo": "Mexxi għal…",
+  "deleteThreadConfirm": "Tħassar din il-chat u l-messaġġi tagħha?"
 }
