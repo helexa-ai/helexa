@@ -25,5 +25,6 @@
   "moveTo": "Flyt til…",
   "deleteThreadConfirm": "Vil du slette denne chat og dens beskeder?",
   "searching": "søger på nettet efter ”{{query}}”…",
-  "sources": "Kilder"
+  "sources": "Kilder",
+  "reading": "læser {{host}}…"
 }

@@ -25,5 +25,6 @@
   "moveTo": "Premakni v …",
   "deleteThreadConfirm": "Ali želite izbrisati ta klepet in njegova sporočila?",
   "searching": "iskanje »{{query}}« po spletu …",
-  "sources": "Viri"
+  "sources": "Viri",
+  "reading": "branje {{host}} …"
 }

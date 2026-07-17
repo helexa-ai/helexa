@@ -68,6 +68,7 @@ jobs:
       build_bench: ${{ steps.changes.outputs.build_bench }}
       build_upstream: ${{ steps.changes.outputs.build_upstream }}
       build_router: ${{ steps.changes.outputs.build_router }}
+      build_tools: ${{ steps.changes.outputs.build_tools }}
       check_rust: ${{ steps.changes.outputs.check_rust }}
     steps:
       - uses: actions/checkout@v4
@@ -115,6 +116,7 @@ jobs:
           BUILD_BENCH=true
           BUILD_UPSTREAM=true
           BUILD_ROUTER=true
+          BUILD_TOOLS=true
           CHECK_RUST=true
 
           if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
@@ -162,6 +164,7 @@ jobs:
               BENCH_RE='^crates/helexa-bench/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-bench-prerelease\.spec$|^data/helexa-bench|^helexa-bench\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
               UPSTREAM_RE='^crates/helexa-upstream/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-upstream-prerelease\.spec$|^data/helexa-upstream|^helexa-upstream\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
               ROUTER_RE='^crates/helexa-router/|^crates/helexa-stream/|^crates/cortex-core/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-router-prerelease\.spec$|^data/helexa-router|^helexa-router\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
+              TOOLS_RE='^crates/helexa-tools/|^Cargo\.toml$|^Cargo\.lock$|^rpm/helexa-tools-prerelease\.spec$|^data/helexa-tools|^helexa-tools\.example\.toml$|^\.gitea/workflows/build-prerelease\.yml$'
               # Any Rust change (incl. crates not packaged here, e.g.
               # helexa-acp) still needs lint+test on main.
               RUST_RE='\.rs$|^crates/|Cargo\.toml$|^Cargo\.lock$'
@@ -171,12 +174,14 @@ jobs:
               BENCH_BASE=$(base_for helexa-bench)
               UPSTREAM_BASE=$(base_for helexa-upstream)
               ROUTER_BASE=$(base_for helexa-router)
+              TOOLS_BASE=$(base_for helexa-tools)
               BUILD_CORTEX=$(decide "$CORTEX_BASE" "$CORTEX_RE")
               BUILD_NEURON=$(decide "$NEURON_BASE" "$NEURON_RE")
               BUILD_BENCH=$(decide "$BENCH_BASE" "$BENCH_RE")
               BUILD_UPSTREAM=$(decide "$UPSTREAM_BASE" "$UPSTREAM_RE")
               BUILD_ROUTER=$(decide "$ROUTER_BASE" "$ROUTER_RE")
-              if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ] || [ "$BUILD_BENCH" = "true" ] || [ "$BUILD_UPSTREAM" = "true" ] || [ "$BUILD_ROUTER" = "true" ]; then
+              BUILD_TOOLS=$(decide "$TOOLS_BASE" "$TOOLS_RE")
+              if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ] || [ "$BUILD_BENCH" = "true" ] || [ "$BUILD_UPSTREAM" = "true" ] || [ "$BUILD_ROUTER" = "true" ] || [ "$BUILD_TOOLS" = "true" ]; then
                 CHECK_RUST=true
               else
                 CHECK_RUST=$(decide "$CORTEX_BASE" "$RUST_RE")
@@ -189,8 +194,9 @@ jobs:
           echo "build_bench=${BUILD_BENCH}" >> "$GITHUB_OUTPUT"
           echo "build_upstream=${BUILD_UPSTREAM}" >> "$GITHUB_OUTPUT"
           echo "build_router=${BUILD_ROUTER}" >> "$GITHUB_OUTPUT"
+          echo "build_tools=${BUILD_TOOLS}" >> "$GITHUB_OUTPUT"
           echo "check_rust=${CHECK_RUST}" >> "$GITHUB_OUTPUT"
-          echo "### change detection: build_cortex=${BUILD_CORTEX} build_neuron=${BUILD_NEURON} build_bench=${BUILD_BENCH} build_upstream=${BUILD_UPSTREAM} build_router=${BUILD_ROUTER} check_rust=${CHECK_RUST}"
+          echo "### change detection: build_cortex=${BUILD_CORTEX} build_neuron=${BUILD_NEURON} build_bench=${BUILD_BENCH} build_upstream=${BUILD_UPSTREAM} build_router=${BUILD_ROUTER} build_tools=${BUILD_TOOLS} check_rust=${CHECK_RUST}"
 
   # fmt + clippy + test moved here from ci.yml for main pushes so the
   # two workflows stop queueing against each other (ci.yml's checks
@@ -394,6 +400,41 @@ jobs:
         with:
           name: router-fc43
           path: artifacts/helexa-router
+          retention-days: 1
+
+  build-tools:
+    name: Build helexa-tools binary
+    timeout-minutes: 25
+    needs: prepare
+    if: needs.prepare.outputs.build_tools == 'true'
+    # Pure-Rust, non-CUDA binary — same runner as cortex/bench.
+    runs-on: rust
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_BUCKET: sccache
+      SCCACHE_ENDPOINT: http://caveman.kosherinata.internal:9000
+      SCCACHE_REGION: auto
+      SCCACHE_S3_USE_SSL: "false"
+      AWS_ACCESS_KEY_ID: ${{ secrets.SCCACHE_S3_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.SCCACHE_S3_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Build helexa-tools (release, sccache escalation)
+        run: script/ci-cargo-escalate.sh cargo build --release -p helexa-tools
+
+      - name: Stage binary
+        run: |
+          mkdir --parents artifacts
+          cp target/release/helexa-tools artifacts/helexa-tools
+          ./artifacts/helexa-tools --version || true
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: tools-fc43
+          path: artifacts/helexa-tools
           retention-days: 1
 
   build-neuron:
@@ -631,6 +672,44 @@ jobs:
           path: ~/rpmbuild/RPMS/x86_64/*.rpm
           retention-days: 7
 
+  package-tools:
+    name: Package helexa-tools RPM
+    timeout-minutes: 20
+    needs: [prepare, build-tools]
+    runs-on: rpm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: tools-fc43
+          path: artifacts/
+
+      - name: Build RPM
+        run: |
+          set -eux
+          rm -f ~/.rpmmacros
+          rpmdev-setuptree
+          cp artifacts/helexa-tools ~/rpmbuild/SOURCES/
+          cp data/helexa-tools.service ~/rpmbuild/SOURCES/
+          cp data/helexa-tools-sysusers.conf ~/rpmbuild/SOURCES/
+          cp data/helexa-tools-firewalld.xml ~/rpmbuild/SOURCES/
+          cp helexa-tools.example.toml ~/rpmbuild/SOURCES/
+          cp LICENSE ~/rpmbuild/SOURCES/
+          rpmbuild -bb rpm/helexa-tools-prerelease.spec \
+            --define "tools_version ${{ needs.prepare.outputs.version }}" \
+            --define "tools_prerelease ${{ needs.prepare.outputs.release }}" \
+            --undefine dist \
+            --define "dist .fc43"
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rpm-tools-fc43
+          path: ~/rpmbuild/RPMS/x86_64/*.rpm
+          retention-days: 7
+
   package-neuron:
     name: Package helexa-neuron-${{ matrix.flavour }} RPM
     timeout-minutes: 20
@@ -680,7 +759,7 @@ jobs:
   publish:
     name: Publish to rpm.lair.cafe (unstable)
     timeout-minutes: 25
-    needs: [lint, test, package-cortex, package-neuron, package-bench, package-upstream, package-router]
+    needs: [lint, test, package-cortex, package-neuron, package-bench, package-upstream, package-router, package-tools]
     # Runs when at least one package was built and nothing failed.
     # lint/test may be skipped (docs-only refs never get here because
     # no packages build), but a real failure in any blocks the
@@ -690,12 +769,13 @@ jobs:
         !cancelled()
         && (needs.lint.result == 'success' || needs.lint.result == 'skipped')
         && (needs.test.result == 'success' || needs.test.result == 'skipped')
-        && (needs.package-cortex.result == 'success' || needs.package-neuron.result == 'success' || needs.package-bench.result == 'success' || needs.package-upstream.result == 'success' || needs.package-router.result == 'success')
+        && (needs.package-cortex.result == 'success' || needs.package-neuron.result == 'success' || needs.package-bench.result == 'success' || needs.package-upstream.result == 'success' || needs.package-router.result == 'success' || needs.package-tools.result == 'success')
         && needs.package-cortex.result != 'failure'
         && needs.package-neuron.result != 'failure'
         && needs.package-bench.result != 'failure'
         && needs.package-upstream.result != 'failure'
         && needs.package-router.result != 'failure'
+        && needs.package-tools.result != 'failure'
       }}
     runs-on: rpm
     concurrency:

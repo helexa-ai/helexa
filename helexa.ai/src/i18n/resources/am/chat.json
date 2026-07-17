@@ -25,5 +25,6 @@
   "moveTo": "ወደ… አንቀሳቅስ",
   "deleteThreadConfirm": "ይህ ውይይት እና መልዕክቶቹ ይሰረዙ?",
   "searching": "በድር ላይ «{{query}}» እየተፈለገ ነው…",
-  "sources": "ምንጮች"
+  "sources": "ምንጮች",
+  "reading": "{{host}} እየተነበበ ነው…"
 }

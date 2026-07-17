@@ -25,5 +25,6 @@
   "moveTo": "Perkelti į…",
   "deleteThreadConfirm": "Ištrinti šį pokalbį ir jo žinutes?",
   "searching": "internete ieškoma „{{query}}“…",
-  "sources": "Šaltiniai"
+  "sources": "Šaltiniai",
+  "reading": "skaitoma {{host}}…"
 }

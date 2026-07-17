@@ -25,5 +25,6 @@
   "moveTo": "Перемістити до…",
   "deleteThreadConfirm": "Видалити цей чат і його повідомлення?",
   "searching": "шукаємо в інтернеті «{{query}}»…",
-  "sources": "Джерела"
+  "sources": "Джерела",
+  "reading": "читаємо {{host}}…"
 }

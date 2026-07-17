@@ -1,0 +1,19 @@
+# helexa-tools configuration. All keys optional — these are the defaults.
+# Env override prefix: HELEXA_TOOLS_ (e.g. HELEXA_TOOLS_MAX_TEXT_CHARS).
+
+# Bind address for the HTTP API (edge proxies reach this over the mesh).
+listen = "0.0.0.0:8889"
+
+# Per-request wall-clock budget for one upstream fetch (seconds).
+fetch_timeout_secs = 20
+
+# Maximum bytes read from an upstream response body.
+max_body_bytes = 2097152
+
+# Maximum characters of extracted text returned to the caller — the
+# consumer is a model context, so keep this bounded.
+max_text_chars = 12000
+
+# Maximum redirect hops followed (each hop is re-validated against the
+# SSRF policy: public hostnames + globally routable addresses only).
+max_redirects = 5

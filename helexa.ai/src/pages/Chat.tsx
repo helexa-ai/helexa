@@ -95,7 +95,7 @@ export default function Chat() {
     [],
   );
 
-  const { streaming, searching, error, send, stop } = useChat({
+  const { streaming, activity, error, send, stop } = useChat({
     model,
     apiKey: authed ? chatApiKey : undefined,
     locale: i18n.language,
@@ -277,9 +277,11 @@ export default function Chat() {
                   className={`hx-bubble ${m.role === "user" ? "hx-bubble-user" : ""}`}
                 >
                   {m.content}
-                  {m.status === "streaming" && searching && (
+                  {m.status === "streaming" && activity && (
                     <span className="hx-searching">
-                      {t("searching", { query: searching })}
+                      {activity.kind === "search"
+                        ? t("searching", { query: activity.detail })
+                        : t("reading", { host: activity.detail })}
                     </span>
                   )}
                   {m.status === "streaming" && <span className="opacity-50"> ▋</span>}

@@ -25,5 +25,6 @@
   "moveTo": "Siirrä kohteeseen…",
   "deleteThreadConfirm": "Poistetaanko tämä keskustelu ja sen viestit?",
   "searching": "haetaan verkosta ”{{query}}”…",
-  "sources": "Lähteet"
+  "sources": "Lähteet",
+  "reading": "luetaan {{host}}…"
 }

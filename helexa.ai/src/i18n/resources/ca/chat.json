@@ -25,5 +25,6 @@
   "moveTo": "Mou a…",
   "deleteThreadConfirm": "Voleu suprimir aquest xat i els seus missatges?",
   "searching": "s'està cercant «{{query}}» al web…",
-  "sources": "Fonts"
+  "sources": "Fonts",
+  "reading": "s'està llegint {{host}}…"
 }

@@ -25,5 +25,6 @@
   "moveTo": "Mută în…",
   "deleteThreadConfirm": "Ștergi această conversație și mesajele ei?",
   "searching": "se caută pe web „{{query}}”…",
-  "sources": "Surse"
+  "sources": "Surse",
+  "reading": "se citește {{host}}…"
 }

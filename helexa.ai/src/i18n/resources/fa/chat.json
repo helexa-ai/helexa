@@ -25,5 +25,6 @@
   "moveTo": "انتقال به…",
   "deleteThreadConfirm": "این گفتگو و پیام‌های آن حذف شود؟",
   "searching": "در حال جستجوی «{{query}}» در وب…",
-  "sources": "منابع"
+  "sources": "منابع",
+  "reading": "در حال خواندن {{host}}…"
 }

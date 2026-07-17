@@ -25,5 +25,6 @@
   "moveTo": "Sposta in…",
   "deleteThreadConfirm": "Eliminare questa chat e i suoi messaggi?",
   "searching": "ricerca sul web di «{{query}}» in corso…",
-  "sources": "Fonti"
+  "sources": "Fonti",
+  "reading": "lettura di {{host}} in corso…"
 }

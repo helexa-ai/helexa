@@ -25,5 +25,6 @@
   "moveTo": "Gbé lọ sí…",
   "deleteThreadConfirm": "Pa ìjíròrò yìí àti àwọn ìfiránṣẹ́ rẹ̀ rẹ́?",
   "searching": "ń wá “{{query}}” lórí wẹ́ẹ̀bù…",
-  "sources": "Àwọn orísun"
+  "sources": "Àwọn orísun",
+  "reading": "ń ka {{host}}…"
 }

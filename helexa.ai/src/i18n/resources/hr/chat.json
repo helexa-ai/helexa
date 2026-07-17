@@ -25,5 +25,6 @@
   "moveTo": "Premjesti u…",
   "deleteThreadConfirm": "Izbrisati ovaj razgovor i njegove poruke?",
   "searching": "pretraživanje weba za „{{query}}”…",
-  "sources": "Izvori"
+  "sources": "Izvori",
+  "reading": "čitanje {{host}}…"
 }
