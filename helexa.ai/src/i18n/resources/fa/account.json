@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "ورود",
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "submit": "ورود",
+    "noAccount": "حساب ندارید؟ ثبت‌نام کنید"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "حساب خود را بسازید",
+    "email": "ایمیل",
+    "password": "رمز عبور",
+    "submit": "ثبت‌نام",
+    "haveAccount": "از قبل حساب دارید؟ وارد شوید",
+    "checkEmail": "چیزی نمانده — برای تأیید حسابتان ایمیل خود را بررسی کنید."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "در حال تأیید…",
+    "ok": "ایمیل تأیید شد. اکنون می‌توانید وارد شوید.",
+    "failed": "این پیوند تأیید نامعتبر است یا منقضی شده است.",
+    "toLogin": "رفتن به صفحه ورود"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "بازنشانی رمز عبور",
+    "email": "ایمیل",
+    "requestSubmit": "ارسال پیوند بازنشانی",
+    "requestDone": "اگر برای این ایمیل حسابی وجود داشته باشد، پیوند بازنشانی در راه است.",
+    "confirmTitle": "رمز عبور جدیدی انتخاب کنید",
+    "newPassword": "رمز عبور جدید",
+    "confirmSubmit": "تنظیم رمز عبور",
+    "ok": "رمز عبور به‌روزرسانی شد. اکنون می‌توانید وارد شوید."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "حساب",
+    "balance": "سهمیه",
+    "total": "مجموع",
+    "spent": "مصرف‌شده",
+    "reserved": "رزروشده",
+    "remaining": "باقی‌مانده",
+    "manageKeys": "مدیریت کلیدهای API",
+    "redeemTitle": "استفاده از کد شارژ",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "اعمال",
+    "redeemed": "کد اعمال شد.",
+    "logout": "خروج"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "کلیدهای API",
+    "create": "ایجاد کلید",
+    "label": "برچسب",
+    "limitKind": "محدودیت",
+    "percent": "% از سهمیه",
+    "hardcap": "سقف ثابت (توکن)",
+    "value": "مقدار",
+    "none": "هنوز کلیدی وجود ندارد.",
+    "createdTitle": "کلید API جدید شما",
+    "createdWarn": "همین حالا آن را کپی کنید — دیگر آن را نخواهید دید.",
+    "copy": "کپی",
+    "copied": "کپی شد",
+    "archive": "بایگانی",
+    "save": "ذخیره",
+    "status": "وضعیت",
+    "usage": "مصرف‌شده",
+    "useForChat": "استفاده برای گفتگو در این دستگاه",
+    "usedForChat": "برای گفتگو فعال شد ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "مشکلی پیش آمد.",
+    "unauthorized": "لطفاً دوباره وارد شوید."
   }
 }

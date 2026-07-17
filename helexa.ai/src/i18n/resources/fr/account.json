@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Connexion",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "noAccount": "Pas de compte ? Inscrivez-vous"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Créez votre compte",
+    "email": "E-mail",
+    "password": "Mot de passe",
+    "submit": "S’inscrire",
+    "haveAccount": "Déjà un compte ? Connectez-vous",
+    "checkEmail": "Presque terminé — consultez votre e-mail pour vérifier votre compte."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Vérification…",
+    "ok": "E-mail vérifié. Vous pouvez maintenant vous connecter.",
+    "failed": "Ce lien de vérification est invalide ou a expiré.",
+    "toLogin": "Aller à la connexion"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Réinitialisez votre mot de passe",
+    "email": "E-mail",
+    "requestSubmit": "Envoyer le lien de réinitialisation",
+    "requestDone": "Si cet e-mail correspond à un compte, un lien de réinitialisation est en route.",
+    "confirmTitle": "Choisissez un nouveau mot de passe",
+    "newPassword": "Nouveau mot de passe",
+    "confirmSubmit": "Définir le mot de passe",
+    "ok": "Mot de passe mis à jour. Vous pouvez maintenant vous connecter."
   },
   "dashboard": {
-    "title": "Account",
+    "title": "Compte",
     "balance": "Allocation",
     "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "spent": "Dépensé",
+    "reserved": "Réservé",
+    "remaining": "Restant",
+    "manageKeys": "Gérer les clés API",
+    "redeemTitle": "Échanger un code de recharge",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Échanger",
+    "redeemed": "Code échangé.",
+    "logout": "Se déconnecter"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Clés API",
+    "create": "Créer une clé",
+    "label": "Libellé",
+    "limitKind": "Limite",
+    "percent": "% de l’allocation",
+    "hardcap": "Plafond strict (jetons)",
+    "value": "Valeur",
+    "none": "Aucune clé pour l’instant.",
+    "createdTitle": "Votre nouvelle clé API",
+    "createdWarn": "Copiez-la maintenant — vous ne la reverrez plus.",
+    "copy": "Copier",
+    "copied": "Copiée",
+    "archive": "Archiver",
+    "save": "Enregistrer",
+    "status": "Statut",
+    "usage": "Utilisé",
+    "useForChat": "Utiliser pour le chat sur cet appareil",
+    "usedForChat": "Activée pour le chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Une erreur s’est produite.",
+    "unauthorized": "Veuillez vous reconnecter."
   }
 }

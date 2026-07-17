@@ -6,11 +6,11 @@
     "home": "Hjem",
     "docs": "Dokumentasjon",
     "chat": "Chat",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Misjon",
+    "login": "Logg inn",
+    "register": "Registrer deg",
+    "account": "Konto",
+    "logout": "Logg ut"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Personvern"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Offentlig beta",
+    "message": "helexa er i åpen beta — forvent noen skarpe kanter. Chattene dine blir i nettleseren din.",
+    "dismiss": "Lukk"
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Logg inn",
+    "email": "E-post",
+    "password": "Passord",
+    "submit": "Logg inn",
+    "noAccount": "Ingen konto? Registrer deg"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Opprett kontoen din",
+    "email": "E-post",
+    "password": "Passord",
+    "submit": "Registrer deg",
+    "haveAccount": "Har du allerede en konto? Logg inn",
+    "checkEmail": "Nesten i mål — sjekk e-posten din for å bekrefte kontoen."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Bekrefter…",
+    "ok": "E-post bekreftet. Du kan nå logge inn.",
+    "failed": "Denne bekreftelseslenken er ugyldig eller utløpt.",
+    "toLogin": "Gå til innlogging"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Tilbakestill passordet ditt",
+    "email": "E-post",
+    "requestSubmit": "Send tilbakestillingslenke",
+    "requestDone": "Hvis den e-postadressen har en konto, er en tilbakestillingslenke på vei.",
+    "confirmTitle": "Velg et nytt passord",
+    "newPassword": "Nytt passord",
+    "confirmSubmit": "Angi passord",
+    "ok": "Passordet er oppdatert. Du kan nå logge inn."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Tildeling",
+    "total": "Totalt",
+    "spent": "Forbrukt",
+    "reserved": "Reservert",
+    "remaining": "Gjenstår",
+    "manageKeys": "Administrer API-nøkler",
+    "redeemTitle": "Løs inn en påfyllingskode",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Løs inn",
+    "redeemed": "Koden er løst inn.",
+    "logout": "Logg ut"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "title": "API-nøkler",
+    "create": "Opprett nøkkel",
+    "label": "Etikett",
+    "limitKind": "Grense",
+    "percent": "% av tildeling",
+    "hardcap": "Hard grense (tokens)",
+    "value": "Verdi",
+    "none": "Ingen nøkler ennå.",
+    "createdTitle": "Din nye API-nøkkel",
+    "createdWarn": "Kopier den nå — du får ikke se den igjen.",
+    "copy": "Kopier",
+    "copied": "Kopiert",
+    "archive": "Arkiver",
+    "save": "Lagre",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Brukt",
+    "useForChat": "Bruk til chat på denne enheten",
+    "usedForChat": "Aktivert for chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Noe gikk galt.",
+    "unauthorized": "Logg inn på nytt."
   }
 }

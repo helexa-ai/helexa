@@ -6,11 +6,11 @@
     "home": "መነሻ ገፅ",
     "docs": "ሰነዶች",
     "chat": "ውይይት",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "ተልእኮ",
+    "login": "ይግቡ",
+    "register": "ይመዝገቡ",
+    "account": "መለያ",
+    "logout": "ይውጡ"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "ግላዊነት"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "ይፋዊ ቤታ",
+    "message": "helexa በክፍት ቤታ ላይ ነው — አንዳንድ ጉድለቶች ሊያጋጥሙ ይችላሉ። ውይይቶችዎ በአሳሽዎ ውስጥ ይቀራሉ።",
+    "dismiss": "አሰናብት"
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
+    "title": "Accedi",
     "email": "Email",
     "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "submit": "Accedi",
+    "noAccount": "Non hai un account? Registrati"
   },
   "register": {
-    "title": "Create your account",
+    "title": "Crea il tuo account",
     "email": "Email",
     "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "submit": "Registrati",
+    "haveAccount": "Hai già un account? Accedi",
+    "checkEmail": "Ci siamo quasi — controlla la tua email per verificare l’account."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Verifica in corso…",
+    "ok": "Email verificata. Ora puoi accedere.",
+    "failed": "Questo link di verifica non è valido o è scaduto.",
+    "toLogin": "Vai all’accesso"
   },
   "reset": {
-    "requestTitle": "Reset your password",
+    "requestTitle": "Reimposta la password",
     "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestSubmit": "Invia link di reimpostazione",
+    "requestDone": "Se quell’email ha un account, il link di reimpostazione è in arrivo.",
+    "confirmTitle": "Scegli una nuova password",
+    "newPassword": "Nuova password",
+    "confirmSubmit": "Imposta password",
+    "ok": "Password aggiornata. Ora puoi accedere."
   },
   "dashboard": {
     "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "balance": "Allocazione",
+    "total": "Totale",
+    "spent": "Speso",
+    "reserved": "Riservato",
+    "remaining": "Rimanente",
+    "manageKeys": "Gestisci le chiavi API",
+    "redeemTitle": "Riscatta un codice di ricarica",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Riscatta",
+    "redeemed": "Codice riscattato.",
+    "logout": "Esci"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Chiavi API",
+    "create": "Crea chiave",
+    "label": "Etichetta",
+    "limitKind": "Limite",
+    "percent": "% dell’allocazione",
+    "hardcap": "Tetto massimo (token)",
+    "value": "Valore",
+    "none": "Ancora nessuna chiave.",
+    "createdTitle": "La tua nuova chiave API",
+    "createdWarn": "Copiala ora — non la vedrai più.",
+    "copy": "Copia",
+    "copied": "Copiata",
+    "archive": "Archivia",
+    "save": "Salva",
+    "status": "Stato",
+    "usage": "Utilizzato",
+    "useForChat": "Usa per la chat su questo dispositivo",
+    "usedForChat": "Abilitata per la chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Qualcosa è andato storto.",
+    "unauthorized": "Accedi di nuovo."
   }
 }

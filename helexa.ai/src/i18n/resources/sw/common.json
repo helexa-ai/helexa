@@ -6,11 +6,11 @@
     "home": "Nyumbani",
     "docs": "Nyaraka",
     "chat": "Soga",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Dhamira",
+    "login": "Ingia",
+    "register": "Jisajili",
+    "account": "Akaunti",
+    "logout": "Toka"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Faragha"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Beta ya umma",
+    "message": "helexa iko katika beta ya wazi — tarajia dosari ndogo ndogo. Soga zako zinabaki kwenye kivinjari chako.",
+    "dismiss": "Funga"
   }
 }

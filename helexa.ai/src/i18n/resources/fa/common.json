@@ -6,11 +6,11 @@
     "home": "صفحه اصلی",
     "docs": "مستندات",
     "chat": "گفتگو",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "مأموریت",
+    "login": "ورود",
+    "register": "ثبت‌نام",
+    "account": "حساب",
+    "logout": "خروج"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "حریم خصوصی"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "بتای عمومی",
+    "message": "helexa در بتای باز است — انتظار کاستی‌هایی را داشته باشید. گفتگوهای شما در مرورگرتان می‌ماند.",
+    "dismiss": "بستن"
   }
 }

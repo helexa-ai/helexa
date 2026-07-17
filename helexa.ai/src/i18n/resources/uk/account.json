@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Вхід",
+    "email": "Ел. пошта",
+    "password": "Пароль",
+    "submit": "Увійти",
+    "noAccount": "Немає облікового запису? Зареєструйтеся"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Створіть обліковий запис",
+    "email": "Ел. пошта",
+    "password": "Пароль",
+    "submit": "Зареєструватися",
+    "haveAccount": "Уже маєте обліковий запис? Увійдіть",
+    "checkEmail": "Майже готово — перевірте пошту, щоб підтвердити обліковий запис."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Перевірка…",
+    "ok": "Ел. пошту підтверджено. Тепер ви можете увійти.",
+    "failed": "Це посилання для підтвердження недійсне або його термін минув.",
+    "toLogin": "Перейти до входу"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Скидання пароля",
+    "email": "Ел. пошта",
+    "requestSubmit": "Надіслати посилання для скидання",
+    "requestDone": "Якщо ця адреса має обліковий запис, посилання для скидання вже в дорозі.",
+    "confirmTitle": "Виберіть новий пароль",
+    "newPassword": "Новий пароль",
+    "confirmSubmit": "Встановити пароль",
+    "ok": "Пароль оновлено. Тепер ви можете увійти."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Обліковий запис",
+    "balance": "Квота",
+    "total": "Усього",
+    "spent": "Витрачено",
+    "reserved": "Зарезервовано",
+    "remaining": "Залишок",
+    "manageKeys": "Керувати ключами API",
+    "redeemTitle": "Активувати код поповнення",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Активувати",
+    "redeemed": "Код активовано.",
+    "logout": "Вийти"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Ключі API",
+    "create": "Створити ключ",
+    "label": "Мітка",
+    "limitKind": "Ліміт",
+    "percent": "% від квоти",
+    "hardcap": "Жорсткий ліміт (токени)",
+    "value": "Значення",
+    "none": "Ключів ще немає.",
+    "createdTitle": "Ваш новий ключ API",
+    "createdWarn": "Скопіюйте його зараз — ви більше його не побачите.",
+    "copy": "Копіювати",
+    "copied": "Скопійовано",
+    "archive": "Архівувати",
+    "save": "Зберегти",
+    "status": "Статус",
+    "usage": "Використано",
+    "useForChat": "Використовувати для чату на цьому пристрої",
+    "usedForChat": "Увімкнено для чату ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Щось пішло не так.",
+    "unauthorized": "Будь ласка, увійдіть знову."
   }
 }

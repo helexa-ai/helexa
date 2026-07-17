@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Ingia",
+    "email": "Barua pepe",
+    "password": "Nenosiri",
+    "submit": "Ingia",
+    "noAccount": "Huna akaunti? Jisajili"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Fungua akaunti yako",
+    "email": "Barua pepe",
+    "password": "Nenosiri",
+    "submit": "Jisajili",
+    "haveAccount": "Tayari una akaunti? Ingia",
+    "checkEmail": "Karibu umemaliza — angalia barua pepe yako kuthibitisha akaunti yako."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Inathibitisha…",
+    "ok": "Barua pepe imethibitishwa. Sasa unaweza kuingia.",
+    "failed": "Kiungo hiki cha uthibitisho si sahihi au muda wake umeisha.",
+    "toLogin": "Nenda kwenye kuingia"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Weka upya nenosiri lako",
+    "email": "Barua pepe",
+    "requestSubmit": "Tuma kiungo cha kuweka upya",
+    "requestDone": "Ikiwa barua pepe hiyo ina akaunti, kiungo cha kuweka upya kiko njiani.",
+    "confirmTitle": "Chagua nenosiri jipya",
+    "newPassword": "Nenosiri jipya",
+    "confirmSubmit": "Weka nenosiri",
+    "ok": "Nenosiri limesasishwa. Sasa unaweza kuingia."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Akaunti",
+    "balance": "Mgao",
+    "total": "Jumla",
+    "spent": "Imetumika",
+    "reserved": "Imetengwa",
+    "remaining": "Iliyobaki",
+    "manageKeys": "Dhibiti funguo za API",
+    "redeemTitle": "Tumia msimbo wa kuongeza salio",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Tumia",
+    "redeemed": "Msimbo umetumika.",
+    "logout": "Toka"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Funguo za API",
+    "create": "Tengeneza ufunguo",
+    "label": "Lebo",
+    "limitKind": "Kikomo",
+    "percent": "% ya mgao",
+    "hardcap": "Kikomo kigumu (tokeni)",
+    "value": "Thamani",
+    "none": "Hakuna funguo bado.",
+    "createdTitle": "Ufunguo wako mpya wa API",
+    "createdWarn": "Nakili sasa — hutauona tena.",
+    "copy": "Nakili",
+    "copied": "Imenakiliwa",
+    "archive": "Weka kumbukumbuni",
+    "save": "Hifadhi",
+    "status": "Hali",
+    "usage": "Imetumika",
+    "useForChat": "Tumia kwa soga kwenye kifaa hiki",
+    "usedForChat": "Imewashwa kwa soga ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Hitilafu imetokea.",
+    "unauthorized": "Tafadhali ingia tena."
   }
 }

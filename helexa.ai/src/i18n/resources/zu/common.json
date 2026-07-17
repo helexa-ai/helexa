@@ -6,11 +6,11 @@
     "home": "Ikhasi lasekhaya",
     "docs": "Imibhalo",
     "chat": "Ingxoxo",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Umgomo",
+    "login": "Ngena ngemvume",
+    "register": "Bhalisa",
+    "account": "I-akhawunti",
+    "logout": "Phuma"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Ubumfihlo"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "I-beta yomphakathi",
+    "message": "i-helexa ise-beta evulekile — lindela amaphutha amancane. Izingxoxo zakho zihlala esipheqululini sakho.",
+    "dismiss": "Chitha"
   }
 }

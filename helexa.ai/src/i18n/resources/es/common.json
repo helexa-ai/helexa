@@ -6,11 +6,11 @@
     "home": "Inicio",
     "docs": "Documentación",
     "chat": "Chat",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Misión",
+    "login": "Iniciar sesión",
+    "register": "Registrarse",
+    "account": "Cuenta",
+    "logout": "Cerrar sesión"
   },
   "theme": {
     "toggle": {
@@ -39,7 +39,7 @@
     "ha": "Hausa",
     "am": "Amhárico",
     "yo": "Yoruba",
-    "zu": "Zulu",
+    "zu": "Zulú",
     "ma": "Darija",
     "ig": "Igbo",
     "ka": "Georgiano",
@@ -72,8 +72,8 @@
     "privacy": "Privacidad"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Beta pública",
+    "message": "helexa está en beta abierta — puede haber fallos. Tus chats se quedan en tu navegador.",
+    "dismiss": "Descartar"
   }
 }

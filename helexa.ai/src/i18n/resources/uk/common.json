@@ -6,11 +6,11 @@
     "home": "Головна",
     "docs": "Документація",
     "chat": "Чат",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Місія",
+    "login": "Увійти",
+    "register": "Зареєструватися",
+    "account": "Обліковий запис",
+    "logout": "Вийти"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Конфіденційність"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Публічна бета",
+    "message": "helexa у відкритій беті — можливі недоліки. Ваші чати залишаються у вашому браузері.",
+    "dismiss": "Закрити"
   }
 }

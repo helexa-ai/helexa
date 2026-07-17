@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Logi sisse",
+    "email": "E-post",
+    "password": "Parool",
+    "submit": "Logi sisse",
+    "noAccount": "Kontot pole? Registreeru"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Loo oma konto",
+    "email": "E-post",
+    "password": "Parool",
+    "submit": "Registreeru",
+    "haveAccount": "Konto on juba olemas? Logi sisse",
+    "checkEmail": "Peaaegu valmis — kontrolli oma e-posti, et konto kinnitada."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Kinnitamine…",
+    "ok": "E-post on kinnitatud. Nüüd saad sisse logida.",
+    "failed": "See kinnituslink on vigane või aegunud.",
+    "toLogin": "Mine sisselogimise lehele"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Lähtesta parool",
+    "email": "E-post",
+    "requestSubmit": "Saada lähtestamislink",
+    "requestDone": "Kui selle e-postiga on seotud konto, on lähtestamislink teel.",
+    "confirmTitle": "Vali uus parool",
+    "newPassword": "Uus parool",
+    "confirmSubmit": "Määra parool",
+    "ok": "Parool on uuendatud. Nüüd saad sisse logida."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Eraldis",
+    "total": "Kokku",
+    "spent": "Kulutatud",
+    "reserved": "Reserveeritud",
+    "remaining": "Järel",
+    "manageKeys": "Halda API-võtmeid",
+    "redeemTitle": "Lunasta laadimiskood",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Lunasta",
+    "redeemed": "Kood on lunastatud.",
+    "logout": "Logi välja"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API-võtmed",
+    "create": "Loo võti",
+    "label": "Silt",
+    "limitKind": "Piirang",
+    "percent": "% eraldisest",
+    "hardcap": "Range ülempiir (tokenites)",
+    "value": "Väärtus",
+    "none": "Võtmeid veel pole.",
+    "createdTitle": "Sinu uus API-võti",
+    "createdWarn": "Kopeeri see kohe — rohkem sa seda ei näe.",
+    "copy": "Kopeeri",
+    "copied": "Kopeeritud",
+    "archive": "Arhiveeri",
+    "save": "Salvesta",
+    "status": "Olek",
+    "usage": "Kasutatud",
+    "useForChat": "Kasuta selles seadmes vestluseks",
+    "usedForChat": "Vestluseks lubatud ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Midagi läks valesti.",
+    "unauthorized": "Palun logi uuesti sisse."
   }
 }

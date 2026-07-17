@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Ngena ngemvume",
+    "email": "I-imeyili",
+    "password": "Iphasiwedi",
+    "submit": "Ngena ngemvume",
+    "noAccount": "Awunayo i-akhawunti? Bhalisa"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Dala i-akhawunti yakho",
+    "email": "I-imeyili",
+    "password": "Iphasiwedi",
+    "submit": "Bhalisa",
+    "haveAccount": "Usunayo i-akhawunti? Ngena ngemvume",
+    "checkEmail": "Sekuseduze — hlola i-imeyili yakho ukuze uqinisekise i-akhawunti yakho."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Iyaqinisekisa…",
+    "ok": "I-imeyili iqinisekisiwe. Usungangena manje.",
+    "failed": "Le linki yokuqinisekisa ayivumelekile noma isiphelelwe yisikhathi.",
+    "toLogin": "Yiya ekhasini lokungena"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Setha kabusha iphasiwedi yakho",
+    "email": "I-imeyili",
+    "requestSubmit": "Thumela ilinki yokusetha kabusha",
+    "requestDone": "Uma leyo imeyili inayo i-akhawunti, ilinki yokusetha kabusha isendleleni.",
+    "confirmTitle": "Khetha iphasiwedi entsha",
+    "newPassword": "Iphasiwedi entsha",
+    "confirmSubmit": "Setha iphasiwedi",
+    "ok": "Iphasiwedi ibuyekeziwe. Usungangena manje."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "I-akhawunti",
+    "balance": "Isabelo",
+    "total": "Isamba",
+    "spent": "Okusetshenzisiwe",
+    "reserved": "Okugodliwe",
+    "remaining": "Okusele",
+    "manageKeys": "Phatha okhiye be-API",
+    "redeemTitle": "Sebenzisa ikhodi yokwengeza",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Sebenzisa",
+    "redeemed": "Ikhodi isetshenzisiwe.",
+    "logout": "Phuma"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Okhiye be-API",
+    "create": "Dala ukhiye",
+    "label": "Ilebula",
+    "limitKind": "Umkhawulo",
+    "percent": "% wesabelo",
+    "hardcap": "Umkhawulo oqinile (tokens)",
+    "value": "Inani",
+    "none": "Awukho okhiye okwamanje.",
+    "createdTitle": "Ukhiye wakho omusha we-API",
+    "createdWarn": "Mkopishe manje — ngeke uphinde umbone.",
+    "copy": "Kopisha",
+    "copied": "Kukopishiwe",
+    "archive": "Faka enqolobaneni",
+    "save": "Londoloza",
+    "status": "Isimo",
+    "usage": "Okusetshenzisiwe",
+    "useForChat": "Sebenzisela ingxoxo kule divayisi",
+    "usedForChat": "Kunikwe amandla engxoxweni ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Kukhona okungahambanga kahle.",
+    "unauthorized": "Sicela ungene ngemvume futhi."
   }
 }

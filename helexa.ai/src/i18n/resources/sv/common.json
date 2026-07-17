@@ -5,12 +5,12 @@
   "nav": {
     "home": "Hem",
     "docs": "Dokumentation",
-    "chat": "Chat",
+    "chat": "Chatt",
     "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "login": "Logga in",
+    "register": "Registrera dig",
+    "account": "Konto",
+    "logout": "Logga ut"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Integritet"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Öppen beta",
+    "message": "helexa är i öppen beta — räkna med skavanker. Dina chattar stannar i din webbläsare.",
+    "dismiss": "Stäng"
   }
 }

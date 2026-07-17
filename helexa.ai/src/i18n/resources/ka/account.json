@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "შესვლა",
+    "email": "ელფოსტა",
+    "password": "პაროლი",
+    "submit": "შესვლა",
+    "noAccount": "არ გაქვთ ანგარიში? დარეგისტრირდით"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "შექმენით ანგარიში",
+    "email": "ელფოსტა",
+    "password": "პაროლი",
+    "submit": "რეგისტრაცია",
+    "haveAccount": "უკვე გაქვთ ანგარიში? შედით",
+    "checkEmail": "თითქმის მზადაა — შეამოწმეთ ელფოსტა ანგარიშის დასადასტურებლად."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "მოწმდება…",
+    "ok": "ელფოსტა დადასტურდა. ახლა შეგიძლიათ შეხვიდეთ.",
+    "failed": "ეს დადასტურების ბმული არასწორია ან ვადაგასულია.",
+    "toLogin": "შესვლაზე გადასვლა"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "პაროლის აღდგენა",
+    "email": "ელფოსტა",
+    "requestSubmit": "აღდგენის ბმულის გაგზავნა",
+    "requestDone": "თუ ამ ელფოსტას ანგარიში აქვს, აღდგენის ბმული უკვე გზაშია.",
+    "confirmTitle": "აირჩიეთ ახალი პაროლი",
+    "newPassword": "ახალი პაროლი",
+    "confirmSubmit": "პაროლის დაყენება",
+    "ok": "პაროლი განახლდა. ახლა შეგიძლიათ შეხვიდეთ."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "ანგარიში",
+    "balance": "კვოტა",
+    "total": "ჯამი",
+    "spent": "დახარჯული",
+    "reserved": "დარეზერვებული",
+    "remaining": "დარჩენილი",
+    "manageKeys": "API გასაღებების მართვა",
+    "redeemTitle": "შევსების კოდის გამოყენება",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "გამოყენება",
+    "redeemed": "კოდი გამოყენებულია.",
+    "logout": "გასვლა"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API გასაღებები",
+    "create": "გასაღების შექმნა",
+    "label": "სახელწოდება",
+    "limitKind": "ლიმიტი",
+    "percent": "კვოტის %",
+    "hardcap": "მკაცრი ზღვარი (ტოკენები)",
+    "value": "მნიშვნელობა",
+    "none": "გასაღებები ჯერ არ არის.",
+    "createdTitle": "თქვენი ახალი API გასაღები",
+    "createdWarn": "დააკოპირეთ ახლავე — მას მეორედ ვეღარ ნახავთ.",
+    "copy": "კოპირება",
+    "copied": "დაკოპირდა",
+    "archive": "დაარქივება",
+    "save": "შენახვა",
+    "status": "სტატუსი",
+    "usage": "გამოყენებული",
+    "useForChat": "ამ მოწყობილობაზე ჩატისთვის გამოყენება",
+    "usedForChat": "ჩართულია ჩატისთვის ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "რაღაც შეცდომა მოხდა.",
+    "unauthorized": "გთხოვთ, ხელახლა შეხვიდეთ."
   }
 }

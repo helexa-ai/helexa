@@ -7,10 +7,10 @@
     "docs": "Documentation",
     "chat": "Chat",
     "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "login": "Connexion",
+    "register": "Inscription",
+    "account": "Compte",
+    "logout": "Déconnexion"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Confidentialité"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Bêta publique",
+    "message": "helexa est en bêta ouverte — attendez-vous à quelques imperfections. Vos conversations restent dans votre navigateur.",
+    "dismiss": "Ignorer"
   }
 }

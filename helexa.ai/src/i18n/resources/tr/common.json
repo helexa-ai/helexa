@@ -6,11 +6,11 @@
     "home": "Ana sayfa",
     "docs": "Dokümantasyon",
     "chat": "Sohbet",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Misyon",
+    "login": "Giriş yap",
+    "register": "Kaydol",
+    "account": "Hesap",
+    "logout": "Çıkış yap"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Gizlilik"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Açık beta",
+    "message": "helexa açık betada — pürüzler olabilir. Sohbetleriniz tarayıcınızda kalır.",
+    "dismiss": "Kapat"
   }
 }

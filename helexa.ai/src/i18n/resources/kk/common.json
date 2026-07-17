@@ -6,11 +6,11 @@
     "home": "Басты бет",
     "docs": "Құжаттама",
     "chat": "Чат",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Миссия",
+    "login": "Кіру",
+    "register": "Тіркелу",
+    "account": "Тіркелгі",
+    "logout": "Шығу"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Құпиялылық"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Ашық бета",
+    "message": "helexa ашық бета кезеңінде — кемшіліктер кездесуі мүмкін. Чаттарыңыз браузеріңізде сақталады.",
+    "dismiss": "Жабу"
   }
 }

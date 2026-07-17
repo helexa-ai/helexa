@@ -6,11 +6,11 @@
     "home": "الصفحة الرئيسية",
     "docs": "التوثيق",
     "chat": "المحادثة",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "المهمة",
+    "login": "تسجيل الدخول",
+    "register": "إنشاء حساب",
+    "account": "الحساب",
+    "logout": "تسجيل الخروج"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "الخصوصية"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "نسخة تجريبية عامة",
+    "message": "helexa في مرحلة تجريبية مفتوحة — توقّع بعض العيوب. تبقى محادثاتك في متصفحك.",
+    "dismiss": "إغلاق"
   }
 }

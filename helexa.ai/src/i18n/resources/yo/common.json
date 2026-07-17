@@ -6,11 +6,11 @@
     "home": "Ojú-ìwé àkọ́kọ́",
     "docs": "Ìwé ìtọná",
     "chat": "Ìjíròrò",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Èròngbà",
+    "login": "Wọlé",
+    "register": "Forúkọsílẹ̀",
+    "account": "Àkáǹtì",
+    "logout": "Jáde"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Àṣírí"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Beta gbangba",
+    "message": "helexa wà nínú beta gbangba — retí àwọn àléébù díẹ̀. Àwọn ìjíròrò rẹ yóò dúró nínú aṣàwákiri rẹ.",
+    "dismiss": "Pa á dé"
   }
 }

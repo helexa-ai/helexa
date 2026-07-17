@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Logga in",
+    "email": "E-post",
+    "password": "Lösenord",
+    "submit": "Logga in",
+    "noAccount": "Inget konto? Registrera dig"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Skapa ditt konto",
+    "email": "E-post",
+    "password": "Lösenord",
+    "submit": "Registrera dig",
+    "haveAccount": "Har du redan ett konto? Logga in",
+    "checkEmail": "Nästan klart — kolla din e-post för att verifiera ditt konto."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Verifierar…",
+    "ok": "E-postadressen är verifierad. Du kan nu logga in.",
+    "failed": "Den här verifieringslänken är ogiltig eller har gått ut.",
+    "toLogin": "Gå till inloggning"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Återställ ditt lösenord",
+    "email": "E-post",
+    "requestSubmit": "Skicka återställningslänk",
+    "requestDone": "Om den e-postadressen har ett konto är en återställningslänk på väg.",
+    "confirmTitle": "Välj ett nytt lösenord",
+    "newPassword": "Nytt lösenord",
+    "confirmSubmit": "Ange lösenord",
+    "ok": "Lösenordet är uppdaterat. Du kan nu logga in."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Tilldelning",
+    "total": "Totalt",
+    "spent": "Förbrukat",
+    "reserved": "Reserverat",
+    "remaining": "Återstår",
+    "manageKeys": "Hantera API-nycklar",
+    "redeemTitle": "Lös in en påfyllningskod",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Lös in",
+    "redeemed": "Koden är inlöst.",
+    "logout": "Logga ut"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "title": "API-nycklar",
+    "create": "Skapa nyckel",
+    "label": "Etikett",
+    "limitKind": "Gräns",
+    "percent": "% av tilldelning",
+    "hardcap": "Hårt tak (tokens)",
+    "value": "Värde",
+    "none": "Inga nycklar än.",
+    "createdTitle": "Din nya API-nyckel",
+    "createdWarn": "Kopiera den nu — du kommer inte att se den igen.",
+    "copy": "Kopiera",
+    "copied": "Kopierad",
+    "archive": "Arkivera",
+    "save": "Spara",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Använt",
+    "useForChat": "Använd för chatt på den här enheten",
+    "usedForChat": "Aktiverad för chatt ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Något gick fel.",
+    "unauthorized": "Logga in igen."
   }
 }

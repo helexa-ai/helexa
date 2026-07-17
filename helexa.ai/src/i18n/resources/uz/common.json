@@ -6,11 +6,11 @@
     "home": "Bosh sahifa",
     "docs": "Hujjatlar",
     "chat": "Chat",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Missiya",
+    "login": "Kirish",
+    "register": "Roʻyxatdan oʻtish",
+    "account": "Hisob",
+    "logout": "Chiqish"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Maxfiylik"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Ochiq beta",
+    "message": "helexa ochiq beta bosqichida — kamchiliklar uchrashi mumkin. Chatlaringiz brauzeringizda saqlanadi.",
+    "dismiss": "Yopish"
   }
 }
