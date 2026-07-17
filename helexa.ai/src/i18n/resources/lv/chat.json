@@ -23,5 +23,7 @@
   "delete": "Dzēst",
   "cancel": "Atcelt",
   "moveTo": "Pārvietot uz…",
-  "deleteThreadConfirm": "Vai dzēst šo sarunu un tās ziņojumus?"
+  "deleteThreadConfirm": "Vai dzēst šo sarunu un tās ziņojumus?",
+  "searching": "meklē tīmeklī „{{query}}“…",
+  "sources": "Avoti"
 }

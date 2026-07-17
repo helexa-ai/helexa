@@ -32,6 +32,13 @@ export interface Conversation {
 export type MessageRole = "system" | "user" | "assistant";
 export type MessageStatus = "complete" | "streaming" | "error";
 
+/** A web source consulted via the web_search tool (#177), rendered as
+ * a citation under the assistant message. */
+export interface MessageSource {
+  title: string;
+  url: string;
+}
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -42,6 +49,7 @@ export interface Message {
   errorCode?: string;
   promptTokens?: number;
   completionTokens?: number;
+  sources?: MessageSource[];
 }
 
 /** Small key/value store: fingerprint, active conversation, anon usage. */

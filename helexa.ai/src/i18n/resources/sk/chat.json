@@ -23,5 +23,7 @@
   "delete": "Odstrániť",
   "cancel": "Zrušiť",
   "moveTo": "Presunúť do…",
-  "deleteThreadConfirm": "Odstrániť tento chat a jeho správy?"
+  "deleteThreadConfirm": "Odstrániť tento chat a jeho správy?",
+  "searching": "vyhľadávam na webe „{{query}}“…",
+  "sources": "Zdroje"
 }

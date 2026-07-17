@@ -23,5 +23,7 @@
   "delete": "Suprimeix",
   "cancel": "Cancel·la",
   "moveTo": "Mou a…",
-  "deleteThreadConfirm": "Voleu suprimir aquest xat i els seus missatges?"
+  "deleteThreadConfirm": "Voleu suprimir aquest xat i els seus missatges?",
+  "searching": "s'està cercant «{{query}}» al web…",
+  "sources": "Fonts"
 }

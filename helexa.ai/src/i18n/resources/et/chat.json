@@ -23,5 +23,7 @@
   "delete": "Kustuta",
   "cancel": "Tühista",
   "moveTo": "Teisalda…",
-  "deleteThreadConfirm": "Kas kustutada see vestlus ja selle sõnumid?"
+  "deleteThreadConfirm": "Kas kustutada see vestlus ja selle sõnumid?",
+  "searching": "otsitakse veebist „{{query}}“…",
+  "sources": "Allikad"
 }

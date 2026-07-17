@@ -23,5 +23,7 @@
   "delete": "Eliminar",
   "cancel": "Cancelar",
   "moveTo": "Mover para…",
-  "deleteThreadConfirm": "Eliminar esta conversa e as suas mensagens?"
+  "deleteThreadConfirm": "Eliminar esta conversa e as suas mensagens?",
+  "searching": "a pesquisar na web por «{{query}}»…",
+  "sources": "Fontes"
 }

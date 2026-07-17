@@ -23,5 +23,7 @@
   "delete": "Smazat",
   "cancel": "Zrušit",
   "moveTo": "Přesunout do…",
-  "deleteThreadConfirm": "Smazat tento chat a jeho zprávy?"
+  "deleteThreadConfirm": "Smazat tento chat a jeho zprávy?",
+  "searching": "vyhledávání „{{query}}“ na webu…",
+  "sources": "Zdroje"
 }

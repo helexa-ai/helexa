@@ -23,5 +23,7 @@
   "delete": "Ta bort",
   "cancel": "Avbryt",
   "moveTo": "Flytta till…",
-  "deleteThreadConfirm": "Ta bort den här chatten och dess meddelanden?"
+  "deleteThreadConfirm": "Ta bort den här chatten och dess meddelanden?",
+  "searching": "söker på webben efter ”{{query}}”…",
+  "sources": "Källor"
 }

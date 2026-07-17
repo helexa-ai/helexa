@@ -23,5 +23,7 @@
   "delete": "Share",
   "cancel": "Soke",
   "moveTo": "Matsar zuwa…",
-  "deleteThreadConfirm": "A share wannan tattaunawa da saƙonninta?"
+  "deleteThreadConfirm": "A share wannan tattaunawa da saƙonninta?",
+  "searching": "ana neman “{{query}}” a yanar gizo…",
+  "sources": "Majiyoyi"
 }

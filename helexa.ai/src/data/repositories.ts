@@ -139,7 +139,9 @@ export async function setMessageContent(id: string, content: string): Promise<vo
 
 export async function finalizeMessage(
   id: string,
-  patch: Partial<Pick<Message, "status" | "errorCode" | "promptTokens" | "completionTokens">>,
+  patch: Partial<
+    Pick<Message, "status" | "errorCode" | "promptTokens" | "completionTokens" | "sources">
+  >,
 ): Promise<void> {
   await db.messages.update(id, patch);
 }
