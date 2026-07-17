@@ -6,11 +6,11 @@
     "home": "Αρχική",
     "docs": "Τεκμηρίωση",
     "chat": "Συνομιλία",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Αποστολή",
+    "login": "Σύνδεση",
+    "register": "Εγγραφή",
+    "account": "Λογαριασμός",
+    "logout": "Αποσύνδεση"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Απόρρητο"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Δημόσια beta",
+    "message": "Το helexa βρίσκεται σε ανοιχτή beta — περιμένετε ατέλειες. Οι συνομιλίες σας παραμένουν στο πρόγραμμα περιήγησής σας.",
+    "dismiss": "Κλείσιμο"
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "تسجيل الدخول",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "submit": "تسجيل الدخول",
+    "noAccount": "ليس لديك حساب؟ أنشئ حسابًا"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "أنشئ حسابك",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "submit": "إنشاء حساب",
+    "haveAccount": "لديك حساب بالفعل؟ سجّل الدخول",
+    "checkEmail": "اقتربنا من النهاية — تحقق من بريدك الإلكتروني لتأكيد حسابك."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "جارٍ التحقق…",
+    "ok": "تم تأكيد البريد الإلكتروني. يمكنك الآن تسجيل الدخول.",
+    "failed": "رابط التحقق هذا غير صالح أو انتهت صلاحيته.",
+    "toLogin": "الانتقال إلى تسجيل الدخول"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "إعادة تعيين كلمة المرور",
+    "email": "البريد الإلكتروني",
+    "requestSubmit": "إرسال رابط إعادة التعيين",
+    "requestDone": "إذا كان هذا البريد مرتبطًا بحساب، فرابط إعادة التعيين في طريقه إليك.",
+    "confirmTitle": "اختر كلمة مرور جديدة",
+    "newPassword": "كلمة مرور جديدة",
+    "confirmSubmit": "تعيين كلمة المرور",
+    "ok": "تم تحديث كلمة المرور. يمكنك الآن تسجيل الدخول."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "الحساب",
+    "balance": "المخصّص",
+    "total": "الإجمالي",
+    "spent": "المستهلَك",
+    "reserved": "المحجوز",
+    "remaining": "المتبقي",
+    "manageKeys": "إدارة مفاتيح API",
+    "redeemTitle": "استرداد رمز شحن",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "استرداد",
+    "redeemed": "تم استرداد الرمز.",
+    "logout": "تسجيل الخروج"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "مفاتيح API",
+    "create": "إنشاء مفتاح",
+    "label": "التسمية",
+    "limitKind": "الحد",
+    "percent": "% من المخصّص",
+    "hardcap": "حد أقصى صارم (توكنات)",
+    "value": "القيمة",
+    "none": "لا توجد مفاتيح بعد.",
+    "createdTitle": "مفتاح API الجديد الخاص بك",
+    "createdWarn": "انسخه الآن — لن تراه مرة أخرى.",
+    "copy": "نسخ",
+    "copied": "تم النسخ",
+    "archive": "أرشفة",
+    "save": "حفظ",
+    "status": "الحالة",
+    "usage": "المستخدَم",
+    "useForChat": "استخدامه للمحادثة على هذا الجهاز",
+    "usedForChat": "مفعّل للمحادثة ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "حدث خطأ ما.",
+    "unauthorized": "يرجى تسجيل الدخول مرة أخرى."
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Anmelden",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "submit": "Anmelden",
+    "noAccount": "Noch kein Konto? Registrieren"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Konto erstellen",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "submit": "Registrieren",
+    "haveAccount": "Bereits ein Konto? Anmelden",
+    "checkEmail": "Fast geschafft — bitte prüfen Sie Ihre E-Mails, um Ihr Konto zu bestätigen."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Wird überprüft…",
+    "ok": "E-Mail bestätigt. Sie können sich jetzt anmelden.",
+    "failed": "Dieser Bestätigungslink ist ungültig oder abgelaufen.",
+    "toLogin": "Zur Anmeldung"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Passwort zurücksetzen",
+    "email": "E-Mail",
+    "requestSubmit": "Link zum Zurücksetzen senden",
+    "requestDone": "Falls zu dieser E-Mail ein Konto existiert, ist ein Link zum Zurücksetzen unterwegs.",
+    "confirmTitle": "Neues Passwort wählen",
+    "newPassword": "Neues Passwort",
+    "confirmSubmit": "Passwort festlegen",
+    "ok": "Passwort aktualisiert. Sie können sich jetzt anmelden."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Kontingent",
+    "total": "Gesamt",
+    "spent": "Verbraucht",
+    "reserved": "Reserviert",
+    "remaining": "Verbleibend",
+    "manageKeys": "API-Schlüssel verwalten",
+    "redeemTitle": "Aufladecode einlösen",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Einlösen",
+    "redeemed": "Code eingelöst.",
+    "logout": "Abmelden"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
+    "title": "API-Schlüssel",
+    "create": "Schlüssel erstellen",
+    "label": "Bezeichnung",
     "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "percent": "% des Kontingents",
+    "hardcap": "Feste Obergrenze (Tokens)",
+    "value": "Wert",
+    "none": "Noch keine Schlüssel.",
+    "createdTitle": "Ihr neuer API-Schlüssel",
+    "createdWarn": "Jetzt kopieren — er wird nicht erneut angezeigt.",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "archive": "Archivieren",
+    "save": "Speichern",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Verbraucht",
+    "useForChat": "Für den Chat auf diesem Gerät verwenden",
+    "usedForChat": "Für den Chat aktiviert ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Etwas ist schiefgelaufen.",
+    "unauthorized": "Bitte melden Sie sich erneut an."
   }
 }

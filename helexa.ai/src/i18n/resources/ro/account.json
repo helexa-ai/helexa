@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
+    "title": "Conectează-te",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "password": "Parolă",
+    "submit": "Conectează-te",
+    "noAccount": "Nu ai cont? Creează unul"
   },
   "register": {
-    "title": "Create your account",
+    "title": "Creează-ți contul",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "password": "Parolă",
+    "submit": "Creează cont",
+    "haveAccount": "Ai deja un cont? Conectează-te",
+    "checkEmail": "Aproape gata — verifică-ți emailul pentru a-ți confirma contul."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Se verifică…",
+    "ok": "Email confirmat. Acum te poți conecta.",
+    "failed": "Acest link de verificare este invalid sau a expirat.",
+    "toLogin": "Mergi la conectare"
   },
   "reset": {
-    "requestTitle": "Reset your password",
+    "requestTitle": "Resetează-ți parola",
     "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestSubmit": "Trimite linkul de resetare",
+    "requestDone": "Dacă acel email are un cont, un link de resetare este pe drum.",
+    "confirmTitle": "Alege o parolă nouă",
+    "newPassword": "Parolă nouă",
+    "confirmSubmit": "Setează parola",
+    "ok": "Parola a fost actualizată. Acum te poți conecta."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
+    "title": "Cont",
+    "balance": "Alocare",
     "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "spent": "Consumat",
+    "reserved": "Rezervat",
+    "remaining": "Rămas",
+    "manageKeys": "Gestionează cheile API",
+    "redeemTitle": "Valorifică un cod de reîncărcare",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Valorifică",
+    "redeemed": "Cod valorificat.",
+    "logout": "Deconectează-te"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Chei API",
+    "create": "Creează cheie",
+    "label": "Etichetă",
+    "limitKind": "Limită",
+    "percent": "% din alocare",
+    "hardcap": "Plafon fix (tokeni)",
+    "value": "Valoare",
+    "none": "Nicio cheie încă.",
+    "createdTitle": "Noua ta cheie API",
+    "createdWarn": "Copiaz-o acum — nu o vei mai vedea.",
+    "copy": "Copiază",
+    "copied": "Copiat",
+    "archive": "Arhivează",
+    "save": "Salvează",
+    "status": "Stare",
+    "usage": "Consumat",
+    "useForChat": "Folosește pentru chat pe acest dispozitiv",
+    "usedForChat": "Activată pentru chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Ceva n-a mers bine.",
+    "unauthorized": "Te rugăm să te conectezi din nou."
   }
 }

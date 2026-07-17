@@ -6,11 +6,11 @@
     "home": "דף הבית",
     "docs": "תיעוד",
     "chat": "צ'אט",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "חזון",
+    "login": "התחברות",
+    "register": "הרשמה",
+    "account": "חשבון",
+    "logout": "התנתקות"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "פרטיות"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "בטא ציבורית",
+    "message": "helexa בבטא פתוחה — ייתכנו שיבושים פה ושם. הצ'אטים שלכם נשמרים בדפדפן.",
+    "dismiss": "סגירה"
   }
 }

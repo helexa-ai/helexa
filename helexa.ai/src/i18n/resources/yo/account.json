@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Wọlé",
+    "email": "Ímeèlì",
+    "password": "Ọ̀rọ̀ aṣínà",
+    "submit": "Wọlé",
+    "noAccount": "Kò sí àkáǹtì? Forúkọsílẹ̀"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Ṣẹ̀dá àkáǹtì rẹ",
+    "email": "Ímeèlì",
+    "password": "Ọ̀rọ̀ aṣínà",
+    "submit": "Forúkọsílẹ̀",
+    "haveAccount": "Ṣé o ti ní àkáǹtì? Wọlé",
+    "checkEmail": "Ó fẹ́rẹ̀ẹ́ parí — ṣàyẹ̀wò ímeèlì rẹ láti jẹ́rìí sí àkáǹtì rẹ."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Ń ṣe ìjẹ́rìí…",
+    "ok": "A ti jẹ́rìí sí ímeèlì náà. O lè wọlé báyìí.",
+    "failed": "Ìjápọ̀ ìjẹ́rìí yìí kò wúlò tàbí ó ti dópin.",
+    "toLogin": "Lọ sí ojú-ìwé ìwọlé"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Tún ọ̀rọ̀ aṣínà rẹ ṣètò",
+    "email": "Ímeèlì",
+    "requestSubmit": "Fi ìjápọ̀ àtúnṣe ránṣẹ́",
+    "requestDone": "Bí ímeèlì yẹn bá ní àkáǹtì, ìjápọ̀ àtúnṣe ti wà lọ́nà.",
+    "confirmTitle": "Yan ọ̀rọ̀ aṣínà tuntun",
+    "newPassword": "Ọ̀rọ̀ aṣínà tuntun",
+    "confirmSubmit": "Ṣètò ọ̀rọ̀ aṣínà",
+    "ok": "A ti ṣe ìmúdójúìwọ̀n ọ̀rọ̀ aṣínà. O lè wọlé báyìí."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Àkáǹtì",
+    "balance": "Ìpín",
+    "total": "Àpapọ̀",
+    "spent": "Tí a ti lò",
+    "reserved": "Tí a ti gbé sọ́tọ̀",
+    "remaining": "Tó kù",
+    "manageKeys": "Ṣàkóso àwọn kọ́kọ́rọ́ API",
+    "redeemTitle": "Lo koodu àfikún",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Lo koodu",
+    "redeemed": "A ti lo koodu náà.",
+    "logout": "Jáde"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Àwọn kọ́kọ́rọ́ API",
+    "create": "Ṣẹ̀dá kọ́kọ́rọ́",
+    "label": "Àkọlé",
+    "limitKind": "Ààlà",
+    "percent": "% nínú ìpín",
+    "hardcap": "Ààlà tó ga jùlọ (tokens)",
+    "value": "Iye",
+    "none": "Kò tíì sí kọ́kọ́rọ́ kankan.",
+    "createdTitle": "Kọ́kọ́rọ́ API tuntun rẹ",
+    "createdWarn": "Ṣe àdàkọ rẹ̀ báyìí — o kò ní rí i mọ́ lẹ́ẹ̀kansi.",
+    "copy": "Ṣe àdàkọ",
+    "copied": "A ti ṣàdàkọ",
+    "archive": "Kó pamọ́",
+    "save": "Ṣàfipamọ́",
+    "status": "Ipò",
+    "usage": "Tí a ti lò",
+    "useForChat": "Lò fún ìjíròrò lórí ẹ̀rọ yìí",
+    "usedForChat": "A ti mú ṣiṣẹ́ fún ìjíròrò ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Àṣìṣe kan wáyé.",
+    "unauthorized": "Jọ̀wọ́ wọlé lẹ́ẹ̀kansi."
   }
 }

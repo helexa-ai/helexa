@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Кіру",
+    "email": "Электрондық пошта",
+    "password": "Құпиясөз",
+    "submit": "Кіру",
+    "noAccount": "Тіркелгіңіз жоқ па? Тіркеліңіз"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Тіркелгі жасау",
+    "email": "Электрондық пошта",
+    "password": "Құпиясөз",
+    "submit": "Тіркелу",
+    "haveAccount": "Тіркелгіңіз бар ма? Кіріңіз",
+    "checkEmail": "Аз ғана қалды — тіркелгіні растау үшін электрондық поштаңызды тексеріңіз."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Тексерілуде…",
+    "ok": "Электрондық пошта расталды. Енді кіре аласыз.",
+    "failed": "Бұл растау сілтемесі жарамсыз немесе мерзімі өткен.",
+    "toLogin": "Кіру бетіне өту"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Құпиясөзді қалпына келтіру",
+    "email": "Электрондық пошта",
+    "requestSubmit": "Қалпына келтіру сілтемесін жіберу",
+    "requestDone": "Бұл поштаға тіркелгі байланған болса, қалпына келтіру сілтемесі жолда.",
+    "confirmTitle": "Жаңа құпиясөз таңдаңыз",
+    "newPassword": "Жаңа құпиясөз",
+    "confirmSubmit": "Құпиясөзді орнату",
+    "ok": "Құпиясөз жаңартылды. Енді кіре аласыз."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Тіркелгі",
+    "balance": "Квота",
+    "total": "Барлығы",
+    "spent": "Жұмсалды",
+    "reserved": "Резервте",
+    "remaining": "Қалды",
+    "manageKeys": "API кілттерін басқару",
+    "redeemTitle": "Толықтыру кодын белсендіру",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Белсендіру",
+    "redeemed": "Код белсендірілді.",
+    "logout": "Шығу"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API кілттері",
+    "create": "Кілт жасау",
+    "label": "Атауы",
+    "limitKind": "Шектеу",
+    "percent": "Квотаның %-ы",
+    "hardcap": "Қатаң шек (токендер)",
+    "value": "Мәні",
+    "none": "Әзірге кілттер жоқ.",
+    "createdTitle": "Сіздің жаңа API кілтіңіз",
+    "createdWarn": "Қазір көшіріп алыңыз — оны қайта көре алмайсыз.",
+    "copy": "Көшіру",
+    "copied": "Көшірілді",
+    "archive": "Мұрағаттау",
+    "save": "Сақтау",
+    "status": "Күйі",
+    "usage": "Пайдаланылды",
+    "useForChat": "Осы құрылғыда чат үшін пайдалану",
+    "usedForChat": "Чат үшін қосулы ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Бірдеңе дұрыс болмады.",
+    "unauthorized": "Қайта кіріңіз."
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Log ind",
+    "email": "E-mail",
+    "password": "Adgangskode",
+    "submit": "Log ind",
+    "noAccount": "Ingen konto? Opret en"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Opret din konto",
+    "email": "E-mail",
+    "password": "Adgangskode",
+    "submit": "Opret konto",
+    "haveAccount": "Har du allerede en konto? Log ind",
+    "checkEmail": "Næsten færdig — tjek din e-mail for at bekræfte din konto."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Bekræfter…",
+    "ok": "E-mail bekræftet. Du kan nu logge ind.",
+    "failed": "Dette bekræftelseslink er ugyldigt eller udløbet.",
+    "toLogin": "Gå til log ind"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Nulstil din adgangskode",
+    "email": "E-mail",
+    "requestSubmit": "Send nulstillingslink",
+    "requestDone": "Hvis den e-mail har en konto, er et nulstillingslink på vej.",
+    "confirmTitle": "Vælg en ny adgangskode",
+    "newPassword": "Ny adgangskode",
+    "confirmSubmit": "Angiv adgangskode",
+    "ok": "Adgangskoden er opdateret. Du kan nu logge ind."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Tildeling",
+    "total": "I alt",
+    "spent": "Forbrugt",
+    "reserved": "Reserveret",
+    "remaining": "Tilbage",
+    "manageKeys": "Administrér API-nøgler",
+    "redeemTitle": "Indløs en optankningskode",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Indløs",
+    "redeemed": "Koden er indløst.",
+    "logout": "Log ud"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "title": "API-nøgler",
+    "create": "Opret nøgle",
+    "label": "Etiket",
+    "limitKind": "Grænse",
+    "percent": "% af tildeling",
+    "hardcap": "Hård grænse (tokens)",
+    "value": "Værdi",
+    "none": "Ingen nøgler endnu.",
+    "createdTitle": "Din nye API-nøgle",
+    "createdWarn": "Kopiér den nu — du får den ikke at se igen.",
+    "copy": "Kopiér",
+    "copied": "Kopieret",
+    "archive": "Arkivér",
+    "save": "Gem",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Brugt",
+    "useForChat": "Brug til chat på denne enhed",
+    "usedForChat": "Aktiveret til chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Noget gik galt.",
+    "unauthorized": "Log venligst ind igen."
   }
 }

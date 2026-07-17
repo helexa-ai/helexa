@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "ይግቡ",
+    "email": "ኢሜይል",
+    "password": "የይለፍ ቃል",
+    "submit": "ይግቡ",
+    "noAccount": "መለያ የለዎትም? ይመዝገቡ"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "መለያዎን ይፍጠሩ",
+    "email": "ኢሜይል",
+    "password": "የይለፍ ቃል",
+    "submit": "ይመዝገቡ",
+    "haveAccount": "አስቀድሞ መለያ አለዎት? ይግቡ",
+    "checkEmail": "ጥቂት ቀርቷል — መለያዎን ለማረጋገጥ ኢሜይልዎን ይመልከቱ።"
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "በማረጋገጥ ላይ…",
+    "ok": "ኢሜይሉ ተረጋግጧል። አሁን መግባት ይችላሉ።",
+    "failed": "ይህ የማረጋገጫ አገናኝ ልክ አይደለም ወይም ጊዜው አልፎበታል።",
+    "toLogin": "ወደ መግቢያ ይሂዱ"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "የይለፍ ቃልዎን ዳግም ያስጀምሩ",
+    "email": "ኢሜይል",
+    "requestSubmit": "የዳግም ማስጀመሪያ አገናኝ ይላኩ",
+    "requestDone": "ያ ኢሜይል መለያ ካለው፣ የዳግም ማስጀመሪያ አገናኝ በመንገድ ላይ ነው።",
+    "confirmTitle": "አዲስ የይለፍ ቃል ይምረጡ",
+    "newPassword": "አዲስ የይለፍ ቃል",
+    "confirmSubmit": "የይለፍ ቃል ያዘጋጁ",
+    "ok": "የይለፍ ቃሉ ተዘምኗል። አሁን መግባት ይችላሉ።"
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "መለያ",
+    "balance": "ድልድል",
+    "total": "ጠቅላላ",
+    "spent": "የወጣ",
+    "reserved": "የተያዘ",
+    "remaining": "የቀረ",
+    "manageKeys": "የ API ቁልፎችን ያስተዳድሩ",
+    "redeemTitle": "የመሙያ ኮድ ይመንዝሩ",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "ይመንዝሩ",
+    "redeemed": "ኮዱ ተመንዝሯል።",
+    "logout": "ይውጡ"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "የ API ቁልፎች",
+    "create": "ቁልፍ ይፍጠሩ",
+    "label": "ስያሜ",
+    "limitKind": "ገደብ",
+    "percent": "% ከድልድል",
+    "hardcap": "ጥብቅ ገደብ (ቶክኖች)",
+    "value": "እሴት",
+    "none": "እስካሁን ቁልፎች የሉም።",
+    "createdTitle": "አዲሱ የ API ቁልፍዎ",
+    "createdWarn": "አሁን ይቅዱት — ዳግም አያዩትም።",
+    "copy": "ይቅዱ",
+    "copied": "ተቀድቷል",
+    "archive": "ማህደር",
+    "save": "ያስቀምጡ",
+    "status": "ሁኔታ",
+    "usage": "ጥቅም ላይ የዋለ",
+    "useForChat": "በዚህ መሣሪያ ላይ ለውይይት ይጠቀሙ",
+    "usedForChat": "ለውይይት ነቅቷል ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "የሆነ ችግር ተፈጥሯል።",
+    "unauthorized": "እባክዎ እንደገና ይግቡ።"
   }
 }

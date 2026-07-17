@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Kirish",
+    "email": "Elektron pochta",
+    "password": "Parol",
+    "submit": "Kirish",
+    "noAccount": "Hisobingiz yoʻqmi? Roʻyxatdan oʻting"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Hisob yarating",
+    "email": "Elektron pochta",
+    "password": "Parol",
+    "submit": "Roʻyxatdan oʻtish",
+    "haveAccount": "Hisobingiz bormi? Kiring",
+    "checkEmail": "Oz qoldi — hisobni tasdiqlash uchun elektron pochtangizni tekshiring."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Tekshirilmoqda…",
+    "ok": "Elektron pochta tasdiqlandi. Endi kirishingiz mumkin.",
+    "failed": "Bu tasdiqlash havolasi yaroqsiz yoki muddati oʻtgan.",
+    "toLogin": "Kirish sahifasiga oʻtish"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Parolni tiklash",
+    "email": "Elektron pochta",
+    "requestSubmit": "Tiklash havolasini yuborish",
+    "requestDone": "Agar bu pochtaga hisob bogʻlangan boʻlsa, tiklash havolasi yoʻlda.",
+    "confirmTitle": "Yangi parol tanlang",
+    "newPassword": "Yangi parol",
+    "confirmSubmit": "Parolni oʻrnatish",
+    "ok": "Parol yangilandi. Endi kirishingiz mumkin."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Hisob",
+    "balance": "Kvota",
+    "total": "Jami",
+    "spent": "Sarflangan",
+    "reserved": "Zaxiralangan",
+    "remaining": "Qolgan",
+    "manageKeys": "API kalitlarini boshqarish",
+    "redeemTitle": "Toʻldirish kodini faollashtirish",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Faollashtirish",
+    "redeemed": "Kod faollashtirildi.",
+    "logout": "Chiqish"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API kalitlari",
+    "create": "Kalit yaratish",
+    "label": "Nomi",
+    "limitKind": "Cheklov",
+    "percent": "Kvotaning %i",
+    "hardcap": "Qatʼiy chegara (tokenlar)",
+    "value": "Qiymati",
+    "none": "Hozircha kalitlar yoʻq.",
+    "createdTitle": "Yangi API kalitingiz",
+    "createdWarn": "Hozir nusxalab oling — uni boshqa koʻra olmaysiz.",
+    "copy": "Nusxalash",
+    "copied": "Nusxalandi",
+    "archive": "Arxivlash",
+    "save": "Saqlash",
+    "status": "Holati",
+    "usage": "Sarflandi",
+    "useForChat": "Bu qurilmada chat uchun ishlatish",
+    "usedForChat": "Chat uchun yoqilgan ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Nimadir xato ketdi.",
+    "unauthorized": "Iltimos, qaytadan kiring."
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Iniciar sesión",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "submit": "Iniciar sesión",
+    "noAccount": "¿No tienes cuenta? Regístrate"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Crea tu cuenta",
+    "email": "Correo electrónico",
+    "password": "Contraseña",
+    "submit": "Registrarse",
+    "haveAccount": "¿Ya tienes cuenta? Inicia sesión",
+    "checkEmail": "Ya casi está — revisa tu correo para verificar tu cuenta."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Verificando…",
+    "ok": "Correo verificado. Ya puedes iniciar sesión.",
+    "failed": "Este enlace de verificación no es válido o ha caducado.",
+    "toLogin": "Ir a iniciar sesión"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Restablece tu contraseña",
+    "email": "Correo electrónico",
+    "requestSubmit": "Enviar enlace de restablecimiento",
+    "requestDone": "Si ese correo tiene una cuenta, el enlace de restablecimiento está en camino.",
+    "confirmTitle": "Elige una contraseña nueva",
+    "newPassword": "Contraseña nueva",
+    "confirmSubmit": "Establecer contraseña",
+    "ok": "Contraseña actualizada. Ya puedes iniciar sesión."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
+    "title": "Cuenta",
+    "balance": "Asignación",
     "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "spent": "Gastado",
+    "reserved": "Reservado",
+    "remaining": "Restante",
+    "manageKeys": "Gestionar claves API",
+    "redeemTitle": "Canjear un código de recarga",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Canjear",
+    "redeemed": "Código canjeado.",
+    "logout": "Cerrar sesión"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Claves API",
+    "create": "Crear clave",
+    "label": "Etiqueta",
+    "limitKind": "Límite",
+    "percent": "% de la asignación",
+    "hardcap": "Tope máximo (tokens)",
+    "value": "Valor",
+    "none": "Aún no hay claves.",
+    "createdTitle": "Tu nueva clave API",
+    "createdWarn": "Cópiala ahora — no volverás a verla.",
+    "copy": "Copiar",
+    "copied": "Copiada",
+    "archive": "Archivar",
+    "save": "Guardar",
+    "status": "Estado",
+    "usage": "Usado",
+    "useForChat": "Usar para el chat en este dispositivo",
+    "usedForChat": "Activada para el chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Algo ha salido mal.",
+    "unauthorized": "Vuelve a iniciar sesión."
   }
 }

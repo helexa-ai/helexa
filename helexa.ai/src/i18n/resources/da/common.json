@@ -7,10 +7,10 @@
     "docs": "Dokumentation",
     "chat": "Chat",
     "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "login": "Log ind",
+    "register": "Opret konto",
+    "account": "Konto",
+    "logout": "Log ud"
   },
   "theme": {
     "toggle": {
@@ -59,7 +59,7 @@
     "sr": "Serbisk",
     "sv": "Svensk",
     "sw": "Swahili",
-    "ti": "Tigrinya",
+    "ti": "Tigrinja",
     "tr": "Tyrkisk",
     "uk": "Ukrainsk",
     "uz": "Usbekisk",
@@ -72,8 +72,8 @@
     "privacy": "Privatliv"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Offentlig beta",
+    "message": "helexa er i åben beta — forvent skarpe kanter. Dine chats bliver i din browser.",
+    "dismiss": "Luk"
   }
 }

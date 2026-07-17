@@ -6,11 +6,11 @@
     "home": "Acasă",
     "docs": "Documentație",
     "chat": "Chat",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Misiune",
+    "login": "Conectează-te",
+    "register": "Creează cont",
+    "account": "Cont",
+    "logout": "Deconectează-te"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Confidențialitate"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Beta publică",
+    "message": "helexa este în beta deschisă — te poți aștepta la mici imperfecțiuni. Conversațiile tale rămân în browserul tău.",
+    "dismiss": "Închide"
   }
 }

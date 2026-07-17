@@ -6,11 +6,11 @@
     "home": "მთავარი",
     "docs": "დოკუმენტაცია",
     "chat": "ჩატი",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "მისია",
+    "login": "შესვლა",
+    "register": "რეგისტრაცია",
+    "account": "ანგარიში",
+    "logout": "გასვლა"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "კონფიდენციალურობა"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "საჯარო ბეტა",
+    "message": "helexa ღია ბეტა-ვერსიაშია — მოსალოდნელია ხარვეზები. თქვენი ჩატები თქვენს ბრაუზერში რჩება.",
+    "dismiss": "დახურვა"
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
+    "title": "Σύνδεση",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "password": "Κωδικός πρόσβασης",
+    "submit": "Σύνδεση",
+    "noAccount": "Δεν έχετε λογαριασμό; Εγγραφείτε"
   },
   "register": {
-    "title": "Create your account",
+    "title": "Δημιουργήστε τον λογαριασμό σας",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "password": "Κωδικός πρόσβασης",
+    "submit": "Εγγραφή",
+    "haveAccount": "Έχετε ήδη λογαριασμό; Συνδεθείτε",
+    "checkEmail": "Σχεδόν έτοιμο — ελέγξτε το email σας για να επαληθεύσετε τον λογαριασμό σας."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Επαλήθευση…",
+    "ok": "Το email επαληθεύτηκε. Μπορείτε τώρα να συνδεθείτε.",
+    "failed": "Αυτός ο σύνδεσμος επαλήθευσης δεν είναι έγκυρος ή έχει λήξει.",
+    "toLogin": "Μετάβαση στη σύνδεση"
   },
   "reset": {
-    "requestTitle": "Reset your password",
+    "requestTitle": "Επαναφορά κωδικού πρόσβασης",
     "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestSubmit": "Αποστολή συνδέσμου επαναφοράς",
+    "requestDone": "Αν αυτό το email αντιστοιχεί σε λογαριασμό, ένας σύνδεσμος επαναφοράς είναι καθ' οδόν.",
+    "confirmTitle": "Επιλέξτε νέο κωδικό πρόσβασης",
+    "newPassword": "Νέος κωδικός πρόσβασης",
+    "confirmSubmit": "Ορισμός κωδικού",
+    "ok": "Ο κωδικός ενημερώθηκε. Μπορείτε τώρα να συνδεθείτε."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Λογαριασμός",
+    "balance": "Κατανομή",
+    "total": "Σύνολο",
+    "spent": "Δαπανημένα",
+    "reserved": "Δεσμευμένα",
+    "remaining": "Υπόλοιπο",
+    "manageKeys": "Διαχείριση κλειδιών API",
+    "redeemTitle": "Εξαργυρώστε έναν κωδικό ανανέωσης",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Εξαργύρωση",
+    "redeemed": "Ο κωδικός εξαργυρώθηκε.",
+    "logout": "Αποσύνδεση"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Κλειδιά API",
+    "create": "Δημιουργία κλειδιού",
+    "label": "Ετικέτα",
+    "limitKind": "Όριο",
+    "percent": "% της κατανομής",
+    "hardcap": "Αυστηρό όριο (tokens)",
+    "value": "Τιμή",
+    "none": "Δεν υπάρχουν κλειδιά ακόμη.",
+    "createdTitle": "Το νέο σας κλειδί API",
+    "createdWarn": "Αντιγράψτε το τώρα — δεν θα το ξαναδείτε.",
+    "copy": "Αντιγραφή",
+    "copied": "Αντιγράφηκε",
+    "archive": "Αρχειοθέτηση",
+    "save": "Αποθήκευση",
+    "status": "Κατάσταση",
+    "usage": "Χρησιμοποιημένα",
+    "useForChat": "Χρήση για συνομιλία σε αυτήν τη συσκευή",
+    "usedForChat": "Ενεργό για συνομιλία ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Κάτι πήγε στραβά.",
+    "unauthorized": "Παρακαλούμε συνδεθείτε ξανά."
   }
 }

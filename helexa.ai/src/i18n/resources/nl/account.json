@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Inloggen",
+    "email": "E-mailadres",
+    "password": "Wachtwoord",
+    "submit": "Inloggen",
+    "noAccount": "Nog geen account? Registreren"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Maak je account aan",
+    "email": "E-mailadres",
+    "password": "Wachtwoord",
+    "submit": "Registreren",
+    "haveAccount": "Heb je al een account? Inloggen",
+    "checkEmail": "Bijna klaar — controleer je e-mail om je account te verifiëren."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Verifiëren…",
+    "ok": "E-mailadres geverifieerd. Je kunt nu inloggen.",
+    "failed": "Deze verificatielink is ongeldig of verlopen.",
+    "toLogin": "Ga naar inloggen"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Wachtwoord opnieuw instellen",
+    "email": "E-mailadres",
+    "requestSubmit": "Herstellink versturen",
+    "requestDone": "Als er een account bij dat e-mailadres hoort, is er een herstellink onderweg.",
+    "confirmTitle": "Kies een nieuw wachtwoord",
+    "newPassword": "Nieuw wachtwoord",
+    "confirmSubmit": "Wachtwoord instellen",
+    "ok": "Wachtwoord bijgewerkt. Je kunt nu inloggen."
   },
   "dashboard": {
     "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "balance": "Tegoed",
+    "total": "Totaal",
+    "spent": "Verbruikt",
+    "reserved": "Gereserveerd",
+    "remaining": "Resterend",
+    "manageKeys": "API-sleutels beheren",
+    "redeemTitle": "Opwaardeercode inwisselen",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Inwisselen",
+    "redeemed": "Code ingewisseld.",
+    "logout": "Uitloggen"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
+    "title": "API-sleutels",
+    "create": "Sleutel aanmaken",
     "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "limitKind": "Limiet",
+    "percent": "% van het tegoed",
+    "hardcap": "Harde limiet (tokens)",
+    "value": "Waarde",
+    "none": "Nog geen sleutels.",
+    "createdTitle": "Je nieuwe API-sleutel",
+    "createdWarn": "Kopieer hem nu — je krijgt hem niet nog een keer te zien.",
+    "copy": "Kopiëren",
+    "copied": "Gekopieerd",
+    "archive": "Archiveren",
+    "save": "Opslaan",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Verbruikt",
+    "useForChat": "Gebruiken voor chat op dit apparaat",
+    "usedForChat": "Ingeschakeld voor chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Er is iets misgegaan.",
+    "unauthorized": "Log opnieuw in."
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "התחברות",
+    "email": "אימייל",
+    "password": "סיסמה",
+    "submit": "התחברות",
+    "noAccount": "אין לכם חשבון? הירשמו"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "יצירת חשבון",
+    "email": "אימייל",
+    "password": "סיסמה",
+    "submit": "הרשמה",
+    "haveAccount": "כבר יש לכם חשבון? התחברו",
+    "checkEmail": "כמעט סיימנו — בדקו את האימייל שלכם כדי לאמת את החשבון."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "מתבצע אימות…",
+    "ok": "האימייל אומת. אפשר להתחבר עכשיו.",
+    "failed": "קישור האימות הזה אינו תקין או שפג תוקפו.",
+    "toLogin": "מעבר להתחברות"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "איפוס סיסמה",
+    "email": "אימייל",
+    "requestSubmit": "שליחת קישור לאיפוס",
+    "requestDone": "אם קיים חשבון עם האימייל הזה, קישור לאיפוס בדרך אליכם.",
+    "confirmTitle": "בחרו סיסמה חדשה",
+    "newPassword": "סיסמה חדשה",
+    "confirmSubmit": "הגדרת סיסמה",
+    "ok": "הסיסמה עודכנה. אפשר להתחבר עכשיו."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "חשבון",
+    "balance": "הקצאה",
+    "total": "סך הכול",
+    "spent": "נוצל",
+    "reserved": "שמור",
+    "remaining": "נותר",
+    "manageKeys": "ניהול מפתחות API",
+    "redeemTitle": "מימוש קוד טעינה",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "מימוש",
+    "redeemed": "הקוד מומש.",
+    "logout": "התנתקות"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "מפתחות API",
+    "create": "יצירת מפתח",
+    "label": "תווית",
+    "limitKind": "מגבלה",
+    "percent": "% מההקצאה",
+    "hardcap": "תקרה קשיחה (טוקנים)",
+    "value": "ערך",
+    "none": "אין עדיין מפתחות.",
+    "createdTitle": "מפתח ה־API החדש שלכם",
+    "createdWarn": "העתיקו אותו עכשיו — לא תראו אותו שוב.",
+    "copy": "העתקה",
+    "copied": "הועתק",
+    "archive": "העברה לארכיון",
+    "save": "שמירה",
+    "status": "סטטוס",
+    "usage": "נוצל",
+    "useForChat": "שימוש לצ'אט במכשיר הזה",
+    "usedForChat": "מופעל לצ'אט ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "משהו השתבש.",
+    "unauthorized": "התחברו שוב בבקשה."
   }
 }

@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
+    "title": "Iniciar sessão",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "password": "Palavra-passe",
+    "submit": "Iniciar sessão",
+    "noAccount": "Não tem conta? Registe-se"
   },
   "register": {
-    "title": "Create your account",
+    "title": "Crie a sua conta",
     "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "password": "Palavra-passe",
+    "submit": "Registar",
+    "haveAccount": "Já tem conta? Inicie sessão",
+    "checkEmail": "Quase lá — consulte o seu email para verificar a sua conta."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "A verificar…",
+    "ok": "Email verificado. Já pode iniciar sessão.",
+    "failed": "Este link de verificação é inválido ou expirou.",
+    "toLogin": "Ir para iniciar sessão"
   },
   "reset": {
-    "requestTitle": "Reset your password",
+    "requestTitle": "Reponha a sua palavra-passe",
     "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestSubmit": "Enviar link de reposição",
+    "requestDone": "Se esse email tiver uma conta, o link de reposição está a caminho.",
+    "confirmTitle": "Escolha uma nova palavra-passe",
+    "newPassword": "Nova palavra-passe",
+    "confirmSubmit": "Definir palavra-passe",
+    "ok": "Palavra-passe atualizada. Já pode iniciar sessão."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
+    "title": "Conta",
+    "balance": "Alocação",
     "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "spent": "Gasto",
+    "reserved": "Reservado",
+    "remaining": "Restante",
+    "manageKeys": "Gerir chaves API",
+    "redeemTitle": "Resgatar um código de carregamento",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Resgatar",
+    "redeemed": "Código resgatado.",
+    "logout": "Terminar sessão"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "Chaves API",
+    "create": "Criar chave",
+    "label": "Etiqueta",
+    "limitKind": "Limite",
+    "percent": "% da alocação",
+    "hardcap": "Limite máximo (tokens)",
+    "value": "Valor",
+    "none": "Ainda não há chaves.",
+    "createdTitle": "A sua nova chave API",
+    "createdWarn": "Copie-a agora — não voltará a vê-la.",
+    "copy": "Copiar",
+    "copied": "Copiada",
+    "archive": "Arquivar",
+    "save": "Guardar",
+    "status": "Estado",
+    "usage": "Utilizado",
+    "useForChat": "Usar para o chat neste dispositivo",
+    "usedForChat": "Ativada para o chat ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Algo correu mal.",
+    "unauthorized": "Inicie sessão novamente."
   }
 }

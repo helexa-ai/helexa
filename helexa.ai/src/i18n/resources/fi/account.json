@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Kirjaudu sisään",
+    "email": "Sähköposti",
+    "password": "Salasana",
+    "submit": "Kirjaudu sisään",
+    "noAccount": "Ei tiliä? Rekisteröidy"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Luo tilisi",
+    "email": "Sähköposti",
+    "password": "Salasana",
+    "submit": "Rekisteröidy",
+    "haveAccount": "Onko sinulla jo tili? Kirjaudu sisään",
+    "checkEmail": "Melkein valmista — tarkista sähköpostisi ja vahvista tilisi."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Vahvistetaan…",
+    "ok": "Sähköposti vahvistettu. Voit nyt kirjautua sisään.",
+    "failed": "Tämä vahvistuslinkki on virheellinen tai vanhentunut.",
+    "toLogin": "Siirry kirjautumiseen"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Nollaa salasanasi",
+    "email": "Sähköposti",
+    "requestSubmit": "Lähetä nollauslinkki",
+    "requestDone": "Jos osoitteella on tili, nollauslinkki on matkalla.",
+    "confirmTitle": "Valitse uusi salasana",
+    "newPassword": "Uusi salasana",
+    "confirmSubmit": "Aseta salasana",
+    "ok": "Salasana päivitetty. Voit nyt kirjautua sisään."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Tili",
+    "balance": "Kiintiö",
+    "total": "Yhteensä",
+    "spent": "Käytetty",
+    "reserved": "Varattu",
+    "remaining": "Jäljellä",
+    "manageKeys": "Hallinnoi API-avaimia",
+    "redeemTitle": "Lunasta latauskoodi",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Lunasta",
+    "redeemed": "Koodi lunastettu.",
+    "logout": "Kirjaudu ulos"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API-avaimet",
+    "create": "Luo avain",
+    "label": "Nimike",
+    "limitKind": "Raja",
+    "percent": "% kiintiöstä",
+    "hardcap": "Kova yläraja (tokenit)",
+    "value": "Arvo",
+    "none": "Ei vielä avaimia.",
+    "createdTitle": "Uusi API-avaimesi",
+    "createdWarn": "Kopioi se nyt — et näe sitä enää uudelleen.",
+    "copy": "Kopioi",
+    "copied": "Kopioitu",
+    "archive": "Arkistoi",
+    "save": "Tallenna",
+    "status": "Tila",
+    "usage": "Käytetty",
+    "useForChat": "Käytä keskusteluun tällä laitteella",
+    "usedForChat": "Käytössä keskustelussa ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Jokin meni pieleen.",
+    "unauthorized": "Kirjaudu sisään uudelleen."
   }
 }

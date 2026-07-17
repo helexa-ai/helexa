@@ -6,11 +6,11 @@
     "home": "Startpagina",
     "docs": "Documentatie",
     "chat": "Chat",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
+    "mission": "Missie",
+    "login": "Inloggen",
+    "register": "Registreren",
     "account": "Account",
-    "logout": "Sign out"
+    "logout": "Uitloggen"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Privacy"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Openbare bèta",
+    "message": "helexa is in open bèta — verwacht ruwe randjes. Je chats blijven in je browser.",
+    "dismiss": "Sluiten"
   }
 }

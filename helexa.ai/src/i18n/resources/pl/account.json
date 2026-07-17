@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Logowanie",
+    "email": "E-mail",
+    "password": "Hasło",
+    "submit": "Zaloguj się",
+    "noAccount": "Brak konta? Zarejestruj się"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Utwórz konto",
+    "email": "E-mail",
+    "password": "Hasło",
+    "submit": "Zarejestruj się",
+    "haveAccount": "Konto już istnieje? Zaloguj się",
+    "checkEmail": "Prawie gotowe — sprawdź pocztę, aby zweryfikować konto."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Weryfikowanie…",
+    "ok": "Adres e-mail zweryfikowany. Można się teraz zalogować.",
+    "failed": "Ten link weryfikacyjny jest nieprawidłowy lub wygasł.",
+    "toLogin": "Przejdź do logowania"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Zresetuj hasło",
+    "email": "E-mail",
+    "requestSubmit": "Wyślij link resetujący",
+    "requestDone": "Jeśli z tym adresem e-mail powiązane jest konto, link resetujący jest w drodze.",
+    "confirmTitle": "Wybierz nowe hasło",
+    "newPassword": "Nowe hasło",
+    "confirmSubmit": "Ustaw hasło",
+    "ok": "Hasło zaktualizowane. Można się teraz zalogować."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Konto",
+    "balance": "Przydział",
+    "total": "Łącznie",
+    "spent": "Wykorzystano",
+    "reserved": "Zarezerwowano",
+    "remaining": "Pozostało",
+    "manageKeys": "Zarządzaj kluczami API",
+    "redeemTitle": "Zrealizuj kod doładowania",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Zrealizuj",
+    "redeemed": "Kod zrealizowany.",
+    "logout": "Wyloguj się"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
+    "title": "Klucze API",
+    "create": "Utwórz klucz",
+    "label": "Etykieta",
     "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
+    "percent": "% przydziału",
+    "hardcap": "Twardy limit (tokeny)",
+    "value": "Wartość",
+    "none": "Brak kluczy.",
+    "createdTitle": "Twój nowy klucz API",
+    "createdWarn": "Skopiuj go teraz — nie zostanie wyświetlony ponownie.",
+    "copy": "Kopiuj",
+    "copied": "Skopiowano",
+    "archive": "Archiwizuj",
+    "save": "Zapisz",
     "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "usage": "Wykorzystano",
+    "useForChat": "Używaj do czatu na tym urządzeniu",
+    "usedForChat": "Włączono dla czatu ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Coś poszło nie tak.",
+    "unauthorized": "Zaloguj się ponownie."
   }
 }

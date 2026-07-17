@@ -6,11 +6,11 @@
     "home": "Etusivu",
     "docs": "Dokumentaatio",
     "chat": "Keskustelu",
-    "mission": "Mission",
-    "login": "Sign in",
-    "register": "Sign up",
-    "account": "Account",
-    "logout": "Sign out"
+    "mission": "Missio",
+    "login": "Kirjaudu sisään",
+    "register": "Rekisteröidy",
+    "account": "Tili",
+    "logout": "Kirjaudu ulos"
   },
   "theme": {
     "toggle": {
@@ -72,8 +72,8 @@
     "privacy": "Tietosuoja"
   },
   "beta": {
-    "tag": "Public beta",
-    "message": "helexa is in open beta — expect rough edges. Your chats stay in your browser.",
-    "dismiss": "Dismiss"
+    "tag": "Julkinen beta",
+    "message": "helexa on avoimessa betassa — pieniä puutteita voi esiintyä. Keskustelusi pysyvät selaimessasi.",
+    "dismiss": "Sulje"
   }
 }

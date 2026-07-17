@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "Пријава",
+    "email": "Имејл",
+    "password": "Лозинка",
+    "submit": "Пријавите се",
+    "noAccount": "Немате налог? Региструјте се"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "Направите свој налог",
+    "email": "Имејл",
+    "password": "Лозинка",
+    "submit": "Региструјте се",
+    "haveAccount": "Већ имате налог? Пријавите се",
+    "checkEmail": "Још мало — проверите имејл да бисте потврдили налог."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "Потврђивање…",
+    "ok": "Имејл је потврђен. Сада можете да се пријавите.",
+    "failed": "Овај линк за потврду је неважећи или је истекао.",
+    "toLogin": "Иди на пријаву"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "Ресетујте лозинку",
+    "email": "Имејл",
+    "requestSubmit": "Пошаљи линк за ресетовање",
+    "requestDone": "Ако тај имејл има налог, линк за ресетовање је на путу.",
+    "confirmTitle": "Изаберите нову лозинку",
+    "newPassword": "Нова лозинка",
+    "confirmSubmit": "Постави лозинку",
+    "ok": "Лозинка је ажурирана. Сада можете да се пријавите."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "Налог",
+    "balance": "Квота",
+    "total": "Укупно",
+    "spent": "Потрошено",
+    "reserved": "Резервисано",
+    "remaining": "Преостало",
+    "manageKeys": "Управљање API кључевима",
+    "redeemTitle": "Искористите код за допуну",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "Искористи",
+    "redeemed": "Код је искоришћен.",
+    "logout": "Одјава"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "API кључеви",
+    "create": "Направи кључ",
+    "label": "Ознака",
+    "limitKind": "Ограничење",
+    "percent": "% квоте",
+    "hardcap": "Тврдо ограничење (токени)",
+    "value": "Вредност",
+    "none": "Још нема кључева.",
+    "createdTitle": "Ваш нови API кључ",
+    "createdWarn": "Копирајте га сада — нећете га поново видети.",
+    "copy": "Копирај",
+    "copied": "Копирано",
+    "archive": "Архивирај",
+    "save": "Сачувај",
+    "status": "Статус",
+    "usage": "Искоришћено",
+    "useForChat": "Користи за ћаскање на овом уређају",
+    "usedForChat": "Омогућено за ћаскање ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "Нешто је пошло наопако.",
+    "unauthorized": "Пријавите се поново."
   }
 }

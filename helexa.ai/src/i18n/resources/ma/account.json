@@ -1,71 +1,71 @@
 {
   "login": {
-    "title": "Sign in",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign in",
-    "noAccount": "No account? Sign up"
+    "title": "دخل",
+    "email": "الإيميل",
+    "password": "كلمة السر",
+    "submit": "دخل",
+    "noAccount": "ما عندكش حساب؟ سجّل"
   },
   "register": {
-    "title": "Create your account",
-    "email": "Email",
-    "password": "Password",
-    "submit": "Sign up",
-    "haveAccount": "Already have an account? Sign in",
-    "checkEmail": "Almost there — check your email to verify your account."
+    "title": "صاوب الحساب ديالك",
+    "email": "الإيميل",
+    "password": "كلمة السر",
+    "submit": "سجّل",
+    "haveAccount": "عندك حساب من قبل؟ دخل",
+    "checkEmail": "بقات غير شوية — شوف الإيميل ديالك باش تأكد الحساب ديالك."
   },
   "verify": {
-    "verifying": "Verifying…",
-    "ok": "Email verified. You can now sign in.",
-    "failed": "This verification link is invalid or has expired.",
-    "toLogin": "Go to sign in"
+    "verifying": "كنتحققو…",
+    "ok": "تأكد الإيميل. دابا تقدر تدخل.",
+    "failed": "هاد الرابط ديال التأكيد ماشي صالح ولا صلاحيتو سالات.",
+    "toLogin": "سير للدخول"
   },
   "reset": {
-    "requestTitle": "Reset your password",
-    "email": "Email",
-    "requestSubmit": "Send reset link",
-    "requestDone": "If that email has an account, a reset link is on its way.",
-    "confirmTitle": "Choose a new password",
-    "newPassword": "New password",
-    "confirmSubmit": "Set password",
-    "ok": "Password updated. You can now sign in."
+    "requestTitle": "بدّل كلمة السر ديالك",
+    "email": "الإيميل",
+    "requestSubmit": "صيفط رابط التبديل",
+    "requestDone": "إلا كان هاد الإيميل عندو حساب، رابط التبديل غادي يوصلك.",
+    "confirmTitle": "ختار كلمة سر جديدة",
+    "newPassword": "كلمة سر جديدة",
+    "confirmSubmit": "حدّد كلمة السر",
+    "ok": "تبدلات كلمة السر. دابا تقدر تدخل."
   },
   "dashboard": {
-    "title": "Account",
-    "balance": "Allocation",
-    "total": "Total",
-    "spent": "Spent",
-    "reserved": "Reserved",
-    "remaining": "Remaining",
-    "manageKeys": "Manage API keys",
-    "redeemTitle": "Redeem a top-up code",
+    "title": "الحساب",
+    "balance": "الحصة",
+    "total": "المجموع",
+    "spent": "المصروف",
+    "reserved": "المحجوز",
+    "remaining": "الباقي",
+    "manageKeys": "دبّر مفاتيح API",
+    "redeemTitle": "استعمل كود التعبئة",
     "redeemPlaceholder": "helexa-topup-…",
-    "redeem": "Redeem",
-    "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "redeem": "استعمل",
+    "redeemed": "الكود تستعمل.",
+    "logout": "خرج"
   },
   "keys": {
-    "title": "API keys",
-    "create": "Create key",
-    "label": "Label",
-    "limitKind": "Limit",
-    "percent": "% of allocation",
-    "hardcap": "Hard cap (tokens)",
-    "value": "Value",
-    "none": "No keys yet.",
-    "createdTitle": "Your new API key",
-    "createdWarn": "Copy it now — you won't see it again.",
-    "copy": "Copy",
-    "copied": "Copied",
-    "archive": "Archive",
-    "save": "Save",
-    "status": "Status",
-    "usage": "Used",
-    "useForChat": "Use for chat on this device",
-    "usedForChat": "Enabled for chat ✓"
+    "title": "مفاتيح API",
+    "create": "صاوب مفتاح",
+    "label": "التسمية",
+    "limitKind": "الحد",
+    "percent": "% من الحصة",
+    "hardcap": "سقف ثابت (توكنات)",
+    "value": "القيمة",
+    "none": "ما كاين حتا مفتاح دابا.",
+    "createdTitle": "مفتاح API الجديد ديالك",
+    "createdWarn": "نسخو دابا — ما غاديش تشوفو مرة أخرى.",
+    "copy": "نسخ",
+    "copied": "تنسخ",
+    "archive": "حط فالأرشيف",
+    "save": "سجّل",
+    "status": "الحالة",
+    "usage": "المستعمل",
+    "useForChat": "استعملو للمحادثة فهاد الجهاز",
+    "usedForChat": "مفعّل للمحادثة ✓"
   },
   "error": {
-    "generic": "Something went wrong.",
-    "unauthorized": "Please sign in again."
+    "generic": "وقع شي مشكل.",
+    "unauthorized": "عافاك عاود دخل."
   }
 }
