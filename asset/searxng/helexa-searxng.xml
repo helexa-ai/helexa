@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-searxng</short>
+  <description>SearXNG metasearch backing the helexa /tools/web_search API (#177). Reached only by the edge reverse proxies over the site mesh.</description>
+  <port protocol="tcp" port="8888"/>
+</service>

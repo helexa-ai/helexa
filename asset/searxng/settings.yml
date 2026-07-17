@@ -1,0 +1,24 @@
+# SearXNG settings for the helexa web_search tool backend (#177).
+# Installed to /etc/searxng/settings.yml on the federation service host
+# by script/infra-setup.sh; consumed by the quadlet container
+# (asset/searxng/searxng.container).
+#
+# The secret key is NOT here — it comes from SEARXNG_SECRET in the
+# operator-owned /etc/searxng/searxng.env (generated once by
+# infra-setup, never in git).
+use_default_settings: true
+
+server:
+  # Bot-detection limiter off: the instance is reachable only from the
+  # edge proxies over the site mesh, and per-client-IP rate limiting is
+  # enforced there (helexa-ratelimit.conf helexa_tools zone).
+  limiter: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  # `json` enables the machine-readable API the chat SPA's tool loop
+  # consumes (GET /search?q=…&format=json).
+  formats:
+    - html
+    - json

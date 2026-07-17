@@ -1,0 +1,27 @@
+# Quadlet unit for the SearXNG metasearch container backing the helexa
+# web_search tool (#177). Installed to /etc/containers/systemd/ on the
+# federation service host by script/infra-setup.sh; podman-systemd
+# generates searxng.service from it on daemon-reload.
+#
+# Reached only by the edge reverse proxies (/tools/web_search) over the
+# site mesh; the helexa-searxng firewalld service opens tcp/8888.
+
+[Unit]
+Description=SearXNG metasearch (helexa web_search tool)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=docker.io/searxng/searxng:latest
+PublishPort=8888:8080
+# rw: the image entrypoint generates uwsgi.ini beside settings.yml on
+# first start. The settings file itself is re-synced by infra-setup.
+Volume=/etc/searxng:/etc/searxng:Z
+EnvironmentFile=/etc/searxng/searxng.env
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

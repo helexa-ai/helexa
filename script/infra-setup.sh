@@ -529,3 +529,34 @@ ssh "${svc_host}" '
     systemctl is-active --quiet helexa-router.service && sudo systemctl restart helexa-router.service || true
     systemctl is-active --quiet helexa-upstream.service && sudo systemctl restart helexa-upstream.service || true
 ' || true
+
+# ── gallumbits: SearXNG (web_search tool backend, #177) ────────────────
+# Quadlet container on the service host; the edge proxies expose it as
+# GET /tools/web_search with per-IP rate limiting. The instance secret
+# is operator-owned (generated once below, 0600, never in git).
+echo "==> ${svc_host}: searxng quadlet + firewalld service"
+ssh "${svc_host}" '
+    set -eu
+    rpm -q podman >/dev/null 2>&1 || sudo dnf install -y podman
+    sudo install -d -o root -g root -m 0755 /etc/searxng /etc/containers/systemd
+' || echo "  failed to prepare searxng dirs on ${svc_host}"
+sync_config "${svc_host}" "${repo_path}/asset/searxng/settings.yml" /etc/searxng/settings.yml
+sync_config "${svc_host}" "${repo_path}/asset/searxng/searxng.container" /etc/containers/systemd/searxng.container
+sync_config "${svc_host}" "${repo_path}/asset/searxng/helexa-searxng.xml" /etc/firewalld/services/helexa-searxng.xml
+if ! ssh "${svc_host}" '
+    set -eu
+    if [ ! -f /etc/searxng/searxng.env ]; then
+        echo "SEARXNG_SECRET=$(openssl rand -hex 32)" | sudo tee /etc/searxng/searxng.env >/dev/null
+        sudo chmod 0600 /etc/searxng/searxng.env
+        echo "  generated /etc/searxng/searxng.env"
+    fi
+    # reload picks up the new service definition before we reference it
+    sudo firewall-cmd --reload >/dev/null
+    sudo firewall-cmd --query-service=helexa-searxng >/dev/null 2>&1 \
+        || sudo firewall-cmd --permanent --add-service=helexa-searxng >/dev/null
+    sudo firewall-cmd --reload >/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl restart searxng.service
+'; then
+    echo "  failed to set up searxng on ${svc_host}"
+fi
