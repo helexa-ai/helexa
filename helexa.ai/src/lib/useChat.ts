@@ -11,6 +11,7 @@ import {
   setMessageContent,
 } from "../data/repositories";
 import { streamChatCompletion, type ChatMessage } from "./chatClient";
+import { buildSystemPrompt } from "./systemPrompt";
 
 export interface UseChat {
   streaming: boolean;
@@ -19,7 +20,11 @@ export interface UseChat {
   stop: () => void;
 }
 
-export function useChat(opts: { model: string; apiKey?: string }): UseChat {
+export function useChat(opts: {
+  model: string;
+  apiKey?: string;
+  locale?: string;
+}): UseChat {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -33,10 +38,18 @@ export function useChat(opts: { model: string; apiKey?: string }): UseChat {
     setError(null);
 
     // History → request messages (before adding the new turn's assistant slot).
+    // The system prompt is app config, not conversation content: it is sent
+    // with every request but never persisted to the transcript (#178).
     const history = await listMessages(conversationId);
-    const reqMessages: ChatMessage[] = history
-      .filter((m) => m.status !== "error")
-      .map((m) => ({ role: m.role, content: m.content }));
+    const reqMessages: ChatMessage[] = [
+      {
+        role: "system",
+        content: buildSystemPrompt(opts.model, opts.locale ?? "en"),
+      },
+      ...history
+        .filter((m) => m.status !== "error")
+        .map((m) => ({ role: m.role, content: m.content })),
+    ];
     reqMessages.push({ role: "user", content: text });
 
     await addMessage(conversationId, "user", text, "complete");
