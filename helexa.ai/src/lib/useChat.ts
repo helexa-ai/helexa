@@ -166,15 +166,16 @@ export function useChat(opts: {
         tool_calls: toolCalls,
       });
       for (const call of toolCalls) {
-        let query = "";
+        let args: { query: string; category?: string; time_range?: string };
         try {
-          query = JSON.parse(call.function.arguments)?.query ?? "";
+          const parsed = JSON.parse(call.function.arguments);
+          args = { query: parsed?.query ?? "", category: parsed?.category, time_range: parsed?.time_range };
         } catch {
           /* model produced malformed arguments; search the raw string */
-          query = call.function.arguments;
+          args = { query: call.function.arguments };
         }
-        setSearching(query);
-        const { results, content } = await executeWebSearch(query, controller.signal);
+        setSearching(args.query);
+        const { results, content } = await executeWebSearch(args, controller.signal);
         for (const r of results) {
           if (!seenUrls.has(r.url)) {
             seenUrls.add(r.url);
