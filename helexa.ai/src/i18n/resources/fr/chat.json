@@ -25,5 +25,6 @@
   "moveTo": "Déplacer vers…",
   "deleteThreadConfirm": "Supprimer cette conversation et ses messages ?",
   "searching": "recherche sur le web de « {{query}} »…",
-  "sources": "Sources"
+  "sources": "Sources",
+  "reading": "lecture de {{host}}…"
 }

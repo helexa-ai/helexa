@@ -30,7 +30,10 @@ export const WEB_SEARCH_TOOL = {
       properties: {
         query: {
           type: "string",
-          description: "The search query, in the language most likely to find good results.",
+          description:
+            "The search query, in the language most likely to find good results. " +
+            "With category 'weather', the query must be ONLY the location name " +
+            "(e.g. 'Prague', not 'weather in Prague right now') — it is geocoded.",
         },
         category: {
           type: "string",
@@ -44,10 +47,32 @@ export const WEB_SEARCH_TOOL = {
           type: "string",
           enum: ["day", "week", "month", "year"],
           description:
-            "Restrict results to this recency window. Recommended with 'news' for current events.",
+            "Restrict results to this recency window. Recommended with 'news' for current " +
+            "events. Not applicable to 'weather' (live data is always current).",
         },
       },
       required: ["query"],
+    },
+  },
+} as const;
+
+export const READ_PAGE_TOOL = {
+  type: "function",
+  function: {
+    name: "read_page",
+    description:
+      "Fetch a web page and return its readable article text (title + main content, " +
+      "boilerplate stripped). Use after web_search when a snippet is not enough — e.g. " +
+      "to read an article, documentation, or announcement in full before answering.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The http(s) URL to read, usually taken from a web_search result.",
+        },
+      },
+      required: ["url"],
     },
   },
 } as const;
@@ -109,7 +134,11 @@ export async function executeWebSearch(
     if (args.category && CATEGORIES.has(args.category) && args.category !== "general") {
       params.set("categories", args.category);
     }
-    if (args.time_range && TIME_RANGES.has(args.time_range)) {
+    // time_range silently zeroes out the weather category's live
+    // answer (the openmeteo engine drops out of range-filtered
+    // searches) — guard it here rather than hoping the model reads
+    // the schema note.
+    if (args.time_range && TIME_RANGES.has(args.time_range) && args.category !== "weather") {
       params.set("time_range", args.time_range);
     }
     const resp = await fetch(`/tools/web_search?${params}`, { signal: ctl.signal });
@@ -144,6 +173,51 @@ export async function executeWebSearch(
     return {
       results: [],
       content: JSON.stringify({ error: "search unavailable" }),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const READ_TIMEOUT_MS = 25_000;
+
+/** Execute a read_page tool call against the edge's /tools/fetch
+ * (helexa-tools: SSRF-guarded fetch + readability extraction). Returns
+ * the page as a source for citations plus the JSON string fed back to
+ * the model. Failures degrade like search failures. */
+export async function executeReadPage(
+  url: string,
+  signal?: AbortSignal,
+): Promise<{ source: MessageSource | null; content: string }> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), READ_TIMEOUT_MS);
+  signal?.addEventListener("abort", () => ctl.abort(), { once: true });
+  try {
+    const resp = await fetch(`/tools/fetch?url=${encodeURIComponent(url)}`, {
+      signal: ctl.signal,
+    });
+    const body = await resp.json().catch(() => null);
+    if (!resp.ok || !body?.text) {
+      return {
+        source: null,
+        content: JSON.stringify({
+          error: body?.error ?? `fetch failed (${resp.status})`,
+        }),
+      };
+    }
+    return {
+      source: { title: body.title || body.url, url: body.url },
+      content: JSON.stringify({
+        url: body.url,
+        title: body.title,
+        text: body.text,
+        truncated: body.truncated === true,
+      }),
+    };
+  } catch {
+    return {
+      source: null,
+      content: JSON.stringify({ error: "page fetch unavailable" }),
     };
   } finally {
     clearTimeout(timer);

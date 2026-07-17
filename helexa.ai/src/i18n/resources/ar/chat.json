@@ -25,5 +25,6 @@
   "moveTo": "نقل إلى…",
   "deleteThreadConfirm": "هل تريد حذف هذه المحادثة ورسائلها؟",
   "searching": "يجري البحث في الويب عن «{{query}}»…",
-  "sources": "المصادر"
+  "sources": "المصادر",
+  "reading": "تجري قراءة {{host}}…"
 }

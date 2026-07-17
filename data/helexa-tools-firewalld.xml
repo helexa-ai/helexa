@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-tools</short>
+  <description>helexa-tools — SSRF-guarded fetch/readability API backing /tools/fetch. Reached only by the edge reverse proxies over the site mesh.</description>
+  <port protocol="tcp" port="8889"/>
+</service>

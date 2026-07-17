@@ -22,19 +22,29 @@ import {
   type ChatMessage,
   type ToolCall,
 } from "./chatClient";
-import { executeWebSearch, WEB_SEARCH_TOOL } from "./searchTool";
+import {
+  executeReadPage,
+  executeWebSearch,
+  READ_PAGE_TOOL,
+  WEB_SEARCH_TOOL,
+} from "./searchTool";
 import { buildSystemPrompt } from "./systemPrompt";
+
+/** The tool activity currently executing, for the UI status line. */
+export interface ToolActivity {
+  kind: "search" | "read";
+  detail: string;
+}
 
 export interface UseChat {
   streaming: boolean;
-  /** The web_search query currently executing, for the UI status line. */
-  searching: string | null;
+  activity: ToolActivity | null;
   error: { code: string; message: string } | null;
   send: (conversationId: string, text: string) => Promise<void>;
   stop: () => void;
 }
 
-const MAX_TOOL_ROUNDS = 3;
+const MAX_TOOL_ROUNDS = 4;
 
 export function useChat(opts: {
   model: string;
@@ -42,7 +52,7 @@ export function useChat(opts: {
   locale?: string;
 }): UseChat {
   const [streaming, setStreaming] = useState(false);
-  const [searching, setSearching] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ToolActivity | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -114,7 +124,13 @@ export function useChat(opts: {
       const withSources = sources.length ? { ...patch, sources } : patch;
       void flushed.then(() => flush()).then(() => finalizeMessage(assistantId, withSources));
       setStreaming(false);
-      setSearching(null);
+      setActivity(null);
+    };
+    const addSource = (title: string, url: string) => {
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        sources.push({ title, url });
+      }
     };
 
     for (let round = 0; round < MAX_TOOL_ROUNDS + 1; round++) {
@@ -129,7 +145,7 @@ export function useChat(opts: {
           apiKey: opts.apiKey,
           model: opts.model,
           messages: reqMessages,
-          tools: offerTools ? [WEB_SEARCH_TOOL] : undefined,
+          tools: offerTools ? [WEB_SEARCH_TOOL, READ_PAGE_TOOL] : undefined,
           signal: controller.signal,
         },
         {
@@ -166,25 +182,39 @@ export function useChat(opts: {
         tool_calls: toolCalls,
       });
       for (const call of toolCalls) {
-        let args: { query: string; category?: string; time_range?: string };
+        let parsed: Record<string, unknown> = {};
         try {
-          const parsed = JSON.parse(call.function.arguments);
-          args = { query: parsed?.query ?? "", category: parsed?.category, time_range: parsed?.time_range };
+          parsed = JSON.parse(call.function.arguments) ?? {};
         } catch {
-          /* model produced malformed arguments; search the raw string */
-          args = { query: call.function.arguments };
+          /* malformed arguments; tool-specific fallback below */
         }
-        setSearching(args.query);
-        const { results, content } = await executeWebSearch(args, controller.signal);
-        for (const r of results) {
-          if (!seenUrls.has(r.url)) {
-            seenUrls.add(r.url);
-            sources.push({ title: r.title, url: r.url });
+        let content: string;
+        if (call.function.name === "read_page") {
+          const url = String(parsed.url ?? "");
+          let host = url;
+          try {
+            host = new URL(url).hostname;
+          } catch {
+            /* leave raw */
           }
+          setActivity({ kind: "read", detail: host });
+          const r = await executeReadPage(url, controller.signal);
+          if (r.source) addSource(r.source.title, r.source.url);
+          content = r.content;
+        } else {
+          const args = {
+            query: String(parsed.query ?? call.function.arguments),
+            category: parsed.category as string | undefined,
+            time_range: parsed.time_range as string | undefined,
+          };
+          setActivity({ kind: "search", detail: args.query });
+          const r = await executeWebSearch(args, controller.signal);
+          for (const res of r.results) addSource(res.title, res.url);
+          content = r.content;
         }
         reqMessages.push({ role: "tool", tool_call_id: call.id, content });
       }
-      setSearching(null);
+      setActivity(null);
       // Visual seam between the pre-search text and the answer round.
       if (acc.length > 0 && !acc.endsWith("\n\n")) {
         acc += acc.endsWith("\n") ? "\n" : "\n\n";
@@ -198,8 +228,8 @@ export function useChat(opts: {
   function stop(): void {
     abortRef.current?.abort();
     setStreaming(false);
-    setSearching(null);
+    setActivity(null);
   }
 
-  return { streaming, searching, error, send, stop };
+  return { streaming, activity, error, send, stop };
 }

@@ -25,5 +25,6 @@
   "moveTo": "Bog go…",
   "deleteThreadConfirm": "An comhrá seo agus a theachtaireachtaí a scriosadh?",
   "searching": "ag cuardach an ghréasáin le haghaidh “{{query}}”…",
-  "sources": "Foinsí"
+  "sources": "Foinsí",
+  "reading": "ag léamh {{host}}…"
 }

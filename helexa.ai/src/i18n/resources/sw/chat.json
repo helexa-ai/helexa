@@ -25,5 +25,6 @@
   "moveTo": "Hamishia kwenye…",
   "deleteThreadConfirm": "Futa soga hii na jumbe zake?",
   "searching": "inatafuta “{{query}}” kwenye wavuti…",
-  "sources": "Vyanzo"
+  "sources": "Vyanzo",
+  "reading": "inasoma {{host}}…"
 }

@@ -25,5 +25,6 @@
   "moveTo": "Flytta till…",
   "deleteThreadConfirm": "Ta bort den här chatten och dess meddelanden?",
   "searching": "söker på webben efter ”{{query}}”…",
-  "sources": "Källor"
+  "sources": "Källor",
+  "reading": "läser {{host}}…"
 }

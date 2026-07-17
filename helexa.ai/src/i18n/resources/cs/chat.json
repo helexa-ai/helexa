@@ -25,5 +25,6 @@
   "moveTo": "Přesunout do…",
   "deleteThreadConfirm": "Smazat tento chat a jeho zprávy?",
   "searching": "vyhledávání „{{query}}“ na webu…",
-  "sources": "Zdroje"
+  "sources": "Zdroje",
+  "reading": "čtení {{host}}…"
 }

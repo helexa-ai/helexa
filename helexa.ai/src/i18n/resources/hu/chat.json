@@ -25,5 +25,6 @@
   "moveTo": "Áthelyezés ide…",
   "deleteThreadConfirm": "Törlöd ezt a csevegést és az üzeneteit?",
   "searching": "keresés a weben: „{{query}}”…",
-  "sources": "Források"
+  "sources": "Források",
+  "reading": "{{host}} olvasása…"
 }

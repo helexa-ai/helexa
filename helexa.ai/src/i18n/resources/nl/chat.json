@@ -25,5 +25,6 @@
   "moveTo": "Verplaatsen naar…",
   "deleteThreadConfirm": "Deze chat en de bijbehorende berichten verwijderen?",
   "searching": "zoeken op internet naar “{{query}}”…",
-  "sources": "Bronnen"
+  "sources": "Bronnen",
+  "reading": "lezen van {{host}}…"
 }

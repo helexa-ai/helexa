@@ -25,5 +25,6 @@
   "moveTo": "Teisalda…",
   "deleteThreadConfirm": "Kas kustutada see vestlus ja selle sõnumid?",
   "searching": "otsitakse veebist „{{query}}“…",
-  "sources": "Allikad"
+  "sources": "Allikad",
+  "reading": "loetakse {{host}}…"
 }

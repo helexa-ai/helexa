@@ -25,5 +25,6 @@
   "moveTo": "Matsar zuwa…",
   "deleteThreadConfirm": "A share wannan tattaunawa da saƙonninta?",
   "searching": "ana neman “{{query}}” a yanar gizo…",
-  "sources": "Majiyoyi"
+  "sources": "Majiyoyi",
+  "reading": "ana karanta {{host}}…"
 }

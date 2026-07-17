@@ -25,5 +25,6 @@
   "moveTo": "Şuraya taşı…",
   "deleteThreadConfirm": "Bu sohbet ve mesajları silinsin mi?",
   "searching": "web’de “{{query}}” aranıyor…",
-  "sources": "Kaynaklar"
+  "sources": "Kaynaklar",
+  "reading": "{{host}} okunuyor…"
 }

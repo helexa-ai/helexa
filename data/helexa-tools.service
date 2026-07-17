@@ -1,0 +1,18 @@
+[Unit]
+Description=helexa-tools — tool-execution service (SSRF-guarded fetch/readability for chat grounding)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/helexa-tools serve --config /etc/helexa-tools/helexa-tools.toml
+# Stateless fetcher; restart unconditionally if it ever exits.
+Restart=always
+RestartSec=10
+User=helexa-tools
+Group=helexa-tools
+StateDirectory=helexa-tools
+StateDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

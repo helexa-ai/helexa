@@ -25,5 +25,6 @@
   "moveTo": "Hambisa ku…",
   "deleteThreadConfirm": "Susa le ngxoxo nemiyalezo yayo?",
   "searching": "kuseshwa “{{query}}” kuwebhu…",
-  "sources": "Imithombo"
+  "sources": "Imithombo",
+  "reading": "kufundwa {{host}}…"
 }

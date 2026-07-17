@@ -25,5 +25,6 @@
   "moveTo": "Mexxi għal…",
   "deleteThreadConfirm": "Tħassar din il-chat u l-messaġġi tagħha?",
   "searching": "qed infittex fuq il-web għal “{{query}}”…",
-  "sources": "Sorsi"
+  "sources": "Sorsi",
+  "reading": "qed naqra {{host}}…"
 }

@@ -366,11 +366,11 @@ jobs:
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@gallumbits.kosherinata.internal 'hostname -f'
 
-      - name: Deploy helexa-router + helexa-upstream (skips when already current)
+      - name: Deploy helexa-router + helexa-upstream + helexa-tools (skips when already current)
         run: |
           ssh gitea_ci@gallumbits.kosherinata.internal 'bash -s' <<'DEPLOY'
           set -eu
-          for pkg in helexa-router helexa-upstream; do
+          for pkg in helexa-router helexa-upstream helexa-tools; do
             installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
             latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
               | python3 -c '
@@ -399,11 +399,11 @@ jobs:
           done
           DEPLOY
 
-      - name: Ensure firewalld allows helexa-router + helexa-upstream
+      - name: Ensure firewalld allows helexa-router + helexa-upstream + helexa-tools
         run: |
           ssh gitea_ci@gallumbits.kosherinata.internal '
             changed=0
-            for svc in helexa-router helexa-upstream; do
+            for svc in helexa-router helexa-upstream helexa-tools; do
               if ! sudo /usr/bin/firewall-cmd --query-service=${svc} --quiet 2>/dev/null; then
                 sudo /usr/bin/firewall-cmd --add-service=${svc} --permanent
                 changed=1
@@ -417,7 +417,7 @@ jobs:
         run: |
           sleep 10
           ssh gitea_ci@gallumbits.kosherinata.internal \
-              'journalctl --unit helexa-router.service -I --no-pager; journalctl --unit helexa-upstream.service -I --no-pager'
+              'journalctl --unit helexa-router.service -I --no-pager; journalctl --unit helexa-upstream.service -I --no-pager; journalctl --unit helexa-tools.service -I --no-pager'
 
   deploy-bench:
     runs-on: fedora-43

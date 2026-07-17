@@ -25,5 +25,6 @@
   "moveTo": "העברה אל…",
   "deleteThreadConfirm": "למחוק את הצ'אט הזה ואת ההודעות שלו?",
   "searching": "מתבצע חיפוש ברשת עבור ”{{query}}“…",
-  "sources": "מקורות"
+  "sources": "מקורות",
+  "reading": "מתבצעת קריאה של {{host}}…"
 }
