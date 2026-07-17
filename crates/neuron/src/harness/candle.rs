@@ -2612,6 +2612,27 @@ impl CandleHarness {
                 completion_text
             };
 
+            // Tool calls arrive as `<tool_call>…</tool_call>` text in a
+            // non-streaming generation; project them into the OpenAI
+            // `tool_calls` array the same way the streaming path does
+            // event-by-event.
+            let tool_schemas = build_tool_schemas(&request);
+            let (completion_text, tool_calls) = extract_tool_calls_from_text(
+                &completion_text,
+                loaded.tool_call_tokens.as_ref(),
+                &tool_schemas,
+            );
+            let finish_reason = if tool_calls.is_empty() {
+                finish_reason
+            } else {
+                "tool_calls".to_string()
+            };
+            let message_extra = if tool_calls.is_empty() {
+                serde_json::Value::Object(Default::default())
+            } else {
+                serde_json::json!({ "tool_calls": tool_calls })
+            };
+
             let usage = Usage {
                 prompt_tokens: prompt_len as u64,
                 completion_tokens: generated_ids.len() as u64,
@@ -2645,7 +2666,7 @@ impl CandleHarness {
                     message: ChatMessage {
                         role: "assistant".into(),
                         content: MessageContent::Text(completion_text),
-                        extra: serde_json::Value::Object(Default::default()),
+                        extra: message_extra,
                     },
                     finish_reason: Some(finish_reason),
                     extra: serde_json::Value::Object(Default::default()),
@@ -5074,6 +5095,25 @@ async fn chat_completion_tp_inner(
         completion_text
     };
 
+    // Project `<tool_call>` blocks into `tool_calls` — mirrors the
+    // single-GPU non-streaming path.
+    let tool_schemas = build_tool_schemas(&request);
+    let (completion_text, tool_calls) = extract_tool_calls_from_text(
+        &completion_text,
+        tp.tool_call_tokens.as_ref(),
+        &tool_schemas,
+    );
+    let finish_reason = if tool_calls.is_empty() {
+        finish_reason
+    } else {
+        "tool_calls".to_string()
+    };
+    let message_extra = if tool_calls.is_empty() {
+        serde_json::Value::Object(Default::default())
+    } else {
+        serde_json::json!({ "tool_calls": tool_calls })
+    };
+
     let usage = Usage {
         prompt_tokens: prompt_len as u64,
         completion_tokens: generated.len() as u64,
@@ -5106,7 +5146,7 @@ async fn chat_completion_tp_inner(
             message: ChatMessage {
                 role: "assistant".into(),
                 content: MessageContent::Text(completion_text),
-                extra: serde_json::Value::Object(Default::default()),
+                extra: message_extra,
             },
             finish_reason: Some(finish_reason),
             extra: serde_json::Value::Object(Default::default()),
@@ -5399,6 +5439,57 @@ fn coerce_param_value(raw: &str, declared: Option<&str>) -> serde_json::Value {
         // best-effort sniff, then string.
         _ => sniff().unwrap_or_else(as_string),
     }
+}
+
+/// Extract `<tool_call>…</tool_call>` blocks from a *non-streaming*
+/// completion into OpenAI `tool_calls` values, returning the content
+/// with the parsed blocks removed. The streaming path parses these
+/// markers token-by-token (`handle_tool_call_marker`); non-streaming
+/// decodes the whole generation first, so the markers arrive as text.
+/// A block that fails to parse stays in the content verbatim — the
+/// same fallback the streaming path uses — as does an unterminated
+/// block from a truncated (`length`) generation.
+pub(crate) fn extract_tool_calls_from_text(
+    text: &str,
+    pair: Option<&ToolCallTokenPair>,
+    schemas: &ToolSchemas,
+) -> (String, Vec<serde_json::Value>) {
+    let open = pair.map(|p| p.open_text.as_str()).unwrap_or("<tool_call>");
+    let close = pair
+        .map(|p| p.close_text.as_str())
+        .unwrap_or("</tool_call>");
+    let mut content = String::with_capacity(text.len());
+    let mut calls: Vec<serde_json::Value> = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find(open) {
+        content.push_str(&rest[..start]);
+        let after_open = &rest[start + open.len()..];
+        match after_open.split_once(close) {
+            Some((body, tail)) => {
+                match parse_tool_call_body(body, calls.len(), schemas) {
+                    Some((id, name, arguments)) => calls.push(serde_json::json!({
+                        "id": id,
+                        "type": "function",
+                        "function": { "name": name, "arguments": arguments },
+                    })),
+                    None => {
+                        content.push_str(open);
+                        content.push_str(body);
+                        content.push_str(close);
+                    }
+                }
+                rest = tail;
+            }
+            None => {
+                content.push_str(open);
+                content.push_str(after_open);
+                rest = "";
+                break;
+            }
+        }
+    }
+    content.push_str(rest);
+    (content, calls)
 }
 
 /// Errors returned by `CandleHarness::chat_completion`. The
@@ -7462,6 +7553,55 @@ mod tests {
     fn unparseable_tool_call_body_returns_none() {
         // Neither JSON nor a `<function=…>` block — caller re-emits as text.
         assert!(parse_tool_call_body("just some prose", 0, &ToolSchemas::new()).is_none());
+    }
+
+    #[test]
+    fn extracts_tool_calls_from_nonstreaming_text() {
+        // The exact leak observed live on the fleet (#177): the 27B's
+        // non-streaming completion carried the Qwen-XML block as content.
+        let text = "<tool_call>\n<function=web_search>\n<parameter=query>\ncurrent weather in Prague\n</parameter>\n</function>\n</tool_call>";
+        let (content, calls) = extract_tool_calls_from_text(text, None, &ToolSchemas::new());
+        assert_eq!(content.trim(), "");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["type"], "function");
+        assert_eq!(calls[0]["function"]["name"], "web_search");
+        let args: serde_json::Value =
+            serde_json::from_str(calls[0]["function"]["arguments"].as_str().unwrap()).unwrap();
+        assert_eq!(args["query"], "current weather in Prague");
+    }
+
+    #[test]
+    fn extract_preserves_surrounding_text_and_multiple_calls() {
+        let text = "Let me check.\n<tool_call>{\"name\":\"a\",\"arguments\":{}}</tool_call>\nand\n<tool_call>{\"name\":\"b\",\"arguments\":{\"x\":1}}</tool_call>done";
+        let (content, calls) = extract_tool_calls_from_text(text, None, &ToolSchemas::new());
+        assert_eq!(content, "Let me check.\n\nand\ndone");
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0]["function"]["name"], "a");
+        assert_eq!(calls[1]["function"]["name"], "b");
+        // ids are unique per call
+        assert_ne!(calls[0]["id"], calls[1]["id"]);
+    }
+
+    #[test]
+    fn extract_leaves_unparseable_and_unterminated_blocks_verbatim() {
+        // Unparseable body stays in content (streaming-path parity).
+        let bad = "<tool_call>just prose</tool_call> after";
+        let (content, calls) = extract_tool_calls_from_text(bad, None, &ToolSchemas::new());
+        assert_eq!(content, bad);
+        assert!(calls.is_empty());
+        // Unterminated block (length-truncated generation) stays verbatim.
+        let cut = "before <tool_call>{\"name\":\"a\"";
+        let (content, calls) = extract_tool_calls_from_text(cut, None, &ToolSchemas::new());
+        assert_eq!(content, cut);
+        assert!(calls.is_empty());
+    }
+
+    #[test]
+    fn extract_without_markers_passes_text_through() {
+        let text = "plain answer, no tools involved";
+        let (content, calls) = extract_tool_calls_from_text(text, None, &ToolSchemas::new());
+        assert_eq!(content, text);
+        assert!(calls.is_empty());
     }
 
     #[test]
