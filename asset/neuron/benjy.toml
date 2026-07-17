@@ -17,3 +17,16 @@ name = "candle"
 model_id = "Qwen/Qwen3-8B"
 harness = "candle"
 devices = [0]
+
+# Admission (#53): Qwen3-8B is the classic qwen3 arch, which has no KV
+# snapshot support — forwards serialize on the inference lock, so the
+# batch engine (and any real max_in_flight > 1) doesn't apply here; the
+# 24 GB card is not the limiter. Capacity for bursts comes from the
+# QUEUE: ~5-8 s per chat reply means a full queue drains in under a
+# minute, and waiters beyond max_wait get an honest 429 instead of an
+# invisible lock wait. Revisit with prom traffic data; the real unlock
+# is porting KV snapshots to the qwen3 dense arch.
+[harness.candle.admission]
+max_in_flight = 1
+max_queue_depth = 24
+max_wait_secs = 60
