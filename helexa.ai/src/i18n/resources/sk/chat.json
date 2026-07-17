@@ -18,5 +18,10 @@
   "rateLimited": "Priveľa požiadaviek — chvíľu počkajte a skúste to znova.",
   "needsKey": "Vytvorte si API kľúč a povoľte ho pre chat, aby ste mohli odosielať pod vlastným účtom.",
   "manageKeysLink": "Spravovať kľúče",
-  "sidebarToggle": "Konverzácie"
+  "sidebarToggle": "Konverzácie",
+  "rename": "Premenovať",
+  "delete": "Odstrániť",
+  "cancel": "Zrušiť",
+  "moveTo": "Presunúť do…",
+  "deleteThreadConfirm": "Odstrániť tento chat a jeho správy?"
 }

@@ -18,5 +18,10 @@
   "rateLimited": "Túl sok kérés — várj egy pillanatot, majd próbáld újra.",
   "needsKey": "Hozz létre egy API-kulcsot, és engedélyezd a csevegéshez, hogy a saját nevedben küldhess.",
   "manageKeysLink": "Kulcsok kezelése",
-  "sidebarToggle": "Beszélgetések"
+  "sidebarToggle": "Beszélgetések",
+  "rename": "Átnevezés",
+  "delete": "Törlés",
+  "cancel": "Mégse",
+  "moveTo": "Áthelyezés ide…",
+  "deleteThreadConfirm": "Törlöd ezt a csevegést és az üzeneteit?"
 }

@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Mazungumzo"
+  "sidebarToggle": "Mazungumzo",
+  "rename": "Badilisha jina",
+  "delete": "Futa",
+  "cancel": "Ghairi",
+  "moveTo": "Hamishia kwenye…",
+  "deleteThreadConfirm": "Futa soga hii na jumbe zake?"
 }

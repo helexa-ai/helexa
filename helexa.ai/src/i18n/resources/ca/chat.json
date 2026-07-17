@@ -18,5 +18,10 @@
   "rateLimited": "Límit de peticions assolit — espereu un moment i torneu-ho a provar.",
   "needsKey": "Creeu una clau API i activeu-la per al xat per enviar missatges en nom vostre.",
   "manageKeysLink": "Gestiona les claus",
-  "sidebarToggle": "Converses"
+  "sidebarToggle": "Converses",
+  "rename": "Canvia el nom",
+  "delete": "Suprimeix",
+  "cancel": "Cancel·la",
+  "moveTo": "Mou a…",
+  "deleteThreadConfirm": "Voleu suprimir aquest xat i els seus missatges?"
 }

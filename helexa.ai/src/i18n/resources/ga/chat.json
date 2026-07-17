@@ -18,5 +18,10 @@
   "rateLimited": "Ráta teoranta — fan nóiméad agus bain triail eile as.",
   "needsKey": "Cruthaigh eochair API agus cumasaigh don chomhrá í chun seoladh mar thú féin.",
   "manageKeysLink": "Bainistigh eochracha",
-  "sidebarToggle": "Comhráite"
+  "sidebarToggle": "Comhráite",
+  "rename": "Athainmnigh",
+  "delete": "Scrios",
+  "cancel": "Cealaigh",
+  "moveTo": "Bog go…",
+  "deleteThreadConfirm": "An comhrá seo agus a theachtaireachtaí a scriosadh?"
 }

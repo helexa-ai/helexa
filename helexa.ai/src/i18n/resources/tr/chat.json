@@ -18,5 +18,10 @@
   "rateLimited": "Rate limited — wait a moment and retry.",
   "needsKey": "Create an API key and enable it for chat to send as yourself.",
   "manageKeysLink": "Manage keys",
-  "sidebarToggle": "Sohbetler"
+  "sidebarToggle": "Sohbetler",
+  "rename": "Yeniden adlandır",
+  "delete": "Sil",
+  "cancel": "İptal",
+  "moveTo": "Şuraya taşı…",
+  "deleteThreadConfirm": "Bu sohbet ve mesajları silinsin mi?"
 }

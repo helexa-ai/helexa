@@ -2,13 +2,27 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Alert, Form } from "react-bootstrap";
-import { FaPlus, FaFolderPlus, FaArrowUp, FaStop, FaBarsStaggered } from "react-icons/fa6";
+import { FaArrowUp, FaStop, FaBarsStaggered } from "react-icons/fa6";
+import {
+  LuCheck,
+  LuFolderInput,
+  LuFolderPlus,
+  LuMessageSquarePlus,
+  LuPencil,
+  LuTrash2,
+  LuX,
+} from "react-icons/lu";
 import { db } from "../data/db";
 import {
+  archiveProject,
   createConversation,
   createProject,
+  deleteConversation,
   listConversations,
   listProjects,
+  moveConversation,
+  renameConversation,
+  renameProject,
 } from "../data/repositories";
 import { useChat } from "../lib/useChat";
 import { useAuth } from "../auth/context";
@@ -50,6 +64,9 @@ export default function Chat() {
   // Phone-width screens render the sidebar as an off-canvas drawer;
   // this state only has visible effect under the 768px media query.
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Topic (project) currently in inline-rename mode; a freshly created
+  // topic drops straight into it so it gets a real name immediately.
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
 
   // Reset the active conversation when the owner changes (login/logout).
   useEffect(() => {
@@ -139,42 +156,93 @@ export default function Chat() {
         />
       )}
       <aside className={`hx-chat-sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="d-flex gap-2">
+        <div className="d-flex gap-2 justify-content-end">
           <button
             type="button"
-            className="hx-btn-ghost flex-grow-1 justify-content-center"
-            style={{ fontSize: "0.9rem", paddingBlock: "0.45rem" }}
+            className="hx-icon-btn hx-sidebar-action"
+            title={t("newChat")}
+            aria-label={t("newChat")}
             onClick={() => void newChat()}
           >
-            <FaPlus size={12} />
-            {t("newChat")}
+            <LuMessageSquarePlus size={17} />
           </button>
           <button
             type="button"
-            className="hx-icon-btn"
-            style={{ width: "2.35rem", height: "2.35rem" }}
+            className="hx-icon-btn hx-sidebar-action"
             title={t("newProject")}
             aria-label={t("newProject")}
-            onClick={() => void createProject(owner, t("newProjectName"))}
+            onClick={() =>
+              void createProject(owner, t("newProjectName")).then(setEditingProjectId)
+            }
           >
-            <FaFolderPlus size={15} />
+            <LuFolderPlus size={17} />
           </button>
         </div>
 
-        <ConversationGroup
-          label={t("unsorted")}
-          items={grouped.get(null) ?? []}
-          activeId={activeId}
-          onSelect={selectConversation}
-        />
-        {(projects ?? []).map((p) => (
-          <ConversationGroup
-            key={p.id}
-            label={p.name}
-            items={grouped.get(p.id) ?? []}
-            activeId={activeId}
+        {(grouped.get(null) ?? []).length > 0 && (
+          <div className="hx-group-label">{t("unsorted")}</div>
+        )}
+        {(grouped.get(null) ?? []).map((c) => (
+          <ThreadRow
+            key={c.id}
+            conv={c}
+            active={c.id === activeId}
             onSelect={selectConversation}
+            projects={projects ?? []}
+            onDeleted={() => setActiveId(null)}
+            t={t}
           />
+        ))}
+
+        {(projects ?? []).map((p) => (
+          <div key={p.id}>
+            {editingProjectId === p.id ? (
+              <InlineRename
+                initial={p.name}
+                onCommit={(name) => {
+                  if (name.trim()) void renameProject(p.id, name.trim());
+                  setEditingProjectId(null);
+                }}
+                onCancel={() => setEditingProjectId(null)}
+                t={t}
+              />
+            ) : (
+              <div className="hx-row hx-group-label d-flex align-items-center">
+                <span className="text-truncate flex-grow-1">{p.name}</span>
+                <span className="hx-row-actions">
+                  <button
+                    type="button"
+                    className="hx-icon-btn hx-row-btn"
+                    title={t("rename")}
+                    aria-label={t("rename")}
+                    onClick={() => setEditingProjectId(p.id)}
+                  >
+                    <LuPencil size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    className="hx-icon-btn hx-row-btn"
+                    title={t("delete")}
+                    aria-label={t("delete")}
+                    onClick={() => void archiveProject(p.id)}
+                  >
+                    <LuTrash2 size={13} />
+                  </button>
+                </span>
+              </div>
+            )}
+            {(grouped.get(p.id) ?? []).map((c) => (
+              <ThreadRow
+                key={c.id}
+                conv={c}
+                active={c.id === activeId}
+                onSelect={selectConversation}
+                projects={projects ?? []}
+                onDeleted={() => setActiveId(null)}
+                t={t}
+              />
+            ))}
+          </div>
         ))}
       </aside>
 
@@ -296,33 +364,164 @@ export default function Chat() {
   );
 }
 
-function ConversationGroup({
-  label,
-  items,
-  activeId,
-  onSelect,
+/** Inline single-field rename editor: Enter/check commits, Escape/x cancels. */
+function InlineRename({
+  initial,
+  onCommit,
+  onCancel,
+  t,
 }: {
-  label: string;
-  items: { id: string; title: string }[];
-  activeId: string | null;
-  onSelect: (id: string) => void;
+  initial: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+  t: (k: string) => string;
 }) {
-  if (items.length === 0) return null;
+  const [value, setValue] = useState(initial);
   return (
-    <div>
-      <div className="text-uppercase text-muted small fw-semibold mt-2 mb-1">
-        {label}
-      </div>
-      {items.map((c) => (
+    <div className="hx-inline-edit d-flex align-items-center gap-1">
+      <input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") onCommit(value);
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <button
+        type="button"
+        className="hx-icon-btn hx-row-btn"
+        title={t("rename")}
+        aria-label={t("rename")}
+        onClick={() => onCommit(value)}
+      >
+        <LuCheck size={13} />
+      </button>
+      <button
+        type="button"
+        className="hx-icon-btn hx-row-btn"
+        aria-label={t("cancel")}
+        title={t("cancel")}
+        onClick={onCancel}
+      >
+        <LuX size={13} />
+      </button>
+    </div>
+  );
+}
+
+/** One thread in the sidebar: select on click; hover (or touch) actions for
+ * rename (inline), move-to-topic (small popover menu), and delete. */
+function ThreadRow({
+  conv,
+  active,
+  onSelect,
+  projects,
+  onDeleted,
+  t,
+}: {
+  conv: { id: string; title: string; projectId: string | null };
+  active: boolean;
+  onSelect: (id: string) => void;
+  projects: { id: string; name: string }[];
+  onDeleted: () => void;
+  t: (k: string) => string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  if (editing) {
+    return (
+      <InlineRename
+        initial={conv.title}
+        onCommit={(name) => {
+          if (name.trim()) void renameConversation(conv.id, name.trim());
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
+        t={t}
+      />
+    );
+  }
+
+  const destinations: { id: string | null; name: string }[] = [
+    ...(conv.projectId !== null ? [{ id: null, name: t("unsorted") }] : []),
+    ...projects
+      .filter((p) => p.id !== conv.projectId)
+      .map((p) => ({ id: p.id as string | null, name: p.name })),
+  ];
+
+  return (
+    <div className="hx-row position-relative d-flex align-items-center">
+      <button
+        type="button"
+        onClick={() => onSelect(conv.id)}
+        className={`hx-chat-item flex-grow-1 ${active ? "active" : ""}`}
+      >
+        {conv.title}
+      </button>
+      <span className="hx-row-actions">
         <button
-          key={c.id}
           type="button"
-          onClick={() => onSelect(c.id)}
-          className={`hx-chat-item ${c.id === activeId ? "active" : ""}`}
+          className="hx-icon-btn hx-row-btn"
+          title={t("rename")}
+          aria-label={t("rename")}
+          onClick={() => setEditing(true)}
         >
-          {c.title}
+          <LuPencil size={13} />
         </button>
-      ))}
+        {destinations.length > 0 && (
+          <button
+            type="button"
+            className="hx-icon-btn hx-row-btn"
+            title={t("moveTo")}
+            aria-label={t("moveTo")}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <LuFolderInput size={13} />
+          </button>
+        )}
+        <button
+          type="button"
+          className="hx-icon-btn hx-row-btn"
+          title={t("delete")}
+          aria-label={t("delete")}
+          onClick={() => {
+            if (window.confirm(t("deleteThreadConfirm"))) {
+              void deleteConversation(conv.id).then(() => {
+                if (active) onDeleted();
+              });
+            }
+          }}
+        >
+          <LuTrash2 size={13} />
+        </button>
+      </span>
+      {menuOpen && (
+        <>
+          <div
+            className="hx-menu-backdrop"
+            onClick={() => setMenuOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="hx-move-menu" role="menu">
+            {destinations.map((d) => (
+              <button
+                key={d.id ?? "__unsorted"}
+                type="button"
+                role="menuitem"
+                className="hx-move-item text-truncate"
+                onClick={() => {
+                  void moveConversation(conv.id, d.id);
+                  setMenuOpen(false);
+                }}
+              >
+                {d.name}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
