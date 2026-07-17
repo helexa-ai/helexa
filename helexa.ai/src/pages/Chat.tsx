@@ -41,7 +41,7 @@ const ANON_COUNT_KEY = "anonMessageCount";
  * browser.
  */
 export default function Chat() {
-  const { t } = useTranslation("chat");
+  const { t, i18n } = useTranslation("chat");
   const { status, accountId } = useAuth();
   const authed = status === "authed" && !!accountId;
   const owner = authed ? accountId! : "anon";
@@ -98,6 +98,7 @@ export default function Chat() {
   const { streaming, error, send, stop } = useChat({
     model,
     apiKey: authed ? chatApiKey : undefined,
+    locale: i18n.language,
   });
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
