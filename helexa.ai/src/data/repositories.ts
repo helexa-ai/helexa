@@ -126,10 +126,15 @@ export async function addMessage(
   return id;
 }
 
-export async function appendToMessage(id: string, delta: string): Promise<void> {
-  const msg = await db.messages.get(id);
-  if (!msg) return;
-  await db.messages.update(id, { content: msg.content + delta });
+/** Overwrite a message's content with an absolute value.
+ *
+ * Deliberately NOT an append: read-modify-write per streamed delta loses
+ * updates when tokens arrive faster than the IndexedDB round-trip (two
+ * in-flight appends read the same base and one delta vanishes — the
+ * "Swiss-cheese response" bug). The caller accumulates the full content
+ * and writes snapshots; absolute writes are safe to coalesce. */
+export async function setMessageContent(id: string, content: string): Promise<void> {
+  await db.messages.update(id, { content });
 }
 
 export async function finalizeMessage(

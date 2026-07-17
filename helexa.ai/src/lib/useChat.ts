@@ -5,10 +5,10 @@
 import { useRef, useState } from "react";
 import {
   addMessage,
-  appendToMessage,
   finalizeMessage,
   listMessages,
   renameConversation,
+  setMessageContent,
 } from "../data/repositories";
 import { streamChatCompletion, type ChatMessage } from "./chatClient";
 
@@ -50,6 +50,32 @@ export function useChat(opts: { model: string; apiKey?: string }): UseChat {
     abortRef.current = controller;
     setStreaming(true);
 
+    // Streamed content accumulates here and is written to Dexie as
+    // ABSOLUTE snapshots, coalesced to one in-flight write: per-delta
+    // read-modify-write appends raced each other and dropped tokens
+    // (fast GPU streams outpace the IndexedDB round-trip). Finalize is
+    // chained behind the last content write so `status: complete` never
+    // lands on partial content.
+    let acc = "";
+    let writing = false;
+    let dirty = false;
+    let flushed: Promise<void> = Promise.resolve();
+    const flush = async () => {
+      if (writing) {
+        dirty = true;
+        return;
+      }
+      writing = true;
+      try {
+        do {
+          dirty = false;
+          await setMessageContent(assistantId, acc);
+        } while (dirty);
+      } finally {
+        writing = false;
+      }
+    };
+
     await streamChatCompletion(
       {
         apiKey: opts.apiKey,
@@ -58,15 +84,22 @@ export function useChat(opts: { model: string; apiKey?: string }): UseChat {
         signal: controller.signal,
       },
       {
-        onDelta: (t) => void appendToMessage(assistantId, t),
+        onDelta: (t) => {
+          acc += t;
+          flushed = flush();
+        },
         onUsage: (p, c) =>
           void finalizeMessage(assistantId, { promptTokens: p, completionTokens: c }),
         onDone: () => {
-          void finalizeMessage(assistantId, { status: "complete" });
+          void flushed.then(() => flush()).then(() =>
+            finalizeMessage(assistantId, { status: "complete" }),
+          );
           setStreaming(false);
         },
         onError: (code, message) => {
-          void finalizeMessage(assistantId, { status: "error", errorCode: code });
+          void flushed.then(() => flush()).then(() =>
+            finalizeMessage(assistantId, { status: "error", errorCode: code }),
+          );
           setError({ code, message });
           setStreaming(false);
         },
