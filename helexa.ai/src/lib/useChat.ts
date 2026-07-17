@@ -15,19 +15,20 @@ import { streamChatCompletion, type ChatMessage } from "./chatClient";
 export interface UseChat {
   streaming: boolean;
   error: { code: string; message: string } | null;
-  send: (text: string) => Promise<void>;
+  send: (conversationId: string, text: string) => Promise<void>;
   stop: () => void;
 }
 
-export function useChat(
-  conversationId: string | null,
-  opts: { model: string; apiKey?: string },
-): UseChat {
+export function useChat(opts: { model: string; apiKey?: string }): UseChat {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  async function send(text: string): Promise<void> {
+  // The conversation id is an explicit argument, NOT hook state: the
+  // first-ever send creates the conversation and calls send() in the same
+  // tick, before any re-render — a closured id would still be null and the
+  // message would silently vanish (the fresh-browser first-message bug).
+  async function send(conversationId: string, text: string): Promise<void> {
     if (!conversationId || streaming || !text.trim()) return;
     setError(null);
 

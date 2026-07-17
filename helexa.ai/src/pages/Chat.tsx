@@ -78,7 +78,7 @@ export default function Chat() {
     [],
   );
 
-  const { streaming, error, send, stop } = useChat(activeId, {
+  const { streaming, error, send, stop } = useChat({
     model,
     apiKey: authed ? chatApiKey : undefined,
   });
@@ -112,7 +112,9 @@ export default function Chat() {
     if (!authed) {
       await db.meta.put({ key: ANON_COUNT_KEY, value: anonCount + 1 });
     }
-    await send(text);
+    // Pass convId explicitly — on the first-ever message it was created
+    // two lines up and no re-render has delivered it to the hook yet.
+    await send(convId, text);
   }
 
   // Group conversations by project for the sidebar.

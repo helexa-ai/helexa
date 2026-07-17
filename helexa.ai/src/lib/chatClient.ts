@@ -26,12 +26,30 @@ export interface StreamOptions {
 
 const DEFAULT_BASE = import.meta.env.VITE_ROUTER_BASE_URL || "";
 
+/** How long to wait for response HEADERS before declaring the origin dead.
+ * Generous: an admission-queued request can legitimately hold ~30s before
+ * the first byte. Without this, a misconfigured origin that swallows the
+ * POST (e.g. a static host with no /v1 backend) hangs the UI in silence. */
+const FIRST_BYTE_TIMEOUT_MS = 45_000;
+
 export async function streamChatCompletion(
   opts: StreamOptions,
   h: StreamHandlers,
 ): Promise<void> {
   const base = (opts.baseUrl ?? DEFAULT_BASE).replace(/\/$/, "");
   let resp: Response;
+  // Chain the caller's Stop signal with a first-byte timeout. `timedOut`
+  // disambiguates our abort from the user's.
+  let timedOut = false;
+  const ctl = new AbortController();
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctl.abort();
+  }, FIRST_BYTE_TIMEOUT_MS);
+  // The caller's signal must keep aborting ctl for the whole request —
+  // headers AND body stream — so Stop works mid-generation. opts.signal
+  // is per-send, so the listener's lifetime is naturally bounded.
+  opts.signal.addEventListener("abort", () => ctl.abort(), { once: true });
   try {
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -46,11 +64,20 @@ export async function streamChatCompletion(
         messages: opts.messages,
         stream: true,
       }),
-      signal: opts.signal,
+      signal: ctl.signal,
     });
   } catch (e) {
-    if ((e as Error).name === "AbortError") return h.onDone();
-    return h.onError("network_error", "Could not reach the mesh.");
+    if ((e as Error).name === "AbortError" && !timedOut) return h.onDone();
+    return h.onError(
+      "network_error",
+      timedOut
+        ? "No response from the mesh — the endpoint may be misconfigured or down."
+        : "Could not reach the mesh.",
+    );
+  } finally {
+    // Headers arrived (or failed) — the first-byte deadline is done.
+    // Body-stream pacing is the model's business, not a timeout's.
+    clearTimeout(timer);
   }
 
   if (!resp.ok || !resp.body) {
