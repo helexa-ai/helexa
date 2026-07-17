@@ -23,5 +23,7 @@
   "delete": "ሰርዝ",
   "cancel": "ይቅር",
   "moveTo": "ወደ… አንቀሳቅስ",
-  "deleteThreadConfirm": "ይህ ውይይት እና መልዕክቶቹ ይሰረዙ?"
+  "deleteThreadConfirm": "ይህ ውይይት እና መልዕክቶቹ ይሰረዙ?",
+  "searching": "በድር ላይ «{{query}}» እየተፈለገ ነው…",
+  "sources": "ምንጮች"
 }

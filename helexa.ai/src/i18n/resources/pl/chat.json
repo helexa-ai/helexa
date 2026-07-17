@@ -23,5 +23,7 @@
   "delete": "Usuń",
   "cancel": "Anuluj",
   "moveTo": "Przenieś do…",
-  "deleteThreadConfirm": "Usunąć ten czat i jego wiadomości?"
+  "deleteThreadConfirm": "Usunąć ten czat i jego wiadomości?",
+  "searching": "wyszukiwanie w internecie „{{query}}”…",
+  "sources": "Źródła"
 }

@@ -23,5 +23,7 @@
   "delete": "מחיקה",
   "cancel": "ביטול",
   "moveTo": "העברה אל…",
-  "deleteThreadConfirm": "למחוק את הצ'אט הזה ואת ההודעות שלו?"
+  "deleteThreadConfirm": "למחוק את הצ'אט הזה ואת ההודעות שלו?",
+  "searching": "מתבצע חיפוש ברשת עבור ”{{query}}“…",
+  "sources": "מקורות"
 }

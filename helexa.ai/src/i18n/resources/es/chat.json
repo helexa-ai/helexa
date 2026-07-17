@@ -23,5 +23,7 @@
   "delete": "Eliminar",
   "cancel": "Cancelar",
   "moveTo": "Mover a…",
-  "deleteThreadConfirm": "¿Eliminar este chat y sus mensajes?"
+  "deleteThreadConfirm": "¿Eliminar este chat y sus mensajes?",
+  "searching": "buscando «{{query}}» en la web…",
+  "sources": "Fuentes"
 }

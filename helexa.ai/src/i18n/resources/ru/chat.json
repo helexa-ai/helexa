@@ -23,5 +23,7 @@
   "delete": "Удалить",
   "cancel": "Отмена",
   "moveTo": "Переместить в…",
-  "deleteThreadConfirm": "Удалить этот чат и его сообщения?"
+  "deleteThreadConfirm": "Удалить этот чат и его сообщения?",
+  "searching": "ищем в интернете «{{query}}»…",
+  "sources": "Источники"
 }

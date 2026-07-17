@@ -23,5 +23,7 @@
   "delete": "Избриши",
   "cancel": "Откажи",
   "moveTo": "Премести у…",
-  "deleteThreadConfirm": "Избрисати ово ћаскање и његове поруке?"
+  "deleteThreadConfirm": "Избрисати ово ћаскање и његове поруке?",
+  "searching": "претражујем веб за „{{query}}”…",
+  "sources": "Извори"
 }

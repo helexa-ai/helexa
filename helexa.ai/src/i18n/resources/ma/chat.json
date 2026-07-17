@@ -23,5 +23,7 @@
   "delete": "حذف",
   "cancel": "إلغاء",
   "moveTo": "نقل إلى…",
-  "deleteThreadConfirm": "هل تريد حذف هذه المحادثة ورسائلها؟"
+  "deleteThreadConfirm": "هل تريد حذف هذه المحادثة ورسائلها؟",
+  "searching": "كنقلبو فالويب على «{{query}}»…",
+  "sources": "المصادر"
 }

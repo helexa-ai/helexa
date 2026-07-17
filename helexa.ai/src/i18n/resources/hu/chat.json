@@ -23,5 +23,7 @@
   "delete": "Törlés",
   "cancel": "Mégse",
   "moveTo": "Áthelyezés ide…",
-  "deleteThreadConfirm": "Törlöd ezt a csevegést és az üzeneteit?"
+  "deleteThreadConfirm": "Törlöd ezt a csevegést és az üzeneteit?",
+  "searching": "keresés a weben: „{{query}}”…",
+  "sources": "Források"
 }

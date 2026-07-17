@@ -23,5 +23,7 @@
   "delete": "Izbriši",
   "cancel": "Odustani",
   "moveTo": "Premjesti u…",
-  "deleteThreadConfirm": "Izbrisati ovaj razgovor i njegove poruke?"
+  "deleteThreadConfirm": "Izbrisati ovaj razgovor i njegove poruke?",
+  "searching": "pretraživanje weba za „{{query}}”…",
+  "sources": "Izvori"
 }

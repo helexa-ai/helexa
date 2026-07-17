@@ -23,5 +23,7 @@
   "delete": "Delete",
   "cancel": "Cancel",
   "moveTo": "Move to…",
-  "deleteThreadConfirm": "Delete this chat and its messages?"
+  "deleteThreadConfirm": "Delete this chat and its messages?",
+  "searching": "searching the web for “{{query}}”…",
+  "sources": "Sources"
 }

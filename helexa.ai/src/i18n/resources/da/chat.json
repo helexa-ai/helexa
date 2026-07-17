@@ -23,5 +23,7 @@
   "delete": "Slet",
   "cancel": "Annuller",
   "moveTo": "Flyt til…",
-  "deleteThreadConfirm": "Vil du slette denne chat og dens beskeder?"
+  "deleteThreadConfirm": "Vil du slette denne chat og dens beskeder?",
+  "searching": "søger på nettet efter ”{{query}}”…",
+  "sources": "Kilder"
 }

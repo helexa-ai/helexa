@@ -23,5 +23,7 @@
   "delete": "حذف",
   "cancel": "لغو",
   "moveTo": "انتقال به…",
-  "deleteThreadConfirm": "این گفتگو و پیام‌های آن حذف شود؟"
+  "deleteThreadConfirm": "این گفتگو و پیام‌های آن حذف شود؟",
+  "searching": "در حال جستجوی «{{query}}» در وب…",
+  "sources": "منابع"
 }

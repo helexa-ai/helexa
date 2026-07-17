@@ -23,5 +23,7 @@
   "delete": "Susa",
   "cancel": "Khansela",
   "moveTo": "Hambisa ku…",
-  "deleteThreadConfirm": "Susa le ngxoxo nemiyalezo yayo?"
+  "deleteThreadConfirm": "Susa le ngxoxo nemiyalezo yayo?",
+  "searching": "kuseshwa “{{query}}” kuwebhu…",
+  "sources": "Imithombo"
 }

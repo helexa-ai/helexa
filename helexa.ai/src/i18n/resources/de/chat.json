@@ -23,5 +23,7 @@
   "delete": "Löschen",
   "cancel": "Abbrechen",
   "moveTo": "Verschieben nach…",
-  "deleteThreadConfirm": "Diesen Chat und seine Nachrichten löschen?"
+  "deleteThreadConfirm": "Diesen Chat und seine Nachrichten löschen?",
+  "searching": "das Web wird nach „{{query}}“ durchsucht…",
+  "sources": "Quellen"
 }

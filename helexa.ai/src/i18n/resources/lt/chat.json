@@ -23,5 +23,7 @@
   "delete": "Ištrinti",
   "cancel": "Atšaukti",
   "moveTo": "Perkelti į…",
-  "deleteThreadConfirm": "Ištrinti šį pokalbį ir jo žinutes?"
+  "deleteThreadConfirm": "Ištrinti šį pokalbį ir jo žinutes?",
+  "searching": "internete ieškoma „{{query}}“…",
+  "sources": "Šaltiniai"
 }

@@ -4,13 +4,26 @@
 // UI can react (rate_limit_exceeded, insufficient_quota, invalid_api_key,
 // context_length_exceeded). An AbortController powers the Stop button.
 
+export interface ToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  /** Assistant turns that requested tools (echoed back in the loop). */
+  tool_calls?: ToolCall[];
+  /** Tool-result turns: which call this answers. */
+  tool_call_id?: string;
 }
 
 export interface StreamHandlers {
   onDelta: (text: string) => void;
+  /** A complete tool call arrived (neuron buffers the whole
+   * `<tool_call>` block, so arguments are never fragmented). */
+  onToolCall?: (call: ToolCall) => void;
   onUsage?: (prompt: number, completion: number) => void;
   onDone: () => void;
   onError: (code: string, message: string) => void;
@@ -21,6 +34,8 @@ export interface StreamOptions {
   apiKey?: string; // bearer for authenticated requests; omitted = anonymous
   model: string;
   messages: ChatMessage[];
+  /** OpenAI tools array; omitted = no tools offered. */
+  tools?: readonly unknown[];
   signal: AbortSignal;
 }
 
@@ -62,6 +77,7 @@ export async function streamChatCompletion(
       body: JSON.stringify({
         model: opts.model,
         messages: opts.messages,
+        ...(opts.tools?.length ? { tools: opts.tools } : {}),
         stream: true,
       }),
       signal: ctl.signal,
@@ -118,6 +134,21 @@ export async function streamChatCompletion(
             const json = JSON.parse(data);
             const delta = json?.choices?.[0]?.delta?.content;
             if (typeof delta === "string" && delta) h.onDelta(delta);
+            const toolCalls = json?.choices?.[0]?.delta?.tool_calls;
+            if (Array.isArray(toolCalls) && h.onToolCall) {
+              for (const tc of toolCalls) {
+                if (tc?.id && tc?.function?.name) {
+                  h.onToolCall({
+                    id: tc.id,
+                    type: "function",
+                    function: {
+                      name: tc.function.name,
+                      arguments: tc.function.arguments ?? "{}",
+                    },
+                  });
+                }
+              }
+            }
             const usage = json?.usage;
             if (usage && h.onUsage) {
               h.onUsage(usage.prompt_tokens ?? 0, usage.completion_tokens ?? 0);

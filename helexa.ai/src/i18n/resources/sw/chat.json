@@ -23,5 +23,7 @@
   "delete": "Futa",
   "cancel": "Ghairi",
   "moveTo": "Hamishia kwenye…",
-  "deleteThreadConfirm": "Futa soga hii na jumbe zake?"
+  "deleteThreadConfirm": "Futa soga hii na jumbe zake?",
+  "searching": "inatafuta “{{query}}” kwenye wavuti…",
+  "sources": "Vyanzo"
 }

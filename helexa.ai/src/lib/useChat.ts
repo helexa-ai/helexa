@@ -1,8 +1,15 @@
 // Orchestrates a single conversation: persists the user turn, opens a
 // streaming assistant message, appends deltas to Dexie live, and finalizes
 // on done/error. The UI re-renders via useLiveQuery on the messages table.
+//
+// With tools (#177) a turn becomes a small agentic loop: stream a round,
+// and when the model requests web_search, execute it against the edge's
+// /tools/web_search, feed the results back as a tool message, and stream
+// the next round — up to MAX_TOOL_ROUNDS. The visible message accumulates
+// across rounds; consulted sources persist as citations.
 
 import { useRef, useState } from "react";
+import type { MessageSource } from "../data/db";
 import {
   addMessage,
   finalizeMessage,
@@ -10,15 +17,24 @@ import {
   renameConversation,
   setMessageContent,
 } from "../data/repositories";
-import { streamChatCompletion, type ChatMessage } from "./chatClient";
+import {
+  streamChatCompletion,
+  type ChatMessage,
+  type ToolCall,
+} from "./chatClient";
+import { executeWebSearch, WEB_SEARCH_TOOL } from "./searchTool";
 import { buildSystemPrompt } from "./systemPrompt";
 
 export interface UseChat {
   streaming: boolean;
+  /** The web_search query currently executing, for the UI status line. */
+  searching: string | null;
   error: { code: string; message: string } | null;
   send: (conversationId: string, text: string) => Promise<void>;
   stop: () => void;
 }
+
+const MAX_TOOL_ROUNDS = 3;
 
 export function useChat(opts: {
   model: string;
@@ -26,6 +42,7 @@ export function useChat(opts: {
   locale?: string;
 }): UseChat {
   const [streaming, setStreaming] = useState(false);
+  const [searching, setSearching] = useState<string | null>(null);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -44,7 +61,7 @@ export function useChat(opts: {
     const reqMessages: ChatMessage[] = [
       {
         role: "system",
-        content: buildSystemPrompt(opts.model, opts.locale ?? "en"),
+        content: buildSystemPrompt(opts.model, opts.locale ?? "en", true),
       },
       ...history
         .filter((m) => m.status !== "error")
@@ -89,41 +106,99 @@ export function useChat(opts: {
       }
     };
 
-    await streamChatCompletion(
-      {
-        apiKey: opts.apiKey,
-        model: opts.model,
-        messages: reqMessages,
-        signal: controller.signal,
-      },
-      {
-        onDelta: (t) => {
-          acc += t;
-          flushed = flush();
+    const sources: MessageSource[] = [];
+    const seenUrls = new Set<string>();
+    let failed = false;
+
+    const finalize = (patch: Parameters<typeof finalizeMessage>[1]) => {
+      const withSources = sources.length ? { ...patch, sources } : patch;
+      void flushed.then(() => flush()).then(() => finalizeMessage(assistantId, withSources));
+      setStreaming(false);
+      setSearching(null);
+    };
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS + 1; round++) {
+      const roundStart = acc.length;
+      const toolCalls: ToolCall[] = [];
+      // Only offer tools while budget remains for another round; the
+      // last pass runs tool-less so the model must answer.
+      const offerTools = round < MAX_TOOL_ROUNDS;
+
+      await streamChatCompletion(
+        {
+          apiKey: opts.apiKey,
+          model: opts.model,
+          messages: reqMessages,
+          tools: offerTools ? [WEB_SEARCH_TOOL] : undefined,
+          signal: controller.signal,
         },
-        onUsage: (p, c) =>
-          void finalizeMessage(assistantId, { promptTokens: p, completionTokens: c }),
-        onDone: () => {
-          void flushed.then(() => flush()).then(() =>
-            finalizeMessage(assistantId, { status: "complete" }),
-          );
-          setStreaming(false);
+        {
+          onDelta: (t) => {
+            acc += t;
+            flushed = flush();
+          },
+          onToolCall: (call) => toolCalls.push(call),
+          onUsage: (p, c) =>
+            void finalizeMessage(assistantId, { promptTokens: p, completionTokens: c }),
+          onDone: () => {},
+          onError: (code, message) => {
+            failed = true;
+            finalize({ status: "error", errorCode: code });
+            setError({ code, message });
+          },
         },
-        onError: (code, message) => {
-          void flushed.then(() => flush()).then(() =>
-            finalizeMessage(assistantId, { status: "error", errorCode: code }),
-          );
-          setError({ code, message });
-          setStreaming(false);
-        },
-      },
-    );
+      );
+      if (failed || controller.signal.aborted) {
+        if (!failed) finalize({ status: "complete" });
+        return;
+      }
+      if (toolCalls.length === 0) {
+        finalize({ status: "complete" });
+        return;
+      }
+
+      // Tool round: echo the assistant turn (its text + the calls), run
+      // each search, append the results, and go around again.
+      const roundText = acc.slice(roundStart);
+      reqMessages.push({
+        role: "assistant",
+        content: roundText,
+        tool_calls: toolCalls,
+      });
+      for (const call of toolCalls) {
+        let query = "";
+        try {
+          query = JSON.parse(call.function.arguments)?.query ?? "";
+        } catch {
+          /* model produced malformed arguments; search the raw string */
+          query = call.function.arguments;
+        }
+        setSearching(query);
+        const { results, content } = await executeWebSearch(query, controller.signal);
+        for (const r of results) {
+          if (!seenUrls.has(r.url)) {
+            seenUrls.add(r.url);
+            sources.push({ title: r.title, url: r.url });
+          }
+        }
+        reqMessages.push({ role: "tool", tool_call_id: call.id, content });
+      }
+      setSearching(null);
+      // Visual seam between the pre-search text and the answer round.
+      if (acc.length > 0 && !acc.endsWith("\n\n")) {
+        acc += acc.endsWith("\n") ? "\n" : "\n\n";
+        flushed = flush();
+      }
+    }
+    // Loop exhausted without a final answer (pathological): close out.
+    finalize({ status: "complete" });
   }
 
   function stop(): void {
     abortRef.current?.abort();
     setStreaming(false);
+    setSearching(null);
   }
 
-  return { streaming, error, send, stop };
+  return { streaming, searching, error, send, stop };
 }

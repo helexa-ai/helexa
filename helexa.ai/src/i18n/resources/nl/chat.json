@@ -23,5 +23,7 @@
   "delete": "Verwijderen",
   "cancel": "Annuleren",
   "moveTo": "Verplaatsen naar…",
-  "deleteThreadConfirm": "Deze chat en de bijbehorende berichten verwijderen?"
+  "deleteThreadConfirm": "Deze chat en de bijbehorende berichten verwijderen?",
+  "searching": "zoeken op internet naar “{{query}}”…",
+  "sources": "Bronnen"
 }

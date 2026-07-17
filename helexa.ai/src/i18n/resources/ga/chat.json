@@ -23,5 +23,7 @@
   "delete": "Scrios",
   "cancel": "Cealaigh",
   "moveTo": "Bog go…",
-  "deleteThreadConfirm": "An comhrá seo agus a theachtaireachtaí a scriosadh?"
+  "deleteThreadConfirm": "An comhrá seo agus a theachtaireachtaí a scriosadh?",
+  "searching": "ag cuardach an ghréasáin le haghaidh “{{query}}”…",
+  "sources": "Foinsí"
 }

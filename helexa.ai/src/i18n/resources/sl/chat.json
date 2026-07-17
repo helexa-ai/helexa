@@ -23,5 +23,7 @@
   "delete": "Izbriši",
   "cancel": "Prekliči",
   "moveTo": "Premakni v …",
-  "deleteThreadConfirm": "Ali želite izbrisati ta klepet in njegova sporočila?"
+  "deleteThreadConfirm": "Ali želite izbrisati ta klepet in njegova sporočila?",
+  "searching": "iskanje »{{query}}« po spletu …",
+  "sources": "Viri"
 }

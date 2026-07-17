@@ -23,5 +23,7 @@
   "delete": "Oʻchirish",
   "cancel": "Bekor qilish",
   "moveTo": "Koʻchirish…",
-  "deleteThreadConfirm": "Bu chat va uning xabarlari oʻchirilsinmi?"
+  "deleteThreadConfirm": "Bu chat va uning xabarlari oʻchirilsinmi?",
+  "searching": "internetdan «{{query}}» qidirilmoqda…",
+  "sources": "Manbalar"
 }
