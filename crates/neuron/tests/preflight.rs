@@ -73,6 +73,25 @@ fn build_api(endpoint: &str, cache_dir: &std::path::Path) -> hf_hub::api::tokio:
         .expect("build hf-hub Api")
 }
 
+fn hf_cache(cache_dir: &std::path::Path) -> hf_hub::Cache {
+    hf_hub::Cache::new(cache_dir.to_path_buf())
+}
+
+/// Lay out a repo snapshot in hf-hub's cache format so the offline
+/// fallback (#189) has something to discover: `refs/main` names a
+/// commit, `snapshots/<commit>/` holds the files.
+fn populate_cache(cache_dir: &std::path::Path, repo_path: &str, files: &[&str]) {
+    let repo = cache_dir.join(format!("models--{}", repo_path.replace('/', "--")));
+    std::fs::create_dir_all(repo.join("refs")).unwrap();
+    std::fs::write(repo.join("refs").join("main"), "cafebabe").unwrap();
+    let snap = repo.join("snapshots").join("cafebabe");
+    for f in files {
+        let p = snap.join(f);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, "").unwrap();
+    }
+}
+
 fn siblings(filenames: &[&str]) -> Value {
     json!({
         "sha": "0000000000000000000000000000000000000000",
@@ -117,7 +136,9 @@ async fn preflight_gguf_tp_rejected_over_http() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(2), Some("q6k"));
-    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
+    let err = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .unwrap_err();
     match err {
         PreflightError::TpRequiresSafetensors {
             model_id,
@@ -152,7 +173,9 @@ async fn preflight_gguf_quant_suggestion_over_http() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(1), Some("q6k"));
-    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
+    let err = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .unwrap_err();
     match err {
         PreflightError::QuantNotFound {
             requested,
@@ -188,7 +211,7 @@ async fn preflight_dense_safetensors_tp_ok() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("Qwen/Q3-30B", Some(2), Some("q5k"));
-    let plan = preflight(&api, &sid(&s.model_id), &s)
+    let plan = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
         .await
         .expect("dense+tp should succeed");
     assert_eq!(plan.tp_size, 2);
@@ -211,7 +234,7 @@ async fn preflight_gguf_single_gpu_good_quant() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("HauhauCS/Qwen3.6", Some(1), Some("q6_k_p"));
-    let plan = preflight(&api, &sid(&s.model_id), &s)
+    let plan = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
         .await
         .expect("good quant should succeed");
     assert_eq!(plan.tp_size, 1);
@@ -233,7 +256,73 @@ async fn preflight_repo_fetch_failed_on_404() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("DoesNot/Exist", Some(1), None);
-    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
+    let err = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, PreflightError::RepoFetchFailed { .. }),
+        "expected RepoFetchFailed, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn preflight_offline_falls_back_to_cache_snapshot() {
+    // Registry unreachable (nothing listens on port 1) but the repo
+    // has a warm cache snapshot — the #189 scenario: cold fleet boot
+    // with WAN/DNS lagging behind neuron. Preflight must classify
+    // from the snapshot listing and succeed.
+    let cache = tempfile::tempdir().expect("tempdir");
+    populate_cache(
+        cache.path(),
+        "Qwen/Qwen3-8B",
+        &[
+            "config.json",
+            "tokenizer.json",
+            "model.safetensors.index.json",
+            "model-00001-of-00002.safetensors",
+            "model-00002-of-00002.safetensors",
+        ],
+    );
+
+    let api = build_api("http://127.0.0.1:1", cache.path());
+    let s = spec("Qwen/Qwen3-8B", None, None);
+    let plan = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .expect("warm cache should carry an offline preflight");
+    assert!(matches!(
+        plan.format,
+        SourceFormat::DenseSafetensors { sharded: true }
+    ));
+}
+
+#[tokio::test]
+async fn preflight_offline_gguf_quant_picked_from_cache() {
+    let cache = tempfile::tempdir().expect("tempdir");
+    populate_cache(
+        cache.path(),
+        "Qwen/Q-GGUF",
+        &["Qwen-Q4_K_M.gguf", "Qwen-Q6_K.gguf"],
+    );
+
+    let api = build_api("http://127.0.0.1:1", cache.path());
+    let s = spec("Qwen/Q-GGUF", Some(1), Some("q6_k"));
+    let plan = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .expect("cached GGUF should resolve offline");
+    assert_eq!(plan.picked_quant_file.as_deref(), Some("Qwen-Q6_K.gguf"));
+}
+
+#[tokio::test]
+async fn preflight_offline_without_cache_surfaces_fetch_error() {
+    // Unreachable registry AND cold cache: nothing to fall back to,
+    // the transport error must surface as RepoFetchFailed so the
+    // startup retry loop can classify it as retryable.
+    let cache = tempfile::tempdir().expect("tempdir");
+    let api = build_api("http://127.0.0.1:1", cache.path());
+    let s = spec("Never/Cached", Some(1), None);
+    let err = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, PreflightError::RepoFetchFailed { .. }),
         "expected RepoFetchFailed, got {err:?}"
@@ -252,7 +341,9 @@ async fn preflight_empty_repo_rejected() {
 
     let api = build_api(&endpoint, cache.path());
     let s = spec("Empty/Repo", Some(1), None);
-    let err = preflight(&api, &sid(&s.model_id), &s).await.unwrap_err();
+    let err = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, PreflightError::EmptyRepo { .. }),
         "expected EmptyRepo, got {err:?}"
@@ -278,7 +369,7 @@ async fn preflight_mixed_repo_prefers_safetensors() {
     // TP=2 + quant should succeed via the dense path even though a
     // GGUF is present — the dense path handles ISQ.
     let s = spec("Mixed/Repo", Some(2), Some("q5k"));
-    let plan = preflight(&api, &sid(&s.model_id), &s)
+    let plan = preflight(&api, &hf_cache(cache.path()), &sid(&s.model_id), &s)
         .await
         .expect("mixed should succeed");
     assert!(matches!(plan.format, SourceFormat::Mixed { .. }));

@@ -62,6 +62,21 @@ impl ActivationTracker {
         s.completed.push(model_id.to_string());
     }
 
+    /// Mark a model as deferred for a later retry: clear `in_progress`
+    /// (if it matches) and push it back onto `pending`. Used by the
+    /// pre-warm retry loop (#189) so a transiently-unreachable
+    /// registry keeps the model visibly pending instead of parking it
+    /// in `failed` while retries are still scheduled.
+    pub async fn defer_loading(&self, model_id: &str) {
+        let mut s = self.inner.write().await;
+        if s.in_progress.as_deref() == Some(model_id) {
+            s.in_progress = None;
+        }
+        if !s.pending.iter().any(|m| m == model_id) {
+            s.pending.push(model_id.to_string());
+        }
+    }
+
     /// Mark a model as failed: clear `in_progress` (if it matches),
     /// append a `PreWarmFailure` carrying the rendered error chain.
     pub async fn fail_loading(&self, model_id: &str, error: &str) {

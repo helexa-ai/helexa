@@ -117,25 +117,47 @@ pub enum PreflightError {
 /// `Ok(PlacementPlan)` when the requested combination is feasible, or
 /// a structured `PreflightError` describing what's wrong.
 ///
-/// `api` must already be configured for the scheme `source_id` belongs
-/// to — caller (typically `CandleHarness::load_model`) builds it via
-/// `hf_api_for(&source_id.scheme)`. Only the `org/name` portion of the
-/// id is sent to the registry.
+/// When `repo.info()` fails but the repo has a snapshot in the local
+/// hf-hub cache, the siblings listing is reconstructed from the
+/// snapshot directory and preflight proceeds offline (#189) — a
+/// cold-booting host with warm caches must not depend on WAN/DNS
+/// being up. Downstream `repo.get()` calls short-circuit on cached
+/// files, so the whole load stays offline.
+///
+/// `api` and `cache` must already be configured for the scheme
+/// `source_id` belongs to — caller (typically
+/// `CandleHarness::load_model`) builds them via
+/// `hf_api_for(&source_id.scheme)` / `hf_cache_for(&source_id.scheme)`.
+/// Only the `org/name` portion of the id is sent to the registry.
 pub async fn preflight(
     api: &Api,
+    cache: &hf_hub::Cache,
     source_id: &ModelSourceId,
     spec: &ModelSpec,
 ) -> Result<PlacementPlan, PreflightError> {
     let repo = api.model(source_id.repo_path());
-    let info = repo
-        .info()
-        .await
-        .map_err(|e| PreflightError::RepoFetchFailed {
-            model_id: source_id.to_string(),
-            cause: format!("{e}"),
-        })?;
+    let owned_filenames: Vec<String> = match repo.info().await {
+        Ok(info) => info.siblings.into_iter().map(|s| s.rfilename).collect(),
+        Err(e) => match cached_snapshot_files(cache.path(), &source_id.repo_path()) {
+            Some(cached) => {
+                tracing::warn!(
+                    model = %source_id,
+                    error = %e,
+                    files = cached.len(),
+                    "repo info fetch failed; proceeding from local hf-hub cache snapshot"
+                );
+                cached
+            }
+            None => {
+                return Err(PreflightError::RepoFetchFailed {
+                    model_id: source_id.to_string(),
+                    cause: format!("{e}"),
+                });
+            }
+        },
+    };
 
-    let filenames: Vec<&str> = info.siblings.iter().map(|s| s.rfilename.as_str()).collect();
+    let filenames: Vec<&str> = owned_filenames.iter().map(String::as_str).collect();
     let format = classify(&filenames);
     let tp_size = spec.tensor_parallel.unwrap_or(1);
 
@@ -189,6 +211,41 @@ pub async fn preflight(
                 tp_size,
                 picked_quant_file: None,
             })
+        }
+    }
+}
+
+/// List the files of a repo's cached snapshot, mirroring hf-hub's
+/// cache layout: `<cache>/models--{org}--{name}/refs/main` names the
+/// commit, `snapshots/<commit>/` holds the per-file symlinks. Returns
+/// relative `/`-separated paths — the same shape `repo.info()` reports
+/// in `siblings[].rfilename` — or `None` when the repo has no usable
+/// snapshot (never cached, or the ref/snapshot is missing).
+pub fn cached_snapshot_files(cache_path: &std::path::Path, repo_path: &str) -> Option<Vec<String>> {
+    let repo_dir = cache_path.join(format!("models--{}", repo_path.replace('/', "--")));
+    let commit = std::fs::read_to_string(repo_dir.join("refs").join("main")).ok()?;
+    let snapshot = repo_dir.join("snapshots").join(commit.trim());
+    let mut files = Vec::new();
+    collect_snapshot_files(&snapshot, &snapshot, &mut files);
+    files.sort();
+    if files.is_empty() { None } else { Some(files) }
+}
+
+/// Recursive walk of a snapshot directory. Snapshot entries are
+/// symlinks into `blobs/`; `is_dir`/`exists` follow them, so a symlink
+/// whose blob was pruned is skipped rather than reported as present.
+fn collect_snapshot_files(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_snapshot_files(root, &path, out);
+        } else if path.exists()
+            && let Ok(rel) = path.strip_prefix(root)
+        {
+            out.push(rel.to_string_lossy().replace('\\', "/"));
         }
     }
 }
@@ -304,6 +361,59 @@ mod tests {
             tensor_parallel: tp,
             devices: None,
         }
+    }
+
+    #[test]
+    fn cached_snapshot_files_lists_relative_paths() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("models--Qwen--Qwen3-8B");
+        std::fs::create_dir_all(repo.join("refs")).unwrap();
+        std::fs::write(repo.join("refs").join("main"), "abc123\n").unwrap();
+        let snap = repo.join("snapshots").join("abc123");
+        std::fs::create_dir_all(snap.join("nested")).unwrap();
+        std::fs::write(snap.join("config.json"), "{}").unwrap();
+        std::fs::write(snap.join("model.safetensors"), "x").unwrap();
+        std::fs::write(snap.join("nested").join("tokenizer.json"), "{}").unwrap();
+
+        let files = cached_snapshot_files(tmp.path(), "Qwen/Qwen3-8B").unwrap();
+        assert_eq!(
+            files,
+            vec!["config.json", "model.safetensors", "nested/tokenizer.json"]
+        );
+    }
+
+    #[test]
+    fn cached_snapshot_files_absent_or_empty_is_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(cached_snapshot_files(tmp.path(), "No/Repo").is_none());
+
+        // Ref exists but the snapshot directory is empty — no usable
+        // listing, the caller must surface the original fetch error.
+        let repo = tmp.path().join("models--Empty--Repo");
+        std::fs::create_dir_all(repo.join("refs")).unwrap();
+        std::fs::write(repo.join("refs").join("main"), "sha").unwrap();
+        std::fs::create_dir_all(repo.join("snapshots").join("sha")).unwrap();
+        assert!(cached_snapshot_files(tmp.path(), "Empty/Repo").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cached_snapshot_files_skips_broken_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path().join("models--Pruned--Blobs");
+        std::fs::create_dir_all(repo.join("refs")).unwrap();
+        std::fs::write(repo.join("refs").join("main"), "sha").unwrap();
+        let snap = repo.join("snapshots").join("sha");
+        std::fs::create_dir_all(&snap).unwrap();
+        std::fs::write(snap.join("config.json"), "{}").unwrap();
+        std::os::unix::fs::symlink(
+            repo.join("blobs").join("gone"),
+            snap.join("model.safetensors"),
+        )
+        .unwrap();
+
+        let files = cached_snapshot_files(tmp.path(), "Pruned/Blobs").unwrap();
+        assert_eq!(files, vec!["config.json"]);
     }
 
     #[test]

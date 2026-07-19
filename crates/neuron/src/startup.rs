@@ -20,6 +20,14 @@ use tokio::signal;
 /// wedged model can't burn the whole systemd TimeoutStopSec window.
 const UNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// First delay of the pre-warm retry schedule (#189). Doubles per
+/// round up to [`RETRY_BACKOFF_CAP`]; with [`MAX_LOAD_RETRIES`] rounds
+/// the schedule is 10s, 20s, 40s, 80s, 160s, 300s — a shade over ten
+/// minutes of total patience for boot-time network lag.
+const RETRY_BACKOFF_INITIAL: Duration = Duration::from_secs(10);
+const RETRY_BACKOFF_CAP: Duration = Duration::from_secs(300);
+const MAX_LOAD_RETRIES: u32 = 6;
+
 /// Load each spec sequentially against the registry, treating
 /// individual failures as warnings rather than fatal errors.
 ///
@@ -29,6 +37,15 @@ const UNLOAD_TIMEOUT: Duration = Duration::from_secs(20);
 /// which models are still pre-warming. Caller is expected to run this
 /// in a background `tokio::spawn` task — the HTTP listener binds
 /// independently so the host is reachable during the pre-warm window.
+///
+/// Loads that fail because the source registry was unreachable
+/// (`PreflightError::RepoFetchFailed` — i.e. no network *and* no
+/// local cache snapshot) are retried with exponential backoff rather
+/// than parked in `failed` (#189): on a cold fleet boot the WAN
+/// routinely comes up minutes after neuron does, and one failed HF
+/// round-trip must not leave the host modelless until an operator
+/// restarts it. Structural failures (bad quant, empty repo, unknown
+/// harness, CUDA errors) fail immediately — retrying can't fix them.
 pub async fn load_default_models(
     registry: &HarnessRegistry,
     specs: &[ModelSpec],
@@ -59,44 +76,74 @@ pub async fn load_default_models(
         return;
     }
     tracing::info!(count = specs.len(), "loading default models");
-    for spec in specs {
-        let start = Instant::now();
-        activation.start_loading(&spec.model_id).await;
-        match registry.load_model(spec).await {
-            Ok(()) => {
-                activation.complete_loading(&spec.model_id).await;
-                tracing::info!(
-                    model = %spec.model_id,
-                    elapsed_ms = start.elapsed().as_millis() as u64,
-                    "loaded default model"
-                );
-            }
-            Err(e) => {
-                let rendered = format!("{e:#}");
-                activation.fail_loading(&spec.model_id, &rendered).await;
-                // When the underlying failure is a preflight rejection,
-                // pull the structured fields out so journalctl shows
-                // `reason=tp_requires_safetensors detail="..."` instead
-                // of an opaque "fetch config.json … 404". The operator
-                // can act on the structured form directly.
-                if let Some(pf) = e.downcast_ref::<PreflightError>() {
-                    tracing::warn!(
+    let mut remaining: Vec<&ModelSpec> = specs.iter().collect();
+    let mut backoff = RETRY_BACKOFF_INITIAL;
+    let mut attempt = 0u32;
+    loop {
+        let mut deferred: Vec<&ModelSpec> = Vec::new();
+        for spec in remaining {
+            let start = Instant::now();
+            activation.start_loading(&spec.model_id).await;
+            match registry.load_model(spec).await {
+                Ok(()) => {
+                    activation.complete_loading(&spec.model_id).await;
+                    tracing::info!(
                         model = %spec.model_id,
-                        reason = preflight_kind(pf),
-                        detail = %pf,
                         elapsed_ms = start.elapsed().as_millis() as u64,
-                        "failed to load default model, continuing"
+                        "loaded default model"
                     );
-                } else {
-                    tracing::warn!(
-                        model = %spec.model_id,
-                        error = %rendered,
-                        elapsed_ms = start.elapsed().as_millis() as u64,
-                        "failed to load default model, continuing"
-                    );
+                }
+                Err(e) => {
+                    let retryable = attempt < MAX_LOAD_RETRIES
+                        && matches!(
+                            e.downcast_ref::<PreflightError>(),
+                            Some(PreflightError::RepoFetchFailed { .. })
+                        );
+                    if retryable {
+                        activation.defer_loading(&spec.model_id).await;
+                        tracing::warn!(
+                            model = %spec.model_id,
+                            error = %format!("{e:#}"),
+                            attempt,
+                            retry_in_secs = backoff.as_secs(),
+                            "repo fetch failed during pre-warm, will retry"
+                        );
+                        deferred.push(spec);
+                        continue;
+                    }
+                    let rendered = format!("{e:#}");
+                    activation.fail_loading(&spec.model_id, &rendered).await;
+                    // When the underlying failure is a preflight rejection,
+                    // pull the structured fields out so journalctl shows
+                    // `reason=tp_requires_safetensors detail="..."` instead
+                    // of an opaque "fetch config.json … 404". The operator
+                    // can act on the structured form directly.
+                    if let Some(pf) = e.downcast_ref::<PreflightError>() {
+                        tracing::warn!(
+                            model = %spec.model_id,
+                            reason = preflight_kind(pf),
+                            detail = %pf,
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "failed to load default model, continuing"
+                        );
+                    } else {
+                        tracing::warn!(
+                            model = %spec.model_id,
+                            error = %rendered,
+                            elapsed_ms = start.elapsed().as_millis() as u64,
+                            "failed to load default model, continuing"
+                        );
+                    }
                 }
             }
         }
+        if deferred.is_empty() {
+            break;
+        }
+        remaining = deferred;
+        tokio::time::sleep(backoff).await;
+        backoff = (backoff * 2).min(RETRY_BACKOFF_CAP);
+        attempt += 1;
     }
     activation.mark_ready().await;
 }

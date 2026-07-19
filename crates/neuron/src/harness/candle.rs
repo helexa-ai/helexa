@@ -1933,6 +1933,22 @@ impl CandleHarness {
             .with_context(|| format!("build hf-hub API for scheme '{scheme}'"))
     }
 
+    /// Resolve the hf-hub cache for the given scheme, mirroring the
+    /// cache-dir selection in [`Self::hf_api_for`]: the source's
+    /// configured `cache_dir` when set, otherwise hf-hub's default
+    /// (`~/.cache/huggingface/hub`). Used by preflight's offline
+    /// fallback (#189) to inspect the snapshot the Api would read.
+    pub(crate) fn hf_cache_for(&self, scheme: &str) -> Result<hf_hub::Cache> {
+        let src = self
+            .sources
+            .get(scheme)
+            .ok_or_else(|| anyhow::anyhow!("no source configured for scheme '{scheme}'"))?;
+        Ok(match &src.cache_dir {
+            Some(dir) => hf_hub::Cache::new(dir.clone()),
+            None => hf_hub::Cache::default(),
+        })
+    }
+
     /// Resolve a dense (bf16/fp16 safetensors) model to its local file
     /// paths.
     ///
@@ -3360,7 +3376,8 @@ impl Harness for CandleHarness {
         // re-run their own substring match — but the structured error
         // surface is the main payoff.
         let api = self.hf_api_for(&source_id.scheme)?;
-        super::preflight::preflight(&api, &source_id, spec)
+        let cache = self.hf_cache_for(&source_id.scheme)?;
+        super::preflight::preflight(&api, &cache, &source_id, spec)
             .await
             .map_err(anyhow::Error::new)?;
 
