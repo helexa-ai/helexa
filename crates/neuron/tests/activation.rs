@@ -120,3 +120,146 @@ async fn test_load_default_models_skipped_on_driver_mismatch() {
         snapshot.failed[0].error
     );
 }
+
+/// Mock harness for the #189 retry tests: fails `load_model` with a
+/// `PreflightError::RepoFetchFailed` for the first `fail_first` calls,
+/// then succeeds. Counts attempts so the tests can assert the retry
+/// schedule actually ran.
+struct FlakyFetchHarness {
+    fail_first: u32,
+    calls: std::sync::atomic::AtomicU32,
+    loaded: std::sync::Mutex<Vec<String>>,
+}
+
+impl FlakyFetchHarness {
+    fn new(fail_first: u32) -> Self {
+        Self {
+            fail_first,
+            calls: std::sync::atomic::AtomicU32::new(0),
+            loaded: std::sync::Mutex::new(vec![]),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl cortex_core::harness::Harness for FlakyFetchHarness {
+    fn name(&self) -> &str {
+        "candle"
+    }
+
+    async fn health(&self) -> cortex_core::harness::HarnessHealth {
+        cortex_core::harness::HarnessHealth {
+            name: "candle".into(),
+            running: true,
+            uptime_secs: None,
+        }
+    }
+
+    async fn list_models(&self) -> anyhow::Result<Vec<cortex_core::harness::ModelInfo>> {
+        Ok(vec![])
+    }
+
+    async fn load_model(&self, spec: &ModelSpec) -> anyhow::Result<()> {
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n < self.fail_first {
+            return Err(anyhow::Error::new(
+                neuron::harness::preflight::PreflightError::RepoFetchFailed {
+                    model_id: spec.model_id.clone(),
+                    cause: "error sending request (mock)".into(),
+                },
+            ));
+        }
+        self.loaded.lock().unwrap().push(spec.model_id.clone());
+        Ok(())
+    }
+
+    async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn inference_endpoint(&self, _model_id: &str) -> Option<String> {
+        None
+    }
+}
+
+fn flaky_registry(fail_first: u32) -> (HarnessRegistry, std::sync::Arc<FlakyFetchHarness>) {
+    let harness = std::sync::Arc::new(FlakyFetchHarness::new(fail_first));
+    let mut registry = HarnessRegistry::new();
+    registry.register(harness.clone());
+    (registry, harness)
+}
+
+fn qwen_spec() -> ModelSpec {
+    ModelSpec {
+        model_id: "Qwen/Qwen3-8B".into(),
+        harness: "candle".into(),
+        quant: None,
+        tensor_parallel: None,
+        devices: None,
+    }
+}
+
+// start_paused: the retry backoff sleeps auto-advance, so the whole
+// ten-minute schedule runs in milliseconds of wall clock.
+#[tokio::test(start_paused = true)]
+async fn test_load_default_models_retries_transient_repo_fetch() {
+    let (registry, harness) = flaky_registry(2);
+    let specs = vec![qwen_spec()];
+    let activation = ActivationTracker::new(&specs);
+    startup::load_default_models(&registry, &specs, &activation, None).await;
+
+    let snapshot = activation.snapshot().await;
+    assert_eq!(snapshot.state, ActivationState::Ready);
+    assert!(snapshot.failed.is_empty(), "failed: {:?}", snapshot.failed);
+    assert!(snapshot.pending.is_empty());
+    assert_eq!(snapshot.completed, vec!["Qwen/Qwen3-8B".to_string()]);
+    assert_eq!(
+        harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+        3,
+        "two failures then one success"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_load_default_models_repo_fetch_exhausts_retries() {
+    // Harness never recovers: after the initial attempt plus
+    // MAX_LOAD_RETRIES (6) retry rounds the model must land in
+    // `failed` and the tracker must still flip to ready.
+    let (registry, harness) = flaky_registry(u32::MAX);
+    let specs = vec![qwen_spec()];
+    let activation = ActivationTracker::new(&specs);
+    startup::load_default_models(&registry, &specs, &activation, None).await;
+
+    let snapshot = activation.snapshot().await;
+    assert_eq!(snapshot.state, ActivationState::Ready);
+    assert!(snapshot.completed.is_empty());
+    assert!(snapshot.pending.is_empty());
+    assert_eq!(snapshot.failed.len(), 1);
+    assert_eq!(snapshot.failed[0].model_id, "Qwen/Qwen3-8B");
+    assert_eq!(
+        harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+        7,
+        "initial attempt + MAX_LOAD_RETRIES rounds"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_load_default_models_structural_failure_not_retried() {
+    // An unknown harness is a structural failure, not a transient
+    // fetch error — exactly one attempt, straight to `failed`.
+    let (registry, harness) = flaky_registry(u32::MAX);
+    let mut spec = qwen_spec();
+    spec.harness = "no-such-harness".into();
+    let specs = vec![spec];
+    let activation = ActivationTracker::new(&specs);
+    startup::load_default_models(&registry, &specs, &activation, None).await;
+
+    let snapshot = activation.snapshot().await;
+    assert_eq!(snapshot.state, ActivationState::Ready);
+    assert_eq!(snapshot.failed.len(), 1);
+    assert_eq!(
+        harness.calls.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "registry rejects the spec before the harness is reached"
+    );
+}
