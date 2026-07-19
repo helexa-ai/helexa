@@ -26,6 +26,7 @@ import {
 } from "../data/repositories";
 import { useChat } from "../lib/useChat";
 import { useAuth } from "../auth/context";
+import { accountApi } from "../api/account";
 
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
 const AUTH_MODEL = import.meta.env.VITE_DEFAULT_MODEL || "helexa/balanced";
@@ -82,6 +83,26 @@ export default function Chat() {
   // The cap only applies to anonymous visitors; signed-in users are gated by
   // their account allocation (enforced upstream), not a client counter.
   const capped = !authed && anonCount >= ANON_MESSAGE_CAP;
+
+  // Anonymous grounding gate (#191): a server-driven flag so the operator
+  // can kill anonymous web search with a config flip, no site rebuild.
+  // Fail closed — until /api/features answers, anonymous sessions run
+  // tool-less. Signed-in sessions always get tools.
+  const [anonWebSearch, setAnonWebSearch] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    accountApi()
+      .features()
+      .then((f) => {
+        if (!cancelled) setAnonWebSearch(f.anon_web_search);
+      })
+      .catch(() => {
+        /* stay fail-closed */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Signed in but no local key enabled for chat → can't send as yourself yet.
   const needsKey = authed && !chatApiKey;
 
@@ -99,6 +120,7 @@ export default function Chat() {
     model,
     apiKey: authed ? chatApiKey : undefined,
     locale: i18n.language,
+    toolsEnabled: authed || anonWebSearch,
   });
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);

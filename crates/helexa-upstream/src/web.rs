@@ -42,6 +42,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         ));
 
     Router::new()
+        .route("/web/v1/features", get(features))
         .route("/web/v1/register", post(register))
         .route("/web/v1/verify", post(verify))
         .route("/web/v1/login", post(login))
@@ -148,6 +149,20 @@ async fn account_id_for(state: &AppState, user_id: Uuid) -> WebResult<Uuid> {
         .await?;
     row.map(|r| r.get::<Uuid, _>("id"))
         .ok_or(WebError::Internal)
+}
+
+// ── feature gates ───────────────────────────────────────────────────
+
+/// Public, unauthenticated: the product feature gates the SPA reads at
+/// chat load. Anonymous grounding (#191) is gated here so an operator
+/// can kill it with a config edit + restart instead of a site rebuild.
+/// The SPA fails closed for anonymous sessions when this endpoint is
+/// unreachable.
+async fn features(State(state): State<AppState>) -> Response {
+    Json(json!({
+        "anon_web_search": state.config.features.anon_web_search,
+    }))
+    .into_response()
 }
 
 // ── auth lifecycle ──────────────────────────────────────────────────

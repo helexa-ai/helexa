@@ -26,6 +26,8 @@ pub struct UpstreamConfig {
     pub auth: AuthSettings,
     #[serde(default)]
     pub email: EmailSettings,
+    #[serde(default)]
+    pub features: FeatureSettings,
 }
 
 /// `[auth]` — web-session signing + token lifetimes (B4). Web sessions are
@@ -182,6 +184,33 @@ impl Default for AbuseSettings {
     }
 }
 
+/// `[features]` — product feature gates the frontend reads from the
+/// public `GET /web/v1/features` endpoint. These flip product behaviour
+/// at runtime (config edit + restart, no site rebuild); they are not
+/// security boundaries — the backing endpoints keep their own limits.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeatureSettings {
+    /// Offer the web-grounding tools (web_search / read_page) to
+    /// anonymous chat sessions. Kill switch for tool abuse on the free
+    /// tier: set to `false` and restart helexa-upstream; the SPA stops
+    /// offering tools to anonymous visitors on their next page load.
+    /// Signed-in sessions are unaffected by this flag.
+    #[serde(default = "default_true")]
+    pub anon_web_search: bool,
+}
+
+impl Default for FeatureSettings {
+    fn default() -> Self {
+        Self {
+            anon_web_search: default_true(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
 fn default_listen() -> String {
     "0.0.0.0:8090".into()
 }
@@ -255,6 +284,9 @@ url = "postgres://localhost/helexa"
             assert_eq!(cfg.grant.free_token_grant, 1_000_000);
             assert_eq!(cfg.abuse.fingerprint_account_threshold, 5);
             assert_eq!(cfg.db.max_connections, 16);
+            // Anonymous grounding (#191) defaults ON; operators disable
+            // it with an explicit [features] anon_web_search = false.
+            assert!(cfg.features.anon_web_search);
             Ok(())
         });
     }

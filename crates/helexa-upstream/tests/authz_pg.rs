@@ -36,6 +36,7 @@ async fn spawn_or_skip(test: &str) -> Option<(String, PgPool)> {
         authz: Default::default(),
         auth: Default::default(),
         email: Default::default(),
+        features: Default::default(),
     };
     config.client_auth.tokens.push(ClientToken {
         token: CLIENT_TOKEN.into(),

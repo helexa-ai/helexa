@@ -50,3 +50,13 @@ app_base_url = "https://helexa.ai"
 provider = "log"
 # smtp_url = "smtp://user:pass@smtp.example.com:587"
 from_addr = "helexa <no-reply@helexa.ai>"
+
+[features]
+# Product feature gates the helexa.ai SPA reads from the public
+# GET /web/v1/features endpoint at chat load. Runtime kill switches:
+# flip + restart helexa-upstream, no site rebuild.
+#
+# Offer web grounding tools (web_search / read_page) to anonymous chat
+# sessions (#191). The SPA fails closed for anonymous visitors when the
+# endpoint is unreachable; signed-in sessions always get tools.
+# anon_web_search = true
