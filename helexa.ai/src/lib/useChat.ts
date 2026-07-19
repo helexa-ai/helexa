@@ -50,6 +50,13 @@ export function useChat(opts: {
   model: string;
   apiKey?: string;
   locale?: string;
+  /**
+   * Whether to offer the grounding tools (web_search / read_page) on
+   * this session. Anonymous sessions gate this on the server-driven
+   * `anon_web_search` feature flag (#191); signed-in sessions pass
+   * `true` unconditionally. Also selects the tool-aware system prompt.
+   */
+  toolsEnabled: boolean;
 }): UseChat {
   const [streaming, setStreaming] = useState(false);
   const [activity, setActivity] = useState<ToolActivity | null>(null);
@@ -71,7 +78,7 @@ export function useChat(opts: {
     const reqMessages: ChatMessage[] = [
       {
         role: "system",
-        content: buildSystemPrompt(opts.model, opts.locale ?? "en", true),
+        content: buildSystemPrompt(opts.model, opts.locale ?? "en", opts.toolsEnabled),
       },
       ...history
         .filter((m) => m.status !== "error")
@@ -136,9 +143,10 @@ export function useChat(opts: {
     for (let round = 0; round < MAX_TOOL_ROUNDS + 1; round++) {
       const roundStart = acc.length;
       const toolCalls: ToolCall[] = [];
-      // Only offer tools while budget remains for another round; the
-      // last pass runs tool-less so the model must answer.
-      const offerTools = round < MAX_TOOL_ROUNDS;
+      // Only offer tools when the session has them enabled and budget
+      // remains for another round; the last pass runs tool-less so the
+      // model must answer.
+      const offerTools = opts.toolsEnabled && round < MAX_TOOL_ROUNDS;
 
       await streamChatCompletion(
         {

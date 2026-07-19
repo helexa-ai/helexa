@@ -8,6 +8,7 @@ import {
   type AccountBalance,
   type ApiKeySummary,
   type CreatedKey,
+  type FeatureFlags,
   type Session,
 } from "./types";
 
@@ -33,6 +34,8 @@ export interface AccountApi {
     limitValue: number,
   ): Promise<void>;
   redeem(token: string, code: string): Promise<AccountBalance>;
+  /** Public (no token): product feature gates for this deployment (#191). */
+  features(): Promise<FeatureFlags>;
 }
 
 const BASE = (import.meta.env.VITE_ACCOUNT_BASE_URL || "/api").replace(/\/$/, "");
@@ -126,6 +129,9 @@ class RealAccountApi implements AccountApi {
       body: JSON.stringify({ code }),
     });
   }
+  features() {
+    return call<FeatureFlags>("/features");
+  }
 }
 
 // ── Mock (VITE_USE_MOCK_ACCOUNT_API) ────────────────────────────────
@@ -199,6 +205,9 @@ class MockAccountApi implements AccountApi {
     }
     this.total += 500_000;
     return this.account();
+  }
+  async features() {
+    return { anon_web_search: true };
   }
 }
 

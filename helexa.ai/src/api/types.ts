@@ -33,6 +33,16 @@ export interface Session {
   expires_in: number;
 }
 
+/**
+ * Product feature gates (#191), served unauthenticated from
+ * GET /web/v1/features. Operators flip these in helexa-upstream.toml
+ * to change product behaviour without a site rebuild.
+ */
+export interface FeatureFlags {
+  /** Offer web grounding tools to anonymous chat sessions. */
+  anon_web_search: boolean;
+}
+
 /** Typed error carrying the backend's machine-readable code. */
 export class ApiError extends Error {
   code: string;
