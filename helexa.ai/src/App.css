@@ -957,6 +957,25 @@ a:hover {
 .hx-md .hx-table-wrap {
     margin-block: 0 0.75rem;
 }
+
+/* Hold prose to a readable measure. The bubble runs to 80% of the thread,
+ * which on a wide window is ~120 characters per line — well past the
+ * ~65-75ch that reads comfortably. Cap the text blocks rather than the
+ * bubble, because code and tables genuinely want the full width. Applied
+ * at the top level only: paragraphs nested inside a list or a quote are
+ * already bounded by their capped parent. */
+.hx-md > p,
+.hx-md > ul,
+.hx-md > ol,
+.hx-md > blockquote,
+.hx-md > h1,
+.hx-md > h2,
+.hx-md > h3,
+.hx-md > h4,
+.hx-md > h5,
+.hx-md > h6 {
+    max-width: 74ch;
+}
 .hx-md h1,
 .hx-md h2,
 .hx-md h3,
