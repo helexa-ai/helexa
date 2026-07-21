@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "این گفتگو و پیام‌های آن حذف شود؟",
   "searching": "در حال جستجوی «{{query}}» در وب…",
   "sources": "منابع",
-  "reading": "در حال خواندن {{host}}…"
+  "reading": "در حال خواندن {{host}}…",
+  "copyCode": "کپی کد",
+  "copiedCode": "کپی شد"
 }

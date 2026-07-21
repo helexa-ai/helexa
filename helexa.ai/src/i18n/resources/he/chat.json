@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "למחוק את הצ'אט הזה ואת ההודעות שלו?",
   "searching": "מתבצע חיפוש ברשת עבור ”{{query}}“…",
   "sources": "מקורות",
-  "reading": "מתבצעת קריאה של {{host}}…"
+  "reading": "מתבצעת קריאה של {{host}}…",
+  "copyCode": "העתקת הקוד",
+  "copiedCode": "הועתק"
 }

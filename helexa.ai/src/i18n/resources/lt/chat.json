@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Ištrinti šį pokalbį ir jo žinutes?",
   "searching": "internete ieškoma „{{query}}“…",
   "sources": "Šaltiniai",
-  "reading": "skaitoma {{host}}…"
+  "reading": "skaitoma {{host}}…",
+  "copyCode": "Kopijuoti kodą",
+  "copiedCode": "Nukopijuota"
 }

@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Избрисати ово ћаскање и његове поруке?",
   "searching": "претражујем веб за „{{query}}”…",
   "sources": "Извори",
-  "reading": "читам {{host}}…"
+  "reading": "читам {{host}}…",
+  "copyCode": "Копирај кôд",
+  "copiedCode": "Копирано"
 }

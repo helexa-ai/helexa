@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Supprimer cette conversation et ses messages ?",
   "searching": "recherche sur le web de « {{query}} »…",
   "sources": "Sources",
-  "reading": "lecture de {{host}}…"
+  "reading": "lecture de {{host}}…",
+  "copyCode": "Copier le code",
+  "copiedCode": "Copié"
 }

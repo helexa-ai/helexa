@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Осы чат пен оның хабарламалары жойылсын ба?",
   "searching": "интернеттен «{{query}}» ізделуде…",
   "sources": "Дереккөздер",
-  "reading": "{{host}} оқылуда…"
+  "reading": "{{host}} оқылуда…",
+  "copyCode": "Кодты көшіру",
+  "copiedCode": "Көшірілді"
 }

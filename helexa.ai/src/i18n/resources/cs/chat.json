@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Smazat tento chat a jeho zprávy?",
   "searching": "vyhledávání „{{query}}“ na webu…",
   "sources": "Zdroje",
-  "reading": "čtení {{host}}…"
+  "reading": "čtení {{host}}…",
+  "copyCode": "Kopírovat kód",
+  "copiedCode": "Zkopírováno"
 }

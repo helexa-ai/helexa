@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Izbrisati ovaj razgovor i njegove poruke?",
   "searching": "pretraživanje weba za „{{query}}”…",
   "sources": "Izvori",
-  "reading": "čitanje {{host}}…"
+  "reading": "čitanje {{host}}…",
+  "copyCode": "Kopiraj kôd",
+  "copiedCode": "Kopirano"
 }

@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Susa le ngxoxo nemiyalezo yayo?",
   "searching": "kuseshwa “{{query}}” kuwebhu…",
   "sources": "Imithombo",
-  "reading": "kufundwa {{host}}…"
+  "reading": "kufundwa {{host}}…",
+  "copyCode": "Kopisha ikhodi",
+  "copiedCode": "Kukopishiwe"
 }

@@ -923,16 +923,306 @@ a:hover {
 /* Message bubbles. */
 .hx-bubble {
     max-width: 80%;
-    white-space: pre-wrap;
+    min-width: 0;
     padding: 0.65rem 1rem;
     border-radius: 1rem;
     line-height: 1.55;
     border: 1px solid var(--color-border-subtle);
     background-color: var(--color-bg-elevated);
 }
+/* User turns are literal text, so newlines are all the structure there
+ * is. Assistant turns are markdown (.hx-md) and must NOT get pre-wrap —
+ * it would double every gap the renderer already produces. */
 .hx-bubble-user {
+    white-space: pre-wrap;
     background-color: var(--color-accent-soft);
     border-color: color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+/* ── Rendered markdown (assistant turns, #194) ───────────────────────── */
+
+/* The bubble supplies the padding; the first and last blocks inside must
+ * not add to it, or every message sits crooked in its own box. */
+.hx-md > :first-child {
+    margin-top: 0;
+}
+.hx-md > :last-child {
+    margin-bottom: 0;
+}
+.hx-md p,
+.hx-md ul,
+.hx-md ol,
+.hx-md blockquote,
+.hx-md .hx-code,
+.hx-md .hx-table-wrap {
+    margin-block: 0 0.75rem;
+}
+.hx-md h1,
+.hx-md h2,
+.hx-md h3,
+.hx-md h4,
+.hx-md h5,
+.hx-md h6 {
+    margin-block: 1.1rem 0.5rem;
+    font-weight: 650;
+    line-height: 1.3;
+}
+/* Chat headings are section markers inside a paragraph-sized box, not
+ * page titles — hold them near body size so h1 doesn't shout. */
+.hx-md h1 {
+    font-size: 1.3rem;
+}
+.hx-md h2 {
+    font-size: 1.15rem;
+}
+.hx-md h3 {
+    font-size: 1.03rem;
+}
+.hx-md h4,
+.hx-md h5,
+.hx-md h6 {
+    font-size: 1rem;
+}
+/* Logical properties throughout: the site serves RTL locales. */
+.hx-md ul,
+.hx-md ol {
+    padding-inline-start: 1.4rem;
+}
+.hx-md li {
+    margin-block: 0.15rem;
+}
+.hx-md li > p {
+    margin-block: 0;
+}
+.hx-md li::marker {
+    color: var(--color-text-muted);
+}
+.hx-md ul:has(> li > input[type="checkbox"]) {
+    list-style: none;
+    padding-inline-start: 0.25rem;
+}
+.hx-md li > input[type="checkbox"] {
+    margin-inline-end: 0.45rem;
+    accent-color: var(--color-accent);
+}
+/* :root declares `color-scheme: light dark`, so native controls follow the
+ * SYSTEM preference — a task-list checkbox came out dark on the light
+ * theme. Pin the scheme for rendered markdown to the app's theme. */
+:root[data-theme="dark"] .hx-md {
+    color-scheme: dark;
+}
+:root[data-theme="light"] .hx-md {
+    color-scheme: light;
+}
+.hx-md blockquote {
+    padding-inline-start: 0.85rem;
+    border-inline-start: 3px solid var(--color-border-strong);
+    color: var(--color-text-muted);
+}
+.hx-md hr {
+    margin-block: 1rem;
+    border: 0;
+    border-top: 1px solid var(--color-border-subtle);
+    opacity: 1;
+}
+.hx-md a {
+    color: var(--color-accent);
+    text-decoration-color: color-mix(in srgb, var(--color-accent) 40%, transparent);
+    text-underline-offset: 0.15em;
+}
+.hx-md img {
+    max-width: 100%;
+    border-radius: 0.5rem;
+}
+/* Inline code only — fenced blocks are re-styled under .hx-code below. */
+.hx-md :not(pre) > code {
+    /* Bootstrap paints bare <code> magenta; the chip already separates it
+     * from the prose, so keep it in the body colour. */
+    color: var(--color-text);
+    padding: 0.1rem 0.32rem;
+    font-size: 0.88em;
+    border-radius: 0.35rem;
+    background-color: var(--color-bg-subtle);
+    border: 1px solid var(--color-border-subtle);
+    overflow-wrap: anywhere;
+}
+
+/* Tables scroll inside the bubble instead of widening it. */
+.hx-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.6rem;
+}
+.hx-md table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.hx-md th,
+.hx-md td {
+    padding: 0.4rem 0.65rem;
+    text-align: start;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+.hx-md tr:last-child > td {
+    border-bottom: 0;
+}
+.hx-md thead th {
+    background-color: var(--color-bg-subtle);
+    font-weight: 600;
+}
+
+/* Fenced code block: chrome bar (language + copy) over the <pre>. */
+.hx-code {
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background-color: var(--color-bg-subtle);
+}
+.hx-code-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.15rem 0.35rem 0.15rem 0.85rem;
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+.hx-code-lang {
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+}
+.hx-code-copy {
+    padding: 0.25rem 0.4rem;
+    color: var(--color-text-muted);
+}
+.hx-code > pre {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    font-size: 0.88rem;
+    /* Code is not prose: never mirror it, whatever the page direction. */
+    direction: ltr;
+    text-align: left;
+}
+
+/* The streaming caret is appended to the markdown source rather than
+ * styled in here (see Markdown.tsx) — a ::after on the last block lands
+ * below the text whenever that block is a list or a quote. This rule
+ * only covers the moment before the first token, when there is no
+ * source to append to. */
+.hx-md-streaming:empty::after {
+    content: "▋";
+    opacity: 0.5;
+}
+
+/* ── Syntax highlighting tokens (rehype-highlight / hljs classes) ─────
+ *
+ * Hand-written against the site palette rather than importing one of
+ * highlight.js's themes: those ship a full stylesheet each for light and
+ * dark and would need import-order juggling to switch on [data-theme].
+ * These are the token classes lowlight's common pack actually emits. */
+
+.hljs-comment,
+.hljs-quote {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-type,
+.hljs-doctag {
+    color: #7c3aed;
+}
+.hljs-string,
+.hljs-regexp,
+.hljs-addition,
+.hljs-meta-string {
+    color: #047857;
+}
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-link,
+.hljs-selector-attr,
+.hljs-selector-pseudo {
+    color: #b45309;
+}
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class {
+    color: #1d4ed8;
+}
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params,
+.hljs-built_in,
+.hljs-class .hljs-title {
+    color: #0e7490;
+}
+.hljs-meta,
+.hljs-tag,
+.hljs-punctuation {
+    color: var(--color-text-muted);
+}
+.hljs-deletion {
+    color: #b91c1c;
+}
+.hljs-emphasis {
+    font-style: italic;
+}
+.hljs-strong {
+    font-weight: 600;
+}
+
+:root[data-theme="dark"] .hljs-keyword,
+:root[data-theme="dark"] .hljs-selector-tag,
+:root[data-theme="dark"] .hljs-literal,
+:root[data-theme="dark"] .hljs-type,
+:root[data-theme="dark"] .hljs-doctag {
+    color: #c084fc;
+}
+:root[data-theme="dark"] .hljs-string,
+:root[data-theme="dark"] .hljs-regexp,
+:root[data-theme="dark"] .hljs-addition,
+:root[data-theme="dark"] .hljs-meta-string {
+    color: #6ee7b7;
+}
+:root[data-theme="dark"] .hljs-number,
+:root[data-theme="dark"] .hljs-symbol,
+:root[data-theme="dark"] .hljs-bullet,
+:root[data-theme="dark"] .hljs-link,
+:root[data-theme="dark"] .hljs-selector-attr,
+:root[data-theme="dark"] .hljs-selector-pseudo {
+    color: #fcd34d;
+}
+:root[data-theme="dark"] .hljs-title,
+:root[data-theme="dark"] .hljs-title.function_,
+:root[data-theme="dark"] .hljs-section,
+:root[data-theme="dark"] .hljs-name,
+:root[data-theme="dark"] .hljs-selector-id,
+:root[data-theme="dark"] .hljs-selector-class {
+    color: #93c5fd;
+}
+:root[data-theme="dark"] .hljs-attr,
+:root[data-theme="dark"] .hljs-attribute,
+:root[data-theme="dark"] .hljs-variable,
+:root[data-theme="dark"] .hljs-template-variable,
+:root[data-theme="dark"] .hljs-params,
+:root[data-theme="dark"] .hljs-built_in,
+:root[data-theme="dark"] .hljs-class .hljs-title {
+    color: #67e8f9;
+}
+:root[data-theme="dark"] .hljs-deletion {
+    color: #fca5a5;
 }
 
 /* ── Scrollbar theming (WebKit) ──────────────────────────────────────── */

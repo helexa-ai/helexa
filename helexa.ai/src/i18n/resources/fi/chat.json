@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Poistetaanko tämä keskustelu ja sen viestit?",
   "searching": "haetaan verkosta ”{{query}}”…",
   "sources": "Lähteet",
-  "reading": "luetaan {{host}}…"
+  "reading": "luetaan {{host}}…",
+  "copyCode": "Kopioi koodi",
+  "copiedCode": "Kopioitu"
 }

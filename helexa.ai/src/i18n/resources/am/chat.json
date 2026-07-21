@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "ይህ ውይይት እና መልዕክቶቹ ይሰረዙ?",
   "searching": "በድር ላይ «{{query}}» እየተፈለገ ነው…",
   "sources": "ምንጮች",
-  "reading": "{{host}} እየተነበበ ነው…"
+  "reading": "{{host}} እየተነበበ ነው…",
+  "copyCode": "ኮድ ቅዳ",
+  "copiedCode": "ተቀድቷል"
 }

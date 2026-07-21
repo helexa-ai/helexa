@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Vai dzēst šo sarunu un tās ziņojumus?",
   "searching": "meklē tīmeklī „{{query}}“…",
   "sources": "Avoti",
-  "reading": "lasa {{host}}…"
+  "reading": "lasa {{host}}…",
+  "copyCode": "Kopēt kodu",
+  "copiedCode": "Nokopēts"
 }

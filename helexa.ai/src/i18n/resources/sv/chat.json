@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Ta bort den här chatten och dess meddelanden?",
   "searching": "söker på webben efter ”{{query}}”…",
   "sources": "Källor",
-  "reading": "läser {{host}}…"
+  "reading": "läser {{host}}…",
+  "copyCode": "Kopiera kod",
+  "copiedCode": "Kopierad"
 }

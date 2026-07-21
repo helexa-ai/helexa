@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Diesen Chat und seine Nachrichten löschen?",
   "searching": "das Web wird nach „{{query}}“ durchsucht…",
   "sources": "Quellen",
-  "reading": "{{host}} wird gelesen…"
+  "reading": "{{host}} wird gelesen…",
+  "copyCode": "Code kopieren",
+  "copiedCode": "Kopiert"
 }
