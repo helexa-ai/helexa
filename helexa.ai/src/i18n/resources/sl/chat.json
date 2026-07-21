@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Ali želite izbrisati ta klepet in njegova sporočila?",
   "searching": "iskanje »{{query}}« po spletu …",
   "sources": "Viri",
-  "reading": "branje {{host}} …"
+  "reading": "branje {{host}} …",
+  "copyCode": "Kopiraj kodo",
+  "copiedCode": "Kopirano"
 }

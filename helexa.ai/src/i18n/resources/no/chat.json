@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Slette denne chatten og meldingene i den?",
   "searching": "søker på nettet etter «{{query}}»…",
   "sources": "Kilder",
-  "reading": "leser {{host}}…"
+  "reading": "leser {{host}}…",
+  "copyCode": "Kopier kode",
+  "copiedCode": "Kopiert"
 }

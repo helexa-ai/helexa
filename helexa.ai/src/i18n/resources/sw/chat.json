@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Futa soga hii na jumbe zake?",
   "searching": "inatafuta “{{query}}” kwenye wavuti…",
   "sources": "Vyanzo",
-  "reading": "inasoma {{host}}…"
+  "reading": "inasoma {{host}}…",
+  "copyCode": "Nakili msimbo",
+  "copiedCode": "Imenakiliwa"
 }

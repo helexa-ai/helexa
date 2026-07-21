@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Видалити цей чат і його повідомлення?",
   "searching": "шукаємо в інтернеті «{{query}}»…",
   "sources": "Джерела",
-  "reading": "читаємо {{host}}…"
+  "reading": "читаємо {{host}}…",
+  "copyCode": "Копіювати код",
+  "copiedCode": "Скопійовано"
 }

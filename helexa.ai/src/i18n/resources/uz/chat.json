@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Bu chat va uning xabarlari oʻchirilsinmi?",
   "searching": "internetdan «{{query}}» qidirilmoqda…",
   "sources": "Manbalar",
-  "reading": "{{host}} oʻqilmoqda…"
+  "reading": "{{host}} oʻqilmoqda…",
+  "copyCode": "Kodni nusxalash",
+  "copiedCode": "Nusxalandi"
 }

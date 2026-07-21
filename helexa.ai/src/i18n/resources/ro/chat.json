@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Ștergi această conversație și mesajele ei?",
   "searching": "se caută pe web „{{query}}”…",
   "sources": "Surse",
-  "reading": "se citește {{host}}…"
+  "reading": "se citește {{host}}…",
+  "copyCode": "Copiază codul",
+  "copiedCode": "Copiat"
 }

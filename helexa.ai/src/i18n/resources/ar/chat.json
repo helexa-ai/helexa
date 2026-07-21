@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "هل تريد حذف هذه المحادثة ورسائلها؟",
   "searching": "يجري البحث في الويب عن «{{query}}»…",
   "sources": "المصادر",
-  "reading": "تجري قراءة {{host}}…"
+  "reading": "تجري قراءة {{host}}…",
+  "copyCode": "نسخ الكود",
+  "copiedCode": "تم النسخ"
 }

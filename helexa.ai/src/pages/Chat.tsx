@@ -12,6 +12,7 @@ import {
   LuTrash2,
   LuX,
 } from "react-icons/lu";
+import Markdown from "../components/Markdown";
 import { db } from "../data/db";
 import {
   archiveProject,
@@ -298,7 +299,18 @@ export default function Chat() {
                 <div
                   className={`hx-bubble ${m.role === "user" ? "hx-bubble-user" : ""}`}
                 >
-                  {m.content}
+                  {/* Assistant turns are markdown (#194); user turns stay
+                    * literal — people type `*` and `_` as punctuation. */}
+                  {m.role === "user" ? (
+                    m.content
+                  ) : (
+                    <Markdown
+                      content={m.content}
+                      caret={m.status === "streaming"}
+                      highlight={m.status !== "streaming"}
+                      className={m.status === "streaming" ? "hx-md-streaming" : undefined}
+                    />
+                  )}
                   {m.status === "streaming" && activity && (
                     <span className="hx-searching">
                       {activity.kind === "search"
@@ -306,7 +318,6 @@ export default function Chat() {
                         : t("reading", { host: activity.detail })}
                     </span>
                   )}
-                  {m.status === "streaming" && <span className="opacity-50"> ▋</span>}
                   {m.status === "error" && (
                     <span className="text-danger small"> ⚠ {m.errorCode}</span>
                   )}

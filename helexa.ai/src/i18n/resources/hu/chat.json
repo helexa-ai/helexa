@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Törlöd ezt a csevegést és az üzeneteit?",
   "searching": "keresés a weben: „{{query}}”…",
   "sources": "Források",
-  "reading": "{{host}} olvasása…"
+  "reading": "{{host}} olvasása…",
+  "copyCode": "Kód másolása",
+  "copiedCode": "Másolva"
 }

@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "A share wannan tattaunawa da saƙonninta?",
   "searching": "ana neman “{{query}}” a yanar gizo…",
   "sources": "Majiyoyi",
-  "reading": "ana karanta {{host}}…"
+  "reading": "ana karanta {{host}}…",
+  "copyCode": "Kwafi lambar",
+  "copiedCode": "An kwafa"
 }

@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Kas kustutada see vestlus ja selle sõnumid?",
   "searching": "otsitakse veebist „{{query}}“…",
   "sources": "Allikad",
-  "reading": "loetakse {{host}}…"
+  "reading": "loetakse {{host}}…",
+  "copyCode": "Kopeeri kood",
+  "copiedCode": "Kopeeritud"
 }

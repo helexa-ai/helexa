@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Tħassar din il-chat u l-messaġġi tagħha?",
   "searching": "qed infittex fuq il-web għal “{{query}}”…",
   "sources": "Sorsi",
-  "reading": "qed naqra {{host}}…"
+  "reading": "qed naqra {{host}}…",
+  "copyCode": "Ikkopja l-kodiċi",
+  "copiedCode": "Ikkupjat"
 }

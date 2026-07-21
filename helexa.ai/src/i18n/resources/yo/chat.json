@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Pa ìjíròrò yìí àti àwọn ìfiránṣẹ́ rẹ̀ rẹ́?",
   "searching": "ń wá “{{query}}” lórí wẹ́ẹ̀bù…",
   "sources": "Àwọn orísun",
-  "reading": "ń ka {{host}}…"
+  "reading": "ń ka {{host}}…",
+  "copyCode": "Daakọ kóòdù",
+  "copiedCode": "Ti daakọ"
 }

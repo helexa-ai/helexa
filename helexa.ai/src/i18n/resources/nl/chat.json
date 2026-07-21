@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Deze chat en de bijbehorende berichten verwijderen?",
   "searching": "zoeken op internet naar “{{query}}”…",
   "sources": "Bronnen",
-  "reading": "lezen van {{host}}…"
+  "reading": "lezen van {{host}}…",
+  "copyCode": "Code kopiëren",
+  "copiedCode": "Gekopieerd"
 }

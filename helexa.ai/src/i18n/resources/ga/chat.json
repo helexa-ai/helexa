@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "An comhrá seo agus a theachtaireachtaí a scriosadh?",
   "searching": "ag cuardach an ghréasáin le haghaidh “{{query}}”…",
   "sources": "Foinsí",
-  "reading": "ag léamh {{host}}…"
+  "reading": "ag léamh {{host}}…",
+  "copyCode": "Cóipeáil an cód",
+  "copiedCode": "Cóipeáilte"
 }

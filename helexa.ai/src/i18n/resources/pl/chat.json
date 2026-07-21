@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Usunąć ten czat i jego wiadomości?",
   "searching": "wyszukiwanie w internecie „{{query}}”…",
   "sources": "Źródła",
-  "reading": "czytanie {{host}}…"
+  "reading": "czytanie {{host}}…",
+  "copyCode": "Kopiuj kod",
+  "copiedCode": "Skopiowano"
 }

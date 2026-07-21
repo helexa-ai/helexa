@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Bu sohbet ve mesajları silinsin mi?",
   "searching": "web’de “{{query}}” aranıyor…",
   "sources": "Kaynaklar",
-  "reading": "{{host}} okunuyor…"
+  "reading": "{{host}} okunuyor…",
+  "copyCode": "Kodu kopyala",
+  "copiedCode": "Kopyalandı"
 }

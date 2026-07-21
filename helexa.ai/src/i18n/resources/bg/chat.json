@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Да се изтрие ли този разговор и съобщенията му?",
   "searching": "търсене в интернет за „{{query}}“…",
   "sources": "Източници",
-  "reading": "четене на {{host}}…"
+  "reading": "четене на {{host}}…",
+  "copyCode": "Копиране на кода",
+  "copiedCode": "Копирано"
 }

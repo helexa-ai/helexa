@@ -26,5 +26,7 @@
   "deleteThreadConfirm": "Voleu suprimir aquest xat i els seus missatges?",
   "searching": "s'està cercant «{{query}}» al web…",
   "sources": "Fonts",
-  "reading": "s'està llegint {{host}}…"
+  "reading": "s'està llegint {{host}}…",
+  "copyCode": "Copia el codi",
+  "copiedCode": "Copiat"
 }
