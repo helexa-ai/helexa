@@ -144,6 +144,116 @@ pub fn megapixel_steps(width: usize, height: usize, steps: usize, cfg: bool) -> 
     mp * steps as f64 * factor
 }
 
+/// Tiled VAE decode (#199): decode the latent in overlapping tiles and
+/// blend the seams, bounding the decoder's conv/attention transients to
+/// one tile regardless of output resolution. Full-frame decode at
+/// 1024² needs more transient VRAM than a 24 GB card has left beside
+/// the resident DiT (benjy E2E, 2026-07-29); at ≥1536² it exceeds even
+/// a 32 GB card. Port of diffusers' `AutoencoderKL.tiled_decode`
+/// linear seam blending.
+///
+/// `tile` and `overlap` are in latent units (×8 = pixels). Tiles are
+/// placed at `stride = tile - overlap`; the final tile is pulled back
+/// flush with the edge so every tile is full-size.
+fn tiled_decode(
+    vae: &AutoEncoderKL,
+    latents: &Tensor,
+    tile: usize,
+    overlap: usize,
+) -> Result<Tensor> {
+    let (_b, _c, lh, lw) = latents.dims4()?;
+    if lh <= tile && lw <= tile {
+        return vae.decode(latents).map_err(anyhow::Error::from);
+    }
+    let stride = tile - overlap;
+    let positions = |extent: usize| -> Vec<usize> {
+        if extent <= tile {
+            return vec![0];
+        }
+        let mut out = Vec::new();
+        let mut pos = 0;
+        loop {
+            if pos + tile >= extent {
+                out.push(extent - tile);
+                break;
+            }
+            out.push(pos);
+            pos += stride;
+        }
+        out
+    };
+    let rows = positions(lh);
+    let cols = positions(lw);
+
+    // Decode every tile first (each is small: 3 × (tile·8)² bf16).
+    let mut decoded: Vec<Vec<Tensor>> = Vec::with_capacity(rows.len());
+    for &r in &rows {
+        let mut row_tiles = Vec::with_capacity(cols.len());
+        for &c in &cols {
+            let tile_latent = latents
+                .narrow(2, r, tile.min(lh))?
+                .narrow(3, c, tile.min(lw))?;
+            row_tiles.push(vae.decode(&tile_latent)?);
+        }
+        decoded.push(row_tiles);
+    }
+
+    // Blend seams. Overlap in pixels is the *actual* overlap between
+    // adjacent tile placements (the edge-flushed last tile may overlap
+    // its neighbour by more; blend over the full shared region).
+    let px = 8; // VAE upsampling factor
+    let (_, ch, th, tw) = decoded[0][0].dims4()?;
+    let device = latents.device();
+    let dtype = decoded[0][0].dtype();
+    let out_h = lh * px;
+    let out_w = lw * px;
+
+    // Accumulate into weighted sums so arbitrary overlaps compose.
+    let mut acc = Tensor::zeros((1, ch, out_h, out_w), candle_core::DType::F32, device)?;
+    let mut weight = Tensor::zeros((1, 1, out_h, out_w), candle_core::DType::F32, device)?;
+    for (ri, &r) in rows.iter().enumerate() {
+        for (ci, &c) in cols.iter().enumerate() {
+            let t = decoded[ri][ci].to_dtype(candle_core::DType::F32)?;
+            // Per-tile blend weight: linear ramp up over the overlap
+            // on edges that have a neighbour, flat 1.0 elsewhere.
+            let ramp = |n: usize, lead: bool, trail: bool| -> Vec<f32> {
+                let ov = overlap * px;
+                (0..n)
+                    .map(|i| {
+                        let mut w = 1.0f32;
+                        if lead && i < ov {
+                            w = w.min((i + 1) as f32 / (ov + 1) as f32);
+                        }
+                        if trail && i >= n - ov {
+                            w = w.min((n - i) as f32 / (ov + 1) as f32);
+                        }
+                        w
+                    })
+                    .collect()
+            };
+            let wy = ramp(th, ri > 0, ri + 1 < rows.len());
+            let wx = ramp(tw, ci > 0, ci + 1 < cols.len());
+            let wy = Tensor::from_vec(wy, (1, 1, th, 1), device)?;
+            let wx = Tensor::from_vec(wx, (1, 1, 1, tw), device)?;
+            let w2d = wy.broadcast_mul(&wx)?; // (1,1,th,tw)
+
+            let weighted = t.broadcast_mul(&w2d)?;
+            // acc[.., r*8.., c*8..] += weighted — via slice_assign on
+            // narrowed views (candle has no in-place scatter-add on
+            // views; rebuild with slice_assign of the summed region).
+            let (y0, x0) = (r * px, c * px);
+            let acc_region = acc.narrow(2, y0, th)?.narrow(3, x0, tw)?;
+            let acc_new = (acc_region + weighted)?;
+            acc = acc.slice_assign(&[0..1, 0..ch, y0..y0 + th, x0..x0 + tw], &acc_new)?;
+            let w_region = weight.narrow(2, y0, th)?.narrow(3, x0, tw)?;
+            let w_new = w_region.broadcast_add(&w2d)?;
+            weight = weight.slice_assign(&[0..1, 0..1, y0..y0 + th, x0..x0 + tw], &w_new)?;
+        }
+    }
+    let out = acc.broadcast_div(&weight)?;
+    out.to_dtype(dtype).map_err(anyhow::Error::from)
+}
+
 /// The worker-thread-resident pipeline state for one loaded Z-Image
 /// model. Owned by `DeviceWorkerState::image_models`; construction,
 /// every forward, and Drop all happen on the worker thread.
@@ -336,7 +446,9 @@ impl ZImagePipeline {
         // ---- Decode
         let t_decode = std::time::Instant::now();
         let latents = latents.squeeze(2)?;
-        let image = self.vae.decode(&latents)?;
+        // Tile latent = 64 (512 px) with 16-latent (128 px) seam
+        // overlap: transients stay bounded to one 512² decode.
+        let image = tiled_decode(&self.vae, &latents, 64, 16)?;
         let image = postprocess_image(&image)?; // [-1,1] -> u8 [0,255]
         let image = image.i(0)?; // drop batch dim -> (3, H, W)
         let (_c, h, w) = image.dims3()?;
