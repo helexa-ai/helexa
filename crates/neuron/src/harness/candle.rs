@@ -3854,7 +3854,7 @@ impl CandleHarness {
                 self.image_cfg.te_resident_effective(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("worker load_image: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("worker load_image: {e:#}"))?;
 
         // Admission (#53) with the in-flight ceiling forced to 1: a
         // denoise loop saturates the device, so extra concurrency
@@ -4073,7 +4073,7 @@ impl CandleHarness {
             .worker
             .generate_image(img.handle, params, img.max_dim)
             .await
-            .map_err(|e| InferenceError::Other(anyhow::anyhow!("image generation: {e}")))?;
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("image generation: {e:#}")))?;
 
         let timing = result.timing;
         let (width, height) = (result.width, result.height);

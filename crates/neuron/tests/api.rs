@@ -590,3 +590,122 @@ async fn test_healthy_discovery_omits_cuda_unavailable_reason() {
         "healthy host must omit the field entirely: {body}"
     );
 }
+
+// ── /v1/images/generations envelope tests (#200) ─────────────────
+//
+// These exercise the HTTP surface: parameter validation, envelope
+// shape, and modality/not-loaded errors. Real generation needs CUDA +
+// weights and is validated on the fleet (see #198/#200 acceptance).
+
+async fn spawn_neuron_with_candle(discovery: DiscoveryResponse) -> String {
+    use neuron::harness::candle::CandleHarness;
+
+    let health_cache = Arc::new(HealthCache::new());
+    let registry = HarnessRegistry::new();
+    let candle = CandleHarness::new(
+        "http://localhost:13131".into(),
+        &neuron::config::CandleHarnessConfig::default(),
+    );
+
+    let state = Arc::new(NeuronState {
+        discovery,
+        health_cache,
+        registry: RwLock::new(registry),
+        candle: Some(candle),
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+async fn test_images_no_candle_harness_503() {
+    let url = spawn_neuron(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "m", "prompt": "a cat"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 503);
+}
+
+#[tokio::test]
+async fn test_images_model_not_loaded_404() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "Tongyi-MAI/Z-Image-Turbo", "prompt": "a cat"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "model_not_found");
+}
+
+#[tokio::test]
+async fn test_images_n_rejected() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "m", "prompt": "a cat", "n": 4}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "unsupported_parameter");
+}
+
+#[tokio::test]
+async fn test_images_bad_size_rejected() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "m", "prompt": "a cat", "size": "huge"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "invalid_size");
+}
+
+#[tokio::test]
+async fn test_images_url_response_format_rejected() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "m", "prompt": "a cat", "response_format": "url"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(
+        body["error"]["message"].as_str().unwrap(),
+        "response_format 'url' is not supported; use b64_json"
+    );
+}
+
+#[tokio::test]
+async fn test_images_chat_at_image_endpoint_is_not_found_for_text_model() {
+    // A text model id that isn't loaded still 404s (not 422) — the
+    // WrongModality 422 needs a *loaded* text model, which requires
+    // weights; that path is covered by fleet validation.
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/images/generations"))
+        .json(&json!({"model": "Qwen/Qwen3-8B", "prompt": "a cat"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+}
