@@ -110,3 +110,15 @@ limit.output = 2048
 # "helexa/small" = "Qwen/Qwen3-1.7B"
 # "helexa/balanced" = "Qwen/Qwen3-8B"
 # "helexa/large" = "Qwen/Qwen3.6-27B"
+
+# Text-to-image (#197): Z-Image-Turbo (Apache 2.0). 6B S3-DiT + Qwen3-4B
+# text encoder (host CPU by default; see [harness.candle.image]) + VAE.
+# BF16 DiT+VAE resident ~= 14.6 GB -> any 20 GB+ card. Cold-loads on the
+# first /v1/images/generations request; metered in megapixel-steps, not
+# tokens.
+[[models]]
+id = "Tongyi-MAI/Z-Image-Turbo"
+harness = "candle"
+vram_mb = 15000
+min_devices = 1
+min_device_vram_mb = 20000

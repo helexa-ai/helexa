@@ -122,6 +122,10 @@ inference server to babysit. The parts that earn their keep:
   parallel layers with NCCL all-reduce, spanning the mismatched GPUs
   you actually have. A step watchdog aborts wedged collectives instead
   of letting a request hang forever.
+- **Text-to-image.** Z-Image-Turbo (6B S3-DiT, Apache 2.0) served
+  candle-native through the same device-worker discipline: OpenAI
+  `/v1/images/generations` end to end, ~11 s for a 1024x1024 image on
+  an RTX 4090, metered in megapixel-steps.
 - **Current model focus: the Qwen3 family** — dense and GGUF-quantized,
   including the hybrid linear-attention (Gated DeltaNet) generation.
   Vision support is in progress. Each architecture is ported against
