@@ -75,3 +75,13 @@ cortex-gateway = { path = "crates/cortex-gateway" }
 # (grenade/cudarc @ nccl-comm-abort).
 [patch.crates-io]
 cudarc = { git = "https://github.com/grenade/cudarc", rev = "6904cf2e651a0384eac318f003ce6417f47f5d94" }
+# Patched candle (#199): z_image all-ones attention-mask elision so the
+# flash-attn path actually engages — unlocks >=1536^2 denoising on the
+# blackwell (flash-attn) builds. Upstream PR:
+# https://github.com/huggingface/candle/pull/3798 — drop this pin (and
+# the fork) when it lands in a release. All four crates pin to the same
+# rev so candle types unify across the graph.
+candle-core = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
+candle-nn = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
+candle-transformers = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
+candle-flash-attn = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
