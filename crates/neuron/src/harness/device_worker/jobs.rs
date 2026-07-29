@@ -420,6 +420,10 @@ pub enum Job {
     LoadImage {
         files: crate::harness::image::ZImageFiles,
         model_id: String,
+        /// Run the text encoder on the CPU (default): keeps the ~8 GB
+        /// Qwen3-4B off the GPU so the 24 GB tier fits the DiT + VAE
+        /// + decode transients.
+        te_on_cpu: bool,
         te_resident: bool,
         reply: oneshot::Sender<Result<ImageHandle>>,
     },

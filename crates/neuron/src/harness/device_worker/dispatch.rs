@@ -563,10 +563,11 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
             Job::LoadImage {
                 files,
                 model_id,
+                te_on_cpu,
                 te_resident,
                 reply,
             } => {
-                let result = ZImagePipeline::load(files, &state.device, te_resident)
+                let result = ZImagePipeline::load(files, &state.device, te_on_cpu, te_resident)
                     .with_context(|| format!("load z_image pipeline for {model_id}"))
                     .map(|pipeline| {
                         let handle = ImageHandle(state.next_image_handle);

@@ -3847,7 +3847,12 @@ impl CandleHarness {
             .map_err(|e| anyhow::anyhow!("load tokenizer for '{}': {e}", spec.model_id))?;
 
         let handle = worker
-            .load_image(files, spec.model_id.clone(), self.image_cfg.te_resident)
+            .load_image(
+                files,
+                spec.model_id.clone(),
+                self.image_cfg.te_on_cpu(),
+                self.image_cfg.te_resident_effective(),
+            )
             .await
             .map_err(|e| anyhow::anyhow!("worker load_image: {e}"))?;
 
@@ -3877,7 +3882,8 @@ impl CandleHarness {
         models.insert(spec.model_id.clone(), LoadedHandle::Image(Arc::new(loaded)));
         tracing::info!(
             model = %spec.model_id,
-            te_resident = self.image_cfg.te_resident,
+            te_device = %self.image_cfg.te_device,
+            te_resident = self.image_cfg.te_resident_effective(),
             max_dim = self.image_cfg.max_dim,
             "image pipeline loaded"
         );

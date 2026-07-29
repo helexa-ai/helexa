@@ -251,6 +251,7 @@ impl DeviceWorkerHandle {
         &self,
         files: crate::harness::image::ZImageFiles,
         model_id: String,
+        te_on_cpu: bool,
         te_resident: bool,
     ) -> Result<ImageHandle, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
@@ -263,6 +264,7 @@ impl DeviceWorkerHandle {
             .send(Job::LoadImage {
                 files,
                 model_id,
+                te_on_cpu,
                 te_resident,
                 reply: reply_tx,
             })

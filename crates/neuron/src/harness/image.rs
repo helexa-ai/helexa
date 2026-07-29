@@ -150,6 +150,14 @@ pub fn megapixel_steps(width: usize, height: usize, steps: usize, cfg: bool) -> 
 pub struct ZImagePipeline {
     device: Device,
     dtype: DType,
+    /// Where the text encoder runs. `Device::Cpu` (the default) keeps
+    /// the ~8 GB Qwen3-4B entirely off the GPU: prompt encoding is one
+    /// short-sequence forward, the resulting `(1, seq, 2560)` features
+    /// are trivially copied to the DiT's device, and the 24 GB tier
+    /// (RTX 4090) gains the headroom that the 2026-07-29 benjy E2E
+    /// showed it needs (DiT 14.6 GB resident + 8 GB GPU TE = OOM).
+    te_device: Device,
+    te_dtype: DType,
     files: ZImageFiles,
     dit: ZImageTransformer2DModel,
     vae: AutoEncoderKL,
@@ -164,8 +172,20 @@ impl ZImagePipeline {
     /// Build the pipeline on the current thread. The DiT and VAE are
     /// loaded resident; the text encoder is loaded now only when
     /// `te_resident` (otherwise it is rebuilt per generation).
-    pub fn load(files: ZImageFiles, device: &Device, te_resident: bool) -> Result<Self> {
+    pub fn load(
+        files: ZImageFiles,
+        device: &Device,
+        te_on_cpu: bool,
+        te_resident: bool,
+    ) -> Result<Self> {
         let dtype = device.bf16_default_to_f32();
+        // CPU runs the TE in f32 — candle's CPU bf16 path is a
+        // convert-per-op crawl, and precision only helps here.
+        let (te_device, te_dtype) = if te_on_cpu {
+            (Device::Cpu, DType::F32)
+        } else {
+            (device.clone(), dtype)
+        };
 
         let dit_cfg: DitConfig = serde_json::from_reader(
             std::fs::File::open(&files.transformer_config)
@@ -200,6 +220,8 @@ impl ZImagePipeline {
         let mut pipeline = Self {
             device: device.clone(),
             dtype,
+            te_device,
+            te_dtype,
             files,
             dit,
             vae,
@@ -216,8 +238,8 @@ impl ZImagePipeline {
         let vb = unsafe {
             VarBuilder::from_mmaped_safetensors(
                 &self.files.text_encoder_shards,
-                self.dtype,
-                &self.device,
+                self.te_dtype,
+                &self.te_device,
             )?
         };
         ZImageTextEncoder::new(&self.te_config, vb).context("build Z-Image text encoder")
@@ -225,8 +247,11 @@ impl ZImagePipeline {
 
     /// Encode one token sequence to caption features + all-ones mask.
     fn encode(&self, te: &ZImageTextEncoder, tokens: &[u32]) -> Result<(Tensor, Tensor)> {
-        let ids = Tensor::from_vec(tokens.to_vec(), (1, tokens.len()), &self.device)?;
-        let feats = te.forward(&ids)?;
+        let ids = Tensor::from_vec(tokens.to_vec(), (1, tokens.len()), &self.te_device)?;
+        let feats = te
+            .forward(&ids)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
         let mask = Tensor::ones((1, tokens.len()), DType::U8, &self.device)?;
         Ok((feats, mask))
     }
