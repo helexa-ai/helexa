@@ -317,7 +317,14 @@ async fn pick_feasible_neuron(
                 matches!(m.status, cortex_core::node::ModelStatus::Loaded)
                     && !fleet.catalogue.is_pinned(&m.id, &node.name)
             })
-            .filter_map(|m| m.vram_estimate_mb)
+            // neuron reports vram_used_mb: null today; fall back to the
+            // catalogue's declared footprint so the evictable estimate
+            // isn't silently zero (which made every node rank equal and
+            // sent the first live image cold-load to beast).
+            .filter_map(|m| {
+                m.vram_estimate_mb
+                    .or_else(|| fleet.catalogue.get(&m.id).and_then(|p| p.vram_mb))
+            })
             .sum();
         let fits_after_evict = max_free.saturating_add(evictable) >= need;
         candidates.push((
