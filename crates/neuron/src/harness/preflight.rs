@@ -48,6 +48,12 @@ pub enum SourceFormat {
     /// expect the operator to use a `-GGUF` sibling repo) or a
     /// genuinely empty entry.
     Empty,
+    /// A diffusers-style pipeline repo (`model_index.json` at the
+    /// root): component subdirectories instead of a flat LLM layout.
+    /// Served by the image path (#198) — currently the Z-Image family.
+    /// Takes precedence over the safetensors sniff because diffusers
+    /// repos also contain `.safetensors` shards (in subdirs).
+    Diffusers,
 }
 
 /// Output of `preflight` for a load that can proceed. Carries the
@@ -200,6 +206,30 @@ pub async fn preflight(
             }
         }
 
+        // Diffusers pipeline (#198): single-GPU, BF16 only for now.
+        // TP sharding of the DiT and quantized loads (#204) are not
+        // yet supported — reject with the reason rather than failing
+        // deep in the loader.
+        (SourceFormat::Diffusers, tp, _) if tp > 1 => Err(PreflightError::TpRequiresSafetensors {
+            model_id: source_id.to_string(),
+            tp_size: tp,
+            gguf_quants: vec![],
+            suggestion: "diffusers image pipelines load on a single GPU; set tensor_parallel=1"
+                .to_string(),
+        }),
+        (SourceFormat::Diffusers, _, Some(requested)) => Err(PreflightError::QuantNotFound {
+            model_id: source_id.to_string(),
+            requested: requested.to_string(),
+            available: vec![],
+            nearest: None,
+        }),
+        (SourceFormat::Diffusers, _, None) => Ok(PlacementPlan {
+            model_id: source_id.to_string(),
+            format: format.clone(),
+            tp_size,
+            picked_quant_file: None,
+        }),
+
         // Dense or mixed: dense path handles both single-GPU and TP.
         // The architecture compatibility check stays where it is —
         // `check_dense_config_supported` runs once `config.json` is
@@ -254,6 +284,9 @@ fn collect_snapshot_files(root: &std::path::Path, dir: &std::path::Path, out: &m
 /// the unit tests can exercise it against fixture JSON without
 /// spinning up an Api.
 pub fn classify(filenames: &[&str]) -> SourceFormat {
+    if crate::harness::image::is_diffusers_layout(filenames) {
+        return SourceFormat::Diffusers;
+    }
     let mut gguf_quants: Vec<String> = filenames
         .iter()
         .filter(|f| f.to_lowercase().ends_with(".gguf"))
@@ -590,6 +623,28 @@ mod tests {
                     }),
                 }
             }
+            (SourceFormat::Diffusers, tp, _) if tp > 1 => {
+                Err(PreflightError::TpRequiresSafetensors {
+                    model_id: source_id.to_string(),
+                    tp_size: tp,
+                    gguf_quants: vec![],
+                    suggestion:
+                        "diffusers image pipelines load on a single GPU; set tensor_parallel=1"
+                            .to_string(),
+                })
+            }
+            (SourceFormat::Diffusers, _, Some(requested)) => Err(PreflightError::QuantNotFound {
+                model_id: source_id.to_string(),
+                requested: requested.to_string(),
+                available: vec![],
+                nearest: None,
+            }),
+            (SourceFormat::Diffusers, _, None) => Ok(PlacementPlan {
+                model_id: source_id.to_string(),
+                format: format.clone(),
+                tp_size,
+                picked_quant_file: None,
+            }),
             (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
                 Ok(PlacementPlan {
                     model_id: source_id.to_string(),
@@ -599,6 +654,54 @@ mod tests {
                 })
             }
         }
+    }
+
+    #[test]
+    fn classify_diffusers_layout() {
+        let files = [
+            "model_index.json",
+            "transformer/config.json",
+            "transformer/diffusion_pytorch_model-00001-of-00003.safetensors",
+            "text_encoder/model-00001-of-00003.safetensors",
+            "vae/diffusion_pytorch_model.safetensors",
+        ];
+        assert_eq!(classify(&files), SourceFormat::Diffusers);
+    }
+
+    #[test]
+    fn feasibility_diffusers_single_gpu_ok() {
+        let files = ["model_index.json", "transformer/config.json"];
+        let fmt = classify(&files);
+        let plan = decide(&spec("Tongyi-MAI/Z-Image-Turbo", None, None), &fmt, &files)
+            .expect("single-GPU unquantized diffusers load should pass preflight");
+        assert_eq!(plan.format, SourceFormat::Diffusers);
+        assert!(plan.picked_quant_file.is_none());
+    }
+
+    #[test]
+    fn feasibility_diffusers_tp_rejected() {
+        let files = ["model_index.json"];
+        let fmt = classify(&files);
+        let err = decide(
+            &spec("Tongyi-MAI/Z-Image-Turbo", Some(2), None),
+            &fmt,
+            &files,
+        )
+        .expect_err("tp>1 must be rejected for diffusers");
+        assert!(matches!(err, PreflightError::TpRequiresSafetensors { .. }));
+    }
+
+    #[test]
+    fn feasibility_diffusers_quant_rejected() {
+        let files = ["model_index.json"];
+        let fmt = classify(&files);
+        let err = decide(
+            &spec("Tongyi-MAI/Z-Image-Turbo", None, Some("q8_0")),
+            &fmt,
+            &files,
+        )
+        .expect_err("quant must be rejected for diffusers until #204");
+        assert!(matches!(err, PreflightError::QuantNotFound { .. }));
     }
 
     #[test]

@@ -68,10 +68,10 @@ cortex-core = { path = "crates/cortex-core" }
 cortex-gateway = { path = "crates/cortex-gateway" }
 
 # Patched cudarc (affects neuron's 0.19.x only; candle's 0.17.x is
-# untouched since the fork is 0.19.7 and doesn't satisfy a 0.17 req). Adds
+# untouched since the fork is 0.19.8, rebased for the candle 0.11 bump, and now also serves candle's ^0.19.8 req — one unified cudarc). Adds
 # Comm::abort / get_async_error / raw comm() — needed for #17 Stage 2 TP
 # hang-recovery (abort a wedged collective from another thread, then
 # rebuild the comm). Pinned to a fork revision pending upstream review
 # (grenade/cudarc @ nccl-comm-abort).
 [patch.crates-io]
-cudarc = { git = "https://github.com/grenade/cudarc", rev = "63327a256059f8252641ae46c6bb9eefe707f382" }
+cudarc = { git = "https://github.com/grenade/cudarc", rev = "6904cf2e651a0384eac318f003ce6417f47f5d94" }

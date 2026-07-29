@@ -91,6 +91,69 @@ pub struct CandleHarnessConfig {
     /// requests until their client times out.
     #[serde(default)]
     pub admission: AdmissionConfig,
+
+    /// `[harness.candle.image]` settings (#198) — the Z-Image
+    /// text-to-image pipeline.
+    #[serde(default)]
+    pub image: ImageConfig,
+}
+
+/// `[harness.candle.image]` settings (#198).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageConfig {
+    /// Where the Qwen3-4B text encoder runs: `"cpu"` (default) or
+    /// `"cuda"`. On CPU the ~8 GB encoder never touches the GPU —
+    /// prompt encoding is one short-sequence f32 forward and the
+    /// features are tiny — which is what lets the 24 GB tier serve
+    /// the BF16 DiT (benjy E2E, 2026-07-29: GPU TE + resident DiT
+    /// OOMs a 4090). `"cuda"` trades ~8 GB of VRAM for faster
+    /// encodes on cards with headroom.
+    #[serde(default = "default_te_device")]
+    pub te_device: String,
+    /// Keep the text encoder resident between generations instead of
+    /// rebuilding it per request. On CPU this costs ~16 GB of system
+    /// RAM and saves a few seconds of f32 conversion per request
+    /// (default: resident). On CUDA it costs ~8 GB of VRAM
+    /// (default: rebuild per request).
+    #[serde(default)]
+    pub te_resident: Option<bool>,
+    /// Resolution ceiling in pixels per side. Requests beyond it are
+    /// rejected before admission — never sent to the device, where the
+    /// resulting OOM would poison the worker context.
+    #[serde(default = "default_image_max_dim")]
+    pub max_dim: usize,
+}
+
+impl Default for ImageConfig {
+    fn default() -> Self {
+        Self {
+            te_device: default_te_device(),
+            te_resident: None,
+            max_dim: default_image_max_dim(),
+        }
+    }
+}
+
+impl ImageConfig {
+    /// `true` when the text encoder should run on the CPU.
+    pub fn te_on_cpu(&self) -> bool {
+        !self.te_device.eq_ignore_ascii_case("cuda")
+    }
+
+    /// Residency default follows the device: resident on CPU (system
+    /// RAM is cheap and rebuild means an 8→16 GB f32 conversion),
+    /// per-request on CUDA (VRAM is the scarce resource).
+    pub fn te_resident_effective(&self) -> bool {
+        self.te_resident.unwrap_or_else(|| self.te_on_cpu())
+    }
+}
+
+fn default_te_device() -> String {
+    "cpu".to_string()
+}
+
+fn default_image_max_dim() -> usize {
+    2048
 }
 
 /// `[harness.candle.admission]` settings (#53).

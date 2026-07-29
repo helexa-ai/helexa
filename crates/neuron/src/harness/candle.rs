@@ -84,6 +84,9 @@ pub struct CandleHarness {
     /// Admission-control settings (#53), used to build each loaded model's
     /// [`super::admission::AdmissionController`] at load time.
     admission_cfg: crate::config::AdmissionConfig,
+    /// Image-pipeline settings (#198): text-encoder residency and the
+    /// resolution ceiling.
+    image_cfg: crate::config::ImageConfig,
 }
 
 /// Devices/capabilities snapshot of a model entering auto-recovery
@@ -109,6 +112,8 @@ pub enum LoadedHandle {
     Single(Arc<LoadedModel>),
     #[cfg(feature = "cuda")]
     Tp(Arc<TpLoadedModel>),
+    /// Z-Image text-to-image pipeline (#198).
+    Image(Arc<LoadedImageModel>),
 }
 
 impl LoadedHandle {
@@ -117,6 +122,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => &m.model_id,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.model_id,
+            LoadedHandle::Image(m) => &m.model_id,
         }
     }
 
@@ -126,6 +132,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => &m.spec,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.spec,
+            LoadedHandle::Image(m) => &m.spec,
         }
     }
 
@@ -134,6 +141,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.devices.clone(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.devices.clone(),
+            LoadedHandle::Image(m) => m.devices.clone(),
         }
     }
 
@@ -146,6 +154,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.poisoned.load(Ordering::Acquire),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.poisoned.load(Ordering::Acquire),
+            LoadedHandle::Image(m) => m.poisoned.load(Ordering::Acquire),
         }
     }
 
@@ -156,6 +165,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => (m.admission.in_flight(), m.admission.queue_depth()),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.in_flight(), m.admission.queue_depth()),
+            LoadedHandle::Image(m) => (m.admission.in_flight(), m.admission.queue_depth()),
         }
     }
 
@@ -167,6 +177,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+            LoadedHandle::Image(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
         }
     }
 
@@ -177,6 +188,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.admission.rejections(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.rejections(),
+            LoadedHandle::Image(m) => m.admission.rejections(),
         }
     }
 
@@ -187,6 +199,9 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => &m.prefill_rate,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.prefill_rate,
+            // Image models have no token throughput; steps/sec lives in
+            // the per-request timing instead.
+            LoadedHandle::Image(_) => return (0.0, 0.0),
         };
         (ema.get().unwrap_or(0.0), ema.decode().unwrap_or(0.0))
     }
@@ -195,11 +210,15 @@ impl LoadedHandle {
     /// TP-vision (#12) — both single-GPU and TP loads advertise
     /// `"vision"` when a replicated vision tower materialised.
     pub fn capabilities(&self) -> Vec<String> {
+        if matches!(self, LoadedHandle::Image(_)) {
+            return vec!["image".to_string()];
+        }
         let mut caps = vec!["text".to_string()];
         let has_vision = match self {
             LoadedHandle::Single(m) => m.has_vision,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.has_vision,
+            LoadedHandle::Image(_) => unreachable!("handled above"),
         };
         if has_vision {
             caps.push("vision".to_string());
@@ -214,6 +233,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.tool_call_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.tool_call_tokens.is_some(),
+            LoadedHandle::Image(_) => false,
         }
     }
 
@@ -224,6 +244,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.reasoning_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_tokens.is_some(),
+            LoadedHandle::Image(_) => false,
         }
     }
 
@@ -248,6 +269,8 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.query_vram().await.0,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.query_vram_tightest_free_mb().await,
+            // No context-limit derivation for image models; nothing to cache.
+            LoadedHandle::Image(_) => return,
         };
         // Don't clobber a good cached value with a transient `0`
         // (worker gone/poisoned sentinel).
@@ -256,6 +279,7 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => m.last_free_mb.store(free, Ordering::Release),
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => m.last_free_mb.store(free, Ordering::Release),
+                LoadedHandle::Image(_) => {}
             }
         }
     }
@@ -283,6 +307,8 @@ impl LoadedHandle {
                 m.last_free_mb.load(Ordering::Acquire),
                 m.prefill_rate.get(),
             ),
+            // Token limits are meaningless for image generation.
+            LoadedHandle::Image(_) => return None,
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
         let limit = super::context_limit::derive_limit(
@@ -301,6 +327,7 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => &m.derived_input_cap,
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => &m.derived_input_cap,
+                LoadedHandle::Image(_) => unreachable!("derived_limit returned above"),
             };
             cap.store(input, Ordering::Release);
         }
@@ -326,6 +353,43 @@ pub enum KvSnapshotRef {
 /// by a std Mutex — every access is short and already serialised by
 /// `LoadedModel::inference_lock`.
 pub type ModelPrefixCache = std::sync::Mutex<super::prefix_cache::PrefixCache<KvSnapshotRef>>;
+
+/// A loaded Z-Image text-to-image pipeline (#198). The DiT/VAE (and
+/// optionally the text encoder) live in the device worker's image
+/// slab, addressed via [`Self::handle`]; this async-side struct holds
+/// only the tokenizer, admission bookkeeping, and the opaque handle.
+///
+/// Unlike [`LoadedModel`] there is no KV cache, no context limit, and
+/// no streaming: a generation is one `Job::GenerateImage` round-trip
+/// with a static VRAM footprint.
+pub struct LoadedImageModel {
+    pub model_id: String,
+    pub spec: ModelSpec,
+    pub devices: Vec<u32>,
+    pub tokenizer: Tokenizer,
+    pub worker: Arc<super::device_worker::DeviceWorkerHandle>,
+    pub handle: super::device_worker::ImageHandle,
+    /// Set when a generation returns a driver-level error, mirroring
+    /// the text models' poison contract: subsequent requests
+    /// fast-reject and `/models` reports `poisoned`.
+    pub poisoned: Arc<AtomicBool>,
+    /// Admission control (#53) with `max_in_flight` forced to 1 — a
+    /// denoise loop saturates the device, so concurrency waits in the
+    /// queue, not on the card.
+    pub admission: super::admission::AdmissionController,
+    /// Serializes generations behind admission, same belt-and-braces
+    /// layering as text's `inference_lock`.
+    pub inference_lock: Arc<tokio::sync::Mutex<()>>,
+    /// Resolution ceiling (pixels per side) enforced before admission.
+    pub max_dim: usize,
+}
+
+impl LoadedImageModel {
+    /// `(free_mb, total_mb)` for this model's device, via the worker.
+    pub async fn query_vram(&self) -> (u64, u64) {
+        self.worker.query_vram().await.unwrap_or_default()
+    }
+}
 
 /// A loaded model with its tokenizer, device placement, and architecture-
 /// specific weights. The `arch` is `Arc<Mutex<>>` so the lock guard can be
@@ -1817,6 +1881,7 @@ impl CandleHarness {
             prefix_cache_cfg: config.prefix_cache.clone(),
             context_limit_cfg: config.context_limit.clone(),
             admission_cfg: config.admission.clone(),
+            image_cfg: config.image.clone(),
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
         // keep the harness alive. Spawned only when a tokio runtime is
@@ -2312,6 +2377,11 @@ impl CandleHarness {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
                 return self.chat_completion_tp(m, request, principal).await;
+            }
+            LoadedHandle::Image(_) => {
+                return Err(InferenceError::WrongModality {
+                    model_id: request.model.clone(),
+                });
             }
         };
 
@@ -2817,6 +2887,11 @@ impl CandleHarness {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
                 return self.inference_tp_stream(m, request, principal).await;
+            }
+            LoadedHandle::Image(_) => {
+                return Err(InferenceError::WrongModality {
+                    model_id: request.model.clone(),
+                });
             }
         };
 
@@ -3377,9 +3452,16 @@ impl Harness for CandleHarness {
         // surface is the main payoff.
         let api = self.hf_api_for(&source_id.scheme)?;
         let cache = self.hf_cache_for(&source_id.scheme)?;
-        super::preflight::preflight(&api, &cache, &source_id, spec)
+        let plan = super::preflight::preflight(&api, &cache, &source_id, spec)
             .await
             .map_err(anyhow::Error::new)?;
+
+        // Diffusers pipelines (#198) take the image path: single-GPU,
+        // BF16, worker-thread-resident. Preflight already rejected
+        // tp>1 and quant for this format.
+        if matches!(plan.format, super::preflight::SourceFormat::Diffusers) {
+            return self.load_image_model(spec, &source_id).await;
+        }
 
         let tp_size = spec.tensor_parallel.unwrap_or(1);
         if tp_size > 1 {
@@ -3655,6 +3737,18 @@ impl Harness for CandleHarness {
                     );
                 }
             }
+            LoadedHandle::Image(img) => {
+                // Drop the pipeline (DiT/VAE/pinned TE) on the device
+                // worker thread so its CUDA tensors release on the
+                // context that allocated them.
+                if let Err(e) = img.worker.drop_image(img.handle).await {
+                    tracing::warn!(
+                        model = %model_id,
+                        error = %e,
+                        "image unload: DropImage RPC failed (pipeline may leak in worker slab)"
+                    );
+                }
+            }
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(tp) => {
                 // Try to recover the inner TpLoadedModel so we can move
@@ -3725,6 +3819,283 @@ impl Harness for CandleHarness {
 }
 
 impl CandleHarness {
+    /// Load a Z-Image diffusers pipeline (#198): resolve the component
+    /// files, build the pipeline on the device worker thread, and
+    /// register the model with `capabilities: ["image"]`.
+    #[cfg_attr(not(feature = "cuda"), allow(unused_variables, unreachable_code))]
+    async fn load_image_model(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<()> {
+        let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
+        let device = Self::pick_device(&devices)?;
+        let worker: Arc<super::device_worker::DeviceWorkerHandle> = match &device {
+            #[cfg(feature = "cuda")]
+            Device::Cuda(_) => self.ensure_device_worker(devices[0]).await?,
+            // On CPU builds this arm is the whole match: image serving
+            // needs a CUDA device (CPU denoising is minutes-per-image).
+            _ => anyhow::bail!(
+                "image generation requires a CUDA device; '{}' resolved to a CPU device \
+                 (CPU denoising is minutes-per-image and is not a supported serving target)",
+                spec.model_id
+            ),
+        };
+
+        let files = self.resolve_image_files(source_id).await?;
+        let tokenizer = Tokenizer::from_file(&files.tokenizer)
+            .map_err(|e| anyhow::anyhow!("load tokenizer for '{}': {e}", spec.model_id))?;
+
+        let handle = worker
+            .load_image(
+                files,
+                spec.model_id.clone(),
+                self.image_cfg.te_on_cpu(),
+                self.image_cfg.te_resident_effective(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("worker load_image: {e}"))?;
+
+        // Admission (#53) with the in-flight ceiling forced to 1: a
+        // denoise loop saturates the device, so extra concurrency
+        // belongs in the queue. Queue depth / wait / per-principal
+        // knobs follow the operator's config.
+        let admission_cfg = crate::config::AdmissionConfig {
+            max_in_flight: 1,
+            ..self.admission_cfg.clone()
+        };
+
+        let loaded = LoadedImageModel {
+            model_id: spec.model_id.clone(),
+            spec: spec.clone(),
+            devices,
+            tokenizer,
+            worker,
+            handle,
+            poisoned: Arc::new(AtomicBool::new(false)),
+            admission: super::admission::AdmissionController::new(&admission_cfg),
+            inference_lock: Arc::new(tokio::sync::Mutex::new(())),
+            max_dim: self.image_cfg.max_dim,
+        };
+
+        let mut models = self.models.write().await;
+        models.insert(spec.model_id.clone(), LoadedHandle::Image(Arc::new(loaded)));
+        tracing::info!(
+            model = %spec.model_id,
+            te_device = %self.image_cfg.te_device,
+            te_resident = self.image_cfg.te_resident_effective(),
+            max_dim = self.image_cfg.max_dim,
+            "image pipeline loaded"
+        );
+        Ok(())
+    }
+
+    /// Resolve a diffusers-layout Z-Image repo into local component
+    /// paths, downloading through hf-hub as needed. Verifies the
+    /// pipeline class before fetching multi-GB weight shards.
+    async fn resolve_image_files(
+        &self,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<super::image::ZImageFiles> {
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let repo = api.model(source_id.repo_path());
+        let display_id = source_id.to_string();
+
+        let model_index_path = repo
+            .get("model_index.json")
+            .await
+            .with_context(|| format!("fetch model_index.json from {display_id}"))?;
+        let model_index =
+            std::fs::read_to_string(&model_index_path).context("read model_index.json")?;
+        if !super::image::is_supported_pipeline_class(&model_index) {
+            anyhow::bail!(
+                "'{display_id}' is a diffusers repo but not a supported pipeline;                  the image path currently serves ZImagePipeline (Z-Image family) only"
+            );
+        }
+
+        let tokenizer = repo
+            .get("tokenizer/tokenizer.json")
+            .await
+            .with_context(|| format!("fetch tokenizer/tokenizer.json from {display_id}"))?;
+        let text_encoder_config = repo
+            .get("text_encoder/config.json")
+            .await
+            .with_context(|| format!("fetch text_encoder/config.json from {display_id}"))?;
+        let text_encoder_shards =
+            Self::resolve_component_shards(&repo, "text_encoder", "model", &display_id).await?;
+        let transformer_config = repo
+            .get("transformer/config.json")
+            .await
+            .with_context(|| format!("fetch transformer/config.json from {display_id}"))?;
+        let transformer_shards = Self::resolve_component_shards(
+            &repo,
+            "transformer",
+            "diffusion_pytorch_model",
+            &display_id,
+        )
+        .await?;
+        let vae_config = repo
+            .get("vae/config.json")
+            .await
+            .with_context(|| format!("fetch vae/config.json from {display_id}"))?;
+        let vae_weights = repo
+            .get("vae/diffusion_pytorch_model.safetensors")
+            .await
+            .with_context(|| format!("fetch vae weights from {display_id}"))?;
+
+        Ok(super::image::ZImageFiles {
+            tokenizer,
+            text_encoder_config,
+            text_encoder_shards,
+            transformer_config,
+            transformer_shards,
+            vae_config,
+            vae_weights,
+        })
+    }
+
+    /// Fetch one diffusers component's safetensors: sharded via its
+    /// `{stem}.safetensors.index.json` when present, single-file
+    /// otherwise. Mirrors `resolve_dense_files`' index handling but
+    /// scoped to a component subdirectory.
+    async fn resolve_component_shards(
+        repo: &hf_hub::api::tokio::ApiRepo,
+        dir: &str,
+        stem: &str,
+        display_id: &str,
+    ) -> Result<Vec<PathBuf>> {
+        match repo
+            .get(&format!("{dir}/{stem}.safetensors.index.json"))
+            .await
+        {
+            Ok(index_path) => {
+                let index_text = std::fs::read_to_string(&index_path)
+                    .with_context(|| format!("read {dir} safetensors index"))?;
+                let index: serde_json::Value = serde_json::from_str(&index_text)
+                    .with_context(|| format!("parse {dir} safetensors index"))?;
+                let weight_map = index
+                    .get("weight_map")
+                    .and_then(|v| v.as_object())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("{dir} safetensors index missing weight_map object")
+                    })?;
+                let unique: std::collections::BTreeSet<String> = weight_map
+                    .values()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect();
+                let mut paths = Vec::with_capacity(unique.len());
+                for fname in unique {
+                    let p = repo
+                        .get(&format!("{dir}/{fname}"))
+                        .await
+                        .with_context(|| format!("fetch {dir}/{fname} from {display_id}"))?;
+                    paths.push(p);
+                }
+                Ok(paths)
+            }
+            Err(_) => {
+                let p = repo
+                    .get(&format!("{dir}/{stem}.safetensors"))
+                    .await
+                    .with_context(|| format!("fetch {dir}/{stem}.safetensors from {display_id}"))?;
+                Ok(vec![p])
+            }
+        }
+    }
+
+    /// Run one text-to-image generation (#198). This is the internal
+    /// path the `/v1/images/generations` handler (#200) fronts;
+    /// admission, validation, tokenization, and PNG encoding happen
+    /// here so the HTTP layer stays an envelope translator.
+    pub async fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+        principal: Option<&str>,
+    ) -> Result<ImageGenerationOutput, InferenceError> {
+        let handle = {
+            let models = self.models.read().await;
+            models.get(&request.model).cloned()
+        };
+        let img = match handle {
+            Some(LoadedHandle::Image(m)) => m,
+            Some(_) => {
+                return Err(InferenceError::WrongModality {
+                    model_id: request.model.clone(),
+                });
+            }
+            None => return Err(InferenceError::ModelNotLoaded(request.model.clone())),
+        };
+        if img.poisoned.load(Ordering::Acquire) {
+            return Err(InferenceError::Other(anyhow::anyhow!(
+                "image model '{}' is poisoned; unload and reload it",
+                request.model
+            )));
+        }
+
+        // Validate BEFORE admission so malformed requests never occupy
+        // a queue slot (and an oversized one never reaches the device).
+        super::image::validate_dims(request.width, request.height, img.max_dim)
+            .map_err(InferenceError::Other)?;
+        super::image::validate_steps(request.steps).map_err(InferenceError::Other)?;
+
+        let _permit = img.admission.enter(principal).await?;
+        let _guard = img.inference_lock.lock().await;
+
+        let tokens = img
+            .tokenizer
+            .encode(super::image::format_prompt(&request.prompt).as_str(), true)
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize prompt: {e}")))?
+            .get_ids()
+            .to_vec();
+        let negative_tokens = match &request.negative_prompt {
+            Some(neg) if !neg.is_empty() => Some(
+                img.tokenizer
+                    .encode(super::image::format_prompt(neg).as_str(), true)
+                    .map_err(|e| {
+                        InferenceError::Other(anyhow::anyhow!("tokenize negative prompt: {e}"))
+                    })?
+                    .get_ids()
+                    .to_vec(),
+            ),
+            _ => None,
+        };
+
+        let params = super::image::ImageGenParams {
+            tokens,
+            negative_tokens,
+            width: request.width,
+            height: request.height,
+            steps: request.steps,
+            guidance_scale: request.guidance_scale,
+            seed: request.seed,
+        };
+        let result = img
+            .worker
+            .generate_image(img.handle, params, img.max_dim)
+            .await
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("image generation: {e}")))?;
+
+        let timing = result.timing;
+        let (width, height) = (result.width, result.height);
+        // PNG encode is pure CPU (~tens of ms at 1024²) — keep it off
+        // the async runtime's hot path.
+        let png = tokio::task::spawn_blocking(move || {
+            super::image::encode_png(&result.rgb, result.width, result.height)
+        })
+        .await
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("png encode task: {e}")))?
+        .map_err(InferenceError::Other)?;
+
+        let image_units = super::image::megapixel_steps(width, height, timing.steps, timing.cfg);
+        Ok(ImageGenerationOutput {
+            png,
+            width,
+            height,
+            timing,
+            image_units,
+        })
+    }
+
     /// Tensor-parallel load. Resolves dense safetensors via hf-hub the
     /// same way the single-GPU dense path does, spins up a TP worker
     /// pool sized to `tp_size`, runs the NCCL handshake, then has
@@ -5509,6 +5880,30 @@ pub(crate) fn extract_tool_calls_from_text(
     (content, calls)
 }
 
+/// One text-to-image generation request on the internal path (#198).
+/// The `/v1/images/generations` envelope (#200) maps onto this.
+#[derive(Debug, Clone)]
+pub struct ImageGenerationRequest {
+    pub model: String,
+    pub prompt: String,
+    pub negative_prompt: Option<String>,
+    pub width: usize,
+    pub height: usize,
+    pub steps: usize,
+    pub guidance_scale: f64,
+    pub seed: Option<u64>,
+}
+
+/// Result of one generation: encoded PNG plus the phase timing and the
+/// metered work in megapixel-steps (#202).
+pub struct ImageGenerationOutput {
+    pub png: Vec<u8>,
+    pub width: usize,
+    pub height: usize,
+    pub timing: super::image::ImageGenTiming,
+    pub image_units: f64,
+}
+
 /// Errors returned by `CandleHarness::chat_completion`. The
 /// `ModelNotLoaded`, `PromptTooLong`, and `InsufficientVram` variants
 /// let the HTTP handler map cleanly to 404 / 400 / 503 without
@@ -5533,6 +5928,15 @@ pub enum InferenceError {
          remove the image_url content parts from the request"
     )]
     VisionUnsupported { model_id: String },
+    /// A chat/completions request reached an image-generation model, or
+    /// an images request reached a text model (#198). Maps to 422 —
+    /// the request is well-formed but addressed to the wrong modality.
+    #[error(
+        "model '{model_id}' does not serve this endpoint's modality; \
+         use /v1/images/generations for image models and the chat/\
+         completions endpoints for text models"
+    )]
+    WrongModality { model_id: String },
     /// The loaded model's chat template could not render the request
     /// (e.g. a message / tool-call structure it rejects). Returned only
     /// when the request carried tools — silently degrading to a

@@ -520,6 +520,25 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
             "template_render_failed",
             format!("chat template could not render this request: {detail}"),
         ),
+        // A well-formed request addressed to the wrong modality (#198):
+        // chat traffic at an image model or images traffic at a text
+        // model. Not retryable against this model — the client should
+        // pick a model whose `capabilities` include the endpoint's
+        // modality.
+        InferenceError::WrongModality { model_id } => OpenAiError::new(
+            422,
+            "invalid_request_error",
+            "wrong_modality",
+            format!("model '{model_id}' does not serve this endpoint's modality"),
+        )
+        .with_extra("model_id", json!(model_id))
+        .with_extra(
+            "suggestion",
+            json!(
+                "use /v1/images/generations for image models and the \
+                 chat/completions endpoints for text models"
+            ),
+        ),
         // Admission control refused on load (#53): a fast, retryable "busy"
         // signal. 503 (service busy) + Retry-After; opencode/AI SDK back off.
         InferenceError::Overloaded { retry_after_secs } => OpenAiError::new(

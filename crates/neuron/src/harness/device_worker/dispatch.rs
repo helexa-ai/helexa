@@ -17,7 +17,8 @@ use crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot;
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
-use crate::harness::device_worker::jobs::{ArchHandle, ImageInput, Job, KvSnapshotId};
+use crate::harness::device_worker::jobs::{ArchHandle, ImageHandle, ImageInput, Job, KvSnapshotId};
+use crate::harness::image::ZImagePipeline;
 #[cfg(feature = "cuda")]
 use crate::harness::tp::TpLeaderModel;
 use crate::harness::tp::nccl_state::NcclState;
@@ -55,6 +56,13 @@ struct DeviceWorkerState {
     kv_snapshots: HashMap<(ArchHandle, u64), KvCacheSnapshot>,
     /// Counter for minting fresh `KvSnapshotId`s.
     next_kv_snapshot_id: u64,
+    /// Z-Image pipeline slab (#198). Same lifecycle discipline as
+    /// `models`: construction, every forward, and Drop happen on this
+    /// thread. Separate namespace so `ImageHandle` can't collide with
+    /// `ArchHandle`.
+    image_models: HashMap<ImageHandle, Box<ZImagePipeline>>,
+    /// Counter for minting fresh `ImageHandle`s.
+    next_image_handle: u64,
     /// Leader's NCCL state. Populated by `Job::NcclInit`; the
     /// underlying `Comm`'s libnccl handle lives bound to this thread
     /// for its entire lifetime. Subprocess workers maintain their own
@@ -552,6 +560,56 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
             }
             // Handled by the matches!() check above; reaching here
             // means a Shutdown slipped past which is a bug.
+            Job::LoadImage {
+                files,
+                model_id,
+                te_on_cpu,
+                te_resident,
+                reply,
+            } => {
+                let result = ZImagePipeline::load(files, &state.device, te_on_cpu, te_resident)
+                    .with_context(|| format!("load z_image pipeline for {model_id}"))
+                    .map(|pipeline| {
+                        let handle = ImageHandle(state.next_image_handle);
+                        state.next_image_handle = state.next_image_handle.wrapping_add(1);
+                        state.image_models.insert(handle, Box::new(pipeline));
+                        tracing::info!(
+                            device_index,
+                            model_id,
+                            handle = handle.0,
+                            "device worker: image pipeline loaded"
+                        );
+                        handle
+                    });
+                let _ = reply.send(result);
+            }
+            Job::DropImage { handle, reply } => {
+                let removed = state.image_models.remove(&handle);
+                let was_present = removed.is_some();
+                // Explicit drop on this thread — same contract as
+                // DropArch: DiT/VAE (and a pinned text encoder) free
+                // their device tensors on the context that owns them.
+                drop(removed);
+                tracing::debug!(
+                    device_index,
+                    handle = handle.0,
+                    was_present,
+                    "device worker: image pipeline dropped"
+                );
+                let _ = reply.send(());
+            }
+            Job::GenerateImage {
+                handle,
+                params,
+                max_dim,
+                reply,
+            } => {
+                let result = match state.image_models.get_mut(&handle) {
+                    Some(pipeline) => pipeline.generate(&params, max_dim),
+                    None => Err(anyhow::anyhow!("no image pipeline for handle {}", handle.0)),
+                };
+                let _ = reply.send(result);
+            }
             Job::Shutdown => unreachable!("Shutdown should break above"),
         }
     }
@@ -622,6 +680,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_handle: 1,
             kv_snapshots: HashMap::new(),
             next_kv_snapshot_id: 1,
+            image_models: HashMap::new(),
+            next_image_handle: 1,
             nccl: NcclState::new(),
             tp_models: HashMap::new(),
             next_tp_handle: 1,
@@ -638,6 +698,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_handle: 1,
             kv_snapshots: HashMap::new(),
             next_kv_snapshot_id: 1,
+            image_models: HashMap::new(),
+            next_image_handle: 1,
             nccl: NcclState::new(),
         }
     }
@@ -1510,6 +1572,15 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::EncodeImage { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::LoadImage { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::DropImage { reply, .. } => {
+            let _ = reply.send(());
+        }
+        Job::GenerateImage { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogitsWithImages { reply, .. } => {
