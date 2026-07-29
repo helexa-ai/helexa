@@ -38,6 +38,12 @@ pub struct NodeState {
     /// yank the node — and all its models — out of routing. Reset to 0 on
     /// any successful poll.
     pub consecutive_poll_failures: u32,
+    /// Last-seen per-device VRAM/utilisation readings from `/health`
+    /// (#203). The router's cold-load placement reads free VRAM here so
+    /// a model lands on a node that can actually hold it *now*, not
+    /// just one whose total topology could. Empty until the first
+    /// /health poll.
+    pub device_health: Vec<crate::discovery::DeviceHealth>,
 }
 
 /// A model registered on a node, with its runtime status.

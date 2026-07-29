@@ -34,6 +34,7 @@ impl CortexState {
             nodes.insert(
                 nc.name.clone(),
                 NodeState {
+                    device_health: Vec::new(),
                     name: nc.name.clone(),
                     endpoint: nc.endpoint.clone(),
                     healthy: false,
