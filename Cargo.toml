@@ -81,7 +81,7 @@ cudarc = { git = "https://github.com/grenade/cudarc", rev = "6904cf2e651a0384eac
 # https://github.com/huggingface/candle/pull/3798 — drop this pin (and
 # the fork) when it lands in a release. All four crates pin to the same
 # rev so candle types unify across the graph.
-candle-core = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
-candle-nn = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
-candle-transformers = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
-candle-flash-attn = { git = "https://github.com/grenade/candle", rev = "5eadd749acc1bd56f41cdfbd5a1d936aeced00f1" }
+candle-core = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
+candle-nn = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
+candle-transformers = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
+candle-flash-attn = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }

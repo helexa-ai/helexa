@@ -532,7 +532,7 @@ checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 [[package]]
 name = "candle-core"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "byteorder",
  "candle-kernels",
@@ -560,7 +560,7 @@ dependencies = [
 [[package]]
 name = "candle-flash-attn"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "anyhow",
  "candle-core",
@@ -571,7 +571,7 @@ dependencies = [
 [[package]]
 name = "candle-kernels"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "cudaforge",
 ]
@@ -579,7 +579,7 @@ dependencies = [
 [[package]]
 name = "candle-nn"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "candle-core",
  "half",
@@ -594,7 +594,7 @@ dependencies = [
 [[package]]
 name = "candle-transformers"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "byteorder",
  "candle-core",
@@ -613,7 +613,7 @@ dependencies = [
 [[package]]
 name = "candle-ug"
 version = "0.11.0"
-source = "git+https://github.com/grenade/candle?rev=5eadd749acc1bd56f41cdfbd5a1d936aeced00f1#5eadd749acc1bd56f41cdfbd5a1d936aeced00f1"
+source = "git+https://github.com/grenade/candle?rev=f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940#f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940"
 dependencies = [
  "ug",
  "ug-cuda",

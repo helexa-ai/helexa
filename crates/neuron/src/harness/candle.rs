@@ -3846,12 +3846,21 @@ impl CandleHarness {
         let tokenizer = Tokenizer::from_file(&files.tokenizer)
             .map_err(|e| anyhow::anyhow!("load tokenizer for '{}': {e}", spec.model_id))?;
 
+        // Optional in-situ DiT quantization (#204): `quant = "q8_0"`
+        // halves the resident DiT (~12 -> ~6.4 GB), opening 12 GB
+        // cards; the pipeline then runs f32 activations.
+        let quant = spec
+            .quant
+            .as_deref()
+            .map(super::image::parse_image_quant)
+            .transpose()?;
         let handle = worker
             .load_image(
                 files,
                 spec.model_id.clone(),
                 self.image_cfg.te_on_cpu(),
                 self.image_cfg.te_resident_effective(),
+                quant,
             )
             .await
             .map_err(|e| anyhow::anyhow!("worker load_image: {e:#}"))?;
