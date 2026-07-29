@@ -110,3 +110,17 @@ name = "candle"
 # harness = "candle"
 # quant = "Q4_K_M"
 # devices = [0]
+
+# Text-to-image serving (#198). Applies to diffusers-format image
+# models (Z-Image family). All fields optional.
+#[harness.candle.image]
+# Where the ~8 GB Qwen3-4B text encoder runs. "cpu" (default) keeps it
+# off the GPU entirely — required on 24 GB cards; "cuda" trades VRAM
+# for faster prompt encoding on cards with headroom.
+#te_device = "cpu"
+# Pin the text encoder between generations. Defaults follow te_device:
+# resident on cpu (system RAM), rebuilt per request on cuda (VRAM).
+#te_resident = true
+# Resolution ceiling per side; oversized requests are rejected before
+# admission. Dimensions must be multiples of 16.
+#max_dim = 2048

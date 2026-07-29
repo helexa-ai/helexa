@@ -110,6 +110,11 @@ pub struct ScenarioConfig {
     /// deliberately, e.g. `concurrency_levels = [2, 4, 8]`.
     #[serde(default)]
     pub concurrency_levels: Vec<u32>,
+    /// Square image sizes (px per side) — one `image:<px>` scenario per
+    /// entry (#203), run only against models advertising the `image`
+    /// capability. Defaults to `[1024]`.
+    #[serde(default = "default_image_sizes")]
+    pub image_sizes: Vec<u32>,
     /// Approximate prompt size (tokens) used by the concurrency scenarios.
     #[serde(default = "default_concurrency_prompt_tokens")]
     pub concurrency_prompt_tokens: u32,
@@ -144,6 +149,7 @@ impl Default for ScenarioConfig {
             max_tokens: default_max_tokens(),
             concurrency_levels: Vec::new(),
             concurrency_prompt_tokens: default_concurrency_prompt_tokens(),
+            image_sizes: default_image_sizes(),
             capability_probes: Vec::new(),
         }
     }
@@ -215,6 +221,10 @@ fn default_api_enabled() -> bool {
 fn default_api_listen() -> String {
     "0.0.0.0:13132".to_string()
 }
+fn default_image_sizes() -> Vec<u32> {
+    vec![1024]
+}
+
 fn default_prompt_sizes() -> Vec<u32> {
     vec![128, 4096]
 }

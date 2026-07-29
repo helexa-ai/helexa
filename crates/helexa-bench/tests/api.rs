@@ -59,6 +59,7 @@ fn rec(
         swap_unload_ms: None,
         swap_load_ms: None,
         artifact: None,
+        image_units: None,
         quality_score: None,
         scorer: None,
         ok,

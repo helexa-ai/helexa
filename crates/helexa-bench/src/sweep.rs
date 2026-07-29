@@ -395,6 +395,7 @@ impl Sweeper {
             // Capability artifact (#91); score/scorer are attached later by
             // the `score` subcommand or a future LLM-judge.
             artifact: m.and_then(|m| m.artifact.clone()),
+            image_units: m.and_then(|m| m.image_units),
             quality_score: None,
             scorer: None,
             ok,

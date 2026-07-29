@@ -30,3 +30,12 @@ devices = [0]
 max_in_flight = 1
 max_queue_depth = 24
 max_wait_secs = 60
+
+# Text-to-image (#197/#203). Z-Image-Turbo cold-swaps against Qwen3-8B
+# on the 4090 (operator decision 2026-07-29): cortex evicts the 8B on
+# an images request and the 8B cold-loads back on demand. The Qwen3-4B
+# text encoder runs on the host CPU (the default) — GPU TE + resident
+# DiT OOMs 24 GB — and stays resident in system RAM.
+[harness.candle.image]
+te_device = "cpu"
+max_dim = 2048

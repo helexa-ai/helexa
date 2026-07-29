@@ -78,6 +78,8 @@ pub struct RunRecord {
     // `scorer` are null at insert — set by `score` (manual) or a future
     // LLM-judge.
     pub artifact: Option<String>,
+    /// Metered image work in megapixel-steps (#202/#203).
+    pub image_units: Option<f64>,
     pub quality_score: Option<f64>,
     pub scorer: Option<String>,
     // outcome
@@ -188,6 +190,7 @@ impl Store {
             &[
                 ("prefill_ms", "INTEGER"),
                 ("decode_ms", "INTEGER"),
+                ("image_units", "REAL"),
                 ("prefill_tokens", "INTEGER"),
                 ("vram_used_mb", "INTEGER"),
                 ("gpu_util_pct", "INTEGER"),
@@ -260,6 +263,7 @@ impl Store {
                 concurrency, ttft_p95_s, queue_wait_ms, rejected,
                 swap_unload_ms, swap_load_ms,
                 artifact, quality_score, scorer,
+                image_units,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -275,7 +279,8 @@ impl Store {
                 ?38, ?39, ?40, ?41,
                 ?42, ?43,
                 ?44, ?45, ?46,
-                ?47, ?48
+                ?47,
+                ?48, ?49
             )",
             params![
                 r.ts,
@@ -324,6 +329,7 @@ impl Store {
                 r.artifact,
                 r.quality_score,
                 r.scorer,
+                r.image_units,
                 r.ok as i64,
                 r.error,
             ],
@@ -1318,6 +1324,7 @@ mod tests {
             swap_unload_ms: None,
             swap_load_ms: None,
             artifact: None,
+            image_units: None,
             quality_score: None,
             scorer: None,
             ok,

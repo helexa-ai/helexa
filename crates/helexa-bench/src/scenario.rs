@@ -97,6 +97,9 @@ pub struct ScenarioMetrics {
     /// the output can be quality-scored later (manual or LLM-judge). `None`
     /// for latency/throughput scenarios, which discard the text.
     pub artifact: Option<String>,
+    /// Metered image work in megapixel-steps (#202), from
+    /// `usage.helexa_image_units`. Set only by image scenarios (#203).
+    pub image_units: Option<f64>,
 }
 
 #[async_trait]
@@ -109,15 +112,105 @@ pub trait Scenario: Send + Sync {
     /// for reporting.
     fn prompt_size(&self) -> u32;
 
-    /// Whether this scenario should run against the given model. Default
-    /// runs against everything; vision/audio scenarios will gate on
-    /// [`ModelInfo::capabilities`].
-    fn applies_to(&self, _model: &ModelInfo) -> bool {
-        true
+    /// Whether this scenario should run against the given model. The
+    /// default runs against everything except image-generation models
+    /// (a chat request at an image model is a 422 `wrong_modality`);
+    /// modality-specific scenarios override this.
+    fn applies_to(&self, model: &ModelInfo) -> bool {
+        !model.capabilities.iter().any(|c| c == "image")
     }
 
     /// Issue one shaped request and measure it.
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics>;
+}
+
+/// Fixed-seed image-latency scenario (#203): one 9-step generation at a
+/// configured square size against `/v1/images/generations`, recording
+/// the server-side phase timing (`usage.helexa_timing`) and the metered
+/// megapixel-steps. Applies only to models advertising the `image`
+/// capability.
+pub struct ImageLatencyScenario {
+    pub id: String,
+    pub side_px: u32,
+}
+
+#[async_trait]
+impl Scenario for ImageLatencyScenario {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn prompt_size(&self) -> u32 {
+        // The cell dimension for images is resolution, not tokens.
+        self.side_px
+    }
+
+    fn applies_to(&self, model: &ModelInfo) -> bool {
+        model.capabilities.iter().any(|c| c == "image")
+    }
+
+    async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
+        let url = ctx
+            .chat_url
+            .replace("/v1/chat/completions", "/v1/images/generations");
+        let body = serde_json::json!({
+            "model": ctx.model_id,
+            "prompt": "A lighthouse on a rocky coast at dusk, photorealistic, long exposure",
+            "size": format!("{}x{}", self.side_px, self.side_px),
+            "seed": 42,
+        });
+        let start = std::time::Instant::now();
+        let resp = ctx
+            .client
+            .post(&url)
+            .timeout(ctx.timeout)
+            .json(&body)
+            .send()
+            .await
+            .context("images request failed")?;
+        let status = resp.status();
+        let v: serde_json::Value = resp.json().await.context("images response not JSON")?;
+        anyhow::ensure!(status.is_success(), "images request {status}: {v}");
+        let total_s = start.elapsed().as_secs_f64();
+
+        // Verify the payload decodes to a PNG of the requested size —
+        // a bench that records latency for broken output is worse than
+        // no bench.
+        let b64 = v["data"][0]["b64_json"]
+            .as_str()
+            .context("missing data[0].b64_json")?;
+        use base64::Engine as _;
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .context("b64_json is not base64")?;
+        anyhow::ensure!(
+            png.len() > 8 && &png[1..4] == b"PNG",
+            "payload is not a PNG"
+        );
+
+        let usage = &v["usage"];
+        let timing = &usage["helexa_timing"];
+        Ok(ScenarioMetrics {
+            // Client-observed time before pixels start mattering ≈
+            // encode phase; recorded for shape-consistency with chat.
+            ttft_s: timing["encode_ms"].as_u64().unwrap_or(0) as f64 / 1000.0,
+            decode_tps: None,
+            total_s,
+            prompt_tokens: None,
+            completion_tokens: 0,
+            prefill_ms: timing["encode_ms"].as_u64(),
+            decode_ms: timing["denoise_ms"]
+                .as_u64()
+                .map(|d| d + timing["decode_ms"].as_u64().unwrap_or(0)),
+            prefill_tokens: None,
+            concurrency: None,
+            ttft_p95_s: None,
+            queue_wait_ms_median: None,
+            rejected: None,
+            artifact: None,
+            image_units: usage["helexa_image_units"].as_f64(),
+        })
+    }
 }
 
 /// Build the active scenario set from config: one chat-latency scenario per
@@ -140,6 +233,12 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
             id: format!("concurrency:{n}"),
             concurrency: n,
             approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+        }) as Box<dyn Scenario>);
+    }
+    for &side in &cfg.image_sizes {
+        scenarios.push(Box::new(ImageLatencyScenario {
+            id: format!("image:{side}"),
+            side_px: side,
         }) as Box<dyn Scenario>);
     }
     for probe in &cfg.capability_probes {
@@ -289,6 +388,7 @@ impl Scenario for ConcurrencyScenario {
             queue_wait_ms_median: median(&queue_waits),
             rejected: Some(rejected),
             artifact: None,
+            image_units: None,
         })
     }
 }
@@ -496,6 +596,7 @@ async fn stream_and_measure_inner(
         queue_wait_ms_median: None,
         rejected: None,
         artifact: if capture_text { Some(captured) } else { None },
+        image_units: None,
     })
 }
 
@@ -541,6 +642,7 @@ mod tests {
     fn concurrency_scenarios_built_from_config() {
         use crate::config::{CapabilityProbe, ScenarioConfig};
         let cfg = ScenarioConfig {
+            image_sizes: vec![],
             prompt_sizes: vec![128],
             max_tokens: 64,
             concurrency_levels: vec![2, 8],

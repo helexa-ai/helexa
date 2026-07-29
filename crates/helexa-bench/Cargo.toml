@@ -35,6 +35,7 @@ tower-http = { workspace = true }
 # binary has no libsqlite3 runtime dependency — matches the project's
 # single-static-binary packaging.
 rusqlite = { version = "0.32", features = ["bundled"] }
+base64 = "0.23.0"
 
 [dev-dependencies]
 # Jail (isolated cwd + env) for config tests.
