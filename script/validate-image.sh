@@ -24,6 +24,26 @@ BASE="http://${HOST}:13131"
 echo "==> /version"
 curl -sf -m 10 "${BASE}/version" | python3 -c 'import json,sys; b=json.load(sys.stdin); print("  ", b.get("git_sha","?")[:12], b.get("profile"), b.get("features"))'
 
+# Co-residency (#203): direct neuron loads have no evictor — that is
+# cortex's job. On a host whose resident text model leaves too little
+# VRAM for the DiT (benjy: 8B @ 16 GB + 14.6 GB DiT > 24 GB), evict
+# it for the probe window and restore it afterwards.
+RESTORE_JSON=""
+EVICT=$(curl -sf -m 10 "${BASE}/models" | python3 -c '
+import json, sys
+models = json.load(sys.stdin)
+loaded = [m for m in models if m["status"] == "loaded" and "image" not in m.get("capabilities", [])]
+print(loaded[0]["id"] if loaded else "")
+')
+if [[ -n "${EVICT}" ]]; then
+  echo "==> evicting co-resident ${EVICT} for the probe window"
+  curl -sf -m 120 -X POST "${BASE}/models/unload" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model_id\": \"${EVICT}\"}"
+  echo
+  RESTORE_JSON="{\"model_id\": \"${EVICT}\", \"harness\": \"candle\"}"
+fi
+
 echo "==> load ${MODEL_ID}"
 curl -sf -m 900 -X POST "${BASE}/models/load" \
   -H 'Content-Type: application/json' \
@@ -67,6 +87,14 @@ curl -sf -m 60 -X POST "${BASE}/models/unload" \
   -H 'Content-Type: application/json' \
   -d "{\"model_id\": \"${MODEL_ID}\"}"
 echo
+
+if [[ -n "${RESTORE_JSON}" ]]; then
+  echo "==> restoring ${EVICT}"
+  curl -sf -m 900 -X POST "${BASE}/models/load" \
+    -H 'Content-Type: application/json' \
+    -d "${RESTORE_JSON}"
+  echo
+fi
 
 echo "==> health"
 curl -sf -m 10 "${BASE}/health" > /dev/null && echo "   healthy"
