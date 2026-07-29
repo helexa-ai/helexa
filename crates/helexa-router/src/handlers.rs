@@ -13,6 +13,7 @@ pub fn api_routes() -> Router<Arc<RouterState>> {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
+        .route("/v1/images/generations", post(images_generations))
         .route("/v1/responses", post(responses))
         .route("/v1/messages", post(messages))
         .route("/v1/models", get(list_models))
@@ -48,6 +49,18 @@ async fn responses(
     body: Bytes,
 ) -> Response {
     dispatch::dispatch(&state, "/v1/responses", headers, body).await
+}
+
+/// `POST /v1/images/generations` (#203): text-to-image via whichever
+/// cortex serves the requested model. Same model-extract + capacity
+/// dispatch as every other inference path; images are non-streaming
+/// JSON, which the streaming forwarder passes through unchanged.
+async fn images_generations(
+    State(state): State<Arc<RouterState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    dispatch::dispatch(&state, "/v1/images/generations", headers, body).await
 }
 
 async fn messages(
