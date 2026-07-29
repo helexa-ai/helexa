@@ -152,6 +152,73 @@ pub async fn reserve_or_reject(
     }
 }
 
+/// Budget-equivalence rate for image generation (#202): how many
+/// token-budget units one megapixel-step consumes. The metered unit
+/// IS megapixel-steps (`usage.helexa_image_units`, reported end to
+/// end); this rate only bridges it into the single-currency budget
+/// ledger the clearing house runs today, so per-key caps and
+/// fail-closed enforcement apply to images without an upstream
+/// protocol change. A native image unit in the clearing-house
+/// contract is the follow-up recorded on #202.
+///
+/// 1000 tokens/Mp-step ≈ a 9-step 1024² image (9.44 units) costing
+/// ~9.4k tokens of budget — the same order as a large chat turn.
+pub const TOKENS_PER_IMAGE_UNIT: u64 = 1000;
+
+/// Upper-bound megapixel-steps for an images request (#202): parsed
+/// size (default 1024²) × steps (default 9), doubled when a negative
+/// prompt requests CFG, floored at one unit. Over-reserving is safe —
+/// settle corrects to the actual `usage.helexa_image_units`.
+pub fn image_reservation_units(body: &[u8]) -> f64 {
+    let (mut width, mut height, mut steps, mut cfg) = (1024usize, 1024usize, 9usize, false);
+    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body) {
+        if let Some(size) = v.get("size").and_then(serde_json::Value::as_str)
+            && let Some((w, h)) = size.split_once(['x', 'X'])
+            && let (Ok(w), Ok(h)) = (w.trim().parse(), h.trim().parse())
+        {
+            width = w;
+            height = h;
+        }
+        if let Some(n) = v.get("num_steps").and_then(serde_json::Value::as_u64) {
+            steps = n as usize;
+        }
+        cfg = v
+            .get("negative_prompt")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|s| !s.is_empty());
+    }
+    let mp = (width as f64 * height as f64) / 1_000_000.0;
+    let units = mp * steps as f64 * if cfg { 2.0 } else { 1.0 };
+    units.max(1.0)
+}
+
+/// Convert megapixel-steps to budget tokens, rounding up so fractional
+/// units still cost at least their share.
+pub fn image_units_to_tokens(units: f64) -> u64 {
+    (units * TOKENS_PER_IMAGE_UNIT as f64).ceil() as u64
+}
+
+/// Record per-principal image spend (#202) and settle the reservation
+/// with the actual generated units.
+pub fn settle_image_usage(
+    principal: &Principal,
+    guard: ReservationGuard,
+    served_usage: &crate::served_usage::ServedUsage,
+    actual_units: f64,
+) {
+    let labels = [
+        ("account", principal.account_id.clone()),
+        ("key", principal.key_id.clone()),
+    ];
+    // Milli-units keep the counter integral without losing precision
+    // that matters at reconciliation scale.
+    metrics::counter!("cortex_spend_image_milliunits_total", &labels)
+        .increment((actual_units * 1000.0).round() as u64);
+    let tokens = image_units_to_tokens(actual_units);
+    served_usage.add(&principal.account_id, &principal.key_id, tokens);
+    guard.settle(tokens);
+}
+
 /// Map a [`BudgetError`] to the #63 envelope. The provider chose the window
 /// semantics; this only translates them to HTTP.
 fn budget_error_to_envelope(err: BudgetError) -> OpenAiError {

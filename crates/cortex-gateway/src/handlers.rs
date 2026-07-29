@@ -23,6 +23,7 @@ pub fn api_routes() -> Router<Arc<CortexState>> {
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
         .route("/v1/responses", post(responses))
+        .route("/v1/images/generations", post(images_generations))
         .route("/v1/models", get(list_models))
         .route("/v1/messages", post(anthropic_messages))
         .route("/health", get(health))
@@ -185,6 +186,185 @@ async fn completions(
         &route.resolved_model_id,
     )
     .await
+}
+
+/// `POST /v1/images/generations` — proxy text-to-image requests to a
+/// neuron serving the model (#201). Same routing shape as
+/// [`completions`] — extract `model`, resolve (catalogue cold-load
+/// included), forward verbatim; neuron owns validation, admission and
+/// the envelope. Metering is deliberately NOT the token path:
+/// image spend is settled in megapixel-steps from
+/// `usage.helexa_image_units` (#202).
+async fn images_generations(
+    State(fleet): State<Arc<CortexState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    log_inbound("openai-images", "/v1/images/generations", &body);
+    let model_id = match extract_model(&body) {
+        Some(m) => m,
+        None => {
+            tracing::warn!(
+                handler = "images_generations",
+                "rejected: missing 'model' field in request body"
+            );
+            return error_response(
+                400,
+                "invalid_request_error",
+                "missing_model_field",
+                "missing 'model' field in request body",
+            );
+        }
+    };
+
+    let route = match router::resolve(&fleet, &model_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                handler = "images_generations",
+                model = %model_id,
+                error = %e,
+                "route resolve failed"
+            );
+            return route_error_response(&e);
+        }
+    };
+
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
+
+    let body = rewrite_model_in_body(body, &route.resolved_model_id);
+    let labels = [
+        ("model", route.resolved_model_id.clone()),
+        ("node", route.node_name.clone()),
+    ];
+    metrics::counter!("cortex_requests_total", &labels).increment(1);
+    metrics::counter!("cortex_images_requests_total", &labels).increment(1);
+    if route.cold_start {
+        metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
+    }
+
+    // Budget enforcement in megapixel-steps (#202): reserve the
+    // request's upper bound (size × steps, CFG ×2) converted at the
+    // budget-equivalence rate, fail-closed before dispatch; settle
+    // with the actual `usage.helexa_image_units` from the response.
+    let principal = crate::metering::principal_from_headers(&headers);
+    let guard = match &principal {
+        Some(principal) => {
+            let est_units = crate::metering::image_reservation_units(&body);
+            let est_tokens = crate::metering::image_units_to_tokens(est_units);
+            match crate::metering::reserve_or_reject(
+                Arc::clone(&fleet.entitlements),
+                principal,
+                est_tokens,
+            )
+            .await
+            {
+                Ok(guard) => Some(guard),
+                Err(env) => return crate::error::envelope_response(env),
+            }
+        }
+        None => None,
+    };
+
+    // Images are a non-streaming JSON round-trip (~1–4 MB): buffer the
+    // response so the actual units can be read for settlement, then
+    // re-emit verbatim.
+    let url = format!("{}/v1/images/generations", route.endpoint);
+    let start = Instant::now();
+    let upstream = fleet
+        .http_client
+        .post(&url)
+        .headers(strip_hop_headers(&headers))
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await;
+    let duration = start.elapsed();
+
+    let upstream = match upstream {
+        Ok(r) => r,
+        Err(e) => {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            tracing::warn!(node = %route.node_name, url = %url, error = %e, "images proxy failed");
+            return error_response(
+                502,
+                "api_error",
+                "upstream_unreachable",
+                "failed to reach the serving node",
+            );
+        }
+    };
+    let status = upstream.status();
+    let resp_bytes = match upstream.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            tracing::warn!(node = %route.node_name, error = %e, "images response read failed");
+            return error_response(
+                502,
+                "api_error",
+                "upstream_read_failed",
+                "failed to read the serving node's response",
+            );
+        }
+    };
+
+    metrics::histogram!("cortex_images_generation_seconds", &labels).record(duration.as_secs_f64());
+    if status.is_success() {
+        metrics::counter!("cortex_images_generated_total", &labels).increment(1);
+        // Settle actual spend; a missing usage block settles at the
+        // reserved estimate's floor of 1 unit rather than free.
+        if let (Some(principal), Some(guard)) = (principal, guard) {
+            let actual_units = serde_json::from_slice::<Value>(&resp_bytes)
+                .ok()
+                .and_then(|v| {
+                    v.get("usage")
+                        .and_then(|u| u.get("helexa_image_units"))
+                        .and_then(Value::as_f64)
+                })
+                .unwrap_or(1.0);
+            crate::metering::settle_image_usage(
+                &principal,
+                guard,
+                &fleet.served_usage,
+                actual_units,
+            );
+        }
+    } else {
+        metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+        // guard drops here -> reservation released, no spend recorded.
+    }
+
+    let mut response = axum::response::Response::builder().status(status);
+    if let Some(ct) = response.headers_mut() {
+        ct.insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("application/json"),
+        );
+    }
+    response
+        .body(axum::body::Body::from(resp_bytes))
+        .unwrap_or_else(|_| {
+            error_response(500, "api_error", "response_build_failed", "internal error")
+        })
+}
+
+/// Forward client headers minus hop-by-hop and host headers, keeping
+/// the cortex-stamped principal headers intact for neuron's fair-share
+/// admission (#54).
+fn strip_hop_headers(headers: &HeaderMap) -> HeaderMap {
+    let mut out = HeaderMap::new();
+    for (name, value) in headers {
+        let n = name.as_str().to_ascii_lowercase();
+        if matches!(
+            n.as_str(),
+            "host" | "content-length" | "connection" | "transfer-encoding" | "accept-encoding"
+        ) {
+            continue;
+        }
+        out.insert(name.clone(), value.clone());
+    }
+    out
 }
 
 /// `POST /v1/messages` — accept Anthropic format, translate, proxy, translate back.
