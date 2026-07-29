@@ -51,7 +51,7 @@ curl -sf -m 900 -X POST "${BASE}/models/load" \
 echo
 
 echo "==> capabilities"
-curl -sf -m 10 "${BASE}/models" | python3 - "$MODEL_ID" << 'PYEOF'
+curl -sf -m 10 "${BASE}/models" | python3 -c '
 import json, sys
 model_id = sys.argv[1]
 models = json.load(sys.stdin)
@@ -60,27 +60,25 @@ assert m, f"{model_id} not listed"
 assert m["status"] == "loaded", m["status"]
 assert "image" in m.get("capabilities", []), m.get("capabilities")
 print("  ", m["id"], m["status"], m["capabilities"])
-PYEOF
+' "$MODEL_ID"
 
 echo "==> generate 512x512 seed 42"
 curl -sf -m 300 -X POST "${BASE}/v1/images/generations" \
   -H 'Content-Type: application/json' \
   -d "{\"model\": \"${MODEL_ID}\", \"prompt\": \"a lighthouse at dusk, photorealistic\", \"size\": \"512x512\", \"seed\": 42}" \
-  | python3 << 'PYEOF'
+  | python3 -c '
 import base64, json, struct, sys
 r = json.load(sys.stdin)
 png = base64.b64decode(r["data"][0]["b64_json"])
 assert png[1:4] == b"PNG", "not a PNG"
-# IHDR width/height live at fixed offsets in the first chunk.
 w, h = struct.unpack(">II", png[16:24])
 assert (w, h) == (512, 512), (w, h)
 usage = r["usage"]
 units = usage["helexa_image_units"]
 assert abs(units - 512 * 512 * 9 / 1e6) < 1e-6, units
 t = usage["helexa_timing"]
-print(f"   512x512 ok | units={units:.3f} | encode={t['encode_ms']}ms "
-      f"denoise={t['denoise_ms']}ms decode={t['decode_ms']}ms")
-PYEOF
+print("   512x512 ok | units={:.3f} | encode={}ms denoise={}ms decode={}ms".format(units, t["encode_ms"], t["denoise_ms"], t["decode_ms"]))
+'
 
 echo "==> unload"
 curl -sf -m 60 -X POST "${BASE}/models/unload" \
