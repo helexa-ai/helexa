@@ -51,7 +51,7 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "cuda")]
 pub use jobs::TpHandle;
-pub use jobs::{ArchHandle, Job, KvSnapshotId};
+pub use jobs::{ArchHandle, ImageHandle, Job, KvSnapshotId};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -233,6 +233,87 @@ impl DeviceWorkerHandle {
                 config_path,
                 safetensors_paths,
                 model_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Load a Z-Image diffusers pipeline (#198) on the worker thread.
+    pub async fn load_image(
+        &self,
+        files: crate::harness::image::ZImageFiles,
+        model_id: String,
+        te_resident: bool,
+    ) -> Result<ImageHandle, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::LoadImage {
+                files,
+                model_id,
+                te_resident,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop the Z-Image pipeline for `handle` on the worker thread.
+    /// Same poison-tolerant contract as [`Self::drop_arch`].
+    pub async fn drop_image(&self, handle: ImageHandle) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropImage {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        reply_rx.await.map_err(|_| WorkerError::Gone {
+            device_index: self.device_index,
+        })
+    }
+
+    /// Run one full text-to-image generation (#198) on the worker
+    /// thread. The reply is CPU-side packed RGB + timing; no device
+    /// tensor crosses back.
+    pub async fn generate_image(
+        &self,
+        handle: ImageHandle,
+        params: crate::harness::image::ImageGenParams,
+        max_dim: usize,
+    ) -> Result<crate::harness::image::ImageGenResult, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::GenerateImage {
+                handle,
+                params,
+                max_dim,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {

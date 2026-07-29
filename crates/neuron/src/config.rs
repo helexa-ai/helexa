@@ -91,6 +91,41 @@ pub struct CandleHarnessConfig {
     /// requests until their client times out.
     #[serde(default)]
     pub admission: AdmissionConfig,
+
+    /// `[harness.candle.image]` settings (#198) — the Z-Image
+    /// text-to-image pipeline.
+    #[serde(default)]
+    pub image: ImageConfig,
+}
+
+/// `[harness.candle.image]` settings (#198).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageConfig {
+    /// Keep the ~8 GB Qwen3-4B text encoder resident between
+    /// generations instead of rebuilding it from the mmap'd
+    /// safetensors per request (~1.2 s page-cache warm). Costs
+    /// steady-state VRAM; only worth it on cards with headroom
+    /// beyond the ~13 GB DiT+VAE working set.
+    #[serde(default)]
+    pub te_resident: bool,
+    /// Resolution ceiling in pixels per side. Requests beyond it are
+    /// rejected before admission — never sent to the device, where the
+    /// resulting OOM would poison the worker context.
+    #[serde(default = "default_image_max_dim")]
+    pub max_dim: usize,
+}
+
+impl Default for ImageConfig {
+    fn default() -> Self {
+        Self {
+            te_resident: false,
+            max_dim: default_image_max_dim(),
+        }
+    }
+}
+
+fn default_image_max_dim() -> usize {
+    2048
 }
 
 /// `[harness.candle.admission]` settings (#53).

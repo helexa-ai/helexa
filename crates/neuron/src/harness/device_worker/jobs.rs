@@ -28,6 +28,16 @@ pub struct ArchHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TpHandle(pub u64);
 
+/// Opaque handle to a [`ZImagePipeline`] stored in the worker
+/// thread's image slab (#198). Same discipline as [`ArchHandle`]: the
+/// pipeline's CUDA tensors are owned by the worker thread, and the
+/// only way to drop them is `Job::DropImage` so `Drop` runs with the
+/// right context bound.
+///
+/// [`ZImagePipeline`]: crate::harness::image::ZImagePipeline
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ImageHandle(pub u64);
+
 /// Opaque handle to a prefix-cache snapshot (#11) stored worker-side
 /// next to the model slab. Scoped to the `ArchHandle` it was captured
 /// from — `Job::DropArch` drops every snapshot under its handle. The
@@ -400,6 +410,41 @@ pub enum Job {
         image_data_uris: Vec<String>,
         chunk_size: usize,
         reply: oneshot::Sender<Result<Vec<f32>>>,
+    },
+    /// Load a Z-Image diffusers pipeline (#198) on the worker thread.
+    /// The dispatch handler builds the DiT + VAE resident (and the
+    /// text encoder too when `te_resident`), inserts the pipeline into
+    /// the image slab, and returns the fresh `ImageHandle`. File
+    /// resolution (hf-hub) happens on the async side; the worker only
+    /// touches local paths.
+    LoadImage {
+        files: crate::harness::image::ZImageFiles,
+        model_id: String,
+        te_resident: bool,
+        reply: oneshot::Sender<Result<ImageHandle>>,
+    },
+    /// Remove the pipeline from the image slab and drop it on the
+    /// worker thread. Mirrors `DropArch`.
+    DropImage {
+        handle: ImageHandle,
+        reply: oneshot::Sender<()>,
+    },
+    /// Run one full text-to-image generation (#198): staged text-encode
+    /// → denoise loop → VAE decode, entirely on the worker thread. The
+    /// reply carries CPU-side packed RGB plus the phase timing — no
+    /// device tensor escapes. Prompt tokenization happens on the async
+    /// side (`params.tokens` / `params.negative_tokens` are ids).
+    ///
+    /// One job per generation, intentionally: a denoise loop saturates
+    /// the device, so finer-grained jobs would only add channel hops.
+    /// Cancellation is coarse (job granularity) — acceptable at the
+    /// ~7 s/1024² scale measured on the 2026-07-29 bench.
+    GenerateImage {
+        handle: ImageHandle,
+        params: crate::harness::image::ImageGenParams,
+        /// Resolution ceiling from config, enforced again worker-side.
+        max_dim: usize,
+        reply: oneshot::Sender<Result<crate::harness::image::ImageGenResult>>,
     },
     /// Tell the worker to break its dispatch loop and exit. Any jobs
     /// queued after this in the channel reply `Err` to their oneshot
