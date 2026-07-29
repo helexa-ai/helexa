@@ -253,6 +253,7 @@ impl DeviceWorkerHandle {
         model_id: String,
         te_on_cpu: bool,
         te_resident: bool,
+        quant: Option<candle_core::quantized::GgmlDType>,
     ) -> Result<ImageHandle, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -266,6 +267,7 @@ impl DeviceWorkerHandle {
                 model_id,
                 te_on_cpu,
                 te_resident,
+                quant,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {

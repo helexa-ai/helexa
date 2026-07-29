@@ -217,13 +217,9 @@ pub async fn preflight(
             suggestion: "diffusers image pipelines load on a single GPU; set tensor_parallel=1"
                 .to_string(),
         }),
-        (SourceFormat::Diffusers, _, Some(requested)) => Err(PreflightError::QuantNotFound {
-            model_id: source_id.to_string(),
-            requested: requested.to_string(),
-            available: vec![],
-            nearest: None,
-        }),
-        (SourceFormat::Diffusers, _, None) => Ok(PlacementPlan {
+        // In-situ q8_0 quantization of the DiT is served (#204);
+        // other dtypes are rejected at load with the accepted list.
+        (SourceFormat::Diffusers, _, _) => Ok(PlacementPlan {
             model_id: source_id.to_string(),
             format: format.clone(),
             tp_size,
@@ -633,13 +629,7 @@ mod tests {
                             .to_string(),
                 })
             }
-            (SourceFormat::Diffusers, _, Some(requested)) => Err(PreflightError::QuantNotFound {
-                model_id: source_id.to_string(),
-                requested: requested.to_string(),
-                available: vec![],
-                nearest: None,
-            }),
-            (SourceFormat::Diffusers, _, None) => Ok(PlacementPlan {
+            (SourceFormat::Diffusers, _, _) => Ok(PlacementPlan {
                 model_id: source_id.to_string(),
                 format: format.clone(),
                 tp_size,
@@ -692,16 +682,18 @@ mod tests {
     }
 
     #[test]
-    fn feasibility_diffusers_quant_rejected() {
+    fn feasibility_diffusers_quant_accepted() {
+        // ISQ q8_0 (#204): preflight passes quant through; the loader
+        // validates the dtype string (only q8_0 is served).
         let files = ["model_index.json"];
         let fmt = classify(&files);
-        let err = decide(
+        let plan = decide(
             &spec("Tongyi-MAI/Z-Image-Turbo", None, Some("q8_0")),
             &fmt,
             &files,
         )
-        .expect_err("quant must be rejected for diffusers until #204");
-        assert!(matches!(err, PreflightError::QuantNotFound { .. }));
+        .expect("q8_0 diffusers load should pass preflight");
+        assert!(plan.picked_quant_file.is_none());
     }
 
     #[test]

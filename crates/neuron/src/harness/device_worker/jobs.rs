@@ -425,6 +425,9 @@ pub enum Job {
         /// + decode transients.
         te_on_cpu: bool,
         te_resident: bool,
+        /// In-situ quantization dtype for the DiT (#204); `None` loads
+        /// dense BF16.
+        quant: Option<candle_core::quantized::GgmlDType>,
         reply: oneshot::Sender<Result<ImageHandle>>,
     },
     /// Remove the pipeline from the image slab and drop it on the

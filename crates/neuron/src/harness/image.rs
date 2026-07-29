@@ -19,12 +19,13 @@
 //! forward passes is pure CPU logic, unit-testable without weights.
 
 use anyhow::{Context, Result};
+use candle_core::quantized::GgmlDType;
 use candle_core::{DType, Device, IndexOp, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::models::z_image::{
-    AutoEncoderKL, Config as DitConfig, FlowMatchEulerDiscreteScheduler, SchedulerConfig,
-    TextEncoderConfig, VaeConfig, ZImageTextEncoder, ZImageTransformer2DModel, calculate_shift,
-    get_noise, postprocess_image,
+    AutoEncoderKL, Config as DitConfig, FlowMatchEulerDiscreteScheduler,
+    QuantizedZImageTransformer2DModel, SchedulerConfig, TextEncoderConfig, VaeConfig,
+    ZImageTextEncoder, ZImageTransformer2DModel, calculate_shift, get_noise, postprocess_image,
 };
 use std::path::PathBuf;
 
@@ -257,6 +258,29 @@ fn tiled_decode(
 /// The worker-thread-resident pipeline state for one loaded Z-Image
 /// model. Owned by `DeviceWorkerState::image_models`; construction,
 /// every forward, and Drop all happen on the worker thread.
+/// The DiT in either precision. Quantized (#204) loads the same dense
+/// safetensors and quantizes in situ; activations run in f32 (the
+/// quantized kernels accumulate there anyway).
+enum Dit {
+    Dense(ZImageTransformer2DModel),
+    Quantized(QuantizedZImageTransformer2DModel),
+}
+
+impl Dit {
+    fn forward(
+        &self,
+        latents: &Tensor,
+        t: &Tensor,
+        cap_feats: &Tensor,
+        cap_mask: &Tensor,
+    ) -> Result<Tensor> {
+        match self {
+            Dit::Dense(m) => Ok(m.forward(latents, t, cap_feats, cap_mask)?),
+            Dit::Quantized(m) => Ok(m.forward(latents, t, cap_feats, cap_mask)?),
+        }
+    }
+}
+
 pub struct ZImagePipeline {
     device: Device,
     dtype: DType,
@@ -269,7 +293,7 @@ pub struct ZImagePipeline {
     te_device: Device,
     te_dtype: DType,
     files: ZImageFiles,
-    dit: ZImageTransformer2DModel,
+    dit: Dit,
     vae: AutoEncoderKL,
     /// Text encoder residency: `Some` when pinned (`te_resident` at
     /// load) or between rebuild and drop within a generation; `None`
@@ -287,8 +311,14 @@ impl ZImagePipeline {
         device: &Device,
         te_on_cpu: bool,
         te_resident: bool,
+        quant: Option<GgmlDType>,
     ) -> Result<Self> {
-        let dtype = device.bf16_default_to_f32();
+        // Quantized runs the whole pipeline in f32: the quantized
+        // matmuls accumulate there, and mixing dtypes only adds casts.
+        let dtype = match quant {
+            Some(_) => DType::F32,
+            None => device.bf16_default_to_f32(),
+        };
         // CPU runs the TE in f32 — candle's CPU bf16 path is a
         // convert-per-op crawl, and precision only helps here.
         let (te_device, te_dtype) = if te_on_cpu {
@@ -305,8 +335,16 @@ impl ZImagePipeline {
         let dit_vb = unsafe {
             VarBuilder::from_mmaped_safetensors(&files.transformer_shards, dtype, device)?
         };
-        let dit =
-            ZImageTransformer2DModel::new(&dit_cfg, dit_vb).context("build Z-Image transformer")?;
+        let dit = match quant {
+            Some(dt) => Dit::Quantized(
+                QuantizedZImageTransformer2DModel::new(&dit_cfg, dit_vb, dt)
+                    .context("build quantized Z-Image transformer")?,
+            ),
+            None => Dit::Dense(
+                ZImageTransformer2DModel::new(&dit_cfg, dit_vb)
+                    .context("build Z-Image transformer")?,
+            ),
+        };
 
         let vae_cfg: VaeConfig = serde_json::from_reader(
             std::fs::File::open(&files.vae_config).context("open vae/config.json")?,
@@ -480,6 +518,20 @@ impl ZImagePipeline {
                 cfg: cfg_active,
             },
         })
+    }
+}
+
+/// Parse the operator's `quant` string for the image path (#204).
+/// Only `q8_0` is accepted — the one dtype with a fixed-seed A/B
+/// against BF16; broaden deliberately, with comparisons, not by
+/// default.
+pub fn parse_image_quant(quant: &str) -> Result<GgmlDType> {
+    match quant.to_ascii_lowercase().as_str() {
+        "q8_0" | "q8" => Ok(GgmlDType::Q8_0),
+        other => anyhow::bail!(
+            "unsupported image quant '{other}'; the image path serves q8_0 \
+             (bf16 when quant is omitted)"
+        ),
     }
 }
 
