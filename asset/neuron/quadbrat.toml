@@ -17,3 +17,12 @@ name = "candle"
 model_id = "Qwen/Qwen3-1.7B"
 harness = "candle"
 devices = [0]
+
+# Text-to-image (#204): the 12 GB tier serves the q8_0-quantized DiT
+# (8.7 GB resident incl. VAE). Ceiling is 768² — naive f32 attention
+# transients OOM 1024² beside the resident model; lifts to 1024² if
+# #95 extends flash-attn to the ampere flavour. Load spec: quant =
+# "q8_0" on the load request / catalogue.
+[harness.candle.image]
+te_device = "cpu"
+max_dim = 768
