@@ -635,6 +635,12 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
         // model. Not retryable against this model — the client should
         // pick a model whose `capabilities` include the endpoint's
         // modality.
+        InferenceError::InvalidImageParams { detail } => OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "invalid_image_params",
+            format!("invalid image generation parameters: {detail}"),
+        ),
         InferenceError::WrongModality { model_id } => OpenAiError::new(
             422,
             "invalid_request_error",

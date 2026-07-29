@@ -590,6 +590,10 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 // DropArch: DiT/VAE (and a pinned text encoder) free
                 // their device tensors on the context that owns them.
                 drop(removed);
+                // Return the freed blocks to the system (not just the
+                // stream-ordered pool) so a subsequent text-model load
+                // — the benjy cold-swap pattern — sees the VRAM.
+                trim_device_pool(&state);
                 tracing::debug!(
                     device_index,
                     handle = handle.0,
