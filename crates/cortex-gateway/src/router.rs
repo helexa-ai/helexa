@@ -226,7 +226,33 @@ pub async fn resolve(
 
     // Priority 4: catalogue × topology cold-load.
     if let Some(profile) = fleet.catalogue.get(model_id) {
-        let (node_name, neuron_endpoint) = pick_feasible_neuron(fleet, profile).await?;
+        let (node_name, neuron_endpoint, fits_free) = pick_feasible_neuron(fleet, profile).await?;
+        // Cold-swap (#203): when the chosen node's devices don't have the
+        // free VRAM *right now*, evict unpinned LRU models there until
+        // the profile fits (bounded — a node whose evictable set can't
+        // free enough was ranked below one that can).
+        if !fits_free {
+            for _ in 0..3 {
+                match crate::evictor::evict_lru_on_node(fleet, &node_name).await {
+                    Ok(Some(evicted)) => {
+                        tracing::info!(
+                            model = %profile.id,
+                            node = %node_name,
+                            evicted = %evicted,
+                            "cold-swap: evicted LRU model to make room"
+                        );
+                        if node_fits_free(fleet, &node_name, profile).await {
+                            break;
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        tracing::warn!(node = %node_name, error = %e, "cold-swap eviction failed");
+                        break;
+                    }
+                }
+            }
+        }
         cold_load(fleet, &node_name, &neuron_endpoint, profile).await?;
         return finish(fleet, &node_name, &neuron_endpoint, model_id, true).await;
     }
@@ -234,16 +260,35 @@ pub async fn resolve(
     Err(RouteError::ModelNotFound(model_id.to_string()))
 }
 
+/// True when `node_name`'s live device readings show enough free VRAM
+/// on some device for the profile. Conservative: unknown health (no
+/// /health poll yet) counts as not-fitting so the ranking prefers
+/// nodes we can actually see.
+async fn node_fits_free(fleet: &Arc<CortexState>, node_name: &str, profile: &ModelProfile) -> bool {
+    let nodes = fleet.nodes.read().await;
+    nodes.get(node_name).is_some_and(|node| {
+        node.device_health
+            .iter()
+            .any(|d| d.vram_free_mb >= profile.vram_mb.unwrap_or(0))
+    })
+}
+
 /// Pick a healthy neuron whose discovered topology satisfies the
-/// profile. Preference order:
+/// profile. Preference order (#203):
 ///   1. A neuron from `profile.pinned_on` that is healthy + feasible.
-///   2. Otherwise, any healthy + feasible neuron, stable by name.
+///   2. One whose live free VRAM already fits the profile.
+///   3. One whose *evictable* (loaded, not catalogue-pinned) models
+///      plus free VRAM could fit it after a cold-swap eviction.
+///   4. Any healthy + feasible neuron, stable by name.
+///
+/// Returns `(name, endpoint, fits_free)` — `fits_free = false` tells
+/// the caller a cold-swap eviction is needed before loading.
 async fn pick_feasible_neuron(
     fleet: &Arc<CortexState>,
     profile: &ModelProfile,
-) -> Result<(String, String), RouteError> {
+) -> Result<(String, String, bool), RouteError> {
     let nodes = fleet.nodes.read().await;
-    let mut candidates: Vec<(String, String, bool)> = Vec::new();
+    let mut candidates: Vec<(String, String, bool, bool, bool, u64)> = Vec::new();
     for node in nodes.values() {
         if !node.healthy {
             continue;
@@ -255,14 +300,44 @@ async fn pick_feasible_neuron(
             continue;
         }
         let pinned = profile.pinned_on.iter().any(|n| n == &node.name);
-        candidates.push((node.name.clone(), node.endpoint.clone(), pinned));
+        let max_free = node
+            .device_health
+            .iter()
+            .map(|d| d.vram_free_mb)
+            .max()
+            .unwrap_or(0);
+        let need = profile.vram_mb.unwrap_or(0);
+        let fits_free = max_free >= need;
+        // Evictable estimate: free + the VRAM of loaded models that the
+        // catalogue does not pin to this node.
+        let evictable: u64 = node
+            .models
+            .values()
+            .filter(|m| {
+                matches!(m.status, cortex_core::node::ModelStatus::Loaded)
+                    && !fleet.catalogue.is_pinned(&m.id, &node.name)
+            })
+            .filter_map(|m| m.vram_estimate_mb)
+            .sum();
+        let fits_after_evict = max_free.saturating_add(evictable) >= need;
+        candidates.push((
+            node.name.clone(),
+            node.endpoint.clone(),
+            pinned,
+            fits_free,
+            fits_after_evict,
+            max_free,
+        ));
     }
     candidates.sort_by(|a, b| {
-        b.2.cmp(&a.2) // pinned first (true > false)
-            .then(a.0.cmp(&b.0))
+        b.2.cmp(&a.2) // pinned first
+            .then(b.3.cmp(&a.3)) // then free-fit
+            .then(b.4.cmp(&a.4)) // then evictable-fit
+            .then(b.5.cmp(&a.5)) // then most free VRAM
+            .then(a.0.cmp(&b.0)) // then stable by name
     });
-    if let Some((n, e, _)) = candidates.into_iter().next() {
-        return Ok((n, e));
+    if let Some((n, e, _, fits_free, _, _)) = candidates.into_iter().next() {
+        return Ok((n, e, fits_free));
     }
 
     // No *healthy* feasible neuron. Distinguish a transient outage from a

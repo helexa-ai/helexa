@@ -228,6 +228,9 @@ async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
                 // Per-model admission load (#53) → keyed by id for the
                 // load-aware router (#55).
                 node.model_load = h.models.into_iter().map(|m| (m.id.clone(), m)).collect();
+                // Per-device VRAM readings (#203) for free-fit
+                // cold-load placement.
+                node.device_health = h.devices.clone();
             }
         }
         Err(e) => {
