@@ -6,6 +6,7 @@ pub mod discovery;
 pub mod entitlements;
 pub mod error_envelope;
 pub mod harness;
+pub mod images;
 pub mod metrics;
 pub mod node;
 pub mod openai;

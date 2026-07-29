@@ -50,6 +50,7 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/unload", post(unload_model))
         .route("/models/{model_id}/endpoint", get(model_endpoint))
         .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/images/generations", post(images_generations))
         .route("/v1/responses", post(responses))
 }
 
@@ -443,6 +444,115 @@ async fn responses(
     }
 }
 
+/// `POST /v1/images/generations` (#200): OpenAI-compatible
+/// text-to-image over a loaded Z-Image model. The heavy lifting
+/// (validation, admission, tokenization, worker round-trip, PNG
+/// encoding, metering) lives in `CandleHarness::image_generation` —
+/// this handler is envelope translation only.
+async fn images_generations(
+    State(state): State<Arc<NeuronState>>,
+    headers: axum::http::HeaderMap,
+    Json(req): Json<cortex_core::images::ImagesGenerationRequest>,
+) -> impl IntoResponse {
+    use cortex_core::error_envelope::OpenAiError;
+    use cortex_core::images as wire;
+
+    let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "candle harness not enabled on this neuron"})),
+        )
+            .into_response();
+    };
+
+    // v1 surface constraints — reject rather than silently degrade.
+    if req.n != 1 {
+        return envelope_response(OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "unsupported_parameter",
+            format!("n={} is not supported; this endpoint serves n=1", req.n),
+        ));
+    }
+    if let Some(rf) = req.response_format.as_deref()
+        && rf != "b64_json"
+    {
+        return envelope_response(OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "unsupported_parameter",
+            format!("response_format '{rf}' is not supported; use b64_json"),
+        ));
+    }
+    if let Some(of) = req.output_format.as_deref()
+        && of != "png"
+    {
+        return envelope_response(OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "unsupported_parameter",
+            format!("output_format '{of}' is not supported; use png"),
+        ));
+    }
+    let (width, height) = match req.parse_size() {
+        Ok(dims) => dims,
+        Err(msg) => {
+            return envelope_response(OpenAiError::new(
+                400,
+                "invalid_request_error",
+                "invalid_size",
+                msg,
+            ));
+        }
+    };
+
+    let principal = principal_key(&headers);
+    let internal = crate::harness::candle::ImageGenerationRequest {
+        model: req.model.clone(),
+        prompt: req.prompt.clone(),
+        negative_prompt: req.negative_prompt.clone(),
+        width,
+        height,
+        steps: req
+            .num_steps
+            .unwrap_or(crate::harness::image::DEFAULT_STEPS),
+        guidance_scale: req
+            .guidance_scale
+            .unwrap_or(crate::harness::image::DEFAULT_GUIDANCE_SCALE),
+        seed: req.seed,
+    };
+
+    match candle
+        .image_generation(internal, principal.as_deref())
+        .await
+    {
+        Ok(out) => {
+            use base64::Engine as _;
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&out.png);
+            let created = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            Json(wire::ImagesGenerationResponse {
+                created,
+                data: vec![wire::ImageData { b64_json: b64 }],
+                usage: Some(wire::ImagesUsage {
+                    helexa_image_units: out.image_units,
+                    helexa_timing: Some(wire::ImageTiming {
+                        encode_ms: out.timing.encode_ms,
+                        denoise_ms: out.timing.denoise_ms,
+                        decode_ms: out.timing.decode_ms,
+                        steps: out.timing.steps,
+                        cfg: out.timing.cfg,
+                    }),
+                }),
+            })
+            .into_response()
+        }
+        Err(e) => inference_error_response(e),
+    }
+}
+
 fn finish_reason_from_str(s: &str) -> crate::wire::FinishReason {
     use crate::wire::FinishReason;
     match s {
@@ -525,6 +635,12 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
         // model. Not retryable against this model — the client should
         // pick a model whose `capabilities` include the endpoint's
         // modality.
+        InferenceError::InvalidImageParams { detail } => OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "invalid_image_params",
+            format!("invalid image generation parameters: {detail}"),
+        ),
         InferenceError::WrongModality { model_id } => OpenAiError::new(
             422,
             "invalid_request_error",

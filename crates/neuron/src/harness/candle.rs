@@ -3854,7 +3854,7 @@ impl CandleHarness {
                 self.image_cfg.te_resident_effective(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("worker load_image: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("worker load_image: {e:#}"))?;
 
         // Admission (#53) with the in-flight ceiling forced to 1: a
         // denoise loop saturates the device, so extra concurrency
@@ -4034,9 +4034,21 @@ impl CandleHarness {
 
         // Validate BEFORE admission so malformed requests never occupy
         // a queue slot (and an oversized one never reaches the device).
-        super::image::validate_dims(request.width, request.height, img.max_dim)
-            .map_err(InferenceError::Other)?;
-        super::image::validate_steps(request.steps).map_err(InferenceError::Other)?;
+        super::image::validate_dims(request.width, request.height, img.max_dim).map_err(|e| {
+            InferenceError::InvalidImageParams {
+                detail: format!("{e:#}"),
+            }
+        })?;
+        super::image::validate_steps(request.steps).map_err(|e| {
+            InferenceError::InvalidImageParams {
+                detail: format!("{e:#}"),
+            }
+        })?;
+        if request.prompt.trim().is_empty() {
+            return Err(InferenceError::InvalidImageParams {
+                detail: "prompt must be non-empty".into(),
+            });
+        }
 
         let _permit = img.admission.enter(principal).await?;
         let _guard = img.inference_lock.lock().await;
@@ -4073,7 +4085,7 @@ impl CandleHarness {
             .worker
             .generate_image(img.handle, params, img.max_dim)
             .await
-            .map_err(|e| InferenceError::Other(anyhow::anyhow!("image generation: {e}")))?;
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("image generation: {e:#}")))?;
 
         let timing = result.timing;
         let (width, height) = (result.width, result.height);
@@ -5937,6 +5949,11 @@ pub enum InferenceError {
          completions endpoints for text models"
     )]
     WrongModality { model_id: String },
+    /// Malformed image-generation parameters (#200): misaligned or
+    /// over-ceiling dimensions, out-of-range step count, empty prompt.
+    /// Maps to 400 — client error, not server fault.
+    #[error("invalid image generation parameters: {detail}")]
+    InvalidImageParams { detail: String },
     /// The loaded model's chat template could not render the request
     /// (e.g. a message / tool-call structure it rejects). Returned only
     /// when the request carried tools — silently degrading to a
