@@ -583,6 +583,9 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                             );
                             handle
                         });
+                // Release load-time transients (upload staging) back
+                // to the system before serving.
+                trim_device_pool(&state);
                 let _ = reply.send(result);
             }
             Job::DropImage { handle, reply } => {
@@ -614,6 +617,13 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     Some(pipeline) => pipeline.generate(&params, max_dim),
                     None => Err(anyhow::anyhow!("no image pipeline for handle {}", handle.0)),
                 };
+                // Release this generation's pooled transients: sizes
+                // vary per request (512²…2048²), and the fragmented
+                // pool otherwise OOMs a later different-size
+                // generation that would fit a clean slate (beast E2E
+                // 2026-07-29). Milliseconds against a multi-second
+                // generation.
+                trim_device_pool(&state);
                 let _ = reply.send(result);
             }
             Job::Shutdown => unreachable!("Shutdown should break above"),
