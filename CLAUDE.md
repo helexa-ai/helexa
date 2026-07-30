@@ -207,6 +207,69 @@ Work each change on its own branch; `main` stays releasable.
 Docs-only changes (no `#[cfg(feature = "cuda")]` impact) can go straight to
 `main` — there's nothing for the CUDA type-check to prove.
 
+## Epic execution playbook
+
+Distilled from the #197 text-to-image epic (2026-07-29/30): seven
+children — an engine integration, two upstream candle fixes, a new API
+surface across neuron + cortex + router, metering, fleet rollout, and
+quantization — planned, implemented, live-validated, and closed in one
+multi-hour session with no operator input beyond one up-front decision
+round. This is the template for large, unblocked, well-planned epics;
+future sessions should reproduce it deliberately.
+
+1. **De-risk before planning.** Run the throwaway spike on real
+   hardware first. Hand-driving the candle example on beast produced
+   the VRAM/latency numbers and the three findings that became the
+   port spec — the epic was written from evidence, and every design
+   claim in it had already been observed. An epic whose engine risk is
+   retired before filing is an epic that can be finished.
+2. **Front-load operator decisions, then don't come back.** Identify
+   the genuinely operator-owned decision surfaces (for #197: metering
+   unit, v1 placement, public exposure, optional-scope selection) and
+   settle them in ONE question round before implementation starts.
+   Record the answers as issue comments so they survive context loss.
+   Everything else is implementation detail the session owns.
+3. **Decisions are goals, not designs.** When live evidence
+   contradicts the planned design, change the design autonomously,
+   keep the decided goal fixed, and record the divergence + rationale
+   on the issue. #197 examples: the text encoder moved to host CPU
+   when the 24 GB tier couldn't hold it beside the DiT; tiled VAE
+   decode was pulled forward a stage when 1024² OOMed on the actual
+   deployment card; allocator-pool trims were added when mixed-size
+   request sequences fragmented into OOMs. The operator decided
+   *benjy cold-swap*, not *how the bytes fit*.
+4. **Branch-per-child, stack when dependent, never wait idle.** Push
+   on local green, let branch CI (especially the CUDA type-check)
+   validate in the background, and start the next child meanwhile.
+   Merge in dependency order as runs green. CI wall-clock is the
+   session's biggest fixed cost — always have a second workstream
+   (the next child, fleet prep, issue bookkeeping) to overlap it.
+5. **Validate live at every stage, with guaranteed restore.**
+   Production hosts are the test bench, used through guarded windows:
+   check `in_flight == 0`, evict, test, restore, verify — as one
+   scripted sequence, so a dropped ssh session can't leave the fleet
+   degraded. Every stage's acceptance is an observable behaviour on
+   real hardware; unit tests gate merges, live probes gate closure.
+6. **The definition of done is external.** #197 closed only when an
+   unmodified OpenAI client got a metered image through the public
+   chain, `script/validate-image.sh` passed against the *deployed RPM
+   build* (not a dev binary), and the cold-swap ran both directions.
+   `/version` probes confirm what is actually live; "merged" is not
+   "done".
+7. **Write everything down as you go.** Issues get closing comments
+   with real numbers; surprises become documented gotchas the same
+   hour they bite; session memory is checkpointed at each phase
+   boundary so a context break loses nothing. The issue trail should
+   let a cold reader reconstruct both what happened and why.
+8. **Fix the environment, not just the code.** One-shotting means
+   owning the whole path: rebasing the cudarc fork to unblock a candle
+   bump, forking candle for upstream defects (and filing the upstream
+   PR so the pin is temporary), re-dispatching a flaky CI run, syncing
+   27 GB of weights across the mesh, force-updating a host. Blockers
+   are work items, not stop signs — but production-touching steps get
+   the same guarded-window discipline as tests, and destructive or
+   scope-changing moves still go back to the operator.
+
 SSH note: the gitea remote host offers multiple agent keys and cuts the
 connection before reaching the right one. This repo pins the working key via
 `git config core.sshCommand "ssh -i ~/.ssh/id_grenade -o IdentitiesOnly=yes"`.
@@ -874,3 +937,98 @@ tok/s aggregated (per-request `FinishTiming` goes to the caller in
 (export the polled load, advertise the ceiling, roll up tok/s, count
 rejections) is tracked separately — it is a plumbing gap, not a
 measurement one, since the signals already exist in memory.
+
+## 2026-07-30 addendum: text-to-image serving (epic #197)
+
+Image generation is a first-class modality. **Tongyi-MAI/Z-Image-Turbo**
+(6B single-stream DiT + Qwen3-4B text encoder + VAE, Apache 2.0,
+flow-matching, 9-step turbo) serves candle-natively through the same
+device-worker discipline as the text archs. Epic #197, PRs #205–#213.
+
+**Engine (`crates/neuron/src/harness/image.rs`).** `ZImagePipeline`
+lives in the device worker's image slab (`ImageHandle`; `LoadImage` /
+`DropImage` / `GenerateImage` jobs — one job per generation, since a
+denoise loop saturates the device). CPU-side RGB replies preserve the
+tensors-never-escape invariant; PNG encoding happens async-side.
+Component placement is the VRAM story:
+
+- The **text encoder runs on the host CPU** by default (f32, resident
+  in system RAM; `[harness.candle.image] te_device`) — prompt encoding
+  is one short forward and the features are tiny, and a 24 GB card
+  cannot hold an 8 GB GPU TE beside the resident DiT.
+- **Tiled VAE decode** (64-latent tiles, 16-latent seam overlap,
+  weighted blending) bounds decoder transients at any resolution;
+  full-frame decode OOMs 24 GB at 1024² and 32 GB at ≥1536².
+- **`quant = "q8_0"`** ISQ-quantizes the DiT in situ from the dense
+  safetensors (no GGUF artifact): ~6.4 GB DiT, f32 activations,
+  fixed-seed output visually identical to BF16. Opens the 12 GB tier.
+- The cudarc **allocator pool is trimmed after every image job** —
+  mixed-resolution sequences otherwise fragment it until a generation
+  that would fit a clean slate OOMs.
+
+**candle is pinned to a fork** (`[patch.crates-io]` →
+`grenade/candle`, branch `z-image-mask-elision`) carrying: all-ones
+attention-mask elision so flash-attn actually engages (upstream PR
+huggingface/candle#3798 — drop the pin when it lands), the
+`QuantizedZImageTransformer2DModel`, and an f32→bf16 cast around
+flash-attn for the quantized path. The cudarc fork is rebased onto
+0.19.8 so one cudarc serves both neuron's NCCL layer and candle 0.11.
+
+**Surface.** `POST /v1/images/generations` on neuron, cortex, and the
+public router (the router has an explicit route allowlist — new
+endpoints must be added there; the edge nginx forwards `/v1/*` by
+prefix). OpenAI envelope: `n=1`, `b64_json`, PNG; extensions `seed`,
+`negative_prompt` (CFG doubles per-step cost), `guidance_scale`,
+`num_steps`. Errors conform to #63 (`wrong_modality` 422 for
+cross-modality requests, `invalid_image_params` 400 pre-admission).
+Wire types in `cortex-core/src/images.rs`. Admission reuses #53/#54
+with `max_in_flight = 1`.
+
+**Metering (#202).** Unit is **megapixel-steps**
+(`w × h × steps / 1e6`, CFG ×2, 1-unit floor), reported as
+`usage.helexa_image_units` + `usage.helexa_timing`
+(encode/denoise/decode ms). Budget enforcement bridges into the token
+ledger at `TOKENS_PER_IMAGE_UNIT = 1000` — fail-closed pre-dispatch,
+settled from actual units. A native image unit in the clearing-house
+contract is the open follow-up on #202.
+
+**Placement is automatic cold-swap.** The router ranks catalogue
+cold-load targets pinned → free-fit → evictable-fit → most-free using
+live per-device VRAM (now stored on `NodeState.device_health`), with a
+catalogue-`vram_mb` fallback for the evictable estimate (neuron
+reports `vram_used_mb: null`), and evicts unpinned LRU models on the
+chosen node before loading. Catalogue pinning steers: beast's 27B is
+pinned, so image loads land on benjy and swap the 8B out; the next
+text request swaps it back. Measured: image cold-swap 10.9 s,
+text restore 2.6 s.
+
+**Serving tiers** (bench + live numbers, 2026-07-29/30):
+
+| Host | Precision | Resident | Ceiling | 1024² |
+|---|---|---|---|---|
+| beast (5090, flash-attn flavour) | BF16 / q8 | 14.6 / 9.4 GB | 2048² (37.7 u) | q8 denoise 2.8 s |
+| benjy (4090) — v1 placement | BF16 | 14.6 GB | 1024² | 11.4 s wall |
+| quadbrat (3060) | q8_0 | 8.7 GB | 768² | OOM (naive f32 attn) |
+
+The 3060 ceiling lifts to 1024² if #95 extends flash-attn to the
+ampere flavour.
+
+**Ops sharp edges.**
+
+- neuron binaries are **per-sm** (`CUDA_COMPUTE_CAP`; CI builds
+  ampere/ada/blackwell flavours): a blackwell build throws
+  `CUDA_ERROR_INVALID_PTX` on ada. Local hand-builds must also match
+  the driver's CUDA version (13.0), not the `/usr/local/cuda` symlink
+  (13.2 on beast), or loads die with
+  `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`.
+- The production neuron runs as the `neuron` system user with its
+  **own HF cache** (`/var/lib/neuron/.cache`) — first image load on a
+  fresh host is a one-time ~29 GB fetch (beast and benjy are warm).
+- Fleet validation: `script/validate-image.sh <host>` (evicts and
+  restores a co-resident text model around the probe window).
+  helexa-bench has an `image:<px>` scenario (default `[1024]`),
+  gated on the `image` capability; text scenarios gate image models
+  out.
+- Deferred by operator decision: Z-Image base variant, operator
+  fine-tunes, Z-Image-Edit (`images/edits`). Qwen-Image-2512 is the
+  parked "frontier image" tier (own epic if taken).
