@@ -46,9 +46,11 @@ url = "postgres://helexa:helexa@localhost/helexa_upstream"
 app_base_url = "https://helexa.ai"
 
 [email]
-# "log" (dev: logs the link) or "smtp".
+# "log" (dev: logs the link) or "smtp". Any other value refuses to start.
 provider = "log"
-# smtp_url = "smtp://user:pass@smtp.example.com:587"
+# Implicit-TLS submission (smtps://…:465) or STARTTLS (smtp://…:587).
+# The login is usually a full mailbox — percent-encode its "@" (%40):
+# smtp_url = "smtps://no-reply%40example.com:PASSWORD@mail.example.com:465"
 from_addr = "helexa <no-reply@helexa.ai>"
 
 [features]

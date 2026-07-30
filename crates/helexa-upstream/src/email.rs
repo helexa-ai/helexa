@@ -35,9 +35,13 @@ impl EmailSender {
                     transport,
                 })
             }
-            _ => Ok(EmailSender::Log {
+            "log" => Ok(EmailSender::Log {
                 from: cfg.from_addr.clone(),
             }),
+            other => anyhow::bail!(
+                "[email].provider must be \"log\" or \"smtp\", got \"{other}\" — refusing \
+                 to start rather than silently swallowing verification emails"
+            ),
         }
     }
 
@@ -60,5 +64,51 @@ impl EmailSender {
                 Ok(())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(provider: &str, url: Option<&str>) -> EmailSettings {
+        EmailSettings {
+            provider: provider.into(),
+            smtp_url: url.map(String::from),
+            from_addr: "helexa <no-reply@helexa.ai>".into(),
+        }
+    }
+
+    #[test]
+    fn log_provider_builds() {
+        assert!(matches!(
+            EmailSender::from_config(&settings("log", None)).unwrap(),
+            EmailSender::Log { .. }
+        ));
+    }
+
+    #[test]
+    fn unknown_provider_is_refused() {
+        // A typo must fail startup, not silently write links to the log.
+        assert!(EmailSender::from_config(&settings("stmp", None)).is_err());
+    }
+
+    #[test]
+    fn smtp_requires_url() {
+        assert!(EmailSender::from_config(&settings("smtp", None)).is_err());
+    }
+
+    #[test]
+    fn smtps_url_with_encoded_user_parses() {
+        // The production shape: implicit-TLS submission with the mailbox
+        // as the login, `@` percent-encoded per RFC 3986.
+        let cfg = settings(
+            "smtp",
+            Some("smtps://no-reply%40helexa.ai:secret@mail.l4ir.net:465"),
+        );
+        assert!(matches!(
+            EmailSender::from_config(&cfg).unwrap(),
+            EmailSender::Smtp { .. }
+        ));
     }
 }
