@@ -209,7 +209,16 @@ async fn register_inner(state: &AppState, req: RegisterReq) -> WebResult<()> {
     .map(|r| r.get("id"));
 
     let Some(user_id) = user_id else {
-        return Ok(()); // email already registered — say nothing
+        // Address already registered. If it is still UNVERIFIED, this is
+        // someone retrying a signup they never completed — re-send a fresh
+        // link (and adopt the password they just chose) so they are not
+        // stuck waiting for a mail that would otherwise never come: the
+        // old code returned 202 here having sent nothing at all.
+        //
+        // Only ever for unverified accounts. Doing this for a verified one
+        // would let anyone reset a stranger's password by "registering"
+        // their address.
+        return resend_verification_if_unverified(state, &req.email, &phc).await;
     };
 
     // Account with the flat free grant.
@@ -290,6 +299,69 @@ struct TokenReq {
     token: String,
 }
 
+/// Re-send a verification link for an existing **unverified** account,
+/// adopting the password supplied by this signup attempt. No-op (and no
+/// signal to the caller) for verified accounts or unknown addresses, so
+/// the endpoint stays non-enumerating.
+async fn resend_verification_if_unverified(
+    state: &AppState,
+    email: &str,
+    password_hash: &str,
+) -> WebResult<()> {
+    let row = sqlx::query("SELECT id, email_verified FROM users WHERE email = $1")
+        .bind(email)
+        .fetch_optional(&state.pool)
+        .await?;
+    let Some(row) = row else { return Ok(()) };
+    let verified: bool = row.get("email_verified");
+    if verified {
+        return Ok(());
+    }
+    let user_id: Uuid = row.get("id");
+
+    // Adopt the new password: the person proving they want this address is
+    // the one who will verify it. Harmless while unverified — the account
+    // cannot be signed into until the link is clicked.
+    sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
+        .bind(password_hash)
+        .bind(user_id)
+        .execute(&state.pool)
+        .await?;
+
+    // Retire any outstanding verify tokens so only the newest link works.
+    sqlx::query(
+        "UPDATE email_tokens SET consumed_at = now() \
+         WHERE user_id = $1 AND kind = 'verify' AND consumed_at IS NULL",
+    )
+    .bind(user_id)
+    .execute(&state.pool)
+    .await?;
+
+    let token = random_token();
+    let expires: DateTime<Utc> =
+        Utc::now() + Duration::seconds(state.config.auth.email_token_ttl_secs as i64);
+    sqlx::query(
+        "INSERT INTO email_tokens (token_hash, user_id, kind, expires_at) \
+         VALUES ($1, $2, 'verify', $3)",
+    )
+    .bind(sha256(&token))
+    .bind(user_id)
+    .bind(expires)
+    .execute(&state.pool)
+    .await?;
+
+    let link = format!("{}/verify?token={token}", state.config.auth.app_base_url);
+    let _ = state
+        .email
+        .send(
+            email,
+            "Verify your helexa account",
+            &format!("Welcome to helexa. Verify your email:\n\n{link}\n"),
+        )
+        .await;
+    Ok(())
+}
+
 /// `POST /web/v1/verify` — consume a verification token, mark verified.
 async fn verify(State(state): State<AppState>, Json(req): Json<TokenReq>) -> WebResult<Response> {
     let row = sqlx::query(
@@ -344,6 +416,41 @@ async fn login(State(state): State<AppState>, Json(req): Json<LoginReq>) -> WebR
 #[derive(Deserialize)]
 struct EmailReq {
     email: String,
+}
+
+/// Delete unverified signups that can no longer be completed, freeing the
+/// address for a fresh attempt (#lockout).
+///
+/// Without this an abandoned or mistyped signup holds its email address
+/// forever: `register` no-ops on the unique-email conflict, login refuses
+/// an unverified account, and a password reset rotates the hash without
+/// setting `email_verified` — so the address becomes permanently
+/// unusable.
+///
+/// Two conditions, both required:
+///  - older than `unverified_grace_secs`, and
+///  - holding **no live verification token** (unconsumed and unexpired).
+///
+/// The second is what makes this race-free: an account whose link is
+/// still clickable is never reaped, even at the instant the grace period
+/// lapses, and a re-sent link extends the reprieve without any extra
+/// bookkeeping. Verified accounts are never touched. `email_tokens`,
+/// `accounts` and `sessions` cascade on delete.
+pub async fn reap_unverified(pool: &sqlx::PgPool, grace_secs: i64) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        "DELETE FROM users u \
+         WHERE NOT u.email_verified \
+           AND u.created_at < now() - make_interval(secs => $1) \
+           AND NOT EXISTS ( \
+                 SELECT 1 FROM email_tokens t \
+                 WHERE t.user_id = u.id AND t.kind = 'verify' \
+                   AND t.consumed_at IS NULL AND t.expires_at > now() \
+           )",
+    )
+    .bind(grace_secs as f64)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
 }
 
 /// `POST /web/v1/password-reset/request` — always `202` (no enumeration);

@@ -65,12 +65,33 @@ pub async fn run(config: UpstreamConfig) -> Result<()> {
     // settle/release from cortex was lost, self-healing allocation_reserved.
     spawn_sweeper(&state);
 
+    // Unverified-signup reaper: frees an address whose signup was never
+    // completed, so a later attempt isn't silently blocked by the
+    // abandoned row (register no-ops on the unique-email conflict).
+    spawn_unverified_reaper(&state);
+
     let addr = listen.parse::<std::net::SocketAddr>()?;
     tracing::info!("helexa-upstream listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, build_app(state)).await?;
     Ok(())
+}
+
+fn spawn_unverified_reaper(state: &AppState) {
+    let pool = state.pool.clone();
+    let grace = state.config.auth.unverified_grace_secs as i64;
+    let interval = Duration::from_secs(state.config.auth.unverified_sweep_interval_secs);
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(interval).await;
+            match web::reap_unverified(&pool, grace).await {
+                Ok(n) if n > 0 => tracing::info!(reaped = n, "binned unverified signups"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "unverified-signup reap failed"),
+            }
+        }
+    });
 }
 
 fn spawn_sweeper(state: &AppState) {
