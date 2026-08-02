@@ -78,47 +78,50 @@ const Header: React.FC = () => {
           </Nav>
 
           <div className="d-flex align-items-center gap-1">
-            {/* One user control for the whole auth surface: outline icon
-                when anonymous (menu: sign in / sign up), accent-coloured
-                filled icon when signed in (menu: account / sign out). */}
-            <Dropdown align={isRtl ? "start" : "end"}>
-              <Dropdown.Toggle
-                as="button"
-                type="button"
-                className={`hx-icon-btn ${status === "authed" ? "hx-user-authed" : ""}`}
-                id="user-menu"
-                aria-label={
-                  status === "authed" ? t("nav.account") : t("nav.login")
-                }
-              >
-                {status === "authed" ? (
+            {/* One user control for the whole auth surface.
+                Anonymous: the icon is a plain link straight to /auth,
+                where sign in and sign up are tabs — one click instead of
+                a menu whose two items were themselves links.
+                Signed in: a small menu (account / sign out). Its items are
+                plain <Link>/<button> with the dropdown-item class rather
+                than `Dropdown.Item as={Link}` — that indirection rendered
+                inert anchors (no href, so no pointer cursor and no
+                navigation), which is what broke sign in/up in the first
+                place. */}
+            {status === "authed" ? (
+              <Dropdown align={isRtl ? "start" : "end"}>
+                <Dropdown.Toggle
+                  as="button"
+                  type="button"
+                  className="hx-icon-btn hx-user-authed"
+                  id="user-menu"
+                  aria-label={t("nav.account")}
+                >
                   <FaCircleUser size={18} />
-                ) : (
-                  <FaRegUser size={16} />
-                )}
-              </Dropdown.Toggle>
-              <Dropdown.Menu>
-                {status === "authed" ? (
-                  <>
-                    <Dropdown.Item as={Link} to="/account">
-                      {t("nav.account")}
-                    </Dropdown.Item>
-                    <Dropdown.Item onClick={logout}>
-                      {t("nav.logout")}
-                    </Dropdown.Item>
-                  </>
-                ) : (
-                  <>
-                    <Dropdown.Item as={Link} to="/login">
-                      {t("nav.login")}
-                    </Dropdown.Item>
-                    <Dropdown.Item as={Link} to="/register">
-                      {t("nav.register")}
-                    </Dropdown.Item>
-                  </>
-                )}
-              </Dropdown.Menu>
-            </Dropdown>
+                </Dropdown.Toggle>
+                <Dropdown.Menu>
+                  <Link className="dropdown-item" to="/account">
+                    {t("nav.account")}
+                  </Link>
+                  <button
+                    type="button"
+                    className="dropdown-item"
+                    onClick={logout}
+                  >
+                    {t("nav.logout")}
+                  </button>
+                </Dropdown.Menu>
+              </Dropdown>
+            ) : (
+              <Link
+                to="/auth"
+                className="hx-icon-btn"
+                id="user-menu"
+                aria-label={t("nav.login")}
+              >
+                <FaRegUser size={16} />
+              </Link>
+            )}
 
             <a
               href="https://github.com/helexa-ai"
