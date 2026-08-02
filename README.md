@@ -182,6 +182,77 @@ cortex status
 curl http://localhost:31313/v1/models
 ```
 
+## Tailoring model behaviour
+
+System prompts are **application-owned**. Send yours through the standard
+field for whichever API you speak, and the serving chain — edge → router →
+cortex → neuron — passes it to the model **verbatim**.
+
+```sh
+# OpenAI chat completions
+curl http://localhost:31313/v1/chat/completions \
+  -H 'content-type: application/json' \
+  -d '{"model": "helexa/balanced",
+       "messages": [{"role": "system", "content": "Reply only in French."},
+                    {"role": "user",   "content": "Good morning"}]}'
+
+# OpenAI responses — the `instructions` field is the system slot
+curl http://localhost:31313/v1/responses \
+  -H 'content-type: application/json' \
+  -d '{"model": "helexa/balanced",
+       "instructions": "Reply only in French.",
+       "input": "Good morning"}'
+
+# Anthropic messages — top-level `system`, string or content-block array
+curl http://localhost:31313/v1/messages \
+  -H 'content-type: application/json' \
+  -d '{"model": "helexa/balanced", "max_tokens": 256,
+       "system": "Reply only in French.",
+       "messages": [{"role": "user", "content": "Good morning"}]}'
+```
+
+### The passthrough guarantee
+
+helexa will never, to any request you proxy through it:
+
+- inject a system prompt, house style or preamble of its own,
+- rewrite, truncate or reorder the one you sent,
+- supply a default when you send none.
+
+If you send no system prompt, the model receives none. Behaviour you did
+not ask for is a bug — please report it.
+
+Streaming and non-streaming behave identically, and the guarantee holds on
+every surface above. Two details worth knowing:
+
+- **Several system messages** are all forwarded, unmerged and in order.
+  The model sees the last one last, so in practice the last instruction
+  wins. Send one message if you want certainty.
+- **`/no_think`** in a prompt is a Qwen-family convention the *model*
+  interprets to skip its reasoning block. It is the model's feature, not
+  ours — helexa neither adds nor strips it. Note it currently suppresses
+  reasoning on `/v1/chat/completions` but **not** on `/v1/responses`,
+  where a reasoning model may think regardless (#223); with a small
+  `max_output_tokens` the whole budget can go on reasoning and the reply
+  comes back empty with `status: "incomplete"`. Give Responses requests
+  room (a few hundred tokens) when the model reasons.
+
+### Why it works this way
+
+The ecosystem serves an unenumerable diversity of workloads through
+OpenAI- and Anthropic-compatible APIs. An operator cannot curate prompts
+for use cases they will never see, and a proxy that quietly edits your
+payload makes model behaviour impossible to reason about. So the split is:
+**applications own the prompt, operators own the fleet.**
+
+If you specifically want centrally-managed prompts across your own
+workloads, run your own helexa mesh — it is open source, and that is a
+different deployment from the shared helexa.ai ecosystem.
+
+Operators: this is a contract, not a default you may flip. cortex and
+helexa-router proxy inference bodies without adding to them; nothing in
+the chain is a place to put prompt content.
+
 ## Build from source
 
 ```sh

@@ -938,6 +938,33 @@ tok/s aggregated (per-request `FinishTiming` goes to the caller in
 rejections) is tracked separately — it is a plumbing gap, not a
 measurement one, since the signals already exist in memory.
 
+## Application-owned system prompts (#179)
+
+System prompts belong to the **calling application**, never to the
+operator or the serving chain. cortex and helexa-router proxy inference
+bodies **without adding to them**: no injected prompt, no house style, no
+default when the caller sends none, no rewriting or reordering of what
+was sent.
+
+This is a contract with API consumers, documented in the README
+("Tailoring model behaviour"), not an incidental behaviour — treat any
+change that puts content into a proxied request as a breaking change.
+When adding a surface or a translation path, the system slot must map
+straight through:
+
+- `/v1/chat/completions` — `messages[role == "system"]`, all of them, in
+  order (the model sees the last one last, so last-wins is what users
+  observe).
+- `/v1/responses` — `instructions`, plus `input` items with
+  `role: system`.
+- `/v1/messages` — top-level `system`, both the string and the
+  content-block-array forms, translated into a system message.
+
+Pinned by `crates/cortex-gateway/tests/system_prompt.rs` (asserts what
+cortex *forwarded upstream*, including a control proving nothing is
+injected when the caller sends no prompt) and the system-prompt cases in
+`crates/neuron/src/harness/chat_template.rs`.
+
 ## 2026-07-30 addendum: text-to-image serving (epic #197)
 
 Image generation is a first-class modality. **Tongyi-MAI/Z-Image-Turbo**
