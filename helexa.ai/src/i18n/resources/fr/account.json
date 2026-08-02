@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Échanger",
     "redeemed": "Code échangé.",
-    "logout": "Se déconnecter"
+    "logout": "Se déconnecter",
+    "topUpTitle": "Bientôt à court ?",
+    "topUpBody": "Vous avez utilisé {{pct}} % de votre allocation. Demandez une recharge pour continuer.",
+    "topUpAction": "Demander une recharge",
+    "topUpGranted": "{{value}} ajoutés à votre allocation. Recharges en libre-service utilisées : {{used}} sur {{max}}."
   },
   "keys": {
     "title": "Clés API",

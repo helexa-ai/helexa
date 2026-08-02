@@ -104,28 +104,12 @@ function collectKeyPaths(obj, prefix = "") {
   return keys;
 }
 
-function diffKeys(baseSet, targetSet, ns) {
-  // Keys that exist in the English baseline but are deliberately not yet
-  // translated. i18next falls back to English at runtime (fallbackLng),
-  // so the UI works in every language — this list makes the debt explicit
-  // and greppable instead of hiding it behind 41 copies of the English
-  // string that look translated but are not.
-  //
-  // Entries are exact "namespace:key" paths, never prefixes: a new key
-  // must be added here deliberately, it cannot be absorbed silently.
-  // Remove an entry as soon as its translations land.
-  const PENDING_TRANSLATION = new Set([
-    "account:dashboard.topUpTitle",
-    "account:dashboard.topUpBody",
-    "account:dashboard.topUpAction",
-    "account:dashboard.topUpGranted",
-  ]);
-
+function diffKeys(baseSet, targetSet) {
   const missing = [];
   const extra = [];
 
   for (const k of baseSet) {
-    if (!targetSet.has(k) && !PENDING_TRANSLATION.has(`${ns}:${k}`)) missing.push(k);
+    if (!targetSet.has(k)) missing.push(k);
   }
 
   for (const k of targetSet) {
@@ -317,7 +301,7 @@ function main() {
       }
 
       const langKeys = collectKeyPaths(langJson);
-      const { missing, extra } = diffKeys(baseKeys, langKeys, ns);
+      const { missing, extra } = diffKeys(baseKeys, langKeys);
 
       if (missing.length === 0 && extra.length === 0) {
         console.log(`  [${lang}] OK (keys: ${langKeys.size})`);

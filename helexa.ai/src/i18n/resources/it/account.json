@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Riscatta",
     "redeemed": "Codice riscattato.",
-    "logout": "Esci"
+    "logout": "Esci",
+    "topUpTitle": "Allocazione quasi esaurita?",
+    "topUpBody": "Hai usato il {{pct}} % della tua allocazione. Richiedi una ricarica per continuare.",
+    "topUpAction": "Richiedi una ricarica",
+    "topUpGranted": "Aggiunti {{value}} alla tua allocazione. Ricariche self-service usate: {{used}} di {{max}}."
   },
   "keys": {
     "title": "Chiavi API",

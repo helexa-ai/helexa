@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Lunasta",
     "redeemed": "Koodi lunastettu.",
-    "logout": "Kirjaudu ulos"
+    "logout": "Kirjaudu ulos",
+    "topUpTitle": "Kiintiö loppumassa?",
+    "topUpBody": "Olet käyttänyt {{pct}} % kiintiöstäsi. Pyydä latausta jatkaaksesi.",
+    "topUpAction": "Pyydä latausta",
+    "topUpGranted": "Kiintiöön lisättiin {{value}}. Käytetyt itsepalvelulataukset: {{used}} / {{max}}."
   },
   "keys": {
     "title": "API-avaimet",

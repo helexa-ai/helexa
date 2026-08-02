@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Inwisselen",
     "redeemed": "Code ingewisseld.",
-    "logout": "Uitloggen"
+    "logout": "Uitloggen",
+    "topUpTitle": "Bijna door je tegoed heen?",
+    "topUpBody": "Je hebt {{pct}} % van je tegoed gebruikt. Vraag een opwaardering aan om door te gaan.",
+    "topUpAction": "Opwaardering aanvragen",
+    "topUpGranted": "{{value}} aan je tegoed toegevoegd. Gebruikte zelfopwaarderingen: {{used}} van {{max}}."
   },
   "keys": {
     "title": "API-sleutels",

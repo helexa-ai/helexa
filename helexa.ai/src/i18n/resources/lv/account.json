@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Izmantot",
     "redeemed": "Kods izmantots.",
-    "logout": "Iziet"
+    "logout": "Iziet",
+    "topUpTitle": "Piešķīrums beidzas?",
+    "topUpBody": "Esat izmantojis {{pct}} % no piešķīruma. Pieprasiet papildinājumu, lai turpinātu.",
+    "topUpAction": "Pieprasīt papildinājumu",
+    "topUpGranted": "Piešķīrumam pievienoti {{value}}. Izmantotie pašapkalpošanās papildinājumi: {{used}} no {{max}}."
   },
   "keys": {
     "title": "API atslēgas",

@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Uża l-kodiċi",
     "redeemed": "Il-kodiċi ntuża.",
-    "logout": "Oħroġ"
+    "logout": "Oħroġ",
+    "topUpTitle": "Qed tispiċċalek l-allokazzjoni?",
+    "topUpBody": "Użajt {{pct}} % mill-allokazzjoni tiegħek. Itlob kreditu biex tkompli.",
+    "topUpAction": "Itlob kreditu",
+    "topUpGranted": "Żdiedu {{value}} mal-allokazzjoni tiegħek. Krediti awtomatiċi użati: {{used}} minn {{max}}."
   },
   "keys": {
     "title": "Ċwievet API",

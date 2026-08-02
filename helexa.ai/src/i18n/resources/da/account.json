@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Indløs",
     "redeemed": "Koden er indløst.",
-    "logout": "Log ud"
+    "logout": "Log ud",
+    "topUpTitle": "Er du ved at løbe tør?",
+    "topUpBody": "Du har brugt {{pct}} % af din tildeling. Bed om en optankning for at fortsætte.",
+    "topUpAction": "Bed om optankning",
+    "topUpGranted": "{{value}} lagt til din tildeling. Brugte selvbetjente optankninger: {{used}} af {{max}}."
   },
   "keys": {
     "title": "API-nøgler",

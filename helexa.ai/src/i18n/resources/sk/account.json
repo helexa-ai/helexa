@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Uplatniť",
     "redeemed": "Kód uplatnený.",
-    "logout": "Odhlásiť sa"
+    "logout": "Odhlásiť sa",
+    "topUpTitle": "Dochádza vám prídel?",
+    "topUpBody": "Využili ste {{pct}} % prídelu. Požiadajte o dobitie a pokračujte.",
+    "topUpAction": "Požiadať o dobitie",
+    "topUpGranted": "K prídelu pridané {{value}}. Využité samoobslužné dobitia: {{used}} z {{max}}."
   },
   "keys": {
     "title": "API kľúče",

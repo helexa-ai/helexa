@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Fuascail",
     "redeemed": "Cód fuascailte.",
-    "logout": "Sínigh amach"
+    "logout": "Sínigh amach",
+    "topUpTitle": "Ag druidim le deireadh?",
+    "topUpBody": "Tá {{pct}} % de do leithdháileadh úsáidte agat. Iarr breisiú chun leanúint ar aghaidh.",
+    "topUpAction": "Iarr breisiú",
+    "topUpGranted": "Cuireadh {{value}} le do leithdháileadh. Breisithe féinseirbhíse úsáidte: {{used}} as {{max}}."
   },
   "keys": {
     "title": "Eochracha API",

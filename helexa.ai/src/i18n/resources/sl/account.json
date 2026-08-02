@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Unovči",
     "redeemed": "Koda je unovčena.",
-    "logout": "Odjava"
+    "logout": "Odjava",
+    "topUpTitle": "Vam zmanjkuje dodelitve?",
+    "topUpBody": "Porabili ste {{pct}} % dodelitve. Zahtevajte dopolnitev za nadaljevanje.",
+    "topUpAction": "Zahtevaj dopolnitev",
+    "topUpGranted": "Dodelitvi je dodano {{value}}. Porabljene samopostrežne dopolnitve: {{used}} od {{max}}."
   },
   "keys": {
     "title": "Ključi API",

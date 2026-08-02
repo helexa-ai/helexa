@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Kullan",
     "redeemed": "Kod kullanıldı.",
-    "logout": "Çıkış yap"
+    "logout": "Çıkış yap",
+    "topUpTitle": "Tahsisatınız azalıyor mu?",
+    "topUpBody": "Tahsisatınızın %{{pct}} kadarını kullandınız. Devam etmek için yükleme talep edin.",
+    "topUpAction": "Yükleme talep et",
+    "topUpGranted": "Tahsisatınıza {{value}} eklendi. Kullanılan otomatik yüklemeler: {{used}} / {{max}}."
   },
   "keys": {
     "title": "API anahtarları",

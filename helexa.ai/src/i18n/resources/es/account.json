@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Canjear",
     "redeemed": "Código canjeado.",
-    "logout": "Cerrar sesión"
+    "logout": "Cerrar sesión",
+    "topUpTitle": "¿Te queda poco?",
+    "topUpBody": "Has usado el {{pct}} % de tu asignación. Solicita una recarga para continuar.",
+    "topUpAction": "Solicitar recarga",
+    "topUpGranted": "Se han añadido {{value}} a tu asignación. Recargas automáticas usadas: {{used}} de {{max}}."
   },
   "keys": {
     "title": "Claves API",

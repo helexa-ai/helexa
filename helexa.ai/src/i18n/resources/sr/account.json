@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Искористи",
     "redeemed": "Код је искоришћен.",
-    "logout": "Одјава"
+    "logout": "Одјава",
+    "topUpTitle": "Квота вам се ближи крају?",
+    "topUpBody": "Искористили сте {{pct}} % квоте. Затражите допуну да наставите.",
+    "topUpAction": "Затражи допуну",
+    "topUpGranted": "Квоти је додато {{value}}. Искоришћене самосталне допуне: {{used}} од {{max}}."
   },
   "keys": {
     "title": "API кључеви",

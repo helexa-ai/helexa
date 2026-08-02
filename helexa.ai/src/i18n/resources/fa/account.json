@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "اعمال",
     "redeemed": "کد اعمال شد.",
-    "logout": "خروج"
+    "logout": "خروج",
+    "topUpTitle": "سهمیه‌تان رو به پایان است؟",
+    "topUpBody": "شما {{pct}}٪ از سهمیه خود را استفاده کرده‌اید. برای ادامه، شارژ درخواست کنید.",
+    "topUpAction": "درخواست شارژ",
+    "topUpGranted": "{{value}} به سهمیه شما افزوده شد. شارژهای خوددرخواستی استفاده‌شده: {{used}} از {{max}}."
   },
   "keys": {
     "title": "کلیدهای API",

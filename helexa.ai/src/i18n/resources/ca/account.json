@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Bescanvia",
     "redeemed": "Codi bescanviat.",
-    "logout": "Tanca la sessió"
+    "logout": "Tanca la sessió",
+    "topUpTitle": "Us queda poca assignació?",
+    "topUpBody": "Heu utilitzat el {{pct}} % de la vostra assignació. Demaneu una recàrrega per continuar.",
+    "topUpAction": "Demanar recàrrega",
+    "topUpGranted": "S'han afegit {{value}} a la vostra assignació. Recàrregues automàtiques utilitzades: {{used}} de {{max}}."
   },
   "keys": {
     "title": "Claus API",

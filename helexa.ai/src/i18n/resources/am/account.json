@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "ይመንዝሩ",
     "redeemed": "ኮዱ ተመንዝሯል።",
-    "logout": "ይውጡ"
+    "logout": "ይውጡ",
+    "topUpTitle": "ድልድልዎ እያለቀ ነው?",
+    "topUpBody": "ከድልድልዎ {{pct}}% ተጠቅመዋል። ለመቀጠል መሙያ ይጠይቁ።",
+    "topUpAction": "መሙያ ይጠይቁ",
+    "topUpGranted": "{{value}} ወደ ድልድልዎ ታክሏል። ጥቅም ላይ የዋሉ ራስ-አገልግሎት መሙያዎች፦ {{used}} ከ{{max}}።"
   },
   "keys": {
     "title": "የ API ቁልፎች",

@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Einlösen",
     "redeemed": "Code eingelöst.",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "topUpTitle": "Kontingent fast aufgebraucht?",
+    "topUpBody": "Sie haben {{pct}} % Ihres Kontingents verbraucht. Fordern Sie eine Aufladung an, um weiterzumachen.",
+    "topUpAction": "Aufladung anfordern",
+    "topUpGranted": "{{value}} zu Ihrem Kontingent hinzugefügt. Genutzte Selbstaufladungen: {{used}} von {{max}}."
   },
   "keys": {
     "title": "API-Schlüssel",

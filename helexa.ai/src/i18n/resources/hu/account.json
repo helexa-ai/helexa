@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Beváltás",
     "redeemed": "Kód beváltva.",
-    "logout": "Kijelentkezés"
+    "logout": "Kijelentkezés",
+    "topUpTitle": "Fogytán a kereted?",
+    "topUpBody": "A kereted {{pct}} %-át használtad el. Kérj feltöltést a folytatáshoz.",
+    "topUpAction": "Feltöltés kérése",
+    "topUpGranted": "{{value}} hozzáadva a keretedhez. Felhasznált önkiszolgáló feltöltések: {{used}} / {{max}}."
   },
   "keys": {
     "title": "API-kulcsok",

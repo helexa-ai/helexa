@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Tumia",
     "redeemed": "Msimbo umetumika.",
-    "logout": "Toka"
+    "logout": "Toka",
+    "topUpTitle": "Mgao wako unakaribia kuisha?",
+    "topUpBody": "Umetumia {{pct}}% ya mgao wako. Omba nyongeza ili kuendelea.",
+    "topUpAction": "Omba nyongeza",
+    "topUpGranted": "{{value}} zimeongezwa kwenye mgao wako. Nyongeza za kujihudumia zilizotumika: {{used}} kati ya {{max}}."
   },
   "keys": {
     "title": "Funguo za API",

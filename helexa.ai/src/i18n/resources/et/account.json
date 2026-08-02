@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Lunasta",
     "redeemed": "Kood on lunastatud.",
-    "logout": "Logi välja"
+    "logout": "Logi välja",
+    "topUpTitle": "Eraldis hakkab otsa saama?",
+    "topUpBody": "Oled kasutanud {{pct}} % oma eraldisest. Küsi laadimist, et jätkata.",
+    "topUpAction": "Küsi laadimist",
+    "topUpGranted": "Eraldisele lisati {{value}}. Kasutatud iseteeninduslaadimised: {{used}} / {{max}}."
   },
   "keys": {
     "title": "API-võtmed",

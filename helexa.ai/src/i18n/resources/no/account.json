@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Løs inn",
     "redeemed": "Koden er løst inn.",
-    "logout": "Logg ut"
+    "logout": "Logg ut",
+    "topUpTitle": "Går du snart tom?",
+    "topUpBody": "Du har brukt {{pct}} % av tildelingen din. Be om en påfylling for å fortsette.",
+    "topUpAction": "Be om påfylling",
+    "topUpGranted": "{{value}} lagt til tildelingen din. Brukte selvbetjente påfyllinger: {{used}} av {{max}}."
   },
   "keys": {
     "title": "API-nøkler",

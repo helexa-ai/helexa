@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "استرداد",
     "redeemed": "تم استرداد الرمز.",
-    "logout": "تسجيل الخروج"
+    "logout": "تسجيل الخروج",
+    "topUpTitle": "أوشك مخصّصك على النفاد؟",
+    "topUpBody": "لقد استخدمت {{pct}}% من مخصّصك. اطلب شحنًا للمتابعة.",
+    "topUpAction": "طلب شحن",
+    "topUpGranted": "تمت إضافة {{value}} إلى مخصّصك. عمليات الشحن الذاتي المستخدمة: {{used}} من {{max}}."
   },
   "keys": {
     "title": "مفاتيح API",
