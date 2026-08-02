@@ -581,6 +581,35 @@ html[dir="rtl"] .hx-list li {
     box-shadow: var(--shadow-card);
     padding: 2rem;
 }
+/* Sign in / sign up tabs on /auth. Themed like the rest of the card:
+ * the active tab reads as part of the surface below it, inactive tabs
+ * stay quiet, and the underline carries the accent. */
+.hx-auth-card .hx-auth-tabs {
+    border-bottom-color: var(--color-border-subtle);
+    gap: 0.25rem;
+}
+.hx-auth-card .hx-auth-tabs .nav-link {
+    color: var(--color-text-muted);
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 0.6rem 0.6rem 0 0;
+    padding-inline: 1rem;
+    cursor: pointer;
+}
+.hx-auth-card .hx-auth-tabs .nav-link:hover,
+.hx-auth-card .hx-auth-tabs .nav-link:focus-visible {
+    color: var(--color-text);
+    border-color: transparent;
+    background-color: var(--color-accent-soft);
+}
+.hx-auth-card .hx-auth-tabs .nav-link.active {
+    color: var(--color-accent);
+    background-color: transparent;
+    border-color: var(--color-border-subtle) var(--color-border-subtle)
+        transparent;
+    box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
 .hx-auth-card .hx-auth-logo {
     height: 44px;
     border-radius: 0.6rem;

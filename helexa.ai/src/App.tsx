@@ -8,6 +8,7 @@ import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
 import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
+import Auth from "./pages/auth/Auth";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import VerifyEmail from "./pages/auth/VerifyEmail";
@@ -32,6 +33,8 @@ export default function App() {
               <Route path="/" element={<Chat />} />
               <Route path="/mission" element={<Mission />} />
               <Route path="/privacy" element={<Privacy />} />
+              <Route path="/auth" element={<Auth />} />
+              {/* Legacy routes: redirect into the unified /auth tabs. */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
               <Route path="/verify" element={<VerifyEmail />} />
