@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Nav } from "react-bootstrap";
 import { useTranslation } from "react-i18next";
 import AuthCard from "../../components/AuthCard";
@@ -57,7 +57,20 @@ export default function Auth() {
         </Nav.Item>
       </Nav>
 
-      {tab === "signup" ? <SignUpForm /> : <SignInForm />}
+      {tab === "signup" ? (
+        <SignUpForm />
+      ) : (
+        <>
+          <SignInForm />
+          {/* The reset flow had no entry point anywhere in the UI — the
+              /forgot route existed but nothing linked to it, so a visitor
+              who forgot their password was stuck. Link text matches the
+              destination page's title (already translated everywhere). */}
+          <p className="mt-4 small mb-0 text-center">
+            <Link to="/forgot">{t("reset.requestTitle")}</Link>
+          </p>
+        </>
+      )}
     </AuthCard>
   );
 }

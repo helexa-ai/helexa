@@ -37,7 +37,7 @@ export default function ResetPassword() {
     <AuthCard title={t("reset.confirmTitle")}>
       {done ? (
         <Alert variant="success">
-          {t("reset.ok")} <Link to="/login">{t("verify.toLogin")}</Link>
+          {t("reset.ok")} <Link to="/auth">{t("verify.toLogin")}</Link>
         </Alert>
       ) : (
         <>

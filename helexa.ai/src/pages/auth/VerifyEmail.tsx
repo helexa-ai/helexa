@@ -28,12 +28,12 @@ export default function VerifyEmail() {
       )}
       {state === "ok" && (
         <Alert variant="success" className="mb-0">
-          {t("verify.ok")} <Link to="/login">{t("verify.toLogin")}</Link>
+          {t("verify.ok")} <Link to="/auth">{t("verify.toLogin")}</Link>
         </Alert>
       )}
       {state === "failed" && (
         <Alert variant="warning" className="mb-0">
-          {t("verify.failed")} <Link to="/login">{t("verify.toLogin")}</Link>
+          {t("verify.failed")} <Link to="/auth">{t("verify.toLogin")}</Link>
         </Alert>
       )}
     </AuthCard>
