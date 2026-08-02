@@ -88,6 +88,14 @@ getent passwd helexa-upstream >/dev/null || \
 
 %post
 %systemd_post helexa-upstream.service
+# The config carries secrets. %config(noreplace) keeps an existing
+# file as-is on upgrade — including a too-permissive mode from an
+# older package — so converge it here. The helexa-upstream user comes from
+# sysusers.d, applied before %post.
+if [ -f %{_sysconfdir}/helexa-upstream/helexa-upstream.toml ]; then
+    chgrp helexa-upstream %{_sysconfdir}/helexa-upstream/helexa-upstream.toml >/dev/null 2>&1 || :
+    chmod 0640 %{_sysconfdir}/helexa-upstream/helexa-upstream.toml >/dev/null 2>&1 || :
+fi
 
 %preun
 %systemd_preun helexa-upstream.service
@@ -102,7 +110,7 @@ getent passwd helexa-upstream >/dev/null || \
 %{_sysusersdir}/helexa-upstream.conf
 %{_prefix}/lib/firewalld/services/helexa-upstream.xml
 %dir %{_sysconfdir}/helexa-upstream
-%config(noreplace) %{_sysconfdir}/helexa-upstream/helexa-upstream.toml
+%config(noreplace) %attr(0640,root,helexa-upstream) %{_sysconfdir}/helexa-upstream/helexa-upstream.toml
 
 %changelog
 * Mon Jun 23 2026 Gitea Actions <actions@git.lair.cafe> - %{upstream_version}-%{upstream_release}
