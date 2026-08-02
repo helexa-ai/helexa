@@ -173,6 +173,15 @@ html[dir="rtl"] body {
 
 .app-header {
     background-color: var(--color-navbar-bg);
+    /* backdrop-filter creates a stacking context, which traps the header's
+     * dropdown menus inside it: their z-index:1000 is then relative to the
+     * header, not the page, so page content painted later covered them and
+     * swallowed every click (the menus were visible but inert — the empty
+     * chat state was the element under the pointer). Lifting the header's
+     * own context above page content is the fix; raising the menu's
+     * z-index cannot work, because it is confined to this context. */
+    position: relative;
+    z-index: 1030;
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     box-shadow: 0 1px 0 var(--color-border-subtle);
