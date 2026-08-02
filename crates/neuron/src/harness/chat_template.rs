@@ -433,6 +433,14 @@ mod tests {
         }
     }
 
+    fn system_msg(text: &str) -> ChatMessage {
+        ChatMessage {
+            role: "system".into(),
+            content: MessageContent::Text(text.into()),
+            extra: Value::Object(Default::default()),
+        }
+    }
+
     /// Minimal Qwen3-style template — enough surface to confirm
     /// our renderer threads role + content correctly without
     /// loading a real model's tokenizer_config.json.
@@ -631,5 +639,76 @@ THINK_OK\
         );
         // Ordinary messages are not disturbed.
         assert_eq!(messages[0]["content"], "hi");
+    }
+    // ── Application-owned system prompts (#179) ──────────────────────
+    //
+    // The platform guarantee is that a caller's system prompt reaches the
+    // model verbatim: helexa never injects, rewrites or defaults it. These
+    // pin the neuron half — that the system turn is rendered into the
+    // prompt in place, ahead of the conversation.
+
+    #[test]
+    fn system_prompt_is_rendered_verbatim_and_first() {
+        let prompt = render_chat_template(
+            QWEN3_LIKE,
+            &[
+                system_msg("You must reply with exactly the word PONG."),
+                user_msg("hello"),
+            ],
+            &Value::Null,
+            &Value::Null,
+        )
+        .unwrap();
+        assert!(
+            prompt.contains(
+                "<|im_start|>system\nYou must reply with exactly the word PONG.<|im_end|>"
+            ),
+            "system turn missing or altered: {prompt}"
+        );
+        // Ahead of the user turn — a system prompt rendered after the
+        // conversation would be read as a late instruction, not a role.
+        let sys_at = prompt.find("system").expect("system turn");
+        let user_at = prompt.find("<|im_start|>user").expect("user turn");
+        assert!(
+            sys_at < user_at,
+            "system turn must precede the user turn: {prompt}"
+        );
+    }
+
+    #[test]
+    fn absent_system_prompt_injects_nothing() {
+        // The control for the passthrough guarantee: with no system
+        // message from the caller, neuron must not manufacture one.
+        let prompt =
+            render_chat_template(QWEN3_LIKE, &[user_msg("hello")], &Value::Null, &Value::Null)
+                .unwrap();
+        assert!(
+            !prompt.contains("<|im_start|>system"),
+            "a system turn appeared without the caller sending one: {prompt}"
+        );
+    }
+
+    #[test]
+    fn every_system_message_reaches_the_template_in_order() {
+        // OpenAI clients sometimes send more than one system message.
+        // Neuron renders each in order; the model sees the later one last,
+        // which is why "last wins" is the observable behaviour end to end.
+        let prompt = render_chat_template(
+            QWEN3_LIKE,
+            &[
+                system_msg("End your reply with ALPHA."),
+                system_msg("End your reply with OMEGA instead."),
+                user_msg("say hi"),
+            ],
+            &Value::Null,
+            &Value::Null,
+        )
+        .unwrap();
+        let alpha = prompt.find("ALPHA").expect("first system turn missing");
+        let omega = prompt.find("OMEGA").expect("second system turn missing");
+        assert!(
+            alpha < omega,
+            "system turns must keep their order: {prompt}"
+        );
     }
 }
