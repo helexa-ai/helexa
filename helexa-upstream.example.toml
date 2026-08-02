@@ -3,6 +3,12 @@
 # Copy to helexa-upstream.toml and adjust. Env overrides use the UPSTREAM_
 # prefix with __ separators, e.g. UPSTREAM_DB__URL=postgres://...
 
+# NOTE: the deployed copy of this file carries secrets — the session JWT
+# secret, the SMTP submission password and the database URL.
+# It must be installed root:helexa-upstream 0640 (the package's %post and
+# script/infra-setup.sh both enforce this); a world-readable 0644
+# hands every local account those credentials.
+
 [server]
 # Plaintext listener; edge nginx terminates TLS (consistent with the stack).
 listen = "0.0.0.0:8090"

@@ -84,6 +84,14 @@ getent passwd cortex >/dev/null || \
 
 %post
 %systemd_post cortex.service
+# The config carries secrets. %config(noreplace) keeps an existing
+# file as-is on upgrade — including a too-permissive mode from an
+# older package — so converge it here. The cortex user comes from
+# sysusers.d, applied before %post.
+if [ -f %{_sysconfdir}/cortex/cortex.toml ]; then
+    chgrp cortex %{_sysconfdir}/cortex/cortex.toml >/dev/null 2>&1 || :
+    chmod 0640 %{_sysconfdir}/cortex/cortex.toml >/dev/null 2>&1 || :
+fi
 
 %preun
 %systemd_preun cortex.service
@@ -98,7 +106,7 @@ getent passwd cortex >/dev/null || \
 %{_sysusersdir}/cortex.conf
 %{_prefix}/lib/firewalld/services/cortex.xml
 %dir %{_sysconfdir}/cortex
-%config(noreplace) %{_sysconfdir}/cortex/cortex.toml
+%config(noreplace) %attr(0640,root,cortex) %{_sysconfdir}/cortex/cortex.toml
 %config(noreplace) %{_sysconfdir}/cortex/models.toml
 
 %changelog

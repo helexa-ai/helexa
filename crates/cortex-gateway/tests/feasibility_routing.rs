@@ -39,14 +39,27 @@ fn discovery(host: &str, n_devices: usize) -> DiscoveryResponse {
 }
 
 /// Catalogue with one model needing 2 devices. Returns a temp path.
+///
+/// The filename is unique per call: tests in this binary run concurrently,
+/// and a shared path let one test truncate the file (`fs::write` truncates
+/// before writing) while another was loading it — yielding an empty
+/// catalogue and a spurious `ModelNotFound` instead of the routing error
+/// under test.
 fn write_catalogue() -> std::path::PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+
     let toml = r#"
 [[models]]
 id = "big-model"
 harness = "candle"
 min_devices = 2
 "#;
-    let path = std::env::temp_dir().join("cortex_test_feasibility_models.toml");
+    let path = std::env::temp_dir().join(format!(
+        "cortex_test_feasibility_models.{}.{}.toml",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    ));
     std::fs::write(&path, toml).unwrap();
     path
 }

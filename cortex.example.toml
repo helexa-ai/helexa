@@ -10,6 +10,12 @@
 # non-packaged / local run.
 # models_config = "/etc/cortex/models.toml"
 
+# NOTE: the deployed copy of this file carries secrets — the inference
+# API keys under [[entitlements.keys]].
+# It must be installed root:cortex 0640 (the package's %post and
+# script/infra-setup.sh both enforce this); a world-readable 0644
+# hands every local account those credentials.
+
 [gateway]
 listen = "0.0.0.0:31313"
 metrics_listen = "0.0.0.0:31314"

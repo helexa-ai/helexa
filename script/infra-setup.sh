@@ -147,8 +147,15 @@ fi
 #     faster than pushing a commit and waiting for build-prerelease
 #     to roll over
 # Missing source files are skipped silently — re-run after editing.
+# Optional 4th/5th args set the destination group and mode. Configs that
+# carry secrets (API keys, JWT signing keys, SMTP/DB passwords) must land
+# root:<service> 0640 so the service can read them and nothing else can —
+# a world-readable 0644 hands every local account the fleet's API keys.
+# The service user is created by the package's sysusers.d entry, so it
+# exists by the time any config is synced. Defaults keep the historical
+# root:root 0644 for non-secret configs (catalogues, per-host tuning).
 sync_config() {
-    local host="$1" src="$2" dst="$3"
+    local host="$1" src="$2" dst="$3" group="${4:-root}" mode="${5:-0644}"
     if [[ ! -f "${src}" ]]; then
         echo "  ${src##*/} not present locally — skipping"
         return
@@ -156,19 +163,20 @@ sync_config() {
     if rsync \
         --archive \
         --compress \
-        --chown root:root \
-        --chmod 0644 \
+        --chown "root:${group}" \
+        --chmod "${mode}" \
         --rsync-path 'sudo rsync' \
         "${src}" \
         "${host}:${dst}"; then
-        echo "  ${src##*/} → ${host}:${dst}"
+        echo "  ${src##*/} → ${host}:${dst} (root:${group} ${mode})"
     else
         echo "  failed to sync ${src##*/} to ${host}"
     fi
 }
 
 echo "==> ${cortex_host}: syncing gateway configs"
-sync_config "${cortex_host}" "${repo_path}/cortex.toml" /etc/cortex/cortex.toml
+# cortex.toml holds the inference API keys ([[entitlements.keys]]).
+sync_config "${cortex_host}" "${repo_path}/cortex.toml" /etc/cortex/cortex.toml cortex 0640
 sync_config "${cortex_host}" "${repo_path}/models.toml" /etc/cortex/models.toml
 
 for neuron_host in "${neuron_hosts[@]}"; do
@@ -521,7 +529,10 @@ fi
 
 echo "==> ${svc_host}: syncing service configs"
 sync_config "${svc_host}" "${repo_path}/helexa-router.toml" /etc/helexa-router/helexa-router.toml
-sync_config "${svc_host}" "${repo_path}/helexa-upstream.toml" /etc/helexa-upstream/helexa-upstream.toml
+# helexa-upstream.toml holds the session JWT secret, the SMTP submission
+# password (no-reply mail) and the database URL.
+sync_config "${svc_host}" "${repo_path}/helexa-upstream.toml" \
+    /etc/helexa-upstream/helexa-upstream.toml helexa-upstream 0640
 # Config changes only take effect on service restart; do it here (not in
 # CI) so a config-only iteration doesn't need a deploy run. Ignore
 # failures — first run happens before the RPMs are installed.
