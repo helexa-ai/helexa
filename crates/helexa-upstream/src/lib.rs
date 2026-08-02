@@ -14,6 +14,7 @@
 
 pub mod authz;
 pub mod config;
+pub mod config_store;
 pub mod crypto;
 pub mod db;
 pub mod email;

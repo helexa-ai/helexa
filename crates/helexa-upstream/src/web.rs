@@ -36,6 +36,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
             axum::routing::patch(update_key_limit),
         )
         .route("/web/v1/redeem", post(redeem))
+        .route("/web/v1/topup/request", post(request_topup))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             require_session,
@@ -543,13 +544,69 @@ async fn account(
     .bind(acct)
     .fetch_one(&state.pool)
     .await?;
+    // Whether a self-service top-up is available right now, so the
+    // dashboard can show the offer (and why it is unavailable) without a
+    // second round trip. The grant path re-checks, so this is display
+    // only — a stale page cannot conjure an extra top-up.
+    let (topup_available, topup_reason) =
+        match crate::topup::auto_eligibility(&state.pool, acct).await {
+            Ok(Ok(())) => (true, None),
+            Ok(Err(reason)) => (false, Some(reason.to_string())),
+            Err(e) => {
+                tracing::warn!(error = %e, "top-up eligibility check failed");
+                (false, None)
+            }
+        };
     Ok(Json(json!({
         "account_id": acct.to_string(),
         "allocation_total": row.get::<i64, _>("allocation_total"),
         "allocation_spent": row.get::<i64, _>("allocation_spent"),
         "allocation_reserved": row.get::<i64, _>("allocation_reserved"),
+        "topup_available": topup_available,
+        "topup_reason": topup_reason,
     }))
     .into_response())
+}
+
+/// `POST /web/v1/topup/request` — self-service top-up.
+///
+/// Lets an account that is running low grant itself more allocation, so
+/// somebody evaluating helexa is not blocked waiting on the operator.
+/// Eligibility (threshold, per-account ceiling, cooldown) is enforced
+/// server-side from `app_config`; a refusal explains itself, since the
+/// caller is authenticated and asking about their own account.
+async fn request_topup(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthUser>,
+) -> WebResult<Response> {
+    use crate::topup::AutoTopUpError;
+    let acct = account_id_for(&state, user.0).await?;
+    match crate::topup::auto_grant(&state.pool, acct).await {
+        Ok(grant) => {
+            tracing::info!(
+                account = %acct,
+                value = grant.value,
+                used = grant.used_count,
+                max = grant.max_count,
+                "self-service top-up granted"
+            );
+            Ok(Json(json!({
+                "value": grant.value,
+                "allocation_total": grant.allocation_total,
+                "used_count": grant.used_count,
+                "max_count": grant.max_count,
+            }))
+            .into_response())
+        }
+        Err(AutoTopUpError::Db(e)) => Err(WebError::from(e)),
+        // Every other variant is the caller's own account state, not a
+        // server fault: 409 with the reason so the UI can say why.
+        Err(reason) => Ok((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": reason.to_string() })),
+        )
+            .into_response()),
+    }
 }
 
 async fn list_keys(
