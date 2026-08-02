@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Iskoristi",
     "redeemed": "Kod je iskorišten.",
-    "logout": "Odjava"
+    "logout": "Odjava",
+    "topUpTitle": "Ponestaje vam kvote?",
+    "topUpBody": "Iskoristili ste {{pct}} % kvote. Zatražite nadoplatu za nastavak.",
+    "topUpAction": "Zatraži nadoplatu",
+    "topUpGranted": "Kvoti je dodano {{value}}. Iskorištene samostalne nadoplate: {{used}} od {{max}}."
   },
   "keys": {
     "title": "API ključevi",

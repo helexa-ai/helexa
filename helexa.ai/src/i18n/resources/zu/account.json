@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Sebenzisa",
     "redeemed": "Ikhodi isetshenzisiwe.",
-    "logout": "Phuma"
+    "logout": "Phuma",
+    "topUpTitle": "Isabelo sakho siyaphela?",
+    "topUpBody": "Usebenzise {{pct}}% wesabelo sakho. Cela ukwengezwa ukuze uqhubeke.",
+    "topUpAction": "Cela ukwengezwa",
+    "topUpGranted": "Kwengezwe {{value}} esabelweni sakho. Ukwengeza okuzenzakalelayo okusetshenzisiwe: {{used}} kokungu-{{max}}."
   },
   "keys": {
     "title": "Okhiye be-API",

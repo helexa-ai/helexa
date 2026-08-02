@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Faollashtirish",
     "redeemed": "Kod faollashtirildi.",
-    "logout": "Chiqish"
+    "logout": "Chiqish",
+    "topUpTitle": "Kvotangiz tugayaptimi?",
+    "topUpBody": "Kvotangizning {{pct}}% ini ishlatdingiz. Davom etish uchun toʻldirish soʻrang.",
+    "topUpAction": "Toʻldirish soʻrash",
+    "topUpGranted": "Kvotangizga {{value}} qoʻshildi. Ishlatilgan oʻz-oʻzini toʻldirishlar: {{used}} / {{max}}."
   },
   "keys": {
     "title": "API kalitlari",

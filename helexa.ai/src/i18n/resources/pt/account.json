@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Resgatar",
     "redeemed": "Código resgatado.",
-    "logout": "Terminar sessão"
+    "logout": "Terminar sessão",
+    "topUpTitle": "Alocação quase esgotada?",
+    "topUpBody": "Já utilizou {{pct}} % da sua alocação. Peça um carregamento para continuar.",
+    "topUpAction": "Pedir carregamento",
+    "topUpGranted": "Adicionados {{value}} à sua alocação. Carregamentos automáticos usados: {{used}} de {{max}}."
   },
   "keys": {
     "title": "Chaves API",

@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "מימוש",
     "redeemed": "הקוד מומש.",
-    "logout": "התנתקות"
+    "logout": "התנתקות",
+    "topUpTitle": "ההקצאה עומדת להיגמר?",
+    "topUpBody": "ניצלתם {{pct}}% מההקצאה שלכם. בקשו טעינה כדי להמשיך.",
+    "topUpAction": "בקשת טעינה",
+    "topUpGranted": "נוספו {{value}} להקצאה שלכם. טעינות עצמיות שנוצלו: {{used}} מתוך {{max}}."
   },
   "keys": {
     "title": "מפתחות API",

@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Yi amfani",
     "redeemed": "An karɓi lambar.",
-    "logout": "Fita"
+    "logout": "Fita",
+    "topUpTitle": "Rabonka yana ƙarewa?",
+    "topUpBody": "Ka yi amfani da {{pct}}% na rabonka. Nemi ƙarin rabo don ci gaba.",
+    "topUpAction": "Nemi ƙarin rabo",
+    "topUpGranted": "An ƙara {{value}} a rabonka. Ƙarin rabo da aka yi amfani da shi: {{used}} daga {{max}}."
   },
   "keys": {
     "title": "Makullan API",

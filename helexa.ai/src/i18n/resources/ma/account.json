@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "استعمل",
     "redeemed": "الكود تستعمل.",
-    "logout": "خرج"
+    "logout": "خرج",
+    "topUpTitle": "الحصة ديالك قربات تسالي؟",
+    "topUpBody": "استعملتي {{pct}}% من الحصة ديالك. طلب تعبئة باش تكمل.",
+    "topUpAction": "طلب تعبئة",
+    "topUpGranted": "تزادو {{value}} للحصة ديالك. التعبيات التلقائية اللي استعملتي: {{used}} من {{max}}."
   },
   "keys": {
     "title": "مفاتيح API",

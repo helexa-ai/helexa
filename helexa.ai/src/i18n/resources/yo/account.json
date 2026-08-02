@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Lo koodu",
     "redeemed": "A ti lo koodu náà.",
-    "logout": "Jáde"
+    "logout": "Jáde",
+    "topUpTitle": "Ṣé ìpín rẹ ń tán?",
+    "topUpBody": "O ti lo {{pct}}% ti ìpín rẹ. Béèrè fún àfikún láti tẹ̀síwájú.",
+    "topUpAction": "Béèrè fún àfikún",
+    "topUpGranted": "A fi {{value}} kún ìpín rẹ. Àfikún ìrànlọ́wọ́-ara-ẹni tí a ti lò: {{used}} nínú {{max}}."
   },
   "keys": {
     "title": "Àwọn kọ́kọ́rọ́ API",

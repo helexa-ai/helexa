@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Uplatnit",
     "redeemed": "Kód uplatněn.",
-    "logout": "Odhlásit se"
+    "logout": "Odhlásit se",
+    "topUpTitle": "Dochází vám příděl?",
+    "topUpBody": "Využili jste {{pct}} % přídělu. Požádejte o dobití a pokračujte.",
+    "topUpAction": "Požádat o dobití",
+    "topUpGranted": "K přídělu přidáno {{value}}. Využitá samoobslužná dobití: {{used}} z {{max}}."
   },
   "keys": {
     "title": "API klíče",

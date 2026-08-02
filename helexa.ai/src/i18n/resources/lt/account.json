@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Panaudoti",
     "redeemed": "Kodas panaudotas.",
-    "logout": "Atsijungti"
+    "logout": "Atsijungti",
+    "topUpTitle": "Kvota baigiasi?",
+    "topUpBody": "Sunaudojote {{pct}} % kvotos. Paprašykite papildymo, kad galėtumėte tęsti.",
+    "topUpAction": "Prašyti papildymo",
+    "topUpGranted": "Prie kvotos pridėta {{value}}. Panaudoti savitarnos papildymai: {{used}} iš {{max}}."
   },
   "keys": {
     "title": "API raktai",

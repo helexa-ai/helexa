@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Активувати",
     "redeemed": "Код активовано.",
-    "logout": "Вийти"
+    "logout": "Вийти",
+    "topUpTitle": "Квота добігає кінця?",
+    "topUpBody": "Використано {{pct}} % квоти. Запитайте поповнення, щоб продовжити.",
+    "topUpAction": "Запитати поповнення",
+    "topUpGranted": "До квоти додано {{value}}. Використано самостійних поповнень: {{used}} з {{max}}."
   },
   "keys": {
     "title": "Ключі API",

@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Lös in",
     "redeemed": "Koden är inlöst.",
-    "logout": "Logga ut"
+    "logout": "Logga ut",
+    "topUpTitle": "Börjar det ta slut?",
+    "topUpBody": "Du har använt {{pct}} % av din tilldelning. Begär en påfyllning för att fortsätta.",
+    "topUpAction": "Begär påfyllning",
+    "topUpGranted": "{{value}} har lagts till din tilldelning. Använda självbetjäningspåfyllningar: {{used}} av {{max}}."
   },
   "keys": {
     "title": "API-nycklar",

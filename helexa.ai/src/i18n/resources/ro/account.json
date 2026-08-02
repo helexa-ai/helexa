@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Valorifică",
     "redeemed": "Cod valorificat.",
-    "logout": "Deconectează-te"
+    "logout": "Deconectează-te",
+    "topUpTitle": "Ți se termină alocarea?",
+    "topUpBody": "Ai folosit {{pct}} % din alocare. Cere o reîncărcare pentru a continua.",
+    "topUpAction": "Cere o reîncărcare",
+    "topUpGranted": "S-au adăugat {{value}} la alocarea ta. Reîncărcări automate folosite: {{used}} din {{max}}."
   },
   "keys": {
     "title": "Chei API",

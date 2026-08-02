@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Zrealizuj",
     "redeemed": "Kod zrealizowany.",
-    "logout": "Wyloguj się"
+    "logout": "Wyloguj się",
+    "topUpTitle": "Kończy Ci się przydział?",
+    "topUpBody": "Wykorzystano {{pct}} % przydziału. Poproś o doładowanie, aby kontynuować.",
+    "topUpAction": "Poproś o doładowanie",
+    "topUpGranted": "Dodano {{value}} do przydziału. Wykorzystane doładowania samoobsługowe: {{used}} z {{max}}."
   },
   "keys": {
     "title": "Klucze API",
