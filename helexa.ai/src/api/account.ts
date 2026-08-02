@@ -10,6 +10,7 @@ import {
   type CreatedKey,
   type FeatureFlags,
   type Session,
+  type TopUpGrant,
 } from "./types";
 
 export interface AccountApi {
@@ -34,6 +35,8 @@ export interface AccountApi {
     limitValue: number,
   ): Promise<void>;
   redeem(token: string, code: string): Promise<AccountBalance>;
+  /** Self-service top-up; the server enforces threshold/cap/cooldown. */
+  requestTopUp(token: string): Promise<TopUpGrant>;
   /** Public (no token): product feature gates for this deployment (#191). */
   features(): Promise<FeatureFlags>;
 }
@@ -97,6 +100,10 @@ class RealAccountApi implements AccountApi {
   account(token: string) {
     return call<AccountBalance>("/account", { token });
   }
+  /** Ask for a self-service top-up; the server enforces eligibility. */
+  requestTopUp(token: string) {
+    return call<TopUpGrant>("/topup/request", { token, method: "POST" });
+  }
   listKeys(token: string) {
     return call<{ keys: ApiKeySummary[] }>("/keys", { token }).then((r) => r.keys);
   }
@@ -143,6 +150,7 @@ class MockAccountApi implements AccountApi {
   private reserved = 0;
   private keys: ApiKeySummary[] = [];
   private seq = 1;
+  private autoTopUps = 0;
 
   async register() {}
   async verify() {}
@@ -205,6 +213,27 @@ class MockAccountApi implements AccountApi {
     }
     this.total += 500_000;
     return this.account();
+  }
+  async requestTopUp(): Promise<TopUpGrant> {
+    // Mirrors the server's guard rails so the mocked dashboard exercises
+    // the same states: refuse below threshold, grant otherwise.
+    const used = this.spent + this.reserved;
+    const pct = this.total > 0 ? (used / this.total) * 100 : 100;
+    if (pct < 75) {
+      throw new ApiError(
+        409,
+        "conflict",
+        `allocation is only ${Math.round(pct)}% used; top-ups unlock at 75%`,
+      );
+    }
+    this.total += 1_000_000;
+    this.autoTopUps += 1;
+    return {
+      value: 1_000_000,
+      allocation_total: this.total,
+      used_count: this.autoTopUps,
+      max_count: 3,
+    };
   }
   async features() {
     return { anon_web_search: true };

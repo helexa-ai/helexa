@@ -26,6 +26,10 @@ export interface AccountBalance {
   allocation_total: number;
   allocation_spent: number;
   allocation_reserved: number;
+  /** Whether a self-service top-up can be requested right now (#topup). */
+  topup_available?: boolean;
+  /** Why it cannot, when it cannot — shown verbatim to the account holder. */
+  topup_reason?: string | null;
 }
 
 export interface Session {
@@ -52,4 +56,12 @@ export class ApiError extends Error {
     this.code = code;
     this.status = status;
   }
+}
+
+/** What a self-service top-up granted. */
+export interface TopUpGrant {
+  value: number;
+  allocation_total: number;
+  used_count: number;
+  max_count: number;
 }

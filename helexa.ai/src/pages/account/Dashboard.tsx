@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [code, setCode] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toppingUp, setToppingUp] = useState(false);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -29,6 +30,30 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void load();
   }, [load]);
+
+  async function requestTopUp() {
+    if (!token) return;
+    setError(null);
+    setMsg(null);
+    setToppingUp(true);
+    try {
+      const grant = await accountApi().requestTopUp(token);
+      setMsg(
+        t("dashboard.topUpGranted", {
+          value: grant.value.toLocaleString(),
+          used: grant.used_count,
+          max: grant.max_count,
+        }),
+      );
+      // Re-read rather than patching locally: the server owns the balance
+      // and whether another top-up is still available.
+      await load();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : t("error.generic"));
+    } finally {
+      setToppingUp(false);
+    }
+  }
 
   async function redeem(e: React.FormEvent) {
     e.preventDefault();
@@ -81,6 +106,24 @@ export default function Dashboard() {
           </Link>
         </Card.Body>
       </Card>
+
+      {/* Self-service top-up: shown once the account is close enough to
+          its ceiling that the server will grant one. The server decides
+          (threshold/cap/cooldown live in app_config) and re-checks on
+          submit — this is only the offer. */}
+      {balance?.topup_available && (
+        <Card className="surface-elevated mb-3">
+          <Card.Body>
+            <Card.Title className="h6">{t("dashboard.topUpTitle")}</Card.Title>
+            <p className="small text-muted mb-3">
+              {t("dashboard.topUpBody", { pct })}
+            </p>
+            <Button onClick={requestTopUp} disabled={toppingUp}>
+              {t("dashboard.topUpAction")}
+            </Button>
+          </Card.Body>
+        </Card>
+      )}
 
       <Card className="surface-elevated">
         <Card.Body>

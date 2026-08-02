@@ -42,7 +42,11 @@
     "redeemPlaceholder": "helexa-topup-…",
     "redeem": "Redeem",
     "redeemed": "Code redeemed.",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "topUpTitle": "Running low?",
+    "topUpBody": "You have used {{pct}}% of your allocation. Request a top-up to keep going.",
+    "topUpAction": "Request top-up",
+    "topUpGranted": "Added {{value}} tokens. Self-service top-ups used: {{used}} of {{max}}."
   },
   "keys": {
     "title": "API keys",
