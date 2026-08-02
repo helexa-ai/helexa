@@ -51,6 +51,11 @@ url = "postgres://helexa:helexa@localhost/helexa_upstream"
 # Frontend base URL used to build verify/reset links in emails.
 app_base_url = "https://helexa.ai"
 
+# Unverified-signup reaping (see docs): frees an address whose signup
+# was never completed. Must be >= email_token_ttl_secs.
+# unverified_grace_secs = 86400
+# unverified_sweep_interval_secs = 3600
+
 [email]
 # "log" (dev: logs the link) or "smtp". Any other value refuses to start.
 provider = "log"

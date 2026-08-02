@@ -44,6 +44,17 @@ pub struct AuthSettings {
     /// Email verification / password-reset token lifetime (seconds).
     #[serde(default = "default_email_token_ttl")]
     pub email_token_ttl_secs: u64,
+    /// How long an unverified signup survives before the reaper bins it.
+    /// Must be >= `email_token_ttl_secs`: an account whose verification
+    /// link is still live must never be deleted out from under the
+    /// person about to click it. The reaper additionally refuses to
+    /// delete any account that still holds a live token, so a re-sent
+    /// link extends the reprieve on its own.
+    #[serde(default = "default_unverified_grace")]
+    pub unverified_grace_secs: u64,
+    /// How often the unverified-signup reaper runs.
+    #[serde(default = "default_unverified_sweep_interval")]
+    pub unverified_sweep_interval_secs: u64,
     /// Public base URL of the frontend, used to build verify/reset links.
     #[serde(default = "default_app_base_url")]
     pub app_base_url: String,
@@ -55,6 +66,8 @@ impl Default for AuthSettings {
             jwt_secret: default_jwt_secret(),
             session_ttl_secs: default_session_ttl(),
             email_token_ttl_secs: default_email_token_ttl(),
+            unverified_grace_secs: default_unverified_grace(),
+            unverified_sweep_interval_secs: default_unverified_sweep_interval(),
             app_base_url: default_app_base_url(),
         }
     }
@@ -237,6 +250,14 @@ fn default_session_ttl() -> u64 {
 }
 fn default_email_token_ttl() -> u64 {
     24 * 3600
+}
+fn default_unverified_grace() -> u64 {
+    // Same as the verification link's lifetime: an unverified signup is
+    // binned once its link can no longer be used, freeing the address.
+    24 * 3600
+}
+fn default_unverified_sweep_interval() -> u64 {
+    3600
 }
 fn default_app_base_url() -> String {
     "http://localhost:5173".into()
