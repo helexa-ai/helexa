@@ -152,23 +152,18 @@ async fn privacy(State(state): State<AppState>, headers: HeaderMap) -> Result<Re
 
 // ── Sign in / register ──────────────────────────────────────────────
 
-fn auth_page(
-    state: &AppState,
-    q: &AuthQuery,
-    tab: &str,
-    invite_label: Option<String>,
-) -> Result<Response> {
-    let (heading, subheading) = match (tab, invite_label.as_deref()) {
-        ("register", Some(_)) => (
+fn auth_page(state: &AppState, q: &AuthQuery, tab: &str, invited: bool) -> Result<Response> {
+    let (heading, subheading) = match (tab, invited) {
+        ("register", true) => (
             "Create your account",
             "You've been invited to review confidential material. Create an \
              account and it will be attached to you.",
         ),
-        ("register", None) => (
+        ("register", false) => (
             "Create your account",
             "One account covers this portal and helexa.ai itself.",
         ),
-        (_, Some(_)) => (
+        (_, true) => (
             "Sign in to continue",
             "You've been invited to review confidential material. Sign in \
              and it will be attached to your account.",
@@ -191,7 +186,13 @@ fn auth_page(
                 ("subheading", Value::from(subheading)),
                 (
                     "invite_label",
-                    invite_label.map(Value::from).unwrap_or_default(),
+                    // A generic marker only — never the round title. See
+                    // invites::pending_invite_waiting.
+                    if invited {
+                        Value::from("Invitation")
+                    } else {
+                        Value::from(())
+                    },
                 ),
                 (
                     "error",
@@ -220,8 +221,8 @@ async fn signin_page(
         let dest = q.next.filter(|n| is_safe_next(n)).unwrap_or("/".into());
         return Ok(Redirect::to(&dest).into_response());
     }
-    let label = crate::invites::pending_invite_label(&state, &headers).await;
-    auth_page(&state, &q, "signin", label)
+    let invited = crate::invites::pending_invite_waiting(&state, &headers).await;
+    auth_page(&state, &q, "signin", invited)
 }
 
 async fn register_page(
@@ -229,8 +230,8 @@ async fn register_page(
     headers: HeaderMap,
     Query(q): Query<AuthQuery>,
 ) -> Result<Response> {
-    let label = crate::invites::pending_invite_label(&state, &headers).await;
-    auth_page(&state, &q, "register", label)
+    let invited = crate::invites::pending_invite_waiting(&state, &headers).await;
+    auth_page(&state, &q, "register", invited)
 }
 
 #[derive(Debug, Deserialize)]
@@ -403,5 +404,72 @@ mod tests {
     fn urlencode_escapes_delimiters() {
         assert_eq!(urlencode("a b&c=d"), "a%20b%26c%3Dd");
         assert_eq!(urlencode("/r/x"), "/r/x");
+    }
+}
+
+#[cfg(test)]
+mod leak_tests {
+    //! The pre-authentication surface must disclose nothing about which
+    //! round an invitation is for.
+
+    use super::*;
+
+    /// Renders the sign-in page exactly as an unauthenticated visitor —
+    /// or a link-unfurler following `/i/<code>` — would receive it.
+    fn signin_html(invited: bool) -> String {
+        let extra = vec![
+            ("tab", Value::from("signin")),
+            ("qs", Value::from("")),
+            ("heading", Value::from("Sign in to continue")),
+            ("subheading", Value::from("Confidential material.")),
+            (
+                "invite_label",
+                if invited {
+                    Value::from("Invitation")
+                } else {
+                    Value::from(())
+                },
+            ),
+            ("error", Value::from(())),
+            ("notice", Value::from(())),
+            ("site_name", Value::from("helexa investor portal")),
+            ("site_tagline", Value::from("investor portal")),
+            ("entity_name", Value::from(crate::ENTITY_NAME)),
+            ("contact_email", Value::from("angels@helexa.ai")),
+        ];
+        let mut map: std::collections::BTreeMap<String, Value> = Default::default();
+        for (k, v) in extra {
+            map.insert(k.to_string(), v);
+        }
+        templates::render("signin.html", Value::from_object(map)).expect("renders")
+    }
+
+    #[test]
+    fn pending_invite_never_names_the_round() {
+        let html = signin_html(true);
+        // The label shown is a fixed generic marker. If a round title
+        // ever reached this page it would be published into every chat
+        // preview of the invitation link.
+        assert!(html.contains("Invitation"), "{html}");
+        for leak in ["Tenstorrent", "Early Access Programme", "tt-eap", "Galaxy"] {
+            assert!(
+                !html.contains(leak),
+                "pre-auth page leaked {leak:?}:\n{html}"
+            );
+        }
+    }
+
+    #[test]
+    fn unfurl_metadata_is_fixed_and_uninformative() {
+        let html = signin_html(true);
+        assert!(
+            html.contains(r#"property="og:title" content="helexa""#),
+            "{html}"
+        );
+        assert!(
+            html.contains(r#"content="Sign in required.""#),
+            "og:description must not vary with page content: {html}"
+        );
+        assert!(html.contains("noindex"), "{html}");
     }
 }

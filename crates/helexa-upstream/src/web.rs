@@ -564,8 +564,45 @@ async fn account(
         "allocation_reserved": row.get::<i64, _>("allocation_reserved"),
         "topup_available": topup_available,
         "topup_reason": topup_reason,
+        "angel_access": has_angel_access(&state, user.0).await,
     }))
     .into_response())
+}
+
+/// Whether this user holds any investor-portal grant.
+///
+/// A **boolean, and deliberately nothing more**. helexa.ai is a static
+/// bundle served to everyone, so anything it receives is effectively
+/// public: a flag saying "this account has something" is safe there,
+/// whereas a list of round names would publish which programmes exist and
+/// what they are called. The portal keeps that server-side.
+///
+/// helexa-angels owns these tables (schema `angels`); this is a read-only
+/// peek across the schema boundary, guarded with `to_regclass` so a
+/// database where angels has never run — a fresh deployment, or upstream
+/// running ahead of it — returns false instead of erroring. Never fails
+/// the account request: worst case the header link is missing, and the
+/// investor still has the link they were sent.
+async fn has_angel_access(state: &AppState, user_id: Uuid) -> bool {
+    let res = sqlx::query(
+        "SELECT EXISTS ( \
+             SELECT 1 FROM angels.grants g JOIN angels.rounds r ON r.slug = g.round_slug \
+             WHERE g.user_id = $1 AND g.state = 'active' AND r.status <> 'draft' \
+         ) AS ok \
+         WHERE to_regclass('angels.grants') IS NOT NULL",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await;
+
+    match res {
+        Ok(Some(row)) => row.get::<bool, _>("ok"),
+        Ok(None) => false,
+        Err(e) => {
+            tracing::debug!(error = %e, "angel access check unavailable");
+            false
+        }
+    }
 }
 
 /// `POST /web/v1/topup/request` — self-service top-up.

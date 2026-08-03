@@ -8,6 +8,15 @@
      deliberate, since either alone is a single point of failure. -->
 <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
 <meta name="referrer" content="no-referrer">
+<!-- Explicit, deliberately uninformative unfurl metadata. Invitation
+     links get pasted into Slack and WhatsApp, whose crawlers follow the
+     redirect and scrape whatever they find; without this they would
+     compose a preview from page content. Fixed strings mean every
+     preview is identical and says nothing. -->
+<meta property="og:title" content="helexa">
+<meta property="og:description" content="Sign in required.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
 <title>{% block title %}{{ site_name }}{% endblock %}</title>
 <style>
   :root {

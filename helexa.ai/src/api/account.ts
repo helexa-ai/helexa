@@ -165,6 +165,7 @@ class MockAccountApi implements AccountApi {
       allocation_total: this.total,
       allocation_spent: this.spent,
       allocation_reserved: this.reserved,
+      angel_access: false,
     };
   }
   async listKeys(): Promise<ApiKeySummary[]> {

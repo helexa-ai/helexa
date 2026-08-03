@@ -30,6 +30,16 @@ export interface AccountBalance {
   topup_available?: boolean;
   /** Why it cannot, when it cannot — shown verbatim to the account holder. */
   topup_reason?: string | null;
+  /**
+   * Whether this account holds any investor-portal grant.
+   *
+   * A boolean and nothing more, on purpose. This bundle is static and
+   * served to everyone, so anything it receives is effectively public —
+   * a flag saying "there is something" is safe here, a list of round
+   * names would publish which programmes exist. The portal keeps that
+   * server-side.
+   */
+  angel_access?: boolean;
 }
 
 export interface Session {

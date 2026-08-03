@@ -28,7 +28,6 @@ pub struct Invite {
     pub id: Uuid,
     pub round_slug: String,
     pub label: String,
-    pub round_title: String,
     pub auto_grant: bool,
 }
 
@@ -39,7 +38,7 @@ pub struct Invite {
 /// becomes an oracle for probing which codes exist.
 pub async fn lookup(pool: &PgPool, code: &str) -> Option<Invite> {
     let row = sqlx::query(
-        "SELECT i.id, i.round_slug, i.label, r.title, r.auto_grant \
+        "SELECT i.id, i.round_slug, i.label, r.auto_grant \
          FROM invites i JOIN rounds r ON r.slug = i.round_slug \
          WHERE i.code_hash = $1 \
            AND i.revoked_at IS NULL \
@@ -57,7 +56,6 @@ pub async fn lookup(pool: &PgPool, code: &str) -> Option<Invite> {
         id: row.get("id"),
         round_slug: row.get("round_slug"),
         label: row.get("label"),
-        round_title: row.get("title"),
         auto_grant: row.get("auto_grant"),
     })
 }
@@ -137,11 +135,21 @@ pub async fn redeem_pending(
     redeem(state, &invite, user_id).await.ok()
 }
 
-/// The round title behind a pending invite, so the sign-in page can say
-/// what the visitor is signing in *for*.
-pub async fn pending_invite_label(state: &AppState, headers: &HeaderMap) -> Option<String> {
-    let code = auth::cookie_value(headers, "angels_invite")?;
-    lookup(&state.pool, &code).await.map(|i| i.round_title)
+/// Whether a live invite is waiting, so the sign-in page can say the
+/// visitor is signing in *for something* — without saying what.
+///
+/// Deliberately NOT the round title. `/i/<code>` redirects to the
+/// sign-in page, and a link-unfurler (Slack, WhatsApp, LinkedIn) follows
+/// redirects: rendering the round title there would publish it into a
+/// chat preview the moment anyone pasted the link. Since the code is
+/// expected to circulate, that leak would be routine rather than
+/// exceptional. A generic acknowledgement gives the same reassurance and
+/// discloses nothing.
+pub async fn pending_invite_waiting(state: &AppState, headers: &HeaderMap) -> bool {
+    let Some(code) = auth::cookie_value(headers, "angels_invite") else {
+        return false;
+    };
+    lookup(&state.pool, &code).await.is_some()
 }
 
 /// Mint a code. The plaintext is returned once, here; only its hash is
