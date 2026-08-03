@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages";
 import { getLanguageOptionsByUsage } from "../i18n/translation-priority";
 import { useAuth } from "../auth/context";
+import { accountApi } from "../api/account";
 
 /**
  * Top navigation: brand, primary routes (chat at `/`, `/mission`), an
@@ -23,7 +24,31 @@ import { useAuth } from "../auth/context";
 const Header: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation("common");
-  const { status, logout } = useAuth();
+  const { status, token, logout } = useAuth();
+
+  // Whether to offer the investor portal. The server answers with a
+  // boolean and nothing else (see AccountBalance.angel_access): this
+  // bundle is public, so it must never learn round names.
+  const [angelAccess, setAngelAccess] = React.useState(false);
+  React.useEffect(() => {
+    if (status !== "authed" || !token) {
+      setAngelAccess(false);
+      return;
+    }
+    let cancelled = false;
+    accountApi()
+      .account(token)
+      .then((a) => {
+        if (!cancelled) setAngelAccess(a.angel_access === true);
+      })
+      // Silent: a missing link is a small inconvenience for someone who
+      // still holds the invitation link they were sent, whereas an error
+      // banner in the header would be a puzzle for everyone else.
+      .catch(() => {});
+    return (): void => {
+      cancelled = true;
+    };
+  }, [status, token]);
 
   const currentLanguage: LanguageCode = (i18n.language.split("-")[0] ||
     "en") as LanguageCode;
@@ -103,6 +128,20 @@ const Header: React.FC = () => {
                   <Link className="dropdown-item" to="/account">
                     {t("nav.account")}
                   </Link>
+                  {angelAccess && (
+                    /* Label is the hostname itself — language-neutral, so
+                       it needs no i18n key and cannot leave 41 locales
+                       failing `npm run i18n:check`. Same reasoning as the
+                       numeric eyebrows in Mission.tsx. It is a separate
+                       origin with its own session, so a plain anchor. */
+                    <a
+                      className="dropdown-item"
+                      href="https://angels.helexa.ai"
+                      rel="noreferrer"
+                    >
+                      angels.helexa.ai
+                    </a>
+                  )}
                   <button
                     type="button"
                     className="dropdown-item"

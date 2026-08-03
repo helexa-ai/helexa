@@ -15,3 +15,4 @@ doc/plan/*
 .claude/
 helexa-router.toml
 helexa-upstream.toml
+helexa-angels.toml

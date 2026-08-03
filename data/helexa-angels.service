@@ -1,0 +1,38 @@
+[Unit]
+Description=helexa-angels — confidential investor portal (angels.helexa.ai)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/helexa-angels serve --config /etc/helexa-angels/helexa-angels.toml
+# Server-rendered HTTP portal, bound to loopback and fronted by the
+# angels.helexa.ai nginx vhost on the edge proxies. Connects out to the
+# PostgreSQL that helexa-upstream owns (credential auth is shared) and
+# runs its own migrations, confined to the `angels` schema, on startup.
+Restart=always
+RestartSec=10
+User=helexa-angels
+Group=helexa-angels
+# Round content lives here — outside any web root, readable only by this
+# service. It is deployed separately from the RPM and deliberately never
+# committed to the open-source repository.
+StateDirectory=helexa-angels
+StateDirectoryMode=0750
+
+# The material this process serves is confidential; give it no more of
+# the host than it needs.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

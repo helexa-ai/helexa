@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}How we handle your data — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="prose">
+  <div class="eyebrow">Privacy</div>
+  <h1>How we handle your data</h1>
+  <p class="lede">
+    Short version: we keep the minimum needed to run a confidential
+    document portal, and we are direct about the one thing people are
+    usually not told &mdash; we log what you read.
+  </p>
+
+  <h2>What we hold</h2>
+  <table>
+    <thead><tr><th>Data</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Email address and password hash</td>
+        <td>Your helexa account, shared with helexa.ai. We never store the password itself.</td>
+      </tr>
+      <tr>
+        <td>Which documents you open, and when</td>
+        <td>
+          This material is confidential and commercially sensitive.
+          Knowing which named account read which version of a document is
+          how we look after it &mdash; and how we can tell you what you
+          were shown if a question comes up later.
+        </td>
+      </tr>
+      <tr>
+        <td>IP address and browser user-agent</td>
+        <td>Recorded alongside access events, to spot credential sharing or misuse.</td>
+      </tr>
+      <tr>
+        <td>Anything you send us in the interest form</td>
+        <td>So a human can respond to you.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>How long</h2>
+  <p>
+    Access records are kept for {{ retention_months }} months and then
+    deleted automatically. Your account lasts until you ask us to remove
+    it.
+  </p>
+
+  <h2>Who sees it</h2>
+  <p>
+    {{ entity_name }} and nobody else. We do not use analytics services,
+    advertising trackers, or third-party fonts or scripts &mdash; this
+    portal loads nothing from anyone else&rsquo;s servers, which you can
+    verify in your browser&rsquo;s network tab.
+  </p>
+
+  <h2>Your rights</h2>
+  <p>
+    You can ask for a copy of what we hold about you, ask us to correct
+    it, or ask us to delete your account, by writing to
+    <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>. If we
+    delete your account we keep the access record itself, with your
+    account reference removed, because it is a record of how confidential
+    material was handled.
+  </p>
+</div>
+{% endblock %}

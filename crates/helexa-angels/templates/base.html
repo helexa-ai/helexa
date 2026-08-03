@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Confidential material: keep it out of indexes and out of link
+     previews. The header is also set at the nginx layer; both is
+     deliberate, since either alone is a single point of failure. -->
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="referrer" content="no-referrer">
+<!-- Explicit, deliberately uninformative unfurl metadata. Invitation
+     links get pasted into Slack and WhatsApp, whose crawlers follow the
+     redirect and scrape whatever they find; without this they would
+     compose a preview from page content. Fixed strings mean every
+     preview is identical and says nothing. -->
+<meta property="og:title" content="helexa">
+<meta property="og:description" content="Sign in required.">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<title>{% block title %}{{ site_name }}{% endblock %}</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #151b23; --line: #262d38;
+    --ink: #e6edf3; --muted: #9aa7b4; --accent: #5eead4; --accent2: #818cf8;
+    --warn: #fbbf24;
+    --measure: 68ch;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fbfcfd; --panel: #ffffff; --line: #e3e8ee;
+      --ink: #16202b; --muted: #5b6875; --accent: #0d9488; --accent2: #4f46e5;
+      --warn: #a16207;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent2); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { color: var(--accent); }
+
+  header.top {
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .top-inner {
+    max-width: 1080px; margin: 0 auto; padding: 0.85rem 1.25rem;
+    display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  }
+  .brand { font-weight: 650; letter-spacing: -0.01em; display: flex; align-items: center; gap: .55rem; }
+  .brand .mark {
+    width: 1.6rem; height: 1.6rem; border-radius: 6px; flex: none;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+  }
+  .brand small { display:block; font-weight: 450; color: var(--muted); font-size: .72rem; letter-spacing: .04em; text-transform: uppercase; }
+  nav.top-nav { margin-left: auto; display: flex; gap: 1.1rem; align-items: center; font-size: .92rem; }
+  nav.top-nav a { color: var(--muted); text-decoration: none; }
+  nav.top-nav a:hover, nav.top-nav a[aria-current="page"] { color: var(--ink); }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
+  .prose { max-width: var(--measure); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 1.5rem;
+  }
+  .card-narrow { max-width: 26rem; margin: 3rem auto; }
+
+  h1 { font-size: 1.9rem; line-height: 1.25; letter-spacing: -0.02em; margin: 0 0 .5rem; }
+  h2 { font-size: 1.35rem; letter-spacing: -0.01em; margin: 2.2rem 0 .6rem; }
+  h3 { font-size: 1.08rem; margin: 1.6rem 0 .4rem; }
+  .eyebrow {
+    font-size: .74rem; letter-spacing: .10em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: .45rem;
+  }
+  .lede { color: var(--muted); font-size: 1.05rem; }
+
+  label { display: block; font-size: .88rem; color: var(--muted); margin-bottom: .3rem; }
+  input[type=email], input[type=password], input[type=text], select, textarea {
+    width: 100%; padding: .6rem .7rem; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    font: inherit; margin-bottom: 1rem;
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  button.primary {
+    width: 100%; padding: .65rem 1rem; border: 0; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    color: #06121a; font: inherit; font-weight: 650; cursor: pointer;
+  }
+  button.primary:hover { filter: brightness(1.08); }
+
+  .alert { border-radius: 8px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .93rem; border: 1px solid; }
+  .alert-warn { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
+  .alert-ok { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .94rem; }
+  th, td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .82rem; text-transform: uppercase; letter-spacing: .04em; }
+  .scroll-x { overflow-x: auto; }
+
+  /* Per-viewer watermark. Attribution, not access control — it makes a
+     leak traceable, which is the realistic threat here. */
+  .watermark {
+    border: 1px dashed var(--line); border-radius: 8px;
+    padding: .5rem .75rem; margin-bottom: 1.5rem;
+    font-size: .78rem; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  }
+  .watermark strong { color: var(--ink); font-weight: 600; }
+
+  footer.bot {
+    border-top: 1px solid var(--line); margin-top: 3rem;
+    color: var(--muted); font-size: .84rem;
+  }
+  .bot-inner { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem; }
+
+  @media print {
+    header.top, nav.top-nav, footer.bot form { display: none; }
+    body { background: #fff; color: #000; }
+    /* The watermark must survive printing — that is the whole point. */
+    .watermark { border-color: #999; color: #333; }
+  }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-inner">
+    <a class="brand" href="/" style="text-decoration:none;color:inherit">
+      <span class="mark" aria-hidden="true"></span>
+      <span>helexa<small>{{ site_tagline }}</small></span>
+    </a>
+    <nav class="top-nav">
+      {% block nav %}{% endblock %}
+      {% if user_email %}
+        <a href="/account">{{ user_email }}</a>
+        <a href="/signout">Sign out</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+<footer class="bot">
+  <div class="bot-inner">
+    <p style="margin:0 0 .4rem">
+      Confidential. Prepared for the named recipient above and not for
+      onward distribution.
+    </p>
+    <p style="margin:0">
+      {{ entity_name }} &middot; <a href="/privacy">How we handle your data</a>
+    </p>
+  </div>
+</footer>
+</body>
+</html>

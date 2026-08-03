@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Sign in — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="card card-narrow">
+  <div class="eyebrow">{{ invite_label or "Investor portal" }}</div>
+  <h1 style="font-size:1.45rem">{{ heading }}</h1>
+  <p class="lede" style="font-size:.95rem">{{ subheading }}</p>
+
+  {% if error %}<div class="alert alert-warn">{{ error }}</div>{% endif %}
+  {% if notice %}<div class="alert alert-ok">{{ notice }}</div>{% endif %}
+
+  <div style="display:flex;gap:.5rem;border-bottom:1px solid var(--line);margin:1.25rem 0 1.25rem">
+    <a href="/signin{{ qs }}"
+       style="padding:.5rem .1rem;margin-right:1rem;text-decoration:none;font-weight:600;
+              color:{% if tab != 'register' %}var(--ink){% else %}var(--muted){% endif %};
+              border-bottom:2px solid {% if tab != 'register' %}var(--accent){% else %}transparent{% endif %}">Sign in</a>
+    <a href="/register{{ qs }}"
+       style="padding:.5rem .1rem;text-decoration:none;font-weight:600;
+              color:{% if tab == 'register' %}var(--ink){% else %}var(--muted){% endif %};
+              border-bottom:2px solid {% if tab == 'register' %}var(--accent){% else %}transparent{% endif %}">Create account</a>
+  </div>
+
+  {% if tab == 'register' %}
+    <form method="post" action="/register{{ qs }}">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="new-password"
+             minlength="8" required>
+      <button class="primary" type="submit">Create account</button>
+    </form>
+    <p style="color:var(--muted);font-size:.84rem;margin:1rem 0 0">
+      This is a helexa account: the same credentials sign you in at
+      <a href="https://helexa.ai">helexa.ai</a>, so you can evaluate the
+      platform itself. We&rsquo;ll email you a link to confirm the address.
+    </p>
+  {% else %}
+    <form method="post" action="/signin{{ qs }}">
+      <label for="email">Email address</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button class="primary" type="submit">Sign in</button>
+    </form>
+    <p style="color:var(--muted);font-size:.84rem;margin:1rem 0 0">
+      Already have a <a href="https://helexa.ai">helexa.ai</a> account? Use
+      the same email and password.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}

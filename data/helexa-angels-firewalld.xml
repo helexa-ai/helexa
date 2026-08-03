@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<service>
+  <short>helexa-angels</short>
+  <description>helexa-angels investor portal. Listens on tcp/8092 for the
+  edge proxies' reverse-proxy traffic over the WireGuard mesh. It is never
+  exposed publicly — angels.helexa.ai terminates at nginx on the edge
+  hosts, which is also where TLS and the confidentiality headers
+  live.</description>
+  <port protocol="tcp" port="8092"/>
+</service>

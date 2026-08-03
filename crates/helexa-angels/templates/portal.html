@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Portal — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="prose">
+  <div class="eyebrow">Investor portal</div>
+  <h1>Welcome{% if user_email %}, {{ user_email }}{% endif %}</h1>
+
+  {% if rounds %}
+    <p class="lede">
+      Material prepared for you. Everything here is confidential and
+      attributed to your account.
+    </p>
+    <div style="display:grid;gap:1rem;margin-top:1.75rem">
+      {% for r in rounds %}
+        <a href="/r/{{ r.slug }}" class="card" style="text-decoration:none;color:inherit;display:block">
+          <div class="eyebrow">{{ r.framing_label }}</div>
+          <h2 style="margin:.1rem 0 .35rem;font-size:1.2rem">{{ r.title }}</h2>
+          <p style="margin:0;color:var(--muted);font-size:.92rem">
+            {% if r.status == 'open' %}Open{% elif r.status == 'closed' %}Closed{% else %}In preparation{% endif %}
+          </p>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="lede">
+      Your account doesn&rsquo;t currently have access to any material.
+    </p>
+    <div class="card" style="margin-top:1.5rem">
+      <p style="margin:0 0 .5rem">
+        If you were sent an invitation link, open it again while signed in
+        and access will be attached to this account.
+      </p>
+      <p style="margin:0;color:var(--muted);font-size:.9rem">
+        If you think this is a mistake, reply to the message that brought
+        you here and we&rsquo;ll sort it out.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
