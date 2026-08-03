@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Your account — {{ site_name }}{% endblock %}
+{% block content %}
+<div class="prose">
+  <div class="eyebrow">Your account</div>
+  <h1>{{ user_email }}</h1>
+  <p class="lede">
+    One helexa account covers both this portal and
+    <a href="https://helexa.ai">helexa.ai</a> itself &mdash; the same email
+    and password sign you in to evaluate the platform.
+  </p>
+
+  <h2>Access</h2>
+  {% if rounds %}
+    <div class="scroll-x">
+      <table>
+        <thead><tr><th>Material</th><th>Status</th><th>Granted</th></tr></thead>
+        <tbody>
+          {% for r in rounds %}
+            <tr>
+              <td><a href="/r/{{ r.slug }}">{{ r.title }}</a></td>
+              <td>{{ r.state }}</td>
+              <td>{{ r.granted_at }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p>No material is currently shared with this account.</p>
+  {% endif %}
+
+  <h2>Password</h2>
+  <p>
+    Your password is managed with your helexa account. To change or reset
+    it, use <a href="https://helexa.ai/forgot">the reset flow on
+    helexa.ai</a> &mdash; the change applies here too.
+  </p>
+
+  <h2>What we record</h2>
+  <p>
+    We log which documents your account opens, and when. That is
+    deliberate: this material is confidential, and knowing who has read
+    what is part of how we look after it. See
+    <a href="/privacy">how we handle your data</a>.
+  </p>
+
+  <p style="margin-top:2rem"><a href="/signout">Sign out</a></p>
+</div>
+{% endblock %}

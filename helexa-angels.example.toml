@@ -1,0 +1,52 @@
+# helexa-angels — the confidential investor portal at angels.helexa.ai.
+#
+# Every value can be overridden by an ANGELS_-prefixed environment
+# variable with `__` separators, e.g. ANGELS_DB__URL=postgres://...
+#
+# This file carries a database URL, so the RPM installs it
+# root:helexa-angels 0640. Keep it that way.
+
+[server]
+# Bound to loopback: the public entrypoint is the nginx vhost on the edge
+# proxies, which terminates TLS and adds the confidentiality headers.
+# Nothing should reach this port directly.
+listen = "127.0.0.1:8092"
+
+[db]
+# The SAME database helexa-upstream uses. That is deliberate and required:
+# credential auth is shared so an investor has one helexa account for both
+# this portal and helexa.ai itself, and a cross-database join against
+# `users` is not possible.
+#
+# angels confines its own tables to the `angels` schema, which also keeps
+# its sqlx migration bookkeeping from colliding with upstream's.
+url = "postgres://helexa:helexa@localhost/helexa_upstream"
+max_connections = 5
+
+[session]
+# Deliberately NOT helexa-upstream's session realm. Credentials are
+# shared; sessions are not. See crates/helexa-angels/src/auth.rs.
+cookie_name = "angels_session"
+# Absolute lifetime (7 days) and idle timeout (12 hours).
+ttl_secs = 604800
+idle_secs = 43200
+# Only ever false for local development over plain HTTP.
+secure = true
+
+[site]
+base_url = "https://angels.helexa.ai"
+# Where expressions of interest are routed. A real, monitored inbox.
+contact_email = "angels@helexa.ai"
+
+[content]
+# Round documents, on disk, outside any web root and outside the source
+# repository — helexa/helexa is open source, so a business plan committed
+# there is a business plan published.
+dir = "/var/lib/helexa-angels/content"
+
+[upstream]
+# helexa-upstream, over the mesh. Registration is delegated there rather
+# than reimplemented: it owns password policy, argon2 parameters, the
+# verification email, the unverified-signup reaper and fingerprinting.
+base_url = "http://gallumbits.kosherinata.internal:8090"
+timeout_secs = 30

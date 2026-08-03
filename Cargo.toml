@@ -6,6 +6,7 @@ members = [
     "crates/cortex-cli",
     "crates/neuron",
     "crates/helexa-acp",
+    "crates/helexa-angels",
     "crates/helexa-bench",
     "crates/helexa-router",
     "crates/helexa-stream",
