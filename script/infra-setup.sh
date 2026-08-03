@@ -427,6 +427,79 @@ for web_host in "${web_hosts[@]}"; do
     fi
 done
 
+# ── angels.helexa.ai: the confidential investor portal ─────────────────
+# Unlike the other vhosts this one serves NOTHING from disk: every byte
+# comes from helexa-angels on gallumbits, which assembles each page
+# server-side after checking the session. The webroot exists only so
+# certbot's ACME challenge has somewhere to live.
+#
+# Installed on both edge proxies, matching helexa.ai, so the Cloudflare
+# record can point at either site.
+angels_domain="angels.helexa.ai"
+angels_webroot="/var/www/${angels_domain}"
+
+for angels_host in "${web_hosts[@]}"; do
+    echo "==> ${angels_host}: investor portal vhost (${angels_domain})"
+    ssh "${angels_host}" "sudo install -d -o root -g root -m 0755 '${angels_webroot}'"
+    ssh "${angels_host}" "sudo restorecon -R '${angels_webroot}'"
+
+    # Shared proxy params, included by every location in the vhost so the
+    # four cannot drift apart. X-Forwarded-For matters here beyond the
+    # usual: the access record stores the client IP, and without it every
+    # row would read as the edge proxy's address.
+    rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/angels-proxy-params.conf" \
+        "${angels_host}:/etc/nginx/conf.d/angels-proxy-params.conf" \
+        || echo "  failed to install angels-proxy-params.conf"
+
+    # Rate-limit zones (http context) — helexa-ratelimit.conf now also
+    # declares angels_invite and angels_auth. Re-synced here so the
+    # portal works even if the website section above was skipped.
+    rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/helexa-ratelimit.conf" \
+        "${angels_host}:/etc/nginx/conf.d/helexa-ratelimit.conf" \
+        || echo "  failed to install helexa-ratelimit.conf"
+
+    if ! ssh "${angels_host}" "sudo test -d '/etc/letsencrypt/live/${angels_domain}'"; then
+        echo "  obtaining Let's Encrypt cert via Cloudflare DNS-01…"
+        ssh "${angels_host}" "sudo certbot certonly \
+            -m '${le_email}' --agree-tos --no-eff-email --noninteractive \
+            --cert-name '${angels_domain}' --key-type ecdsa \
+            --dns-cloudflare --dns-cloudflare-credentials '${cf_creds}' \
+            --dns-cloudflare-propagation-seconds 60 \
+            --keep-until-expiring -d '${angels_domain}'" \
+            || echo "  WARNING: certbot failed (Cloudflare creds for ${angels_domain}?) — review on ${angels_host}"
+    fi
+
+    # Never reference a cert that does not exist yet — nginx -t fails and
+    # takes the whole server down with it, including helexa.ai.
+    if ssh "${angels_host}" "sudo test -d '/etc/letsencrypt/live/${angels_domain}'"; then
+        angels_cfg="${angels_domain}.conf"
+    else
+        angels_cfg="${angels_domain}.bootstrap.conf"
+    fi
+    if rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/${angels_cfg}" \
+        "${angels_host}:/etc/nginx/sites-available/${angels_domain}.conf"; then
+        ssh "${angels_host}" "
+            set -eu
+            sudo ln -sf ../sites-available/${angels_domain}.conf \
+                /etc/nginx/sites-enabled/${angels_domain}.conf
+            sudo nginx -t
+        " && echo "  vhost installed (${angels_cfg})"
+        if ssh "${angels_host}" "systemctl is-active --quiet nginx"; then
+            ssh "${angels_host}" "sudo systemctl reload nginx"
+        else
+            echo "  NOTE: nginx is inactive on ${angels_host} — start it to serve ${angels_domain}"
+        fi
+    else
+        echo "  failed to install ${angels_domain} vhost"
+    fi
+done
+
 # ── helexa website: internal vhost (helexa.internal) on the gateway ────
 # Mesh clients can't reach the public helexa.ai (hairpin gotcha —
 # reverse-proxies.md §2). Same SPA webroot, internal-CA cert renewed by
