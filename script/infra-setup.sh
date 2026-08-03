@@ -606,6 +606,11 @@ sync_config "${svc_host}" "${repo_path}/helexa-router.toml" /etc/helexa-router/h
 # password (no-reply mail) and the database URL.
 sync_config "${svc_host}" "${repo_path}/helexa-upstream.toml" \
     /etc/helexa-upstream/helexa-upstream.toml helexa-upstream 0640
+
+# helexa-angels.toml carries the (shared) database URL and the SMTP
+# password for interest notifications — same secret posture as upstream's.
+sync_config "${svc_host}" "${repo_path}/helexa-angels.toml" \
+    /etc/helexa-angels/helexa-angels.toml helexa-angels 0640
 # Config changes only take effect on service restart; do it here (not in
 # CI) so a config-only iteration doesn't need a deploy run. Ignore
 # failures — first run happens before the RPMs are installed.
