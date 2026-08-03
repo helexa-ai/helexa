@@ -385,6 +385,16 @@ jobs:
               echo "${pkg}-${installed} already current — leaving service untouched"
               continue
             fi
+            # A package that has never been published AND is not installed
+            # cannot be deployed — most often a new service whose first RPM
+            # has not landed yet. Skip it rather than letting `dnf install`
+            # fail: this loop runs under `set -e`, so one unpublished
+            # newcomer would otherwise abort the whole host's deploy and
+            # strand every package after it in the list.
+            if [ -z "${latest}" ] && [ "${installed}" = "not-installed" ]; then
+              echo "${pkg}: not published yet and not installed — skipping"
+              continue
+            fi
             echo "${pkg}: installed=${installed} published=${latest:-unknown} — deploying"
             if systemctl is-active --quiet "${pkg}.service"; then
               sudo /usr/bin/systemctl stop "${pkg}.service"
