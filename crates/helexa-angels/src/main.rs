@@ -188,5 +188,11 @@ async fn main() -> Result<()> {
 async fn open(path: &str) -> Result<(sqlx::postgres::PgPool, AngelsConfig)> {
     let cfg = AngelsConfig::load(path)?;
     let pool = helexa_angels::db::connect_and_migrate(&cfg.db.url, cfg.db.max_connections).await?;
+    // So `invite --round <slug>` works the moment a manifest exists on
+    // disk, without needing the service restarted first.
+    let content = helexa_angels::content::Content::new(cfg.content.dir.clone());
+    if let Err(e) = helexa_angels::content::sync_rounds(&pool, &content).await {
+        eprintln!("warning: content sync failed ({e}); round list may be stale");
+    }
     Ok((pool, cfg))
 }

@@ -1,6 +1,7 @@
 //! Shared application state.
 
 use crate::config::AngelsConfig;
+use crate::content::Content;
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<AngelsConfig>,
     pub http: reqwest::Client,
+    pub content: Content,
 }
 
 impl AppState {
@@ -17,10 +19,12 @@ impl AppState {
             .timeout(std::time::Duration::from_secs(config.upstream.timeout_secs))
             .build()
             .unwrap_or_default();
+        let content = Content::new(config.content.dir.clone());
         Self {
             pool,
             config: Arc::new(config),
             http,
+            content,
         }
     }
 

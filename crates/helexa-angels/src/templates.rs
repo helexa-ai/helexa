@@ -21,6 +21,10 @@ static ENV: LazyLock<Environment<'static>> = LazyLock::new(|| {
         .expect("signin.html is embedded and must compile");
     env.add_template("error.html", include_str!("../templates/error.html"))
         .expect("error.html is embedded and must compile");
+    env.add_template("round.html", include_str!("../templates/round.html"))
+        .expect("round.html is embedded and must compile");
+    env.add_template("document.html", include_str!("../templates/document.html"))
+        .expect("document.html is embedded and must compile");
     env.add_template("portal.html", include_str!("../templates/portal.html"))
         .expect("portal.html is embedded and must compile");
     env.add_template("account.html", include_str!("../templates/account.html"))
@@ -55,6 +59,8 @@ mod tests {
         // it reaches a request path.
         let _ = ENV.get_template("base.html").expect("base");
         let _ = ENV.get_template("signin.html").expect("signin");
+        let _ = ENV.get_template("round.html").expect("round");
+        let _ = ENV.get_template("document.html").expect("document");
         let _ = ENV.get_template("portal.html").expect("portal");
         let _ = ENV.get_template("account.html").expect("account");
         let _ = ENV.get_template("privacy.html").expect("privacy");

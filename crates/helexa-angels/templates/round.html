@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ round.title }} — {{ site_name }}{% endblock %}
+{% block nav %}<a href="/">Portal</a>{% endblock %}
+{% block content %}
+
+<div class="watermark">
+  <span>Prepared for <strong>{{ user_email }}</strong></span>
+  <span>{{ now }} &middot; {{ content_version }}</span>
+</div>
+
+<div class="prose">
+  <div class="eyebrow">{{ round.framing_label }}</div>
+  <h1>{{ round.title }}</h1>
+  {% if round.summary %}<p class="lede">{{ round.summary }}</p>{% endif %}
+
+  {% if round.status == 'closed' %}
+    <div class="alert alert-warn">
+      This programme is closed. The material is kept here for your
+      reference.
+    </div>
+  {% endif %}
+</div>
+
+<h2>Documents</h2>
+<div style="display:grid;gap:.75rem;max-width:var(--measure)">
+  {% for d in round.documents %}
+    <a href="/r/{{ round.slug }}/{{ d.slug }}" class="card"
+       style="text-decoration:none;color:inherit;display:block;padding:1rem 1.15rem">
+      <strong style="display:block">{{ d.title }}</strong>
+      {% if d.summary %}
+        <span style="color:var(--muted);font-size:.9rem">{{ d.summary }}</span>
+      {% endif %}
+    </a>
+  {% endfor %}
+</div>
+
+{% if round.cta_label and round.status == 'open' %}
+  <div class="card" style="margin-top:2rem;max-width:var(--measure)">
+    <h3 style="margin-top:0">{{ round.cta_label }}</h3>
+    <p style="color:var(--muted);font-size:.94rem">
+      Nothing here is a commitment. Registering interest starts a
+      conversation &mdash; terms are settled individually, in writing.
+    </p>
+    <p style="margin:0">
+      <a href="/r/{{ round.slug }}/interest">Register your interest &rarr;</a>
+    </p>
+  </div>
+{% endif %}
+
+{% if disclaimer %}
+  <div class="prose" style="margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--line);
+              color:var(--muted);font-size:.88rem">
+    {{ disclaimer|safe }}
+  </div>
+{% endif %}
+
+{% endblock %}

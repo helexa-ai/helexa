@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title }} — {{ round.title }}{% endblock %}
+{% block nav %}
+  <a href="/">Portal</a>
+  <a href="/r/{{ round.slug }}">{{ round.title }}</a>
+{% endblock %}
+{% block content %}
+
+<!-- Attribution, not access control. It will not stop a determined leak;
+     it makes one traceable, which is the realistic threat when material
+     is deliberately shared with people who will forward it to advisors. -->
+<div class="watermark">
+  <span>Confidential &mdash; prepared for <strong>{{ user_email }}</strong></span>
+  <span>{{ now }} &middot; {{ content_version }}</span>
+</div>
+
+<div class="prose">
+  <div class="eyebrow">{{ round.framing_label }}</div>
+  <h1>{{ doc.title }}</h1>
+</div>
+
+<div class="prose doc">
+  {{ body|safe }}
+</div>
+
+<div style="max-width:var(--measure);margin-top:3rem;padding-top:1.25rem;
+            border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:1rem">
+  {% if prev %}
+    <a href="/r/{{ round.slug }}/{{ prev.slug }}">&larr; {{ prev.title }}</a>
+  {% else %}<span></span>{% endif %}
+  {% if next %}
+    <a href="/r/{{ round.slug }}/{{ next.slug }}">{{ next.title }} &rarr;</a>
+  {% else %}
+    <a href="/r/{{ round.slug }}">Back to contents</a>
+  {% endif %}
+</div>
+
+<style>
+  /* Wide content must scroll inside its own box rather than making the
+     page scroll sideways — business plans are full of wide tables. */
+  .doc table { display: block; overflow-x: auto; white-space: nowrap; }
+  .doc table td, .doc table th { white-space: normal; min-width: 8rem; }
+  .doc blockquote {
+    margin: 1.5rem 0; padding: .25rem 0 .25rem 1.1rem;
+    border-left: 3px solid var(--accent); color: var(--muted);
+  }
+  .doc code {
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    padding: .1rem .3rem; border-radius: 4px; font-size: .9em;
+  }
+  .doc pre { overflow-x: auto; padding: 1rem; border-radius: 8px;
+             background: color-mix(in srgb, var(--ink) 6%, transparent); }
+  .doc pre code { background: none; padding: 0; }
+  .doc hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+  .doc li { margin: .3rem 0; }
+</style>
+{% endblock %}

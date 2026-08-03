@@ -33,11 +33,13 @@
 pub mod audit;
 pub mod auth;
 pub mod config;
+pub mod content;
 pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod grants;
 pub mod invites;
+pub mod reader;
 pub mod state;
 pub mod templates;
 pub mod upstream;
@@ -65,6 +67,8 @@ pub fn build_app(state: AppState) -> axum::Router {
     axum::Router::new()
         .merge(web::router())
         .route("/i/{code}", axum::routing::get(invites::enter))
+        .route("/r/{slug}", axum::routing::get(reader::round_index))
+        .route("/r/{slug}/{doc}", axum::routing::get(reader::document))
         .fallback(web::fallback)
         // No CORS layer, deliberately: nothing here is meant to be
         // fetched by another origin's JavaScript. The absence is the
@@ -78,6 +82,17 @@ pub async fn run(config: AngelsConfig) -> Result<()> {
     let pool = db::connect_and_migrate(&config.db.url, config.db.max_connections).await?;
     let listen = config.server.listen.clone();
     let state = AppState::new(pool, config);
+
+    // Disk is the source of truth for round metadata; the table follows.
+    match content::sync_rounds(&state.pool, &state.content).await {
+        Ok(n) => tracing::info!(
+            rounds = n,
+            version = %state.content.version(),
+            dir = %state.config.content.dir,
+            "content synced"
+        ),
+        Err(e) => tracing::error!(error = %e, "content sync failed — rounds may be stale"),
+    }
 
     spawn_session_reaper(&state);
     spawn_retention_sweep(&state);

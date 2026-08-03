@@ -39,7 +39,7 @@ async fn health() -> impl IntoResponse {
 }
 
 /// Build a template context from the state's base plus per-page extras.
-fn ctx(state: &AppState, extra: Vec<(&str, Value)>) -> Value {
+pub(crate) fn ctx(state: &AppState, extra: Vec<(&str, Value)>) -> Value {
     let mut map: BTreeMap<String, Value> = BTreeMap::new();
     for (k, v) in state.base_context() {
         map.insert(k.to_string(), Value::from(v));
