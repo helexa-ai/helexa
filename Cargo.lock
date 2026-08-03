@@ -2146,6 +2146,7 @@ dependencies = [
  "chrono",
  "clap",
  "figment",
+ "lettre",
  "minijinja",
  "pulldown-cmark",
  "rand 0.8.6",

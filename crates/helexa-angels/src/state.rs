@@ -2,6 +2,7 @@
 
 use crate::config::AngelsConfig;
 use crate::content::Content;
+use crate::notify::Notifier;
 use sqlx::postgres::PgPool;
 use std::sync::Arc;
 
@@ -11,10 +12,11 @@ pub struct AppState {
     pub config: Arc<AngelsConfig>,
     pub http: reqwest::Client,
     pub content: Content,
+    pub notifier: Notifier,
 }
 
 impl AppState {
-    pub fn new(pool: PgPool, config: AngelsConfig) -> Self {
+    pub fn new(pool: PgPool, config: AngelsConfig, notifier: Notifier) -> Self {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(config.upstream.timeout_secs))
             .build()
@@ -25,6 +27,7 @@ impl AppState {
             config: Arc::new(config),
             http,
             content,
+            notifier,
         }
     }
 

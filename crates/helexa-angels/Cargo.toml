@@ -48,6 +48,13 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # same algorithm and parameter set helexa-upstream hashes with — see
 # `auth::verify_password`.
 argon2 = "0.5"
+# Interest notifications. Same transport helexa-upstream uses for
+# verification mail, via the internal Stalwart relay.
+lettre = { version = "0.11", default-features = false, features = [
+    "tokio1-rustls-tls",
+    "smtp-transport",
+    "builder",
+] }
 sha2 = "0.10"
 rand = "0.8"
 

@@ -22,6 +22,37 @@ pub struct AngelsConfig {
     pub content: ContentSettings,
     #[serde(default)]
     pub upstream: UpstreamSettings,
+    #[serde(default)]
+    pub email: EmailSettings,
+}
+
+/// `[email]` — where expressions of interest are announced.
+///
+/// `log` is a legitimate production choice while volumes are a handful of
+/// people: the submission is stored in the database regardless, so this
+/// only decides whether a mail also goes out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailSettings {
+    /// `"log"` or `"smtp"`.
+    #[serde(default = "default_email_provider")]
+    pub provider: String,
+    pub smtp_url: Option<String>,
+    #[serde(default = "default_from_addr")]
+    pub from_addr: String,
+    /// The operator inbox that receives interest notifications.
+    #[serde(default = "default_notify_to")]
+    pub notify_to: String,
+}
+
+impl Default for EmailSettings {
+    fn default() -> Self {
+        Self {
+            provider: default_email_provider(),
+            smtp_url: None,
+            from_addr: default_from_addr(),
+            notify_to: default_notify_to(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +202,15 @@ fn default_upstream_url() -> String {
 }
 fn default_upstream_timeout() -> u64 {
     30
+}
+fn default_email_provider() -> String {
+    "log".into()
+}
+fn default_from_addr() -> String {
+    "helexa <no-reply@helexa.ai>".into()
+}
+fn default_notify_to() -> String {
+    "angels@helexa.ai".into()
 }
 
 impl AngelsConfig {

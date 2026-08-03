@@ -50,3 +50,14 @@ dir = "/var/lib/helexa-angels/content"
 # verification email, the unverified-signup reaper and fingerprinting.
 base_url = "http://gallumbits.kosherinata.internal:8090"
 timeout_secs = 30
+
+[email]
+# Where expressions of interest are announced. "log" is a legitimate
+# production choice while volumes are a handful of people — the
+# submission is stored in the database either way, so this only decides
+# whether a mail also goes out. An unknown provider is a hard startup
+# failure rather than silently swallowed notifications.
+provider = "smtp"
+smtp_url = "smtps://user%40l4ir.net:CHANGEME@mail.l4ir.net:465"
+from_addr = "helexa <no-reply@helexa.ai>"
+notify_to = "angels@helexa.ai"

@@ -38,7 +38,9 @@ pub mod crypto;
 pub mod db;
 pub mod error;
 pub mod grants;
+pub mod interest;
 pub mod invites;
+pub mod notify;
 pub mod reader;
 pub mod state;
 pub mod templates;
@@ -68,6 +70,10 @@ pub fn build_app(state: AppState) -> axum::Router {
         .merge(web::router())
         .route("/i/{code}", axum::routing::get(invites::enter))
         .route("/r/{slug}", axum::routing::get(reader::round_index))
+        .route(
+            "/r/{slug}/interest",
+            axum::routing::get(interest::form).post(interest::submit),
+        )
         .route("/r/{slug}/{doc}", axum::routing::get(reader::document))
         .fallback(web::fallback)
         // No CORS layer, deliberately: nothing here is meant to be
@@ -81,7 +87,10 @@ pub fn build_app(state: AppState) -> axum::Router {
 pub async fn run(config: AngelsConfig) -> Result<()> {
     let pool = db::connect_and_migrate(&config.db.url, config.db.max_connections).await?;
     let listen = config.server.listen.clone();
-    let state = AppState::new(pool, config);
+    // Fails closed on a bad provider rather than silently swallowing
+    // operator notifications.
+    let notifier = notify::Notifier::from_config(&config.email)?;
+    let state = AppState::new(pool, config, notifier);
 
     // Disk is the source of truth for round metadata; the table follows.
     match content::sync_rounds(&state.pool, &state.content).await {

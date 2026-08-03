@@ -79,6 +79,13 @@ enum Commands {
         #[arg(long)]
         email: String,
     },
+    /// Expressions of interest, most recent first.
+    Interest {
+        #[arg(short, long, default_value = "/etc/helexa-angels/helexa-angels.toml")]
+        config: String,
+        #[arg(long)]
+        round: Option<String>,
+    },
     /// Stop an invitation code issuing further grants. Existing grants are
     /// untouched — revoking a code and revoking a person are different acts.
     RevokeInvite {
@@ -172,6 +179,17 @@ async fn main() -> Result<()> {
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("approved {n} grant(s) for {email} on {round}");
+        }
+        Commands::Interest { config, round } => {
+            let (pool, _) = open(&config).await?;
+            let rows = helexa_angels::interest::list(&pool, round.as_deref()).await?;
+            println!(
+                "{:<18} {:<36} {:<16} {:<20} STATE",
+                "WHEN", "WHO", "PACKAGE", "HOSTING"
+            );
+            for (at, who, package, hosting, state) in rows {
+                println!("{at:<18} {who:<36} {package:<16} {hosting:<20} {state}");
+            }
         }
         Commands::RevokeInvite { config, label } => {
             let (pool, _) = open(&config).await?;

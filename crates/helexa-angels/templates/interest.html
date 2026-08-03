@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Register interest — {{ round.title }}{% endblock %}
+{% block nav %}
+  <a href="/">Portal</a>
+  <a href="/r/{{ round.slug }}">{{ round.title }}</a>
+{% endblock %}
+{% block content %}
+<div class="prose">
+  <div class="eyebrow">{{ round.framing_label }}</div>
+  <h1>Register your interest</h1>
+
+  {% if sent %}
+    <div class="alert alert-ok">
+      Thank you &mdash; that&rsquo;s with us. We&rsquo;ll be in touch at
+      <strong>{{ user_email }}</strong>.
+    </div>
+    <p><a href="/r/{{ round.slug }}">Back to {{ round.title }}</a></p>
+  {% else %}
+    <p class="lede">
+      This starts a conversation. It is not an order, and nothing here
+      commits either of us &mdash; terms are settled individually, in
+      writing.
+    </p>
+
+    <div class="card" style="margin:1.5rem 0">
+      <p style="margin:0 0 .5rem"><strong>All three choices below are yours.</strong></p>
+      <p style="margin:0;color:var(--muted);font-size:.93rem">
+        Who buys the hardware, where it lives, and who covers its running
+        costs are independent decisions, and contracts are written to
+        match the combination you pick. Note that whoever purchases signs
+        the export control declaration. If you don&rsquo;t know yet, say
+        so &mdash; &ldquo;undecided&rdquo; is a perfectly good answer at
+        this stage.
+      </p>
+    </div>
+
+    <form method="post" action="/r/{{ round.slug }}/interest" style="max-width:var(--measure)">
+      <label for="package_ref">Which configuration interests you?</label>
+      <select id="package_ref" name="package_ref">
+        <option value="">Undecided / want to discuss</option>
+        <option value="quietbox2">QuietBox2</option>
+        <option value="galaxy">Galaxy</option>
+        <option value="galaxy-cluster">Galaxy cluster</option>
+      </select>
+
+      <label for="purchaser">Who would purchase?</label>
+      <select id="purchaser" name="purchaser">
+        <option value="">Undecided / want to discuss</option>
+        <option value="investor-direct">I purchase directly from Tenstorrent</option>
+        <option value="bears-lairs">Bears Lairs EOOD purchases on my behalf</option>
+      </select>
+
+      <label for="hosting_choice">Where would it be hosted?</label>
+      <select id="hosting_choice" name="hosting_choice">
+        <option value="">Undecided / want to discuss</option>
+        <option value="helexa">Hosted by helexa</option>
+        <option value="bears-lair-dc">Bears Lair datacentre</option>
+        <option value="investor-premises">My own premises</option>
+      </select>
+
+      <label for="running_costs">Who would cover maintenance and running costs?</label>
+      <select id="running_costs" name="running_costs">
+        <option value="">Undecided / want to discuss</option>
+        <option value="investor">I would</option>
+        <option value="negotiable">To be discussed</option>
+      </select>
+
+      <label for="message">Anything you&rsquo;d like to say or ask</label>
+      <textarea id="message" name="message" rows="6"
+                placeholder="Questions, timing, constraints, what you'd want to see before committing."></textarea>
+
+      <button class="primary" type="submit">Send</button>
+    </form>
+
+    <p style="color:var(--muted);font-size:.85rem;margin-top:1rem;max-width:var(--measure)">
+      We&rsquo;ll reply to {{ user_email }}. Nothing is shared outside
+      {{ entity_name }}.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}
