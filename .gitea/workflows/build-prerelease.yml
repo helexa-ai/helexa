@@ -69,6 +69,7 @@ jobs:
       build_upstream: ${{ steps.changes.outputs.build_upstream }}
       build_router: ${{ steps.changes.outputs.build_router }}
       build_tools: ${{ steps.changes.outputs.build_tools }}
+      build_angels: ${{ steps.changes.outputs.build_angels }}
       check_rust: ${{ steps.changes.outputs.check_rust }}
     steps:
       - uses: actions/checkout@v4
