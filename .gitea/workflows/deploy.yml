@@ -65,7 +65,12 @@ jobs:
           ssh gitea_ci@hanzalova.internal 'bash -s' <<'DEPLOY'
           set -eu
           pkg=cortex
-          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          # `rpm -q` prints "package X is not installed" on STDOUT and exits
+          # 1, so `|| echo not-installed` never fires — it captures the
+          # message text instead. Test the exit code.
+          if installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null); then :; else
+            installed="not-installed"
+          fi
           latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
             | python3 -c '
           import json, sys
@@ -175,7 +180,12 @@ jobs:
           fi
 
           # ── Package version gate (manifest rationale: see deploy-cortex) ──
-          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          # `rpm -q` prints "package X is not installed" on STDOUT and exits
+          # 1, so `|| echo not-installed` never fires — it captures the
+          # message text instead. Test the exit code.
+          if installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null); then :; else
+            installed="not-installed"
+          fi
           latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
             | python3 -c '
           import json, sys
@@ -371,7 +381,12 @@ jobs:
           ssh gitea_ci@gallumbits.kosherinata.internal 'bash -s' <<'DEPLOY'
           set -eu
           for pkg in helexa-router helexa-upstream helexa-tools helexa-angels; do
-            installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+            # `rpm -q` prints "package X is not installed" on STDOUT and
+            # exits 1, so `|| echo not-installed` never fires and the
+            # sentinel below would never match. Test the exit code.
+            if installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null); then :; else
+              installed="not-installed"
+            fi
             latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
               | python3 -c '
           import json, sys
@@ -452,7 +467,12 @@ jobs:
           ssh gitea_ci@bob.hanzalova.internal 'bash -s' <<'DEPLOY'
           set -eu
           pkg=helexa-bench
-          installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || echo "not-installed")
+          # `rpm -q` prints "package X is not installed" on STDOUT and exits
+          # 1, so `|| echo not-installed` never fires — it captures the
+          # message text instead. Test the exit code.
+          if installed=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null); then :; else
+            installed="not-installed"
+          fi
           latest=$(curl -fsS --max-time 15 "https://rpm.lair.cafe/fedora/43/x86_64/unstable/packages.json" 2>/dev/null \
             | python3 -c '
           import json, sys
