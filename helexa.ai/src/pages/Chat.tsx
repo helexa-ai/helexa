@@ -27,6 +27,7 @@ import {
 } from "../data/repositories";
 import { useChat } from "../lib/useChat";
 import { useAuth } from "../auth/context";
+import { ensureChatKey } from "../lib/ensureChatKey";
 import { accountApi } from "../api/account";
 
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
@@ -44,17 +45,22 @@ const ANON_COUNT_KEY = "anonMessageCount";
  */
 export default function Chat() {
   const { t, i18n } = useTranslation("chat");
-  const { status, accountId } = useAuth();
+  const { status, accountId, token } = useAuth();
   const authed = status === "authed" && !!accountId;
   const owner = authed ? accountId! : "anon";
   const model = authed ? AUTH_MODEL : ANON_MODEL;
 
-  // The user's API key for authenticated chat — stored client-side only,
-  // captured from the create-key modal ("use for chat on this device").
-  const chatApiKey = useLiveQuery(
+  // This browser's API key for authenticated chat — stored client-side
+  // only, provisioned on demand (see ensureChatKey).
+  //
+  // `undefined` means "still reading IndexedDB", `null` means "read, and
+  // there isn't one". Collapsing both to undefined would flash the
+  // create-a-key banner on every load and fire provisioning before we
+  // knew whether a key already existed.
+  const chatApiKey = useLiveQuery<string | null, undefined>(
     async () => {
       const m = await db.meta.get("chatApiKey");
-      return typeof m?.value === "string" ? m.value : undefined;
+      return typeof m?.value === "string" ? m.value : null;
     },
     [],
     undefined,
@@ -104,8 +110,17 @@ export default function Chat() {
       cancelled = true;
     };
   }, []);
-  // Signed in but no local key enabled for chat → can't send as yourself yet.
-  const needsKey = authed && !chatApiKey;
+  // Signed in with no key on this browser: provision one rather than
+  // making the user go and do it. chatApiKey is a live query, so the
+  // composer unblocks by itself the moment it lands.
+  useEffect(() => {
+    if (!authed || !token || chatApiKey !== null) return;
+    void ensureChatKey(token);
+  }, [authed, token, chatApiKey]);
+
+  // Only a dead end once provisioning has been tried and there is still
+  // no key — then the manual path in the banner still applies.
+  const needsKey = authed && chatApiKey === null;
 
   const messages = useLiveQuery(
     async () => {
@@ -119,7 +134,7 @@ export default function Chat() {
 
   const { streaming, activity, error, send, stop } = useChat({
     model,
-    apiKey: authed ? chatApiKey : undefined,
+    apiKey: authed ? (chatApiKey ?? undefined) : undefined,
     locale: i18n.language,
     toolsEnabled: authed || anonWebSearch,
   });
