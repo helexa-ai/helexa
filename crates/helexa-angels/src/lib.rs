@@ -52,13 +52,26 @@ use config::AngelsConfig;
 use state::AppState;
 use tower_http::trace::TraceLayer;
 
-/// The entity contractually responsible for the current round.
+/// The brand this site belongs to. The portal is a **helexa** undertaking
+/// and is branded as one.
+pub const BRAND_NAME: &str = "helexa";
+
+/// The legal entity behind the brand.
 ///
-/// Bears Lairs EOOD is helexa's operator zero; Helexa AI (a Bulgarian VCC)
-/// is not yet registered. Named in the footer of every page and in the
-/// privacy note, because a confidential document should always say who is
-/// holding the material.
+/// helexa is a trading name of Bears Lairs EOOD; Helexa AI (a Bulgarian
+/// VCC) is not yet registered. The relationship is stated rather than
+/// implied, in the footer and the privacy note, for two reasons: a
+/// trading name should disclose the entity trading under it, and a
+/// confidential document should say who is holding the material.
+///
+/// This is a *disclosure*, not the branding — do not let it displace
+/// `BRAND_NAME` in page furniture. Where the entity genuinely is the
+/// actor (the party to a contract, the operator of the facility where
+/// hardware is hosted) the round content names it directly.
 pub const ENTITY_NAME: &str = "Bears Lairs EOOD";
+
+/// Footer/controller line: brand first, entity disclosed.
+pub const ENTITY_NOTE: &str = "helexa is a trading name of Bears Lairs EOOD";
 
 /// How long access records are kept. Stated in the privacy note, enforced
 /// by the retention sweep — the two must not drift apart.

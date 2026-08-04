@@ -434,7 +434,9 @@ mod leak_tests {
             ("notice", Value::from(())),
             ("site_name", Value::from("helexa investor portal")),
             ("site_tagline", Value::from("investor portal")),
+            ("brand_name", Value::from(crate::BRAND_NAME)),
             ("entity_name", Value::from(crate::ENTITY_NAME)),
+            ("entity_note", Value::from(crate::ENTITY_NOTE)),
             ("contact_email", Value::from("angels@helexa.ai")),
         ];
         let mut map: std::collections::BTreeMap<String, Value> = Default::default();
@@ -451,6 +453,13 @@ mod leak_tests {
         // ever reached this page it would be published into every chat
         // preview of the invitation link.
         assert!(html.contains("Invitation"), "{html}");
+        // The site is a helexa undertaking and is branded as one, with the
+        // trading entity disclosed beneath — neither is a round secret.
+        assert!(html.contains("helexa"), "brand missing: {html}");
+        assert!(
+            html.contains("trading name of Bears Lairs EOOD"),
+            "entity disclosure missing: {html}"
+        );
         for leak in ["Tenstorrent", "Early Access Programme", "tt-eap", "Galaxy"] {
             assert!(
                 !html.contains(leak),
