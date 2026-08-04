@@ -28,7 +28,15 @@ pub async fn register(state: &AppState, email: &str, password: &str) -> Result<(
     let resp = state
         .http
         .post(&url)
-        .json(&json!({ "email": email, "password": password }))
+        // Tell upstream which front end this signup came from, so the
+        // confirmation mail sends the investor back to the portal rather
+        // than to helexa.ai, where the material they were invited to read
+        // is nowhere to be seen. Upstream allowlists this.
+        .json(&json!({
+            "email": email,
+            "password": password,
+            "origin": state.config.site.base_url,
+        }))
         .send()
         .await
         .with_context(|| format!("calling {url}"))?;

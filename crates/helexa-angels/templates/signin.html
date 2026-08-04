@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Sign in — {{ site_name }}{% endblock %}
+{% block title %}{% if tab == 'register' %}Create your account{% else %}Sign in{% endif %} — {{ site_name }}{% endblock %}
 {% block content %}
 <div class="card card-narrow">
   <div class="eyebrow">{{ invite_label or "Investor portal" }}</div>
