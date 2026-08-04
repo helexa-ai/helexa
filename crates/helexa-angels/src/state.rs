@@ -38,7 +38,9 @@ impl AppState {
         vec![
             ("site_name", "helexa investor portal".to_string()),
             ("site_tagline", "investor portal".to_string()),
+            ("brand_name", crate::BRAND_NAME.to_string()),
             ("entity_name", crate::ENTITY_NAME.to_string()),
+            ("entity_note", crate::ENTITY_NOTE.to_string()),
             ("contact_email", self.config.site.contact_email.clone()),
         ]
     }
