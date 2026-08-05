@@ -8,6 +8,7 @@ import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
 import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
+import Root from "./pages/Root";
 import Auth from "./pages/auth/Auth";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -30,7 +31,8 @@ export default function App() {
             <BetaBanner />
             <Header />
             <Routes>
-              <Route path="/" element={<Chat />} />
+              <Route path="/" element={<Root />} />
+              <Route path="/chat" element={<Chat />} />
               <Route path="/mission" element={<Mission />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/auth" element={<Auth />} />
