@@ -29,17 +29,22 @@ const Header: React.FC = () => {
   // Whether to offer the investor portal. The server answers with a
   // boolean and nothing else (see AccountBalance.angel_access): this
   // bundle is public, so it must never learn round names.
-  const [angelAccess, setAngelAccess] = React.useState(false);
+  //
+  // Keyed on the token rather than a bare boolean: signing out and back in
+  // as somebody else would otherwise show the previous account's answer for
+  // a render. Storing the token alongside the result means a stale value
+  // simply doesn't match and is ignored — and it removes the synchronous
+  // reset that made this a setState-in-effect.
+  const [angel, setAngel] = React.useState<{ token: string; access: boolean } | null>(
+    null,
+  );
   React.useEffect(() => {
-    if (status !== "authed" || !token) {
-      setAngelAccess(false);
-      return;
-    }
+    if (status !== "authed" || !token) return;
     let cancelled = false;
     accountApi()
       .account(token)
       .then((a) => {
-        if (!cancelled) setAngelAccess(a.angel_access === true);
+        if (!cancelled) setAngel({ token, access: a.angel_access === true });
       })
       // Silent: a missing link is a small inconvenience for someone who
       // still holds the invitation link they were sent, whereas an error
@@ -49,6 +54,7 @@ const Header: React.FC = () => {
       cancelled = true;
     };
   }, [status, token]);
+  const angelAccess = angel?.token === token && angel.access;
 
   const currentLanguage: LanguageCode = (i18n.language.split("-")[0] ||
     "en") as LanguageCode;
@@ -152,14 +158,24 @@ const Header: React.FC = () => {
                 </Dropdown.Menu>
               </Dropdown>
             ) : (
-              <Link
-                to="/auth"
-                className="hx-icon-btn"
-                id="user-menu"
-                aria-label={t("nav.login")}
-              >
-                <FaRegUser size={16} />
-              </Link>
+              <>
+                {/* Signing up was an unlabelled glyph — the primary
+                    conversion action with no words on it. `nav.register`
+                    already exists in every shipped locale, so labelling it
+                    costs no translation. */}
+                <Link
+                  to="/auth"
+                  className="hx-icon-btn"
+                  id="user-menu"
+                  aria-label={t("nav.login")}
+                  title={t("nav.login")}
+                >
+                  <FaRegUser size={16} />
+                </Link>
+                <Link to="/auth?tab=signup" className="hx-header-signup">
+                  {t("nav.register")}
+                </Link>
+              </>
             )}
 
             <a

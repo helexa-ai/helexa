@@ -1443,3 +1443,133 @@ pre {
     opacity: 1;
     border-color: rgba(128, 128, 128, 0.6);
 }
+
+/* ── Landing hero (anonymous, empty thread) ───────────────────────────
+ * A newcomer's first screen used to be a bare chat box. This carries the
+ * proposition in place, using the /mission copy verbatim so it stays
+ * operator-written and stays translated in all shipped locales.
+ *
+ * Logical properties throughout (margin-inline, text-align: start) so the
+ * RTL locales lay out correctly without a mirrored stylesheet. */
+.hx-landing {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 2rem 1rem 1rem;
+    text-align: center;
+}
+.hx-landing-mark {
+    /* Block, or the badge below flows onto the same line and overlaps it. */
+    display: block;
+    width: 64px;
+    height: auto;
+    margin: 0 auto 1.1rem;
+    opacity: 0.95;
+}
+.hx-landing-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    font-weight: 600;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-muted);
+    margin-bottom: 0.9rem;
+}
+.hx-landing h1 {
+    font-size: clamp(1.6rem, 4vw, 2.3rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 0.65rem;
+}
+.hx-landing-lead {
+    font-size: 1.02rem;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+    margin: 0 auto 1.75rem;
+    max-width: 40rem;
+}
+.hx-landing-points {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.75rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+    text-align: start;
+}
+.hx-landing-points li {
+    border-top: 2px solid var(--color-border-strong);
+    padding-top: 0.6rem;
+}
+.hx-landing-points strong {
+    display: block;
+    font-size: 0.74rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+.hx-landing-points span {
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+}
+.hx-landing-cta {
+    display: flex;
+    gap: 1.1rem;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+.hx-landing-cta .hx-btn-primary {
+    text-decoration: none;
+    padding-inline: 1.6rem;
+    width: auto;
+}
+.hx-landing-foot {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+/* Stack the proof points on phones — three columns of long sentences is
+ * unreadable under about 600px, and several locales run longer than the
+ * English. */
+@media (max-width: 640px) {
+    .hx-landing-points {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+    .hx-landing {
+        padding-top: 1rem;
+    }
+}
+
+/* Labelled sign-up in the header. Kept quiet rather than a filled button:
+ * the header already carries a gradient brand mark, and two competing
+ * emphases read as an advert. */
+.hx-header-signup {
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.3rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-border-subtle);
+    white-space: nowrap;
+    /* Explicit body colour: the surrounding nav links are deliberately
+     * muted, and inheriting that washed this out to near-invisible in the
+     * light theme — poor contrast on the one action we most want taken. */
+    color: var(--color-text);
+}
+.hx-header-signup:hover {
+    border-color: currentColor;
+}
+/* Under 480px the label competes with the brand for a very narrow bar;
+ * the icon still reaches the same place. */
+@media (max-width: 480px) {
+    .hx-header-signup {
+        display: none;
+    }
+}

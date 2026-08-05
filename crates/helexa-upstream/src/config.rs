@@ -58,6 +58,20 @@ pub struct AuthSettings {
     /// Public base URL of the frontend, used to build verify/reset links.
     #[serde(default = "default_app_base_url")]
     pub app_base_url: String,
+    /// Other front ends allowed to originate a signup, so their
+    /// verification mail points back at the property the person actually
+    /// used (e.g. the investor portal). Sending someone who registered on
+    /// one site to a different one is a poor first impression, and for the
+    /// portal it strands them in the chat app instead of the material they
+    /// were invited to read.
+    ///
+    /// An **allowlist**, not a free parameter: this value ends up as a URL
+    /// in an email we send. Accepting a caller-supplied origin unchecked
+    /// would make the signup endpoint a phishing-link generator with our
+    /// domain and DKIM signature on it. Anything not listed here falls
+    /// back to `app_base_url`.
+    #[serde(default)]
+    pub additional_app_origins: Vec<String>,
 }
 
 impl Default for AuthSettings {
@@ -69,6 +83,7 @@ impl Default for AuthSettings {
             unverified_grace_secs: default_unverified_grace(),
             unverified_sweep_interval_secs: default_unverified_sweep_interval(),
             app_base_url: default_app_base_url(),
+            additional_app_origins: Vec::new(),
         }
     }
 }

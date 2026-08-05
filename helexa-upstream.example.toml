@@ -50,6 +50,12 @@ url = "postgres://helexa:helexa@localhost/helexa_upstream"
 # email_token_ttl_secs = 86400     # 24 hours
 # Frontend base URL used to build verify/reset links in emails.
 app_base_url = "https://helexa.ai"
+# Other front ends allowed to originate a signup, so their confirmation
+# mail points back where the person registered rather than at the default
+# site. An allowlist, deliberately: the value is embedded in mail we send
+# and sign, so an unchecked caller-supplied origin would make signup a
+# phishing-link generator.
+additional_app_origins = []
 
 # Unverified-signup reaping (see docs): frees an address whose signup
 # was never completed. Must be >= email_token_ttl_secs.

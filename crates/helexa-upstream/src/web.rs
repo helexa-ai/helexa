@@ -174,6 +174,40 @@ struct RegisterReq {
     password: String,
     #[serde(default)]
     fingerprint: Option<String>,
+    /// Front end the signup came from, so the verification mail sends the
+    /// person back where they started. Allowlisted — see
+    /// [`resolve_origin`].
+    #[serde(default)]
+    origin: Option<String>,
+}
+
+/// Resolve a caller-supplied origin against the configured allowlist.
+///
+/// The result is embedded in an email we send and sign, so an unchecked
+/// value would turn signup into a phishing-link generator carrying our
+/// domain's reputation. Unknown or absent → the default front end.
+fn resolve_origin(state: &AppState, requested: Option<&str>) -> String {
+    resolve_origin_with(&state.config.auth, requested)
+}
+
+/// Split out from [`resolve_origin`] so the allowlist can be tested without
+/// standing up an `AppState` — this is the check that keeps /register from
+/// becoming a phishing-link generator, so it needs to be exercised.
+fn resolve_origin_with(auth: &crate::config::AuthSettings, requested: Option<&str>) -> String {
+    let default = auth.app_base_url.clone();
+    let Some(req) = requested else { return default };
+    let req = req.trim_end_matches('/');
+    if req == default.trim_end_matches('/')
+        || auth
+            .additional_app_origins
+            .iter()
+            .any(|o| o.trim_end_matches('/') == req)
+    {
+        req.to_string()
+    } else {
+        tracing::warn!(origin = %req, "signup origin not allowlisted — using the default");
+        default
+    }
 }
 
 /// `POST /web/v1/register` — always returns `202`, regardless of whether the
@@ -248,13 +282,25 @@ async fn register_inner(state: &AppState, req: RegisterReq) -> WebResult<()> {
     .execute(&state.pool)
     .await?;
 
-    let link = format!("{}/verify?token={token}", state.config.auth.app_base_url);
+    let origin = resolve_origin(state, req.origin.as_deref());
+    let link = format!("{origin}/verify?token={token}");
     let _ = state
         .email
         .send(
             &req.email,
-            "Verify your helexa account",
-            &format!("Welcome to helexa. Verify your email:\n\n{link}\n"),
+            "Confirm your helexa email address",
+            &format!(
+                "Welcome to helexa.\n\n\
+                 Confirm this address to finish setting up your account:\n\n\
+                 {link}\n\n\
+                 The link is valid for 24 hours. Once confirmed, sign in at \
+                 {app} and you're ready to go.\n\n\
+                 If you didn't create a helexa account, you can ignore this \
+                 message — nothing has been set up and the address will be \
+                 released.\n\n\
+                 helexa\n",
+                app = origin,
+            ),
         )
         .await;
     Ok(())
@@ -356,8 +402,19 @@ async fn resend_verification_if_unverified(
         .email
         .send(
             email,
-            "Verify your helexa account",
-            &format!("Welcome to helexa. Verify your email:\n\n{link}\n"),
+            "Confirm your helexa email address",
+            &format!(
+                "Here is a fresh confirmation link.\n\n\
+                 Confirm this address to finish setting up your account:\n\n\
+                 {link}\n\n\
+                 The link is valid for 24 hours. Once confirmed, sign in at \
+                 {app} and you're ready to go.\n\n\
+                 If you didn't create a helexa account, you can ignore this \
+                 message — nothing has been set up and the address will be \
+                 released.\n\n\
+                 helexa\n",
+                app = state.config.auth.app_base_url,
+            ),
         )
         .await;
     Ok(())
@@ -490,7 +547,16 @@ async fn reset_request_inner(state: &AppState, email: &str) -> WebResult<()> {
         .send(
             email,
             "Reset your helexa password",
-            &format!("Reset your password:\n\n{link}\n"),
+            &format!(
+                "Someone asked to reset the password for this helexa \
+                 account.\n\n\
+                 {link}\n\n\
+                 The link is valid for 24 hours and can be used once.\n\n\
+                 If that wasn't you, ignore this message — your password has \
+                 not changed and nobody can use this link without access to \
+                 your inbox.\n\n\
+                 helexa\n"
+            ),
         )
         .await;
     Ok(())
@@ -805,6 +871,50 @@ async fn redeem(
         Err(crate::topup::TopUpError::Db(e)) => {
             tracing::error!(error = %e, "redeem db error");
             Err(WebError::Internal)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::AuthSettings;
+
+    #[test]
+    fn signup_origin_must_be_allowlisted() {
+        // The resolved origin is embedded in an email we send and DKIM-sign.
+        // If a caller could supply any value, /register would become a
+        // phishing-link generator carrying our domain's reputation.
+        let cfg = AuthSettings {
+            app_base_url: "https://helexa.ai".into(),
+            additional_app_origins: vec!["https://angels.helexa.ai".into()],
+            ..Default::default()
+        };
+        let origin = |req: Option<&str>| resolve_origin_with(&cfg, req);
+
+        assert_eq!(origin(None), "https://helexa.ai");
+        assert_eq!(
+            origin(Some("https://angels.helexa.ai")),
+            "https://angels.helexa.ai"
+        );
+        // A trailing slash is the same origin, not a bypass.
+        assert_eq!(
+            origin(Some("https://angels.helexa.ai/")),
+            "https://angels.helexa.ai"
+        );
+        // Everything else falls back rather than being echoed into a mail.
+        for hostile in [
+            "https://evil.example",
+            "https://angels.helexa.ai.evil.example",
+            "https://helexa.ai.evil.example",
+            "javascript:alert(1)",
+            "//evil.example",
+        ] {
+            assert_eq!(
+                origin(Some(hostile)),
+                "https://helexa.ai",
+                "leaked: {hostile}"
+            );
         }
     }
 }

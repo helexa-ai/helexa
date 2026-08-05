@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Alert, Form } from "react-bootstrap";
@@ -44,7 +45,7 @@ const ANON_COUNT_KEY = "anonMessageCount";
  * browser.
  */
 export default function Chat() {
-  const { t, i18n } = useTranslation("chat");
+  const { t, i18n } = useTranslation(["chat", "mission", "common"]);
   const { status, accountId, token } = useAuth();
   const authed = status === "authed" && !!accountId;
   const owner = authed ? accountId! : "anon";
@@ -59,7 +60,7 @@ export default function Chat() {
   // knew whether a key already existed.
   const chatApiKey = useLiveQuery<string | null, undefined>(
     async () => {
-      const m = await db.meta.get("chatApiKey");
+      const m = await db.meta.get("chat:chatApiKey");
       return typeof m?.value === "string" ? m.value : null;
     },
     [],
@@ -199,8 +200,8 @@ export default function Chat() {
           <button
             type="button"
             className="hx-icon-btn hx-sidebar-action"
-            title={t("newChat")}
-            aria-label={t("newChat")}
+            title={t("chat:newChat")}
+            aria-label={t("chat:newChat")}
             onClick={() => void newChat()}
           >
             <LuMessageSquarePlus size={17} />
@@ -208,10 +209,10 @@ export default function Chat() {
           <button
             type="button"
             className="hx-icon-btn hx-sidebar-action"
-            title={t("newProject")}
-            aria-label={t("newProject")}
+            title={t("chat:newProject")}
+            aria-label={t("chat:newProject")}
             onClick={() =>
-              void createProject(owner, t("newProjectName")).then(setEditingProjectId)
+              void createProject(owner, t("chat:newProjectName")).then(setEditingProjectId)
             }
           >
             <LuFolderPlus size={17} />
@@ -219,7 +220,7 @@ export default function Chat() {
         </div>
 
         {(grouped.get(null) ?? []).length > 0 && (
-          <div className="hx-group-label">{t("unsorted")}</div>
+          <div className="hx-group-label">{t("chat:unsorted")}</div>
         )}
         {(grouped.get(null) ?? []).map((c) => (
           <ThreadRow
@@ -252,8 +253,8 @@ export default function Chat() {
                   <button
                     type="button"
                     className="hx-icon-btn hx-row-btn"
-                    title={t("rename")}
-                    aria-label={t("rename")}
+                    title={t("chat:rename")}
+                    aria-label={t("chat:rename")}
                     onClick={() => setEditingProjectId(p.id)}
                   >
                     <LuPencil size={13} />
@@ -261,8 +262,8 @@ export default function Chat() {
                   <button
                     type="button"
                     className="hx-icon-btn hx-row-btn"
-                    title={t("delete")}
-                    aria-label={t("delete")}
+                    title={t("chat:delete")}
+                    aria-label={t("chat:delete")}
                     onClick={() => void archiveProject(p.id)}
                   >
                     <LuTrash2 size={13} />
@@ -293,18 +294,47 @@ export default function Chat() {
         <button
           type="button"
           className="hx-icon-btn hx-sidebar-toggle"
-          aria-label={t("sidebarToggle")}
-          title={t("sidebarToggle")}
+          aria-label={t("chat:sidebarToggle")}
+          title={t("chat:sidebarToggle")}
           onClick={() => setSidebarOpen(true)}
         >
           <FaBarsStaggered size={15} />
         </button>
         <div ref={threadRef} className="flex-grow-1 p-3 overflow-auto">
           {(messages ?? []).length === 0 ? (
-            <div className="hx-chat-empty">
-              <img src="/logo.png" alt="" aria-hidden="true" />
-              <p>{t("emptyState")}</p>
-            </div>
+            authed ? (
+              <div className="hx-chat-empty">
+                <img src="/logo.png" alt="" aria-hidden="true" />
+                <p>{t("chat:emptyState")}</p>
+              </div>
+            ) : (
+              /* A newcomer's first impression used to be a bare chat box
+                 that said nothing about what helexa is — the proposition
+                 was a nav click away on /mission and easy to miss. This
+                 surfaces it in place, reusing the mission copy verbatim so
+                 it stays operator-written and stays translated. */
+              <div className="hx-landing">
+                <img src="/logo.png" alt="" aria-hidden="true" className="hx-landing-mark" />
+                <span className="hx-landing-badge">{t("mission:hero.badge")}</span>
+                <h1>{t("mission:hero.title")}</h1>
+                <p className="hx-landing-lead">{t("mission:hero.lead")}</p>
+                <ul className="hx-landing-points">
+                  {(["operators", "routing", "value"] as const).map((k) => (
+                    <li key={k}>
+                      <strong>{t(`mission:howItWorks.${k}.eyebrow`)}</strong>
+                      <span>{t(`mission:howItWorks.${k}.title`)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="hx-landing-cta">
+                  <Link to="/auth?tab=signup" className="hx-btn-primary">
+                    {t("common:nav.register")}
+                  </Link>
+                  <Link to="/mission">{t("common:nav.mission")}</Link>
+                </div>
+                <p className="hx-landing-foot">{t("chat:emptyState")}</p>
+              </div>
+            )
           ) : (
             (messages ?? []).map((m) => (
               <div
@@ -329,8 +359,8 @@ export default function Chat() {
                   {m.status === "streaming" && activity && (
                     <span className="hx-searching">
                       {activity.kind === "search"
-                        ? t("searching", { query: activity.detail })
-                        : t("reading", { host: activity.detail })}
+                        ? t("chat:searching", { query: activity.detail })
+                        : t("chat:reading", { host: activity.detail })}
                     </span>
                   )}
                   {m.status === "error" && (
@@ -338,7 +368,7 @@ export default function Chat() {
                   )}
                   {m.sources && m.sources.length > 0 && (
                     <div className="hx-sources">
-                      <span className="hx-sources-label">{t("sources")}</span>
+                      <span className="hx-sources-label">{t("chat:sources")}</span>
                       {m.sources.map((s) => (
                         <a
                           key={s.url}
@@ -365,25 +395,25 @@ export default function Chat() {
             {error.code === "insufficient_quota" ? (
               // Hard balance exhausted → top up (authed) or sign up (anon).
               <a href={authed ? "/account" : "/register"}>
-                {authed ? t("topUp") : t("signUp")}
+                {authed ? t("chat:topUp") : t("chat:signUp")}
               </a>
             ) : error.code === "rate_limit_exceeded" ? (
-              <span className="text-muted">{t("rateLimited")}</span>
+              <span className="text-muted">{t("chat:rateLimited")}</span>
             ) : (
-              !authed && <a href="/register">{t("signUp")}</a>
+              !authed && <a href="/register">{t("chat:signUp")}</a>
             )}
           </Alert>
         )}
 
         {capped && !error && (
           <Alert variant="info" className="m-2 py-2">
-            {t("anonBanner")} <a href="/register">{t("signUp")}</a>
+            {t("chat:anonBanner")} <a href="/register">{t("chat:signUp")}</a>
           </Alert>
         )}
 
         {needsKey && !error && (
           <Alert variant="info" className="m-2 py-2">
-            {t("needsKey")} <a href="/account/keys">{t("manageKeysLink")}</a>
+            {t("chat:needsKey")} <a href="/account/keys">{t("chat:manageKeysLink")}</a>
           </Alert>
         )}
 
@@ -400,7 +430,7 @@ export default function Chat() {
             value={draft}
             disabled={capped || needsKey}
             placeholder={
-              capped ? t("anonBanner") : needsKey ? t("needsKey") : t("inputPlaceholder")
+              capped ? t("chat:anonBanner") : needsKey ? t("chat:needsKey") : t("chat:inputPlaceholder")
             }
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -415,8 +445,8 @@ export default function Chat() {
               type="button"
               className="hx-send-btn hx-stop"
               onClick={stop}
-              aria-label={t("stop")}
-              title={t("stop")}
+              aria-label={t("chat:stop")}
+              title={t("chat:stop")}
             >
               <FaStop size={13} />
             </button>
@@ -425,8 +455,8 @@ export default function Chat() {
               type="submit"
               className="hx-send-btn"
               disabled={capped || needsKey || !draft.trim()}
-              aria-label={t("send")}
-              title={t("send")}
+              aria-label={t("chat:send")}
+              title={t("chat:send")}
             >
               <FaArrowUp size={15} />
             </button>
@@ -464,8 +494,8 @@ function InlineRename({
       <button
         type="button"
         className="hx-icon-btn hx-row-btn"
-        title={t("rename")}
-        aria-label={t("rename")}
+        title={t("chat:rename")}
+        aria-label={t("chat:rename")}
         onClick={() => onCommit(value)}
       >
         <LuCheck size={13} />
@@ -473,8 +503,8 @@ function InlineRename({
       <button
         type="button"
         className="hx-icon-btn hx-row-btn"
-        aria-label={t("cancel")}
-        title={t("cancel")}
+        aria-label={t("chat:cancel")}
+        title={t("chat:cancel")}
         onClick={onCancel}
       >
         <LuX size={13} />
@@ -518,7 +548,7 @@ function ThreadRow({
   }
 
   const destinations: { id: string | null; name: string }[] = [
-    ...(conv.projectId !== null ? [{ id: null, name: t("unsorted") }] : []),
+    ...(conv.projectId !== null ? [{ id: null, name: t("chat:unsorted") }] : []),
     ...projects
       .filter((p) => p.id !== conv.projectId)
       .map((p) => ({ id: p.id as string | null, name: p.name })),
@@ -537,8 +567,8 @@ function ThreadRow({
         <button
           type="button"
           className="hx-icon-btn hx-row-btn"
-          title={t("rename")}
-          aria-label={t("rename")}
+          title={t("chat:rename")}
+          aria-label={t("chat:rename")}
           onClick={() => setEditing(true)}
         >
           <LuPencil size={13} />
@@ -547,8 +577,8 @@ function ThreadRow({
           <button
             type="button"
             className="hx-icon-btn hx-row-btn"
-            title={t("moveTo")}
-            aria-label={t("moveTo")}
+            title={t("chat:moveTo")}
+            aria-label={t("chat:moveTo")}
             onClick={() => setMenuOpen((v) => !v)}
           >
             <LuFolderInput size={13} />
@@ -557,10 +587,10 @@ function ThreadRow({
         <button
           type="button"
           className="hx-icon-btn hx-row-btn"
-          title={t("delete")}
-          aria-label={t("delete")}
+          title={t("chat:delete")}
+          aria-label={t("chat:delete")}
           onClick={() => {
-            if (window.confirm(t("deleteThreadConfirm"))) {
+            if (window.confirm(t("chat:deleteThreadConfirm"))) {
               void deleteConversation(conv.id).then(() => {
                 if (active) onDeleted();
               });

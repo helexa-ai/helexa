@@ -86,10 +86,15 @@ pub async fn enter(
         HeaderMap::new(),
         auth::pending_invite_cookie(&code, state.config.session.secure),
     );
+    // Land on "create account", not "sign in". Nearly everyone arriving on
+    // an invitation is new here — defaulting to sign-in asks the majority
+    // to notice a tab before they can do the only thing available to them.
+    // The sign-in tab is one click away for the few who already have a
+    // helexa.ai account.
     Ok((
         StatusCode::SEE_OTHER,
         out,
-        [(header::LOCATION, "/signin".to_string())],
+        [(header::LOCATION, "/register".to_string())],
     )
         .into_response())
 }

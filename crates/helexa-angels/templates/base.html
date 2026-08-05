@@ -148,8 +148,12 @@
 <footer class="bot">
   <div class="bot-inner">
     <p style="margin:0 0 .4rem">
-      Confidential. Prepared for the named recipient above and not for
-      onward distribution.
+      {% if user_email %}
+        Confidential. Prepared for the named recipient above and not for
+        onward distribution.
+      {% else %}
+        Confidential. Access is limited to invited recipients.
+      {% endif %}
     </p>
     <p style="margin:0">
       {{ brand_name }} &middot; <a href="/privacy">How we handle your data</a>
