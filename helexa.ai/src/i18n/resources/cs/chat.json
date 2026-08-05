@@ -28,5 +28,6 @@
   "sources": "Zdroje",
   "reading": "čtení {{host}}…",
   "copyCode": "Kopírovat kód",
-  "copiedCode": "Zkopírováno"
+  "copiedCode": "Zkopírováno",
+  "anonNearLimit": "Blížíte se k anonymnímu limitu. Zaregistrujte se a získejte bezplatný příděl."
 }

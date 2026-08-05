@@ -28,5 +28,6 @@
   "sources": "Sources",
   "reading": "lecture de {{host}}…",
   "copyCode": "Copier le code",
-  "copiedCode": "Copié"
+  "copiedCode": "Copié",
+  "anonNearLimit": "Vous approchez de la limite anonyme. Inscrivez-vous pour obtenir une allocation gratuite."
 }

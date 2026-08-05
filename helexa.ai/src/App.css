@@ -1573,3 +1573,14 @@ pre {
         display: none;
     }
 }
+
+/* Anonymous usage counter. Bare numerals, no counted noun — see the note
+ * in Chat.tsx. Tabular figures so the number does not jitter as it grows. */
+.hx-anon-count {
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--color-border-subtle);
+    white-space: nowrap;
+}

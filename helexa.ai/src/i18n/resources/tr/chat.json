@@ -28,5 +28,6 @@
   "sources": "Kaynaklar",
   "reading": "{{host}} okunuyor…",
   "copyCode": "Kodu kopyala",
-  "copiedCode": "Kopyalandı"
+  "copiedCode": "Kopyalandı",
+  "anonNearLimit": "Anonim sınıra yaklaşıyorsunuz. Ücretsiz tahsisat için kaydolun."
 }
