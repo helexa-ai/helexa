@@ -55,6 +55,16 @@ jobs:
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@hanzalova.internal 'hostname -f'
 
+      # The journal-capture step below needs to know whether this run
+      # actually restarted the service. systemd mints a fresh
+      # InvocationID on every start, so comparing before/after answers
+      # that without depending on the deploy step's control flow.
+      - name: Record cortex.service invocation
+        id: pre
+        run: |
+          echo "inv=$(ssh gitea_ci@hanzalova.internal \
+            'systemctl show -P InvocationID cortex.service' || true)" >> "$GITHUB_OUTPUT"
+
       # Gating compares `rpm -q` against the packages.json manifest the
       # publish job maintains — NOT unprivileged `dnf check-update`,
       # which proved unreliable as the gitea_ci user (hung on metadata
@@ -100,14 +110,36 @@ jobs:
           DEPLOY
 
       # Wait for the service to either come up or wedge, then capture
-      # the latest-invocation journal. Runs even on prior failure so a
-      # failed start step still leaves a usable record in the deploy log.
+      # the journal for the invocation this run started. Runs even on
+      # prior failure so a failed start step still leaves a usable
+      # record in the deploy log.
       - name: Capture cortex.service startup journal
         if: always()
+        env:
+          PRE_INV: ${{ steps.pre.outputs.inv }}
         run: |
           sleep 10
-          ssh gitea_ci@hanzalova.internal \
-              'journalctl --unit cortex.service -I --no-pager'
+          ssh gitea_ci@hanzalova.internal bash -s "${PRE_INV}" <<'CAPTURE'
+          set -eu
+          pre=${1:-}
+          unit=cortex.service
+          now=$(systemctl show -P InvocationID "${unit}")
+          if [ -n "${now}" ] && [ "${now}" = "${pre}" ]; then
+            echo "${unit} not restarted this run (invocation ${now}) — nothing to capture"
+            systemctl status --no-pager --lines=0 "${unit}" || true
+            exit 0
+          fi
+          # -I selects the latest invocation, which on a long-lived service
+          # is unbounded — days of logs, hundreds of MB at debug level. Cap
+          # the line count and drop the debug/trace firehose; startup lines
+          # (and panics on stderr) are info and above. An empty invocation
+          # id means the unit never came up, so drop -I and fall back to the
+          # unit's recent tail, which is where the failure will be.
+          timeout 60 journalctl --unit "${unit}" ${now:+-I} \
+              --priority=info --lines=500 --no-pager \
+            || { echo "(no info-level entries for this invocation, or capture timed out)"
+                 systemctl status --no-pager --lines=0 "${unit}" || true; }
+          CAPTURE
 
   deploy-neurons:
     needs: [deploy-cortex]
@@ -152,6 +184,13 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@${{ matrix.host }} 'hostname -f'
+
+      # See deploy-cortex for why the capture step needs this.
+      - name: Record neuron.service invocation
+        id: pre
+        run: |
+          echo "inv=$(ssh gitea_ci@${{ matrix.host }} \
+            'systemctl show -P InvocationID neuron.service' || true)" >> "$GITHUB_OUTPUT"
 
       # See deploy-cortex for why gating uses the publish manifest and
       # not unprivileged `dnf check-update`.
@@ -341,14 +380,32 @@ jobs:
             fi'
 
       # Wait for the service to either come up or wedge, then capture
-      # the latest-invocation journal. Runs even on prior failure so a
-      # failed start step still leaves a usable record in the deploy log.
+      # the journal for the invocation this run started. Runs even on
+      # prior failure so a failed start step still leaves a usable
+      # record in the deploy log. See deploy-cortex for the bounding
+      # rationale — a neuron that has not restarted in a week is the
+      # most exposed of the fleet to an unbounded -I.
       - name: Capture neuron.service startup journal
         if: always()
+        env:
+          PRE_INV: ${{ steps.pre.outputs.inv }}
         run: |
           sleep 10
-          ssh gitea_ci@${{ matrix.host }} \
-              'journalctl --unit neuron.service -I --no-pager'
+          ssh gitea_ci@${{ matrix.host }} bash -s "${PRE_INV}" <<'CAPTURE'
+          set -eu
+          pre=${1:-}
+          unit=neuron.service
+          now=$(systemctl show -P InvocationID "${unit}")
+          if [ -n "${now}" ] && [ "${now}" = "${pre}" ]; then
+            echo "${unit} not restarted this run (invocation ${now}) — nothing to capture"
+            systemctl status --no-pager --lines=0 "${unit}" || true
+            exit 0
+          fi
+          timeout 60 journalctl --unit "${unit}" ${now:+-I} \
+              --priority=info --lines=500 --no-pager \
+            || { echo "(no info-level entries for this invocation, or capture timed out)"
+                 systemctl status --no-pager --lines=0 "${unit}" || true; }
+          CAPTURE
 
   # helexa-bench is a separate package on a separate host (bob), and it
   # only consumes the fleet's HTTP APIs — it has no deploy-ordering
@@ -375,6 +432,17 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@gallumbits.kosherinata.internal 'hostname -f'
+
+      # See deploy-cortex for why the capture step needs this. One
+      # `unit=invocation` token per service; ssh flattens the list into
+      # separate argv entries on the far side.
+      - name: Record service invocations
+        id: pre
+        run: |
+          echo "inv=$(ssh gitea_ci@gallumbits.kosherinata.internal '
+            for u in helexa-router helexa-upstream helexa-tools helexa-angels; do
+              printf "%s=%s " "${u}" "$(systemctl show -P InvocationID ${u}.service)"
+            done' || true)" >> "$GITHUB_OUTPUT"
 
       - name: Deploy helexa-router + helexa-upstream + helexa-tools + helexa-angels (skips when already current)
         run: |
@@ -437,12 +505,33 @@ jobs:
             [ "$changed" = "1" ] && sudo /usr/bin/firewall-cmd --reload || true
           '
 
+      # Per-unit: capture only the invocation this run started, bounded.
+      # See deploy-cortex for the rationale.
       - name: Capture service startup journals
         if: always()
+        env:
+          PRE_INV: ${{ steps.pre.outputs.inv }}
         run: |
           sleep 10
-          ssh gitea_ci@gallumbits.kosherinata.internal \
-              'journalctl --unit helexa-router.service -I --no-pager; journalctl --unit helexa-upstream.service -I --no-pager; journalctl --unit helexa-tools.service -I --no-pager; journalctl --unit helexa-angels.service -I --no-pager'
+          ssh gitea_ci@gallumbits.kosherinata.internal bash -s "${PRE_INV}" <<'CAPTURE'
+          set -eu
+          for spec in "$@"; do
+            u=${spec%%=*}
+            pre=${spec#*=}
+            unit=${u}.service
+            echo "── ${unit} ──"
+            now=$(systemctl show -P InvocationID "${unit}")
+            if [ -n "${now}" ] && [ "${now}" = "${pre}" ]; then
+              echo "${unit} not restarted this run (invocation ${now}) — nothing to capture"
+              systemctl status --no-pager --lines=0 "${unit}" || true
+              continue
+            fi
+            timeout 60 journalctl --unit "${unit}" ${now:+-I} \
+                --priority=info --lines=500 --no-pager \
+              || { echo "(no info-level entries for this invocation, or capture timed out)"
+                 systemctl status --no-pager --lines=0 "${unit}" || true; }
+          done
+          CAPTURE
 
   deploy-bench:
     runs-on: fedora-43
@@ -459,6 +548,13 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=accept-new \
               gitea_ci@bob.hanzalova.internal 'hostname -f'
+
+      # See deploy-cortex for why the capture step needs this.
+      - name: Record helexa-bench.service invocation
+        id: pre
+        run: |
+          echo "inv=$(ssh gitea_ci@bob.hanzalova.internal \
+            'systemctl show -P InvocationID helexa-bench.service' || true)" >> "$GITHUB_OUTPUT"
 
       # See deploy-cortex for why gating uses the publish manifest and
       # not unprivileged `dnf check-update`.
@@ -534,14 +630,31 @@ jobs:
             fi'
 
       # Wait for the service to either come up or wedge, then capture
-      # the latest-invocation journal. Runs even on prior failure so a
-      # failed start step still leaves a usable record in the deploy log.
+      # the journal for the invocation this run started. Runs even on
+      # prior failure so a failed start step still leaves a usable
+      # record in the deploy log. See deploy-cortex for the bounding
+      # rationale.
       - name: Capture helexa-bench.service startup journal
         if: always()
+        env:
+          PRE_INV: ${{ steps.pre.outputs.inv }}
         run: |
           sleep 10
-          ssh gitea_ci@bob.hanzalova.internal \
-              'journalctl --unit helexa-bench.service -I --no-pager'
+          ssh gitea_ci@bob.hanzalova.internal bash -s "${PRE_INV}" <<'CAPTURE'
+          set -eu
+          pre=${1:-}
+          unit=helexa-bench.service
+          now=$(systemctl show -P InvocationID "${unit}")
+          if [ -n "${now}" ] && [ "${now}" = "${pre}" ]; then
+            echo "${unit} not restarted this run (invocation ${now}) — nothing to capture"
+            systemctl status --no-pager --lines=0 "${unit}" || true
+            exit 0
+          fi
+          timeout 60 journalctl --unit "${unit}" ${now:+-I} \
+              --priority=info --lines=500 --no-pager \
+            || { echo "(no info-level entries for this invocation, or capture timed out)"
+                 systemctl status --no-pager --lines=0 "${unit}" || true; }
+          CAPTURE
 
   # Build the bench UI and publish it to the public nginx vhost on the
   # gateway (https://bench.helexa.ai). The vhost + Let's Encrypt cert are
