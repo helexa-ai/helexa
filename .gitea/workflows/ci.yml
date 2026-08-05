@@ -47,6 +47,34 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo fmt --check --all
 
+  web:
+    name: Web (lint + typecheck + i18n + build)
+    timeout-minutes: 20
+    runs-on: fedora-43
+    defaults:
+      run:
+        working-directory: helexa.ai
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+      # eslint and tsc previously ran nowhere. The deploy job builds the
+      # SPA, but only on main and only after a merge — so a defect landed
+      # first and broke the deploy afterwards. A setState-in-effect error
+      # reached main exactly that way.
+      - run: npm run lint
+      - run: npm run typecheck
+      # 42 locales with strict key parity is a promise that breaks
+      # quietly. Adding an English string without translating it must fail
+      # here, not in review, and certainly not in front of somebody
+      # evaluating the project in their own language.
+      - run: npm run i18n:check
+      - run: npm run i18n:meta
+      - run: npm run i18n:lang-labels
+      - run: npm run build
+
   clippy:
     name: Clippy
     timeout-minutes: 25
