@@ -28,5 +28,6 @@
   "sources": "Avoti",
   "reading": "lasa {{host}}…",
   "copyCode": "Kopēt kodu",
-  "copiedCode": "Nokopēts"
+  "copiedCode": "Nokopēts",
+  "anonNearLimit": "Tuvojaties anonīmās lietošanas limitam. Reģistrējieties bezmaksas piešķīrumam."
 }

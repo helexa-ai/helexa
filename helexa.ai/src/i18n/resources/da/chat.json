@@ -28,5 +28,6 @@
   "sources": "Kilder",
   "reading": "læser {{host}}…",
   "copyCode": "Kopiér kode",
-  "copiedCode": "Kopieret"
+  "copiedCode": "Kopieret",
+  "anonNearLimit": "Du nærmer dig den anonyme grænse. Opret en konto og få en gratis tildeling."
 }

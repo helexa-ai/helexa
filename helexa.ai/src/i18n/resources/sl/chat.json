@@ -28,5 +28,6 @@
   "sources": "Viri",
   "reading": "branje {{host}} …",
   "copyCode": "Kopiraj kodo",
-  "copiedCode": "Kopirano"
+  "copiedCode": "Kopirano",
+  "anonNearLimit": "Približujete se omejitvi za anonimne uporabnike. Registrirajte se za brezplačno dodelitev."
 }

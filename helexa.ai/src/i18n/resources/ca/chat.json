@@ -28,5 +28,6 @@
   "sources": "Fonts",
   "reading": "s'està llegint {{host}}…",
   "copyCode": "Copia el codi",
-  "copiedCode": "Copiat"
+  "copiedCode": "Copiat",
+  "anonNearLimit": "Us acosteu al límit anònim. Registreu-vos per obtenir una assignació gratuïta."
 }

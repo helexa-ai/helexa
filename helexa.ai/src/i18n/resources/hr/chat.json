@@ -28,5 +28,6 @@
   "sources": "Izvori",
   "reading": "čitanje {{host}}…",
   "copyCode": "Kopiraj kôd",
-  "copiedCode": "Kopirano"
+  "copiedCode": "Kopirano",
+  "anonNearLimit": "Približavate se anonimnom limitu. Registrirajte se za besplatnu kvotu."
 }

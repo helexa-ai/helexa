@@ -28,5 +28,6 @@
   "sources": "Sorsi",
   "reading": "qed naqra {{host}}…",
   "copyCode": "Ikkopja l-kodiċi",
-  "copiedCode": "Ikkupjat"
+  "copiedCode": "Ikkupjat",
+  "anonNearLimit": "Qed toqrob lejn il-limitu anonimu. Irreġistra għal allokazzjoni b'xejn."
 }

@@ -28,5 +28,6 @@
   "sources": "Bronnen",
   "reading": "lezen van {{host}}…",
   "copyCode": "Code kopiëren",
-  "copiedCode": "Gekopieerd"
+  "copiedCode": "Gekopieerd",
+  "anonNearLimit": "Je nadert de anonieme limiet. Registreer je voor een gratis tegoed."
 }

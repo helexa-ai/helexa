@@ -28,5 +28,6 @@
   "sources": "Allikad",
   "reading": "loetakse {{host}}…",
   "copyCode": "Kopeeri kood",
-  "copiedCode": "Kopeeritud"
+  "copiedCode": "Kopeeritud",
+  "anonNearLimit": "Oled lähenemas anonüümse kasutuse piirile. Registreeru tasuta eraldise saamiseks."
 }

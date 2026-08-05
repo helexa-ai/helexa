@@ -28,5 +28,6 @@
   "sources": "Källor",
   "reading": "läser {{host}}…",
   "copyCode": "Kopiera kod",
-  "copiedCode": "Kopierad"
+  "copiedCode": "Kopierad",
+  "anonNearLimit": "Du närmar dig den anonyma gränsen. Registrera dig för en gratis tilldelning."
 }

@@ -28,5 +28,6 @@
   "sources": "Források",
   "reading": "{{host}} olvasása…",
   "copyCode": "Kód másolása",
-  "copiedCode": "Másolva"
+  "copiedCode": "Másolva",
+  "anonNearLimit": "Közeledsz az anonim limithez. Regisztrálj ingyenes keretért."
 }

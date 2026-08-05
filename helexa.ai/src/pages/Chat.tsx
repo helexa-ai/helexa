@@ -34,6 +34,8 @@ import { accountApi } from "../api/account";
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
 const AUTH_MODEL = import.meta.env.VITE_DEFAULT_MODEL || "helexa/balanced";
 const ANON_MESSAGE_CAP = 20;
+/** Remaining messages at which the anonymous visitor is forewarned. */
+const ANON_WARN_AT = 5;
 const ANON_COUNT_KEY = "anonMessageCount";
 
 /**
@@ -91,6 +93,15 @@ export default function Chat() {
   // The cap only applies to anonymous visitors; signed-in users are gated by
   // their account allocation (enforced upstream), not a client counter.
   const capped = !authed && anonCount >= ANON_MESSAGE_CAP;
+  // Warn before the wall rather than at it. The count is rendered as bare
+  // numerals — "16 / 20" — deliberately: a phrase like "4 messages left"
+  // puts a counted noun after an interpolated number, which needs case and
+  // plural agreement that varies with the value across the Slavic, Baltic,
+  // Celtic and Semitic locales. Numerals carry the same information and
+  // need no grammar, and toLocaleString gives locales that prefer their
+  // own digits (fa, ar) the right ones.
+  const anonNearLimit =
+    !authed && !capped && ANON_MESSAGE_CAP - anonCount <= ANON_WARN_AT;
 
   // Anonymous grounding gate (#191): a server-driven flag so the operator
   // can kill anonymous web search with a config flip, no site rebuild.
@@ -405,9 +416,26 @@ export default function Chat() {
           </Alert>
         )}
 
+        {anonNearLimit && !error && (
+          <Alert variant="info" className="m-2 py-2 d-flex align-items-center gap-2 flex-wrap">
+            {/* dir="ltr" is load-bearing, not decoration: "/" is a
+                bidi-neutral character, so in an RTL locale "3 / 20"
+                reorders on screen to "20 / 3" and reads as the wrong way
+                round. Isolating the counter keeps the numerator first in
+                every script. */}
+            <span className="hx-anon-count" dir="ltr">
+              {anonCount.toLocaleString(i18n.language)} /{" "}
+              {ANON_MESSAGE_CAP.toLocaleString(i18n.language)}
+            </span>
+            <span>{t("chat:anonNearLimit")}</span>
+            <Link to="/auth?tab=signup">{t("chat:signUp")}</Link>
+          </Alert>
+        )}
+
         {capped && !error && (
           <Alert variant="info" className="m-2 py-2">
-            {t("chat:anonBanner")} <a href="/register">{t("chat:signUp")}</a>
+            {t("chat:anonBanner")}{" "}
+            <Link to="/auth?tab=signup">{t("chat:signUp")}</Link>
           </Alert>
         )}
 

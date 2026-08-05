@@ -28,5 +28,6 @@
   "sources": "Fuentes",
   "reading": "leyendo {{host}}…",
   "copyCode": "Copiar código",
-  "copiedCode": "Copiado"
+  "copiedCode": "Copiado",
+  "anonNearLimit": "Estás cerca del límite anónimo. Regístrate para obtener una asignación gratuita."
 }

@@ -28,5 +28,6 @@
   "sources": "Lähteet",
   "reading": "luetaan {{host}}…",
   "copyCode": "Kopioi koodi",
-  "copiedCode": "Kopioitu"
+  "copiedCode": "Kopioitu",
+  "anonNearLimit": "Lähestyt anonyymin käytön rajaa. Rekisteröidy saadaksesi ilmaisen kiintiön."
 }
