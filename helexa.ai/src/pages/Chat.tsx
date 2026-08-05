@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Alert, Form } from "react-bootstrap";
@@ -37,6 +37,7 @@ const ANON_MESSAGE_CAP = 20;
 /** Remaining messages at which the anonymous visitor is forewarned. */
 const ANON_WARN_AT = 5;
 const ANON_COUNT_KEY = "anonMessageCount";
+const SIDEBAR_KEY = "sidebarExpanded";
 
 /**
  * The chat workspace landing (`/`). Anonymous visitors are fingerprinted and
@@ -75,6 +76,18 @@ export default function Chat() {
   // Phone-width screens render the sidebar as an off-canvas drawer;
   // this state only has visible effect under the 768px media query.
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop sidebar: an icon rail by default, expandable to the thread
+  // list. A permanently open 280px column of history is the wrong default
+  // for a chat that most people arrive at with nothing in it, and it is
+  // what made the workspace feel dated. The choice persists per browser.
+  const sidebarExpanded =
+    useLiveQuery(async () => {
+      const m = await db.meta.get(SIDEBAR_KEY);
+      return typeof m?.value === "boolean" ? m.value : false;
+    }, [], false) ?? false;
+  const toggleSidebar = (): void => {
+    void db.meta.put({ key: SIDEBAR_KEY, value: !sidebarExpanded });
+  };
   // Topic (project) currently in inline-rename mode; a freshly created
   // topic drops straight into it so it gets a real name immediately.
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
@@ -153,6 +166,25 @@ export default function Chat() {
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
 
+  // A prompt handed over from the landing page: create the conversation and
+  // send it, so the first thing a visitor typed becomes the first message in
+  // their thread instead of something they retype. The history entry is
+  // replaced immediately, so a refresh cannot send it a second time.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const handedOver = (location.state as { prompt?: string } | null)?.prompt;
+  const handedOverRef = useRef(false);
+  useEffect(() => {
+    if (!handedOver || handedOverRef.current) return;
+    handedOverRef.current = true;
+    navigate(".", { replace: true, state: null });
+    void (async () => {
+      const convId = await createConversation(owner, model);
+      setActiveId(convId);
+      await send(convId, handedOver);
+    })();
+  }, [handedOver, navigate, owner, model, send]);
+
   useEffect(() => {
     threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight });
   }, [messages]);
@@ -206,8 +238,22 @@ export default function Chat() {
           aria-hidden="true"
         />
       )}
-      <aside className={`hx-chat-sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="d-flex gap-2 justify-content-end">
+      <aside
+        className={`hx-chat-sidebar ${sidebarOpen ? "open" : ""} ${
+          sidebarExpanded ? "expanded" : "rail"
+        }`}
+      >
+        <div className="hx-sidebar-actions">
+          <button
+            type="button"
+            className="hx-icon-btn hx-sidebar-action hx-sidebar-expand"
+            title={t("chat:sidebarToggle")}
+            aria-label={t("chat:sidebarToggle")}
+            aria-expanded={sidebarExpanded}
+            onClick={toggleSidebar}
+          >
+            <FaBarsStaggered size={15} />
+          </button>
           <button
             type="button"
             className="hx-icon-btn hx-sidebar-action"
@@ -313,39 +359,10 @@ export default function Chat() {
         </button>
         <div ref={threadRef} className="flex-grow-1 p-3 overflow-auto">
           {(messages ?? []).length === 0 ? (
-            authed ? (
-              <div className="hx-chat-empty">
-                <img src="/logo.png" alt="" aria-hidden="true" />
-                <p>{t("chat:emptyState")}</p>
-              </div>
-            ) : (
-              /* A newcomer's first impression used to be a bare chat box
-                 that said nothing about what helexa is — the proposition
-                 was a nav click away on /mission and easy to miss. This
-                 surfaces it in place, reusing the mission copy verbatim so
-                 it stays operator-written and stays translated. */
-              <div className="hx-landing">
-                <img src="/logo.png" alt="" aria-hidden="true" className="hx-landing-mark" />
-                <span className="hx-landing-badge">{t("mission:hero.badge")}</span>
-                <h1>{t("mission:hero.title")}</h1>
-                <p className="hx-landing-lead">{t("mission:hero.lead")}</p>
-                <ul className="hx-landing-points">
-                  {(["operators", "routing", "value"] as const).map((k) => (
-                    <li key={k}>
-                      <strong>{t(`mission:howItWorks.${k}.eyebrow`)}</strong>
-                      <span>{t(`mission:howItWorks.${k}.title`)}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="hx-landing-cta">
-                  <Link to="/auth?tab=signup" className="hx-btn-primary">
-                    {t("common:nav.register")}
-                  </Link>
-                  <Link to="/mission">{t("common:nav.mission")}</Link>
-                </div>
-                <p className="hx-landing-foot">{t("chat:emptyState")}</p>
-              </div>
-            )
+            <div className="hx-chat-empty">
+              <img src="/logo.png" alt="" aria-hidden="true" />
+              <p>{t("chat:emptyState")}</p>
+            </div>
           ) : (
             (messages ?? []).map((m) => (
               <div

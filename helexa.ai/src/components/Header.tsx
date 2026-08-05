@@ -90,8 +90,7 @@ const Header: React.FC = () => {
         <Navbar.Collapse id="main-navbar">
           <Nav className="me-auto">
             <NavLink
-              to="/"
-              end
+              to="/chat"
               className={({ isActive }): string =>
                 isActive ? "nav-link active" : "nav-link"
               }

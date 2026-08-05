@@ -1584,3 +1584,119 @@ pre {
     border: 1px solid var(--color-border-subtle);
     white-space: nowrap;
 }
+
+/* ── Landing page (`/`) ───────────────────────────────────────────────
+ * Prompt-first, no sidebar. The proposition sits below the input rather
+ * than competing with it — a visitor who wants to try it can, and one who
+ * wants to know what this is scrolls. */
+.hx-landing-page {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
+}
+.hx-landing-hero {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 8vh, 5rem) 1.25rem 0;
+    text-align: center;
+}
+.hx-landing-hero h1 {
+    font-size: clamp(1.7rem, 4.5vw, 2.5rem);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.75rem;
+}
+.hx-landing-composer {
+    position: relative;
+    display: block;
+    text-align: start;
+}
+.hx-landing-composer textarea {
+    width: 100%;
+    resize: none;
+    border-radius: 18px;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-subtle);
+    color: var(--color-text);
+    padding: 1rem 3.6rem 1rem 1.15rem;
+    font: inherit;
+    line-height: 1.5;
+}
+html[dir="rtl"] .hx-landing-composer textarea {
+    padding: 1rem 1.15rem 1rem 3.6rem;
+}
+.hx-landing-composer textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+}
+/* Anchored with logical inset so it lands on the correct side in RTL. */
+.hx-landing-send {
+    position: absolute;
+    inset-block-end: 0.75rem;
+    inset-inline-end: 0.75rem;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #06121a;
+    background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hot));
+    cursor: pointer;
+}
+.hx-landing-send:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+.hx-landing-below {
+    max-width: 46rem;
+    margin: 0 auto;
+    padding: 3rem 1.25rem 3rem;
+    text-align: center;
+}
+
+/* ── Chat sidebar: icon rail, expandable ──────────────────────────── */
+.hx-chat-sidebar.rail {
+    width: 60px;
+    padding: 0.75rem 0.5rem;
+    overflow-x: hidden;
+}
+/* !important is required, not lazy: the rows carry bootstrap's `d-flex`
+ * utility, which is itself `!important` and would otherwise win. */
+.hx-chat-sidebar.rail .hx-group-label,
+.hx-chat-sidebar.rail .hx-row,
+.hx-chat-sidebar.rail .hx-inline-edit {
+    display: none !important;
+}
+.hx-chat-sidebar.rail .hx-sidebar-actions {
+    flex-direction: column;
+    align-items: center;
+}
+.hx-sidebar-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    align-items: center;
+}
+.hx-chat-sidebar.expanded .hx-sidebar-expand {
+    margin-inline-end: auto;
+}
+
+@media (max-width: 767.98px) {
+    /* The drawer always shows the full list; the rail is a desktop idea. */
+    .hx-chat-sidebar.rail {
+        width: min(78vw, 320px);
+        padding: 1rem;
+    }
+    .hx-chat-sidebar.rail .hx-group-label,
+    .hx-chat-sidebar.rail .hx-row,
+    .hx-chat-sidebar.rail .hx-inline-edit {
+        display: revert !important;
+    }
+    .hx-chat-sidebar.rail .hx-sidebar-actions {
+        flex-direction: row;
+    }
+    .hx-sidebar-expand {
+        display: none;
+    }
+}
