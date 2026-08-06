@@ -19,14 +19,20 @@ const Footer: React.FC = () => {
         <span>{t("footer.copyright", { year })}</span>
         <span className="d-inline-flex align-items-center gap-4">
           <Link to="/privacy">{t("footer.privacy")}</Link>
+          {/* Icon only — the mark is recognisable enough to stand alone.
+              It still needs an accessible name, since an icon on its own
+              leaves a screen reader with nothing to announce, and the
+              title gives sighted users the same label on hover. "GitHub"
+              is a brand name, so it is not translated. */}
           <a
             href="https://github.com/helexa-ai"
             target="_blank"
             rel="noreferrer"
-            className="d-inline-flex align-items-center gap-2"
+            aria-label="GitHub"
+            title="GitHub"
+            className="d-inline-flex align-items-center"
           >
             <FaGithub size={15} />
-            GitHub
           </a>
         </span>
       </div>
