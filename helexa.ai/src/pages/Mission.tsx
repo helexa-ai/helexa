@@ -53,7 +53,15 @@ const HeroSection: React.FC = () => {
 
   return (
     <section className="hx-section">
-      <Row className="align-items-center g-5">
+      {/* `gy-5` rather than `g-5`. A row's horizontal gutter becomes a
+          negative side margin of half its width, and the container only
+          cancels that for gutters up to `g-4`; `g-5` pokes 12px past the
+          viewport and lets the whole page slide sideways. Restricting the
+          wide gutter to large screens looked safe but still failed at
+          exactly 992px, because a scrollbar narrows the viewport below
+          what the breakpoint assumes. The vertical gutter is the one that
+          does the visible work here — the columns stack below lg. */}
+      <Row className="align-items-center gy-5">
         <Col lg={6}>
           <div className="mb-4">
             <span className="badge-accent">
@@ -237,7 +245,7 @@ const RoadAheadSection: React.FC = () => {
 
   return (
     <section className="hx-section">
-      <Row className="g-5 align-items-center">
+      <Row className="gy-5 align-items-center">
         <Col lg={6}>
           <SectionHead num="05" title={t("roadAhead.title")} />
           <p className="mb-3">{t("roadAhead.p1")}</p>
