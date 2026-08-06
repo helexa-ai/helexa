@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { FaArrowUp } from "react-icons/fa6";
+import { useAuth } from "../auth/context";
 
 /**
  * `/` — the front door for someone who has not used helexa before.
@@ -16,8 +17,10 @@ import { FaArrowUp } from "react-icons/fa6";
  * sends it — so the first message a visitor types is the first message in
  * their thread, rather than something they have to retype.
  *
- * Returning visitors and signed-in accounts never see this: App routes
- * them straight to the workspace.
+ * Everyone sees this, signed in or not, so that the brand link in the
+ * header leads somewhere predictable. The only thing that varies is the
+ * call to action: offering "create an account" to someone who already has
+ * one is noise, so they get the way into the workspace instead.
  *
  * No new i18n keys. Every string here already exists and is translated in
  * all 42 shipped locales — the mission copy is reused verbatim so it stays
@@ -25,6 +28,8 @@ import { FaArrowUp } from "react-icons/fa6";
  */
 export default function Landing() {
   const { t } = useTranslation(["chat", "mission", "common"]);
+  const { status, accountId } = useAuth();
+  const authed = status === "authed" && !!accountId;
   const navigate = useNavigate();
   const [draft, setDraft] = useState("");
   const boxRef = useRef<HTMLTextAreaElement>(null);
@@ -77,9 +82,15 @@ export default function Landing() {
         </form>
 
         <div className="hx-landing-cta">
-          <Link to="/auth?tab=signup" className="hx-btn-primary">
-            {t("common:nav.register")}
-          </Link>
+          {authed ? (
+            <Link to="/chat" className="hx-btn-primary">
+              {t("common:nav.chat")}
+            </Link>
+          ) : (
+            <Link to="/auth?tab=signup" className="hx-btn-primary">
+              {t("common:nav.register")}
+            </Link>
+          )}
           <Link to="/mission">{t("common:nav.mission")}</Link>
         </div>
       </section>

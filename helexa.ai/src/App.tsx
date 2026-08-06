@@ -8,7 +8,7 @@ import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
 import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
-import Root from "./pages/Root";
+import Landing from "./pages/Landing";
 import Auth from "./pages/auth/Auth";
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -19,9 +19,10 @@ import Dashboard from "./pages/account/Dashboard";
 import ApiKeys from "./pages/account/ApiKeys";
 import "./App.css";
 
-// Composition root: theme → router → auth → layout shell. `/` is the chat
-// workspace (F3); `/mission` the EU-sovereignty narrative (F2); the auth +
-// account routes (F4) follow, with /account guarded.
+// Composition root: theme → router → auth → layout shell. `/` is the
+// landing and `/chat` the workspace (F3); `/mission` the EU-sovereignty
+// narrative (F2); the auth + account routes (F4) follow, with /account
+// guarded.
 export default function App() {
   return (
     <ThemeProvider>
@@ -31,7 +32,10 @@ export default function App() {
             <BetaBanner />
             <Header />
             <Routes>
-              <Route path="/" element={<Root />} />
+              {/* The landing, unconditionally. It is the front door for
+                  everyone, so the brand link in the header always leads
+                  somewhere predictable. The workspace has its own address. */}
+              <Route path="/" element={<Landing />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/mission" element={<Mission />} />
               <Route path="/privacy" element={<Privacy />} />
