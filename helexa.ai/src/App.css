@@ -346,6 +346,15 @@ html[dir="rtl"] .diricon-mirror-rtl {
     color: var(--color-text-muted);
     text-decoration: none;
     transition: color var(--transition-fast);
+    /* Footer links are standalone controls, not links inside a sentence,
+     * so they need a real target: the text alone is ~21px tall, under the
+     * 24px minimum, and they sit at the very bottom edge of a phone where
+     * accurate tapping is hardest. Padding rather than a height so the
+     * label stays vertically centred in whatever the row is. */
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding-block: 0.15rem;
 }
 .app-footer a:hover {
     color: var(--color-accent);
@@ -962,6 +971,12 @@ a:hover {
 .hx-bubble {
     max-width: 80%;
     min-width: 0;
+    /* `anywhere`, not `break-word`: only `anywhere` counts toward the
+     * min-content width, and it is the min-content width that was making
+     * the thread pan sideways ~200px on a phone whenever a message
+     * carried a long URL or identifier. `break-word` would wrap the text
+     * visually and leave the scroll area just as wide. */
+    overflow-wrap: anywhere;
     padding: 0.65rem 1rem;
     border-radius: 1rem;
     line-height: 1.55;

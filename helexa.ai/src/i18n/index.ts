@@ -574,6 +574,10 @@ const browserLang: LanguageCode =
 // Keep document direction (ltr/rtl) in sync with the active language.
 if (typeof document !== "undefined") {
   document.documentElement.dir = isRtlLanguage(browserLang) ? "rtl" : "ltr";
+  // index.html ships `lang="en"`. Without this the document claims English
+  // while rendering Arabic — which is what a screen reader announces from,
+  // and what the browser picks a font and hyphenation dictionary with.
+  document.documentElement.lang = browserLang;
 }
 
 /**
@@ -602,11 +606,12 @@ i18n.use(initReactI18next).init({
 });
 
 // Ensure that when the language changes at runtime, document direction
-// tracks the new language's natural writing direction.
+// and the document language both track the new language.
 i18n.on("languageChanged", (lng) => {
   if (typeof document === "undefined") return;
   const lang = normalizeLocaleToLanguage(lng);
   document.documentElement.dir = isRtlLanguage(lang) ? "rtl" : "ltr";
+  document.documentElement.lang = lang;
 });
 
 export default i18n;

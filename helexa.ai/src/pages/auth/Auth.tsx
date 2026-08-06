@@ -67,7 +67,11 @@ export default function Auth() {
               who forgot their password was stuck. Link text matches the
               destination page's title (already translated everywhere). */}
           <p className="mt-4 small mb-0 text-center">
-            <Link to="/forgot">{t("reset.requestTitle")}</Link>
+            {/* `py-1` buys the standalone link a 24px-tall tap target;
+                at `small` the text alone is 19px. */}
+            <Link to="/forgot" className="d-inline-block py-1">
+              {t("reset.requestTitle")}
+            </Link>
           </p>
         </>
       )}
