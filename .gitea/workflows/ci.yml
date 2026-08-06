@@ -39,10 +39,65 @@ env:
   CARGO_TARGET_DIR: target-${{ github.job }}
 
 jobs:
+  # The SPA under helexa.ai/ is built and shipped by its own deploy job and
+  # is not read by any crate, build script or spec file — so a change
+  # confined to it cannot alter a Rust result. Waiting up to 70 minutes for
+  # a CUDA type-check to prove that is pure latency, and the wait is what
+  # tempts people to merge front-end work unchecked.
+  #
+  # The classification is deliberately one-directional: it only ever
+  # narrows the gate when *every* changed path is front-end, and every
+  # other outcome — a tag, an unknown base, an empty diff, a mixed
+  # changeset — falls through to the full gate. A new top-level directory
+  # is therefore covered on the day it appears, without anyone
+  # remembering to add it here.
+  changes:
+    name: Classify changes
+    timeout-minutes: 10
+    runs-on: fedora-43
+    outputs:
+      rust: ${{ steps.classify.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: classify
+        run: |
+          set -u
+          full() { echo "→ full gate: $1"; echo "rust=true" >> "$GITHUB_OUTPUT"; exit 0; }
+
+          # Tags build the SRPMs from the whole tree, and the srpm jobs
+          # gate on fmt/clippy/test/cuda-check. Never narrow there.
+          case "${GITHUB_REF}" in
+            refs/tags/*) full "tag push" ;;
+          esac
+
+          # merge-base against main, not the push's before-sha: a new
+          # branch has no before-sha, and a force-push's is unreachable.
+          base=""
+          if git fetch --no-tags origin main >/dev/null 2>&1; then
+            base="$(git merge-base FETCH_HEAD HEAD 2>/dev/null || true)"
+          fi
+          [ -n "${base}" ] || full "no merge-base with main"
+
+          files="$(git diff --name-only "${base}" HEAD)"
+          [ -n "${files}" ] || full "empty diff against ${base}"
+
+          echo "changed files:"
+          printf '%s\n' "${files}" | sed 's/^/  /'
+
+          other="$(printf '%s\n' "${files}" | grep -v '^helexa\.ai/' || true)"
+          [ -z "${other}" ] || full "changes outside helexa.ai/"
+
+          echo "→ front-end only: skipping the Rust gate"
+          echo "rust=false" >> "$GITHUB_OUTPUT"
+
   fmt:
     name: Format
     timeout-minutes: 15
     runs-on: rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check --all
@@ -79,6 +134,8 @@ jobs:
     name: Clippy
     timeout-minutes: 25
     runs-on: rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
       # Failure-aware sccache escalation lives in the shared script (kept
@@ -92,6 +149,8 @@ jobs:
     name: Test
     timeout-minutes: 25
     runs-on: rust
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
       # See script/ci-cargo-escalate.sh for the escalation rationale.
@@ -114,6 +173,8 @@ jobs:
     # sccache + the cargo target cache absorb it afterwards.
     timeout-minutes: 70
     runs-on: cuda-13.0
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     # The workflow-level env sets `RUSTC_WRAPPER: sccache`
     # unconditionally, which hard-fails cargo if the CUDA image
     # doesn't ship sccache. Clear it at job level; the "Enable
