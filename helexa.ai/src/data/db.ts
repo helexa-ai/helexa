@@ -58,6 +58,19 @@ export interface Meta {
   value: unknown;
 }
 
+/**
+ * Meta keys for this browser's provisioned API key.
+ *
+ * Constants rather than literals because the reader and the writers live
+ * in different files, and a one-character drift between them is silent:
+ * the key is minted and stored, the consumer looks for a name nobody
+ * writes, and every signed-in visitor is quietly downgraded to
+ * anonymous while being told to create a key by hand. That happened —
+ * an unrelated commit renamed the read to `chat:chatApiKey`.
+ */
+export const CHAT_API_KEY = "chatApiKey";
+export const CHAT_API_KEY_ID = "chatApiKeyId";
+
 class HelexaDB extends Dexie {
   projects!: Table<Project, string>;
   conversations!: Table<Conversation, string>;

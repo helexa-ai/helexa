@@ -3,7 +3,7 @@ import { Alert, Badge, Button, Container, Form, Modal, Table } from "react-boots
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../../auth/context";
 import { accountApi } from "../../api/account";
-import { db } from "../../data/db";
+import { CHAT_API_KEY, CHAT_API_KEY_ID, db } from "../../data/db";
 import { ApiError, type ApiKeySummary, type CreatedKey } from "../../api/types";
 
 type LimitKind = "percent" | "hardcap";
@@ -161,8 +161,8 @@ export default function ApiKeys() {
             className="px-0 mt-2"
             onClick={async () => {
               if (!created) return;
-              await db.meta.put({ key: "chatApiKey", value: created.key });
-              await db.meta.put({ key: "chatApiKeyId", value: created.id });
+              await db.meta.put({ key: CHAT_API_KEY, value: created.key });
+              await db.meta.put({ key: CHAT_API_KEY_ID, value: created.id });
               setUsedForChat(true);
             }}
           >
