@@ -7,6 +7,11 @@
   "generating": "S’està generant…",
   "coldStart": "S’està carregant el model: la primera imatge després d’una pausa triga més.",
   "size": "Mida",
+  "orientation": {
+    "square": "Quadrat",
+    "portrait": "Vertical",
+    "landscape": "Horitzontal"
+  },
   "steps": "Passos",
   "advanced": "Avançat",
   "seed": "Llavor",

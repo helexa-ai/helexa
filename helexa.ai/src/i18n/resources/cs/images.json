@@ -7,6 +7,11 @@
   "generating": "Generuji…",
   "coldStart": "Načítá se model — první obrázek po pauze trvá déle.",
   "size": "Velikost",
+  "orientation": {
+    "square": "Čtverec",
+    "portrait": "Na výšku",
+    "landscape": "Na šířku"
+  },
   "steps": "Kroky",
   "advanced": "Pokročilé",
   "seed": "Seed",

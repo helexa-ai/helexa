@@ -7,6 +7,11 @@
   "generating": "A gerar…",
   "coldStart": "A carregar o modelo — a primeira imagem depois de uma pausa demora mais.",
   "size": "Tamanho",
+  "orientation": {
+    "square": "Quadrado",
+    "portrait": "Vertical",
+    "landscape": "Horizontal"
+  },
   "steps": "Passos",
   "advanced": "Avançado",
   "seed": "Semente",

@@ -7,6 +7,11 @@
   "generating": "Bezig met genereren…",
   "coldStart": "Model wordt geladen — de eerste afbeelding na een pauze duurt langer.",
   "size": "Formaat",
+  "orientation": {
+    "square": "Vierkant",
+    "portrait": "Staand",
+    "landscape": "Liggend"
+  },
   "steps": "Stappen",
   "advanced": "Geavanceerd",
   "seed": "Seed",

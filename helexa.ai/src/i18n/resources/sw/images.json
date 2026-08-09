@@ -7,6 +7,11 @@
   "generating": "Inatengeneza…",
   "coldStart": "Modeli inapakiwa — picha ya kwanza baada ya mapumziko huchukua muda zaidi.",
   "size": "Ukubwa",
+  "orientation": {
+    "square": "Mraba",
+    "portrait": "Wima",
+    "landscape": "Mlalo"
+  },
   "steps": "Hatua",
   "advanced": "Za kina",
   "seed": "Mbegu",

@@ -7,6 +7,11 @@
   "generating": "יוצר…",
   "coldStart": "טוען את המודל — התמונה הראשונה אחרי הפסקה נמשכת יותר.",
   "size": "גודל",
+  "orientation": {
+    "square": "ריבוע",
+    "portrait": "לאורך",
+    "landscape": "לרוחב"
+  },
   "steps": "צעדים",
   "advanced": "מתקדם",
   "seed": "זרע",

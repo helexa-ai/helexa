@@ -7,6 +7,11 @@
   "generating": "Ń ṣẹ̀dá…",
   "coldStart": "Ń gbé àwòṣe wọlé — àwòrán àkọ́kọ́ lẹ́yìn ìsinmi máa gba àkókò gígùn.",
   "size": "Ìwọ̀n",
+  "orientation": {
+    "square": "Onígunmẹ́rin",
+    "portrait": "Ìdúró",
+    "landscape": "Ìdùbúlẹ̀"
+  },
   "steps": "Àwọn ìgbésẹ̀",
   "advanced": "Tí ó jinlẹ̀",
   "seed": "Irúgbìn",

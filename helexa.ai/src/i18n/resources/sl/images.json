@@ -7,6 +7,11 @@
   "generating": "Ustvarjanje…",
   "coldStart": "Nalaganje modela — prva slika po premoru traja dlje.",
   "size": "Velikost",
+  "orientation": {
+    "square": "Kvadrat",
+    "portrait": "Pokončno",
+    "landscape": "Ležeče"
+  },
   "steps": "Koraki",
   "advanced": "Napredno",
   "seed": "Seme",

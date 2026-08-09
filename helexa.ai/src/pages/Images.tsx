@@ -12,13 +12,24 @@ import { ImageError, generateImage } from "../lib/imageClient";
 const IMAGE_MODEL = import.meta.env.VITE_IMAGE_MODEL || "helexa/image";
 
 /**
- * Sizes offered. The real ceiling is per host — the fleet's smallest
- * image-capable card tops out well below its largest — but `/v1/models`
- * does not publish a per-model resolution limit, only capabilities, so
- * the UI cannot discover it yet. These are the sizes every image-capable
- * host can serve; a taller ceiling needs the API to say so first.
+ * Sizes offered, grouped by orientation.
+ *
+ * The engine validates width and height independently — both must be
+ * multiples of 16 and within the host's ceiling — so non-square costs
+ * nothing extra to support. Every option here stays within 1024, which
+ * every image-capable host in the fleet can serve; the real ceiling is
+ * per host and higher on the bigger cards, but `/v1/models` publishes
+ * capabilities and not a resolution limit, so the UI cannot discover it.
+ *
+ * Ratios rather than arbitrary numbers: 1:1, 3:4 and 9:16 portrait, and
+ * their landscape mirrors. Anything not a multiple of 16 is rejected
+ * outright, so these are not free-form.
  */
-const SIZES = [512, 768, 1024] as const;
+const SIZE_GROUPS = [
+  { key: "square" as const, sizes: [[512, 512], [768, 768], [1024, 1024]] },
+  { key: "portrait" as const, sizes: [[768, 1024], [576, 1024]] },
+  { key: "landscape" as const, sizes: [[1024, 768], [1024, 576]] },
+];
 
 /** Turbo models are tuned for very few steps; more is rarely better. */
 const STEP_CHOICES = [4, 9, 16] as const;
@@ -62,7 +73,10 @@ export default function Images() {
   const images = useLiveQuery(() => listImages(owner), [owner], []);
 
   const [prompt, setPrompt] = useState("");
-  const [size, setSize] = useState<number>(1024);
+  // Serialised as "WxH" so it can be a plain <select> value; the engine
+  // takes the two axes independently.
+  const [size, setSize] = useState("1024x1024");
+  const [width, height] = size.split("x").map(Number);
   const [steps, setSteps] = useState<number>(DEFAULT_STEPS);
   const [seed, setSeed] = useState("");
   const [negative, setNegative] = useState("");
@@ -101,7 +115,8 @@ export default function Images() {
         apiKey: apiKey ?? undefined,
         model: IMAGE_MODEL,
         prompt: text,
-        size,
+        width,
+        height,
         steps,
         seed: Number.isFinite(parsedSeed) ? parsedSeed : undefined,
         negativePrompt: negative.trim() || undefined,
@@ -115,7 +130,8 @@ export default function Images() {
         prompt: text,
         negativePrompt: negative.trim() || undefined,
         model: IMAGE_MODEL,
-        size,
+        width,
+        height,
         steps,
         seed: Number.isFinite(parsedSeed) ? parsedSeed : undefined,
         png: new Blob([bytes], { type: "image/png" }),
@@ -182,12 +198,24 @@ export default function Images() {
             <select
               value={size}
               disabled={busy}
-              onChange={(e) => setSize(Number(e.target.value))}
+              onChange={(e) => setSize(e.target.value)}
             >
-              {SIZES.map((s) => (
-                // Dimensions are numerals in every locale, and `dir=ltr`
-                // keeps "512x512" from being reordered under RTL.
-                <option key={s} value={s} dir="ltr">{`${s}×${s}`}</option>
+              {/* optgroup rather than disabled separator options: it
+                  is the element a screen reader announces as a group,
+                  where a disabled option is announced as an option you
+                  cannot pick. */}
+              {SIZE_GROUPS.map((g) => (
+                <optgroup key={g.key} label={t(`images:orientation.${g.key}`)}>
+                  {g.sizes.map(([w, h]) => (
+                    // Dimensions are numerals in every locale, and
+                    // `dir=ltr` keeps "1024×576" from being reordered
+                    // under RTL — which would silently swap the
+                    // orientation the option is offering.
+                    <option key={`${w}x${h}`} value={`${w}x${h}`} dir="ltr">
+                      {`${w}×${h}`}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </label>
@@ -335,7 +363,7 @@ function ImageCard({ id }: { id: string }): React.ReactElement | null {
       <figcaption>
         <p className="hx-image-prompt">{image.prompt}</p>
         <div className="hx-image-meta" dir="ltr">
-          {image.size}×{image.size}
+          {image.width}×{image.height}
           {image.seed !== undefined ? ` · seed ${image.seed}` : ""}
         </div>
         <div className="hx-image-card-actions">

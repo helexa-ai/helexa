@@ -7,6 +7,11 @@
   "generating": "Luodaan…",
   "coldStart": "Mallia ladataan — ensimmäinen kuva tauon jälkeen kestää pidempään.",
   "size": "Koko",
+  "orientation": {
+    "square": "Neliö",
+    "portrait": "Pysty",
+    "landscape": "Vaaka"
+  },
   "steps": "Askeleet",
   "advanced": "Lisäasetukset",
   "seed": "Siemen",

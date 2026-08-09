@@ -7,6 +7,11 @@
   "generating": "Yaratilmoqda…",
   "coldStart": "Model yuklanmoqda — tanaffusdan keyingi birinchi tasvir ko‘proq vaqt oladi.",
   "size": "O‘lcham",
+  "orientation": {
+    "square": "Kvadrat",
+    "portrait": "Tik",
+    "landscape": "Yotiq"
+  },
   "steps": "Qadamlar",
   "advanced": "Qo‘shimcha",
   "seed": "Urug‘",

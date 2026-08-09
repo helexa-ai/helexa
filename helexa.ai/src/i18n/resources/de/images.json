@@ -7,6 +7,11 @@
   "generating": "Wird erzeugt…",
   "coldStart": "Modell wird geladen — das erste Bild nach einer Pause dauert länger.",
   "size": "Größe",
+  "orientation": {
+    "square": "Quadratisch",
+    "portrait": "Hochformat",
+    "landscape": "Querformat"
+  },
   "steps": "Schritte",
   "advanced": "Erweitert",
   "seed": "Seed",

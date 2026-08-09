@@ -7,6 +7,11 @@
   "generating": "Yettwaxdam…",
   "coldStart": "Yettali-d umudel — tawlaft tamezwarut deffir n usteɛfu tettawi akud ugar.",
   "size": "Teɣzi",
+  "orientation": {
+    "square": "Amkuz",
+    "portrait": "S useḍru",
+    "landscape": "S ubelbal"
+  },
   "steps": "Isurifen",
   "advanced": "Leqqayen",
   "seed": "Aɛeqqa",

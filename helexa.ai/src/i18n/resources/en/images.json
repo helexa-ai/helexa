@@ -7,6 +7,11 @@
   "generating": "Generating…",
   "coldStart": "Loading the model — the first image after a pause takes longer.",
   "size": "Size",
+  "orientation": {
+    "square": "Square",
+    "portrait": "Portrait",
+    "landscape": "Landscape"
+  },
   "steps": "Steps",
   "advanced": "Advanced",
   "seed": "Seed",

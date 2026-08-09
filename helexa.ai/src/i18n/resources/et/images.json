@@ -7,6 +7,11 @@
   "generating": "Loomine…",
   "coldStart": "Mudelit laaditakse — esimene pilt pärast pausi võtab kauem aega.",
   "size": "Suurus",
+  "orientation": {
+    "square": "Ruut",
+    "portrait": "Püstpaigutus",
+    "landscape": "Rõhtpaigutus"
+  },
   "steps": "Sammud",
   "advanced": "Täpsemalt",
   "seed": "Seeme",
