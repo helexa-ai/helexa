@@ -248,13 +248,25 @@ pub async fn preflight(
 /// in `siblings[].rfilename` — or `None` when the repo has no usable
 /// snapshot (never cached, or the ref/snapshot is missing).
 pub fn cached_snapshot_files(cache_path: &std::path::Path, repo_path: &str) -> Option<Vec<String>> {
-    let repo_dir = cache_path.join(format!("models--{}", repo_path.replace('/', "--")));
-    let commit = std::fs::read_to_string(repo_dir.join("refs").join("main")).ok()?;
-    let snapshot = repo_dir.join("snapshots").join(commit.trim());
+    let snapshot = cached_snapshot_dir(cache_path, repo_path)?;
     let mut files = Vec::new();
     collect_snapshot_files(&snapshot, &snapshot, &mut files);
     files.sort();
     if files.is_empty() { None } else { Some(files) }
+}
+
+/// Directory holding a repo's cached snapshot, or `None` when the repo
+/// was never cached. Split out of [`cached_snapshot_files`] so callers
+/// that need to read a specific file (rather than list them all) can
+/// resolve the same path without duplicating the layout knowledge.
+pub fn cached_snapshot_dir(
+    cache_path: &std::path::Path,
+    repo_path: &str,
+) -> Option<std::path::PathBuf> {
+    let repo_dir = cache_path.join(format!("models--{}", repo_path.replace('/', "--")));
+    let commit = std::fs::read_to_string(repo_dir.join("refs").join("main")).ok()?;
+    let snapshot = repo_dir.join("snapshots").join(commit.trim());
+    snapshot.is_dir().then_some(snapshot)
 }
 
 /// Recursive walk of a snapshot directory. Snapshot entries are

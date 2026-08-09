@@ -3,7 +3,7 @@
 use axum::body::Body;
 use axum::extract::Path;
 use axum::http::header;
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use cortex_core::config::{
@@ -397,6 +397,73 @@ pub async fn spawn_mock_neuron_with_models_and_health(
             post(|Json(_body): Json<Value>| async { Json(json!({"status": "unloaded"})) }),
         )
         .route("/v1/chat/completions", post(mock_chat_completions));
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    base_url
+}
+
+/// Variant that also serves `GET /models/{id}/capabilities` (#241), the
+/// route a neuron answers from its local model cache for models nothing
+/// has loaded.
+///
+/// `capabilities` maps model id → modalities. Any id not listed gets a
+/// 404, which is how a real neuron says "these weights were never cached
+/// here" — distinct from an empty list, and the distinction is load-
+/// bearing, so the mock has to be able to express both.
+#[allow(dead_code)]
+pub async fn spawn_mock_neuron_with_capabilities(
+    models_response: Value,
+    capabilities: &[(&str, Vec<&str>)],
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{addr}");
+    let health_response = default_health_response();
+    let table: std::collections::HashMap<String, Vec<String>> = capabilities
+        .iter()
+        .map(|(id, caps)| {
+            (
+                (*id).to_string(),
+                caps.iter().map(|c| (*c).to_string()).collect(),
+            )
+        })
+        .collect();
+    let table = Arc::new(table);
+
+    let app = Router::new()
+        .route(
+            "/models",
+            get(move || {
+                let resp = models_response.clone();
+                async move { Json(resp) }
+            }),
+        )
+        .route(
+            "/health",
+            get(move || {
+                let resp = health_response.clone();
+                async move { Json(resp) }
+            }),
+        )
+        .route(
+            "/models/{model_id}/capabilities",
+            get(move |Path(model_id): Path<String>| {
+                let table = table.clone();
+                async move {
+                    match table.get(&model_id) {
+                        Some(caps) => Json(json!({ "capabilities": caps })).into_response(),
+                        None => (
+                            axum::http::StatusCode::NOT_FOUND,
+                            Json(json!({"error": "no local evidence"})),
+                        )
+                            .into_response(),
+                    }
+                }
+            }),
+        );
 
     tokio::spawn(async move {
         axum::serve(listener, app).await.unwrap();

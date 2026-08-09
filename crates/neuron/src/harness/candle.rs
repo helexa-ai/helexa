@@ -3819,6 +3819,30 @@ impl Harness for CandleHarness {
 }
 
 impl CandleHarness {
+    /// Modalities `model_id` serves, whether or not it is loaded (#241).
+    ///
+    /// A loaded model answers from its own handle — it knows what it
+    /// actually built. A cold model is derived from its cached repo by
+    /// [`super::capability`], which reads the same two signals the
+    /// loader dispatches on without touching the network or a device.
+    ///
+    /// `None` means this node genuinely cannot say: the id doesn't parse
+    /// as a source, or the repo was never cached here. Callers must not
+    /// turn that into an empty capability list — "unknown" and "serves
+    /// nothing" are different answers, and conflating them is the bug
+    /// this exists to fix.
+    pub async fn discovered_capabilities(&self, model_id: &str) -> Option<Vec<String>> {
+        if let Some(handle) = self.models.read().await.get(model_id) {
+            return Some(handle.capabilities());
+        }
+        let source_id = model_id
+            .parse::<cortex_core::source::ModelSourceId>()
+            .ok()?
+            .with_default_scheme(self.default_source_scheme());
+        let cache = self.hf_cache_for(&source_id.scheme).ok()?;
+        super::capability::from_cache(cache.path(), &source_id.repo_path())
+    }
+
     /// Load a Z-Image diffusers pipeline (#198): resolve the component
     /// files, build the pipeline on the device worker thread, and
     /// register the model with `capabilities: ["image"]`.

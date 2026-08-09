@@ -25,6 +25,24 @@ pub struct CortexState {
     /// Per-principal served-token tally (#58), reported to upstream for
     /// operator reconciliation by the flush task when upstream is enabled.
     pub served_usage: Arc<crate::served_usage::ServedUsage>,
+    /// Modalities discovered for models that are not currently loaded
+    /// (#241), keyed by model id.
+    ///
+    /// A loaded model reports its own capabilities every poll, so this
+    /// only carries the cold ones — which is the case that mattered,
+    /// since the image model spends nearly all its time evicted and was
+    /// therefore advertising nothing. Neurons derive these from their
+    /// local model cache; cortex asks once and keeps the answer, because
+    /// what a given model id can do does not change.
+    pub discovered_capabilities: RwLock<HashMap<String, Vec<String>>>,
+    /// When each unresolved model id was last probed for capabilities.
+    ///
+    /// A model no node has cached can never be answered, and the poll
+    /// loop runs every few seconds — without this it would ask every
+    /// node about every such model forever, turning a one-off lookup
+    /// into steady background traffic and a stream of 404s in the logs.
+    /// Resolved ids leave this map and are never probed again.
+    pub capability_probe_attempts: RwLock<HashMap<String, std::time::Instant>>,
 }
 
 impl CortexState {
@@ -78,6 +96,8 @@ impl CortexState {
             entitlements,
             require_auth: config.entitlements.require_auth,
             served_usage: Arc::new(crate::served_usage::ServedUsage::new()),
+            discovered_capabilities: RwLock::new(HashMap::new()),
+            capability_probe_attempts: RwLock::new(HashMap::new()),
         }
     }
 }

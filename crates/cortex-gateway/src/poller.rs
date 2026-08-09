@@ -18,6 +18,12 @@ const POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// 10s poll interval this tolerates ~20s of flapping before evicting.
 const POLL_FAILURE_THRESHOLD: u32 = 3;
 
+/// How long before re-asking the fleet about a model whose capabilities
+/// nobody could derive (#241). Long, because the usual cause — no node
+/// has the weights cached — is resolved by a deliberate operator action
+/// (a load, a prefetch) rather than by time passing.
+const CAPABILITY_RETRY: Duration = Duration::from_secs(600);
+
 /// Record a failed poll for `node`, marking it unhealthy only once failures
 /// reach [`POLL_FAILURE_THRESHOLD`]. Below the threshold the node keeps its
 /// last-known health, riding over transient misses. A successful poll resets
@@ -184,12 +190,105 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
     // Release the write lock before the next HTTP call.
     drop(nodes);
 
+    discover_capabilities(fleet, name, endpoint).await;
+
     // Poll /health for the activation snapshot. We don't want this to
     // flip the node to unhealthy on its own — a neuron that's serving
     // /models fine is still operational even if /health is briefly
     // unavailable — so failures are debug-level and leave the existing
     // activation reading in place.
     poll_health(fleet, name, endpoint).await;
+}
+
+/// Ask a neuron what the catalogue models it has never loaded can do
+/// (#241).
+///
+/// A loaded model reports its modalities on every `/models` poll, but a
+/// cold one reported nothing at all — which is why image generation was
+/// invisible on `/v1/models`, the image model being evicted almost all
+/// of the time. The neuron derives the answer from its local model cache
+/// without loading anything.
+///
+/// Only ever asks about ids it has no answer for, so a steady fleet
+/// costs nothing after the first cycle: what a given model id can do is
+/// a property of the model, not of the moment. A 404 means this node has
+/// no local evidence — another node may still have the weights cached,
+/// so nothing is recorded and the id is retried against the next node.
+///
+/// Ids that stay unresolved back off to [`CAPABILITY_RETRY`] rather than
+/// being re-asked every cycle. A catalogue entry whose weights nobody has
+/// downloaded can never be answered, and at the poll interval that would
+/// be a permanent trickle of requests and 404s. The retry still exists
+/// because the answer *can* change: the first node to pull those weights
+/// starts being able to reply.
+async fn discover_capabilities(fleet: &CortexState, name: &str, endpoint: &str) {
+    let unknown: Vec<String> = {
+        let known = fleet.discovered_capabilities.read().await;
+        let attempts = fleet.capability_probe_attempts.read().await;
+        fleet
+            .catalogue
+            .models
+            .iter()
+            .map(|p| p.id.clone())
+            .filter(|id| !known.contains_key(id))
+            .filter(|id| {
+                attempts
+                    .get(id)
+                    .is_none_or(|at| at.elapsed() >= CAPABILITY_RETRY)
+            })
+            .collect()
+    };
+    if unknown.is_empty() {
+        return;
+    }
+
+    {
+        let now = std::time::Instant::now();
+        let mut attempts = fleet.capability_probe_attempts.write().await;
+        for id in &unknown {
+            attempts.insert(id.clone(), now);
+        }
+    }
+
+    for model_id in unknown {
+        let url = format!(
+            "{endpoint}/models/{}/capabilities",
+            urlencoding::encode(&model_id)
+        );
+        let resp = fleet
+            .http_client
+            .get(&url)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .await;
+        let Ok(resp) = resp else { continue };
+        if !resp.status().is_success() {
+            continue;
+        }
+        let Ok(body) = resp.json::<serde_json::Value>().await else {
+            continue;
+        };
+        let Some(caps) = body.get("capabilities").and_then(|c| c.as_array()) else {
+            continue;
+        };
+        let caps: Vec<String> = caps
+            .iter()
+            .filter_map(|c| c.as_str().map(str::to_string))
+            .collect();
+        // An empty list is a real answer ("cached, serves nothing"), but
+        // recording it would pin a model to no capabilities on the word
+        // of one node. Leave it unknown so a node with real weights can
+        // still speak up.
+        if caps.is_empty() {
+            continue;
+        }
+        tracing::debug!(node = name, model = %model_id, ?caps, "discovered capabilities");
+        fleet
+            .discovered_capabilities
+            .write()
+            .await
+            .insert(model_id, caps);
+    }
 }
 
 /// Fetch `/health` and stash the activation snapshot on NodeState.

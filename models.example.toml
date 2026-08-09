@@ -57,7 +57,13 @@ limit.output = 4096
 # (self-hosted) — distinct from omitting `cost`, which means "not priced".
 cost.input = 0.0
 cost.output = 0.0
-# Static capability hints (unioned with runtime-detected flags).
+# Optional, and usually unnecessary (#241). Neurons derive a model's
+# modalities from their local cache — `model_index.json` at a repo root
+# means image generation, a `vision_config` in `config.json` means
+# vision — so `/v1/models` reports them whether or not anything is
+# loaded. Discovery wins where the two disagree, because it is read from
+# the weights that would actually be served; this field is a fallback
+# for a model no node has downloaded yet.
 capabilities = ["text", "reasoning"]
 
 # Mid-size dense model — fits on any single GPU with ≥16 GB VRAM.
