@@ -99,6 +99,7 @@ async fn spawn_gateway(neuron_url: &str, key: ApiKeyConfig) -> (Arc<CortexState>
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

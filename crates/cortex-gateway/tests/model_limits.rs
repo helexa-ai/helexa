@@ -86,6 +86,7 @@ capabilities = ["text"]
                     input: Some(40960),
                     output: 8192,
                 }),
+                servable: None,
             },
         );
         // A model with no derivable limit: the flat #78 fields must be
@@ -101,6 +102,7 @@ capabilities = ["text"]
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

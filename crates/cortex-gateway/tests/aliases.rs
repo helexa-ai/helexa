@@ -80,6 +80,7 @@ async fn test_alias_resolves_in_chat_completions() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
@@ -166,6 +167,7 @@ async fn test_aliases_surface_in_v1_models() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
@@ -253,6 +255,7 @@ async fn test_alias_falls_through_for_unmapped_model() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

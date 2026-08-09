@@ -182,6 +182,7 @@ async fn spawn_keyed_gateway(neuron_url: &str, hard_cap: u64) -> String {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

@@ -146,6 +146,7 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 // Neuron's self-derived limit (#67) — the
                                 // authoritative source the gateway advertises.
                                 e.limit = upstream.limit.clone();
+                                e.servable = upstream.servable.clone();
                             })
                             .or_insert_with(|| ModelEntry {
                                 id: upstream.id.clone(),
@@ -156,6 +157,7 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 tool_call: upstream.tool_call,
                                 reasoning: upstream.reasoning,
                                 limit: upstream.limit.clone(),
+                                servable: upstream.servable.clone(),
                             });
                     }
 

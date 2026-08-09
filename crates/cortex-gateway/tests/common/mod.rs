@@ -518,6 +518,7 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
@@ -531,4 +532,32 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
     });
 
     (fleet, format!("http://{addr}"))
+}
+
+/// Build a gateway state over two mock neurons (no poller; we seed state).
+pub async fn two_neuron_fleet(endpoint_a: &str, endpoint_b: &str) -> Arc<CortexState> {
+    let config = GatewayConfig {
+        gateway: GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: EvictionSettings {
+            strategy: EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![
+            NeuronEndpoint {
+                name: "node-a".into(),
+                endpoint: endpoint_a.to_string(),
+            },
+            NeuronEndpoint {
+                name: "node-b".into(),
+                endpoint: endpoint_b.to_string(),
+            },
+        ],
+        models_config: "/dev/null".into(),
+        entitlements: Default::default(),
+        upstream: Default::default(),
+    };
+    Arc::new(CortexState::from_config(&config))
 }

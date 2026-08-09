@@ -97,6 +97,7 @@ async fn test_evict_lru_model() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
         node.models.insert(
@@ -110,6 +111,7 @@ async fn test_evict_lru_model() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
@@ -177,6 +179,7 @@ async fn test_eviction_increments_lifecycle_cycles() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
