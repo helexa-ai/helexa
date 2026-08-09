@@ -7,8 +7,10 @@ export interface ImageRequest {
   apiKey?: string;
   model: string;
   prompt: string;
-  /** Square edge in pixels; sent as OpenAI's `size` ("1024x1024"). */
-  size: number;
+  /** Pixels, sent as OpenAI's `size` ("1024x768"). Both must be
+   *  multiples of 16 — the engine rejects anything else. */
+  width: number;
+  height: number;
   /** Fixed seed makes a prompt change comparable. Omitted = server picks. */
   seed?: number;
   steps?: number;
@@ -78,7 +80,7 @@ export async function generateImage(req: ImageRequest): Promise<ImageResult> {
         model: req.model,
         prompt: req.prompt,
         n: 1,
-        size: `${req.size}x${req.size}`,
+        size: `${req.width}x${req.height}`,
         response_format: "b64_json",
         ...(req.seed !== undefined ? { seed: req.seed } : {}),
         ...(req.steps !== undefined ? { num_steps: req.steps } : {}),

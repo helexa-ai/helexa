@@ -7,6 +7,11 @@
   "generating": "Qed jiġġenera…",
   "coldStart": "Il-mudell qed jitgħabba — l-ewwel immaġni wara waqfa tieħu aktar żmien.",
   "size": "Daqs",
+  "orientation": {
+    "square": "Kwadru",
+    "portrait": "Vertikali",
+    "landscape": "Orizzontali"
+  },
   "steps": "Passi",
   "advanced": "Avvanzat",
   "seed": "Żerriegħa",

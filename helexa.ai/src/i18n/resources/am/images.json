@@ -7,6 +7,11 @@
   "generating": "በመፍጠር ላይ…",
   "coldStart": "ሞዴሉ እየተጫነ ነው — ከእረፍት በኋላ የመጀመሪያው ምስል ረዘም ያለ ጊዜ ይወስዳል።",
   "size": "መጠን",
+  "orientation": {
+    "square": "ካሬ",
+    "portrait": "ቁመት",
+    "landscape": "ወርድ"
+  },
   "steps": "ደረጃዎች",
   "advanced": "የላቀ",
   "seed": "ዘር",

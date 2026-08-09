@@ -7,6 +7,11 @@
   "generating": "Skapar…",
   "coldStart": "Modellen laddas — den första bilden efter en paus tar längre tid.",
   "size": "Storlek",
+  "orientation": {
+    "square": "Kvadratisk",
+    "portrait": "Stående",
+    "landscape": "Liggande"
+  },
   "steps": "Steg",
   "advanced": "Avancerat",
   "seed": "Seed",

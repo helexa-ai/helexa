@@ -7,6 +7,11 @@
   "generating": "Se generează…",
   "coldStart": "Se încarcă modelul — prima imagine după o pauză durează mai mult.",
   "size": "Dimensiune",
+  "orientation": {
+    "square": "Pătrat",
+    "portrait": "Portret",
+    "landscape": "Peisaj"
+  },
   "steps": "Pași",
   "advanced": "Avansat",
   "seed": "Seed",

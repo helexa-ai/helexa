@@ -7,6 +7,11 @@
   "generating": "Iyadala…",
   "coldStart": "Kulayishwa imodeli — isithombe sokuqala ngemva kwekhefu sithatha isikhathi eside.",
   "size": "Usayizi",
+  "orientation": {
+    "square": "Isikwele",
+    "portrait": "Okumile",
+    "landscape": "Okuvundlile"
+  },
   "steps": "Izinyathelo",
   "advanced": "Okuthuthukisiwe",
   "seed": "Imbewu",

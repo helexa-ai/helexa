@@ -7,6 +7,11 @@
   "generating": "Készítés…",
   "coldStart": "A modell betöltése — szünet után az első kép tovább tart.",
   "size": "Méret",
+  "orientation": {
+    "square": "Négyzet",
+    "portrait": "Álló",
+    "landscape": "Fekvő"
+  },
   "steps": "Lépések",
   "advanced": "Speciális",
   "seed": "Seed",

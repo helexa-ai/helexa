@@ -7,6 +7,11 @@
   "generating": "Kuriama…",
   "coldStart": "Įkeliamas modelis — pirmasis vaizdas po pertraukos užtrunka ilgiau.",
   "size": "Dydis",
+  "orientation": {
+    "square": "Kvadratas",
+    "portrait": "Stačias",
+    "landscape": "Gulsčias"
+  },
   "steps": "Žingsniai",
   "advanced": "Išplėstiniai",
   "seed": "Sėkla",

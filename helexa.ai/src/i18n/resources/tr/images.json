@@ -7,6 +7,11 @@
   "generating": "Üretiliyor…",
   "coldStart": "Model yükleniyor — aradan sonra ilk görsel daha uzun sürer.",
   "size": "Boyut",
+  "orientation": {
+    "square": "Kare",
+    "portrait": "Dikey",
+    "landscape": "Yatay"
+  },
   "steps": "Adım",
   "advanced": "Gelişmiş",
   "seed": "Tohum",

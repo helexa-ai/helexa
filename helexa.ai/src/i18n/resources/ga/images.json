@@ -7,6 +7,11 @@
   "generating": "Á cruthú…",
   "coldStart": "An tsamhail á lódáil — tógann an chéad íomhá tar éis sosa níos faide.",
   "size": "Méid",
+  "orientation": {
+    "square": "Cearnóg",
+    "portrait": "Portráid",
+    "landscape": "Tírdhreach"
+  },
   "steps": "Céimeanna",
   "advanced": "Ardroghanna",
   "seed": "Síol",

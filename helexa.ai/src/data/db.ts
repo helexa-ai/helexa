@@ -68,7 +68,8 @@ export interface GeneratedImage {
   prompt: string;
   negativePrompt?: string;
   model: string;
-  size: number;
+  width: number;
+  height: number;
   seed?: number;
   steps?: number;
   guidanceScale?: number;
@@ -119,6 +120,25 @@ class HelexaDB extends Dexie {
     this.version(2).stores({
       images: "id, owner, [owner+createdAt], createdAt",
     });
+    // v3 replaces the square-only `size` with explicit dimensions, now
+    // that portrait and landscape are offered. Images generated before
+    // this were all square, so the old value is both the width and the
+    // height — backfilled rather than dropped, because a stored image
+    // cost real GPU time and cannot be regenerated without its seed.
+    this.version(3)
+      .stores({ images: "id, owner, [owner+createdAt], createdAt" })
+      .upgrade((tx) =>
+        tx
+          .table<Record<string, unknown>>("images")
+          .toCollection()
+          .modify((img) => {
+            if (typeof img.size === "number") {
+              img.width = img.size;
+              img.height = img.size;
+              delete img.size;
+            }
+          }),
+      );
   }
 }
 

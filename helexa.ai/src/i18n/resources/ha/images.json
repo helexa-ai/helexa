@@ -7,6 +7,11 @@
   "generating": "Ana ƙirƙira…",
   "coldStart": "Ana loda samfurin — hoto na farko bayan hutu yana ɗaukar lokaci mai tsawo.",
   "size": "Girma",
+  "orientation": {
+    "square": "Murabba’i",
+    "portrait": "A tsaye",
+    "landscape": "A kwance"
+  },
   "steps": "Matakai",
   "advanced": "Na ci gaba",
   "seed": "Iri",
