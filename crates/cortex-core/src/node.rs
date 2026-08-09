@@ -1,5 +1,5 @@
 use crate::discovery::{ActivationStatus, DiscoveryResponse, ModelLoad};
-use crate::harness::{ModelCost, ModelLimit};
+use crate::harness::{ModelCost, ModelLimit, ModelServability};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -76,6 +76,27 @@ pub struct ModelEntry {
     /// limits are no longer consulted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit: Option<ModelLimit>,
+    /// Whether this node could actually serve the model right now
+    /// (#245), from `ModelInfo.servable` at poll time.
+    ///
+    /// `None` means the neuron expressed no opinion — an older build, a
+    /// CPU load, an image model, or a cache not yet seeded. Absent is
+    /// **not** unservable: see [`ModelEntry::is_servable`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub servable: Option<ModelServability>,
+}
+
+impl ModelEntry {
+    /// Whether the router should treat this location as a candidate.
+    ///
+    /// Absent evidence means yes. A neuron that predates the field, or
+    /// one that cannot evaluate its own state, must not be read as
+    /// broken — a version skew would otherwise empty the routing table
+    /// and take the fleet down far more comprehensively than the fault
+    /// this guards against.
+    pub fn is_servable(&self) -> bool {
+        self.servable.as_ref().is_none_or(|s| s.ok)
+    }
 }
 
 /// Model lifecycle status.

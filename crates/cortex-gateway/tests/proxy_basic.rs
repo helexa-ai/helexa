@@ -197,6 +197,7 @@ async fn test_recovering_model_returns_503_and_stays_listed() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

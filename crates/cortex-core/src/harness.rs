@@ -126,6 +126,37 @@ pub struct ModelInfo {
     /// marker tokens (`<think>` / `<\/think>` or similar).
     #[serde(default)]
     pub reasoning: bool,
+
+    /// Whether this node can actually serve a request for this model
+    /// right now (#245).
+    ///
+    /// `status == "loaded"` only says the weights are resident. A node
+    /// can hold a model and still reject every request — most commonly
+    /// because something outside neuron has eaten the device's free VRAM
+    /// and the prefill floor check will fail before any device work.
+    /// That happened in production: a leaked desktop compositor took a
+    /// whole tier down while the node answered every poll correctly and
+    /// the fleet reported itself fully healthy.
+    ///
+    /// `None` means the node did not say — an older neuron, or a state
+    /// it cannot evaluate. Callers must treat that as "assume servable",
+    /// never as "unservable", or a version skew would evict the fleet
+    /// from its own routing table.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub servable: Option<ModelServability>,
+}
+
+/// Why a loaded model can or cannot be served right now (#245).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ModelServability {
+    pub ok: bool,
+    /// Machine-readable cause when `ok == false` — e.g.
+    /// `"insufficient_vram"`, matching the error the request would get.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    /// Human-facing detail, for an operator reading a health page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 /// What an inference harness must do, from neuron's perspective.

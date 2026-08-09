@@ -37,6 +37,7 @@ async fn seed_loaded(fleet: &CortexState, node: &str, in_flight: usize, queue_de
             tool_call: false,
             reasoning: false,
             limit: None,
+            servable: None,
         },
     );
     n.model_load.insert(

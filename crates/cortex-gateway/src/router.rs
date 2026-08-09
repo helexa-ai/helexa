@@ -155,6 +155,27 @@ pub async fn resolve(
             if let Some(entry) = node.models.get(model_id) {
                 match entry.status {
                     ModelStatus::Loaded | ModelStatus::Reloading => {
+                        // Resident is not servable (#245). A node whose
+                        // device has been squeezed below the prefill
+                        // floor rejects every request before doing any
+                        // work — routing there converts a recoverable
+                        // placement problem into a 503 for the client.
+                        // Skipping it lets the rest of this function do
+                        // what it already does well: pick another
+                        // replica, or cold-load somewhere that fits.
+                        if !entry.is_servable() {
+                            tracing::warn!(
+                                node = %node.name,
+                                model = %model_id,
+                                reason = entry
+                                    .servable
+                                    .as_ref()
+                                    .and_then(|s| s.reason.as_deref())
+                                    .unwrap_or("unknown"),
+                                "skipping loaded-but-unservable location"
+                            );
+                            continue;
+                        }
                         // Least-busy score: in-flight + queued from the
                         // neuron's last /health (#53). Unknown load (no poll
                         // yet) scores 0 so the replica stays eligible.
@@ -448,6 +469,11 @@ async fn cold_load(
                     tool_call: false,
                     reasoning: false,
                     limit: None,
+                    // A model we just loaded is presumed servable until
+                    // the next poll says otherwise. Seeding `false` here
+                    // would make the cold-load path immediately
+                    // un-route what it had just placed.
+                    servable: None,
                 },
             );
         }

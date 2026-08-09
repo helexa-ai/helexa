@@ -978,18 +978,55 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
 }
 
 /// `GET /health`
+///
+/// Reports serviceability, not just reachability (#245). Counting
+/// reachable nodes alone once let the fleet report `3/3 healthy, ok`
+/// through a total outage of a whole tier: the node answered every poll
+/// correctly while rejecting every request, because something outside
+/// neuron had eaten its VRAM. Liveness was true and useless.
 async fn health(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     let nodes = fleet.nodes.read().await;
     let healthy_count = nodes.values().filter(|n| n.healthy).count();
     let total_count = nodes.len();
 
-    Json(json!({
-        "status": if healthy_count > 0 { "ok" } else { "degraded" },
-        "nodes": {
-            "healthy": healthy_count,
-            "total": total_count,
+    // Models resident on a node that cannot currently serve them. Worth
+    // surfacing even when another node can pick the work up, because it
+    // is always a fault on that host — and when no other node can, it is
+    // the difference between "fine" and "a tier is down".
+    let mut unservable: Vec<Value> = Vec::new();
+    for node in nodes.values() {
+        if !node.healthy {
+            continue;
         }
-    }))
+        for entry in node.models.values() {
+            if entry.is_servable() {
+                continue;
+            }
+            unservable.push(json!({
+                "node": node.name,
+                "model": entry.id,
+                "reason": entry.servable.as_ref().and_then(|s| s.reason.clone()),
+                "detail": entry.servable.as_ref().and_then(|s| s.detail.clone()),
+            }));
+        }
+    }
+
+    let status = if healthy_count == 0 {
+        "degraded"
+    } else if !unservable.is_empty() {
+        "impaired"
+    } else {
+        "ok"
+    };
+
+    let mut body = json!({
+        "status": status,
+        "nodes": { "healthy": healthy_count, "total": total_count },
+    });
+    if !unservable.is_empty() {
+        body["unservable"] = Value::Array(unservable);
+    }
+    Json(body)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────

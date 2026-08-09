@@ -72,6 +72,7 @@ async fn spawn_metered_gateway(neuron_url: &str) -> (Arc<CortexState>, String) {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }
@@ -177,6 +178,7 @@ async fn anonymous_request_records_no_spend() {
                 tool_call: false,
                 reasoning: false,
                 limit: None,
+                servable: None,
             },
         );
     }

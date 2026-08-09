@@ -226,6 +226,61 @@ impl LoadedHandle {
         caps
     }
 
+    /// Whether a request for this model would be accepted right now, or
+    /// rejected before any device work (#245).
+    ///
+    /// Resident is not the same as servable. When something outside
+    /// neuron eats the device's free VRAM — a leaked desktop compositor
+    /// did exactly this in production — the prefill floor check rejects
+    /// every request while the model stays `loaded` and the node keeps
+    /// answering polls. cortex kept routing there and passed the 503 to
+    /// clients, and because `helexa/small` lived only on that node, the
+    /// whole tier was down while the fleet reported itself healthy.
+    ///
+    /// Reads the **cached** free VRAM for the same reason
+    /// `derived_limit` does: this runs on `GET /models`, and a live
+    /// query would queue behind inference on the device worker and stall
+    /// the control plane. A stale-by-seconds number is the right trade —
+    /// the condition this catches persists for hours.
+    ///
+    /// `None` for anything it cannot evaluate: CPU loads (no device
+    /// budget), image models (no prefill path), and a cache that has not
+    /// been seeded yet. Absent means "no opinion", never "unservable".
+    pub fn servability(&self) -> Option<cortex_core::harness::ModelServability> {
+        use cortex_core::harness::ModelServability;
+        let free_mb = match self {
+            LoadedHandle::Single(m) => m.last_free_mb.load(Ordering::Acquire),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.last_free_mb.load(Ordering::Acquire),
+            // Image generation has its own VRAM path and no prefill
+            // floor, so this check would say nothing useful about it.
+            LoadedHandle::Image(_) => return None,
+        };
+        // `0` is the CPU-load and missing-worker sentinel — the same one
+        // `check_prompt_and_vram` skips on. Nothing to assert either way.
+        if free_mb == 0 {
+            return None;
+        }
+        let min = min_free_vram_mb();
+        if free_mb >= min {
+            return Some(ModelServability {
+                ok: true,
+                reason: None,
+                detail: None,
+            });
+        }
+        Some(ModelServability {
+            ok: false,
+            // Matches the code the request itself would fail with, so an
+            // operator sees the same word in the health surface and in
+            // the client's error.
+            reason: Some("insufficient_vram".to_string()),
+            detail: Some(format!(
+                "{free_mb} MiB free, need at least {min} MiB to start a prefill"
+            )),
+        })
+    }
+
     /// `true` when the model's tokenizer contains recognised tool-call
     /// marker tokens (`<tool_call>` / `</tool_call>` convention).
     pub fn has_tool_call(&self) -> bool {
@@ -3394,6 +3449,7 @@ impl Harness for CandleHarness {
                 cost: None,
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
+                servable: h.servability(),
             });
         }
         // Models mid-recovery whose registry slot is absent (the
@@ -3413,6 +3469,9 @@ impl Harness for CandleHarness {
                     cost: None,
                     tool_call: false, // snapshot doesn't carry these; safe default
                     reasoning: false,
+                    // Mid-recovery: the handle is gone, so there is
+                    // nothing to evaluate. No opinion, not "unservable".
+                    servable: None,
                 });
             }
         }
