@@ -1719,3 +1719,168 @@ html[dir="rtl"] .hx-landing-composer textarea {
         display: none;
     }
 }
+
+/* ── Image generation (#242) ─────────────────────────────────────────── */
+
+.hx-image-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-block: 1rem 0.5rem;
+}
+.hx-image-form textarea {
+    width: 100%;
+    resize: vertical;
+    border-radius: 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+    color: inherit;
+    padding: 0.8rem 0.9rem;
+    font: inherit;
+}
+.hx-image-form textarea:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+}
+
+.hx-image-controls {
+    display: flex;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+.hx-image-controls label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+.hx-image-controls select,
+.hx-image-advanced-panel input {
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text);
+    padding: 0.35rem 0.5rem;
+    font: inherit;
+    font-size: 0.9rem;
+    /* Both axes clear the 24px minimum target on a phone. */
+    min-height: 36px;
+}
+.hx-image-advanced {
+    background: none;
+    border: 0;
+    padding: 0.4rem 0;
+    min-height: 36px;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+/* Pushes the buttons to the trailing edge in both directions —
+ * `margin-inline-start` flips under RTL where `margin-left` would not. */
+.hx-image-actions {
+    margin-inline-start: auto;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.hx-image-advanced-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 0.9rem;
+    padding: 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem;
+    background-color: var(--color-bg-subtle);
+}
+.hx-image-advanced-panel label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+.hx-image-advanced-panel small {
+    font-size: 0.76rem;
+    opacity: 0.85;
+}
+.hx-image-advanced-panel .hx-warn {
+    color: var(--color-accent-hot);
+    opacity: 1;
+}
+
+.hx-image-signin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 1rem;
+    margin-block: 1rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem;
+    background-color: var(--color-bg-subtle);
+}
+.hx-image-signin p {
+    margin: 0;
+}
+
+.hx-image-progress {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--color-text-muted);
+}
+
+.hx-image-gallery {
+    margin-top: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+    gap: 1rem;
+}
+.hx-image-card {
+    margin: 0;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background-color: var(--color-bg-elevated);
+}
+.hx-image-card img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+.hx-image-card figcaption {
+    padding: 0.7rem 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+/* Prompts are arbitrary user text and can be a single very long token;
+ * `anywhere` counts toward min-content width, so the grid cell cannot be
+ * stretched by one unbroken string. */
+.hx-image-prompt {
+    margin: 0;
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.hx-image-meta {
+    font-size: 0.76rem;
+    color: var(--color-text-muted);
+}
+.hx-image-card-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+/* The empty note is prose, not a card — it must span the track rather
+ * than be squeezed into one 16rem grid column. */
+.hx-image-empty {
+    grid-column: 1 / -1;
+}

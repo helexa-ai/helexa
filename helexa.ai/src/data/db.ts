@@ -52,6 +52,32 @@ export interface Message {
   sources?: MessageSource[];
 }
 
+/**
+ * A generated image, kept locally like everything else here.
+ *
+ * Worth keeping more carefully than a chat message: it cost real GPU
+ * time, and without the seed it cannot be reproduced even from the same
+ * prompt. So the whole request is stored beside the pixels.
+ *
+ * `png` is a Blob rather than a base64 string — base64 inflates by a
+ * third, and IndexedDB stores Blobs natively.
+ */
+export interface GeneratedImage {
+  id: string;
+  owner: string;
+  prompt: string;
+  negativePrompt?: string;
+  model: string;
+  size: number;
+  seed?: number;
+  steps?: number;
+  guidanceScale?: number;
+  png: Blob;
+  /** Megapixel-steps billed (#202). */
+  units?: number;
+  createdAt: number;
+}
+
 /** Small key/value store: fingerprint, active conversation, anon usage. */
 export interface Meta {
   key: string;
@@ -76,6 +102,7 @@ class HelexaDB extends Dexie {
   conversations!: Table<Conversation, string>;
   messages!: Table<Message, string>;
   meta!: Table<Meta, string>;
+  images!: Table<GeneratedImage, string>;
 
   constructor() {
     super("helexa");
@@ -86,6 +113,11 @@ class HelexaDB extends Dexie {
       conversations: "id, owner, projectId, [owner+projectId], updatedAt",
       messages: "id, conversationId, [conversationId+createdAt]",
       meta: "key",
+    });
+    // v2 adds generated images (#242). Additive: Dexie carries the
+    // existing stores forward untouched, so an upgrade keeps history.
+    this.version(2).stores({
+      images: "id, owner, [owner+createdAt], createdAt",
     });
   }
 }

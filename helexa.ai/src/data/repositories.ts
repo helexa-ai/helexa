@@ -6,6 +6,7 @@ import Dexie from "dexie";
 import {
   db,
   type Conversation,
+  type GeneratedImage,
   type Message,
   type MessageRole,
   type Project,
@@ -158,4 +159,24 @@ export async function claimAnonymousData(accountId: string): Promise<void> {
       convs.map((c) => db.conversations.update(c.id, { owner: accountId })),
     );
   });
+}
+
+// ── Generated images (#242) ──────────────────────────────────────────
+
+/** Newest first — the gallery reads chronologically backwards. */
+export async function listImages(owner: string): Promise<GeneratedImage[]> {
+  const rows = await db.images.where({ owner }).toArray();
+  return rows.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function saveImage(
+  image: Omit<GeneratedImage, "id" | "createdAt">,
+): Promise<string> {
+  const id = uuid();
+  await db.images.add({ ...image, id, createdAt: now() });
+  return id;
+}
+
+export async function deleteImage(id: string): Promise<void> {
+  await db.images.delete(id);
 }
