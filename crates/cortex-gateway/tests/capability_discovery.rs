@@ -43,6 +43,10 @@ min_devices = 1
 }
 
 fn fleet_for(endpoint: String) -> Arc<CortexState> {
+    fleet_of(vec![("gpu", endpoint)])
+}
+
+fn fleet_of(neurons: Vec<(&str, String)>) -> Arc<CortexState> {
     let config = GatewayConfig {
         gateway: GatewaySettings {
             listen: "127.0.0.1:0".into(),
@@ -52,10 +56,13 @@ fn fleet_for(endpoint: String) -> Arc<CortexState> {
             strategy: EvictionStrategy::Lru,
             defrag_after_cycles: 0,
         },
-        neurons: vec![NeuronEndpoint {
-            name: "gpu".into(),
-            endpoint,
-        }],
+        neurons: neurons
+            .into_iter()
+            .map(|(name, endpoint)| NeuronEndpoint {
+                name: name.into(),
+                endpoint,
+            })
+            .collect(),
         models_config: write_catalogue().to_string_lossy().into_owned(),
         ..Default::default()
     };
@@ -143,6 +150,41 @@ async fn node_without_local_evidence_records_nothing() {
     assert!(
         fleet.discovered_capabilities.read().await.is_empty(),
         "a 404 means 'no local evidence', which must not be cached as an answer"
+    );
+}
+
+/// Weights are not spread evenly across a fleet, so the node polled
+/// first routinely lacks a model that a later one has. The back-off that
+/// stops unanswerable ids being re-probed every cycle must not let that
+/// first node's 404 suppress the question to everyone else.
+///
+/// Found live: a GGUF that two of three neurons could describe reported
+/// no capabilities at all, because the one node without it was polled
+/// first and claimed the attempt for the whole window.
+#[tokio::test]
+async fn a_node_that_cannot_answer_does_not_starve_one_that_can() {
+    let empty_handed =
+        common::spawn_mock_neuron_with_capabilities(serde_json::json!([]), &[]).await;
+    let has_weights = common::spawn_mock_neuron_with_capabilities(
+        serde_json::json!([]),
+        &[("Tongyi-MAI/Z-Image-Turbo", vec!["image"])],
+    )
+    .await;
+    // Config order is poll order, so the node that 404s goes first.
+    let fleet = fleet_of(vec![("first", empty_handed), ("second", has_weights)]);
+
+    cortex_gateway::poller::poll_once(&fleet).await;
+
+    assert_eq!(
+        fleet
+            .discovered_capabilities
+            .read()
+            .await
+            .get("Tongyi-MAI/Z-Image-Turbo")
+            .cloned(),
+        Some(vec!["image".to_string()]),
+        "the second node's answer must survive the first node's 404, \
+         in the same poll cycle"
     );
 }
 

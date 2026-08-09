@@ -35,14 +35,23 @@ pub struct CortexState {
     /// local model cache; cortex asks once and keeps the answer, because
     /// what a given model id can do does not change.
     pub discovered_capabilities: RwLock<HashMap<String, Vec<String>>>,
-    /// When each unresolved model id was last probed for capabilities.
+    /// When each `(neuron, model id)` pair was last probed for
+    /// capabilities.
     ///
     /// A model no node has cached can never be answered, and the poll
     /// loop runs every few seconds — without this it would ask every
     /// node about every such model forever, turning a one-off lookup
     /// into steady background traffic and a stream of 404s in the logs.
-    /// Resolved ids leave this map and are never probed again.
-    pub capability_probe_attempts: RwLock<HashMap<String, std::time::Instant>>,
+    /// Resolved ids stop being probed entirely.
+    ///
+    /// Keyed per node, not per model: nodes are polled in config order,
+    /// so a model-only key let whichever node came first record the
+    /// attempt and then, if it answered 404, suppress the question to
+    /// every other node for the whole back-off window. Weights are not
+    /// distributed evenly across the fleet, so that is the common case
+    /// rather than an edge — it hid a GGUF that two of three nodes could
+    /// describe perfectly well.
+    pub capability_probe_attempts: RwLock<HashMap<(String, String), std::time::Instant>>,
 }
 
 impl CortexState {
