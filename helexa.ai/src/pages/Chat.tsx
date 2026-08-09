@@ -14,7 +14,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import Markdown from "../components/Markdown";
-import { db } from "../data/db";
+import { CHAT_API_KEY, db } from "../data/db";
 import {
   archiveProject,
   createConversation,
@@ -63,7 +63,7 @@ export default function Chat() {
   // knew whether a key already existed.
   const chatApiKey = useLiveQuery<string | null, undefined>(
     async () => {
-      const m = await db.meta.get("chat:chatApiKey");
+      const m = await db.meta.get(CHAT_API_KEY);
       return typeof m?.value === "string" ? m.value : null;
     },
     [],

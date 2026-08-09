@@ -1,5 +1,5 @@
 import { accountApi } from "../api/account";
-import { db } from "../data/db";
+import { CHAT_API_KEY, CHAT_API_KEY_ID, db } from "../data/db";
 
 /**
  * Provision this browser's chat key on demand.
@@ -63,15 +63,15 @@ export function ensureChatKey(token: string): Promise<void> {
   inFlight = (async () => {
     // Re-check inside the guard: another tab may have provisioned one
     // since this call was scheduled.
-    const existing = await db.meta.get("chatApiKey");
+    const existing = await db.meta.get(CHAT_API_KEY);
     if (typeof existing?.value === "string" && existing.value) return;
 
     // percent/100 = bounded by the account allocation rather than a
     // separate hard cap, so the key spends the signup grant and nothing
     // more. The account's own budget stays the single ceiling.
     const created = await accountApi().createKey(token, deviceLabel(), "percent", 100);
-    await db.meta.put({ key: "chatApiKey", value: created.key });
-    await db.meta.put({ key: "chatApiKeyId", value: created.id });
+    await db.meta.put({ key: CHAT_API_KEY, value: created.key });
+    await db.meta.put({ key: CHAT_API_KEY_ID, value: created.id });
   })()
     .catch((e) => {
       // Deliberately quiet: the user still has the manual path, and an
