@@ -233,7 +233,7 @@ async fn discover_capabilities(fleet: &CortexState, name: &str, endpoint: &str) 
             .filter(|id| !known.contains_key(id))
             .filter(|id| {
                 attempts
-                    .get(id)
+                    .get(&(name.to_string(), id.clone()))
                     .is_none_or(|at| at.elapsed() >= CAPABILITY_RETRY)
             })
             .collect()
@@ -246,7 +246,7 @@ async fn discover_capabilities(fleet: &CortexState, name: &str, endpoint: &str) 
         let now = std::time::Instant::now();
         let mut attempts = fleet.capability_probe_attempts.write().await;
         for id in &unknown {
-            attempts.insert(id.clone(), now);
+            attempts.insert((name.to_string(), id.clone()), now);
         }
     }
 
