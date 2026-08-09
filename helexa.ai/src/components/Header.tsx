@@ -98,6 +98,14 @@ const Header: React.FC = () => {
               {t("nav.chat")}
             </NavLink>
             <NavLink
+              to="/images"
+              className={({ isActive }): string =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+            >
+              {t("nav.images")}
+            </NavLink>
+            <NavLink
               to="/mission"
               className={({ isActive }): string =>
                 isActive ? "nav-link active" : "nav-link"

@@ -8,6 +8,7 @@ import BetaBanner from "./components/BetaBanner";
 import Mission from "./pages/Mission";
 import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
+import Images from "./pages/Images";
 import Landing from "./pages/Landing";
 import Auth from "./pages/auth/Auth";
 import Login from "./pages/auth/Login";
@@ -37,6 +38,7 @@ export default function App() {
                   somewhere predictable. The workspace has its own address. */}
               <Route path="/" element={<Landing />} />
               <Route path="/chat" element={<Chat />} />
+              <Route path="/images" element={<Images />} />
               <Route path="/mission" element={<Mission />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/auth" element={<Auth />} />
