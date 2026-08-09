@@ -730,6 +730,11 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     let now = Utc::now().timestamp() as u64;
     let nodes = fleet.nodes.read().await;
     let catalogue = &fleet.catalogue;
+    // Modalities the neurons derived for models nothing has loaded
+    // (#241). Without this a cold model advertises no capabilities at
+    // all, which made image generation undiscoverable — the image model
+    // is evicted almost all of the time.
+    let discovered = fleet.discovered_capabilities.read().await;
 
     let mut entries: HashMap<String, CortexModelEntry> = HashMap::new();
 
@@ -767,9 +772,16 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 loaded: false,
                 feasible_on,
                 locations: Vec::new(),
-                // Start with catalogue-declared capabilities; Pass 2 unions
-                // runtime-detected ones from loaded neurons.
-                capabilities: profile.capabilities.clone(),
+                // Start with what the neurons discovered for this model,
+                // falling back to any catalogue declaration; Pass 2
+                // unions runtime-detected ones from loaded neurons.
+                // Discovery wins over the catalogue deliberately: it is
+                // read from the weights the node would actually serve,
+                // so it cannot drift the way a hand-written field does.
+                capabilities: discovered
+                    .get(&profile.id)
+                    .cloned()
+                    .unwrap_or_else(|| profile.capabilities.clone()),
                 // `limit` is no longer operator-declared (#67): the neuron
                 // self-derives it from live VRAM + throughput and reports it
                 // per loaded model — Pass 2 fills it from the neuron's
@@ -896,8 +908,10 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     feasible_on: Vec::new(),
                     locations: vec![location],
                     // A model that's only mid-prewarm has no loaded
-                    // location to read capabilities from yet.
-                    capabilities: Vec::new(),
+                    // location to read capabilities from yet — but a
+                    // neuron may still have derived them from its cache
+                    // (#241), so prefer that over admitting nothing.
+                    capabilities: discovered.get(model_id).cloned().unwrap_or_default(),
                     limit: None,
                     cost: None,
                     tool_call: false,

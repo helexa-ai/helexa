@@ -49,6 +49,7 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/load", post(load_model))
         .route("/models/unload", post(unload_model))
         .route("/models/{model_id}/endpoint", get(model_endpoint))
+        .route("/models/{model_id}/capabilities", get(model_capabilities))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/images/generations", post(images_generations))
         .route("/v1/responses", post(responses))
@@ -201,6 +202,36 @@ async fn model_endpoint(
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({"error": format!("model '{}' not loaded", model_id)})),
+        )
+            .into_response(),
+    }
+}
+
+/// `GET /models/{id}/capabilities` — what modalities this node believes
+/// `id` serves, loaded or not (#241).
+///
+/// Answers from the loaded handle when the model is resident, and from
+/// the cached repo layout otherwise, so a cold model still advertises
+/// itself. 404 means "this node cannot say" — the repo was never cached
+/// here, or the id doesn't resolve to a source. That is deliberately not
+/// an empty list: a caller must be able to tell "no idea" from "serves
+/// nothing", or it will cache a wrong answer forever.
+async fn model_capabilities(
+    State(state): State<Arc<NeuronState>>,
+    Path(model_id): Path<String>,
+) -> impl IntoResponse {
+    let registry = state.registry.read().await;
+    let discovered = match registry.candle() {
+        Some(candle) => candle.discovered_capabilities(&model_id).await,
+        None => None,
+    };
+    match discovered {
+        Some(capabilities) => Json(json!({ "capabilities": capabilities })).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(json!({
+                "error": format!("no local evidence for model '{}'", model_id)
+            })),
         )
             .into_response(),
     }
