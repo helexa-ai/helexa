@@ -19,8 +19,45 @@
 #   min_device_vram_mb - each device must meet this VRAM floor for the
 #                        neuron to be considered "feasible".
 #   pinned_on          - optional whitelist of neuron names. Non-empty
-#                        narrows feasibility to just those neurons and
-#                        protects the model from LRU eviction there.
+#                        narrows feasibility to just those neurons.
+#                        Affinity only: it says where the model may run,
+#                        not whether it may be evicted once there.
+#   residency_priority - which residency CLASS this model belongs to
+#                        when a node runs out of VRAM. A model may
+#                        displace residents of its own class or below,
+#                        and none above it. Default 100.
+#
+#                        Equal rank permits displacement, in BOTH
+#                        directions — that is what a cold-swap is. Two
+#                        models that share a node and take turns on it
+#                        must each be able to evict the other, so give
+#                        peers the SAME number. Giving them different
+#                        numbers makes the swap one-directional: the
+#                        higher takes the node and the lower never gets
+#                        it back, silently.
+#
+#                        Protect a model by ranking it ABOVE whatever
+#                        must not evict it — not by giving it a number
+#                        nobody else has.
+#
+#                        This is what lets a fleet say "the image model
+#                        may take the mid tier's node, but never the
+#                        flagship's, while the frontier tier may take
+#                        the flagship's" — three rules that a single
+#                        pinned/unpinned flag cannot express, because it
+#                        can only protect a model from everything or
+#                        from nothing.
+#
+#                        Priority decides who MAY be displaced, never
+#                        whether a displacement is NEEDED: a node with
+#                        room for both evicts nothing, however the two
+#                        rank.
+#
+#                        A profile with pinned_on and no explicit
+#                        priority defaults to 1000, preserving the
+#                        immunity pinned_on used to imply on its own.
+#
+#                        See doc/placement.md for worked examples.
 #   source             - optional source scheme ("huggingface", "helexa",
 #                        operator mirror tag). When set, cortex forwards
 #                        the load to neuron as `scheme:id` so the daemon
@@ -49,6 +86,10 @@ vram_mb = 54000
 min_devices = 2
 min_device_vram_mb = 24000
 pinned_on = ["your-multi-gpu-neuron"]
+# Above the everyday models, so none of them can cold-swap the flagship
+# out. Give anything that SHOULD be able to take this neuron — a second
+# large model you alternate with — the same 300, not a higher number.
+residency_priority = 300
 # Token budget: context wall, compaction trigger (input headroom), max output.
 limit.context = 32768
 limit.input = 28672

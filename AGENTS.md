@@ -241,7 +241,8 @@ quant = "Q4_K_M"
 vram_mb = 19000
 min_devices = 2
 min_device_vram_mb = 10000
-pinned_on = ["beast"]       # optional: never evict from these neurons
+pinned_on = ["beast"]       # optional: affinity — run only on these
+residency_priority = 300    # optional: who may displace whom under VRAM pressure
 ```
 
 ### neuron.toml (per-host)
