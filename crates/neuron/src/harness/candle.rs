@@ -231,54 +231,73 @@ impl LoadedHandle {
     ///
     /// Resident is not the same as servable. When something outside
     /// neuron eats the device's free VRAM — a leaked desktop compositor
-    /// did exactly this in production — the prefill floor check rejects
-    /// every request while the model stays `loaded` and the node keeps
-    /// answering polls. cortex kept routing there and passed the 503 to
-    /// clients, and because `helexa/small` lived only on that node, the
-    /// whole tier was down while the fleet reported itself healthy.
+    /// did exactly this in production — requests are rejected while the
+    /// model stays `loaded` and the node keeps answering polls. cortex
+    /// kept routing there and passed the 503 to clients, and because
+    /// `helexa/small` lived only on that node, the whole tier was down
+    /// while the fleet reported itself healthy.
     ///
-    /// Reads the **cached** free VRAM for the same reason
-    /// `derived_limit` does: this runs on `GET /models`, and a live
-    /// query would queue behind inference on the device worker and stall
-    /// the control plane. A stale-by-seconds number is the right trade —
-    /// the condition this catches persists for hours.
+    /// Asks [`check_vram`] — the *same* function the request itself is
+    /// checked against — at the cheapest possible request: an empty
+    /// prompt plus the configured output reserve. If even that will not
+    /// fit, nothing this model can be asked will fit. An earlier version
+    /// re-implemented only the static floor and was wrong within hours:
+    /// a freshly-loaded 27B reported servable at 4948 MiB free while the
+    /// length-aware backstop rejected every request.
+    ///
+    /// Reads the **cached** free VRAM for the reason `derived_limit`
+    /// does: this runs on `GET /models`, and a live query would queue
+    /// behind inference on the device worker and stall the control
+    /// plane. Stale by seconds is the right trade against a condition
+    /// that persists for hours.
     ///
     /// `None` for anything it cannot evaluate: CPU loads (no device
-    /// budget), image models (no prefill path), and a cache that has not
-    /// been seeded yet. Absent means "no opinion", never "unservable".
-    pub fn servability(&self) -> Option<cortex_core::harness::ModelServability> {
+    /// budget), image models (no prefill path), and a cache not yet
+    /// seeded. Absent means "no opinion", never "unservable".
+    pub fn servability(
+        &self,
+        cfg: &crate::config::ContextLimitConfig,
+    ) -> Option<cortex_core::harness::ModelServability> {
         use cortex_core::harness::ModelServability;
-        let free_mb = match self {
-            LoadedHandle::Single(m) => m.last_free_mb.load(Ordering::Acquire),
+        let (free_mb, profile) = match self {
+            LoadedHandle::Single(m) => (m.last_free_mb.load(Ordering::Acquire), m.context_profile),
             #[cfg(feature = "cuda")]
-            LoadedHandle::Tp(m) => m.last_free_mb.load(Ordering::Acquire),
+            LoadedHandle::Tp(m) => (m.last_free_mb.load(Ordering::Acquire), m.context_profile),
             // Image generation has its own VRAM path and no prefill
             // floor, so this check would say nothing useful about it.
             LoadedHandle::Image(_) => return None,
         };
         // `0` is the CPU-load and missing-worker sentinel — the same one
-        // `check_prompt_and_vram` skips on. Nothing to assert either way.
+        // `check_vram` skips on. Nothing to assert either way.
         if free_mb == 0 {
             return None;
         }
-        let min = min_free_vram_mb();
-        if free_mb >= min {
-            return Some(ModelServability {
+        match check_vram(0, free_mb, profile.as_ref(), cfg) {
+            Ok(()) => Some(ModelServability {
                 ok: true,
                 reason: None,
                 detail: None,
-            });
+            }),
+            // `check_vram` only rejects for one reason, and naming the
+            // variant keeps this exhaustive if that ever stops being
+            // true. The string matches the code api.rs gives the client,
+            // so an operator sees the same word in both places.
+            Err(InferenceError::InsufficientVram {
+                free_mb,
+                required_mb,
+            }) => Some(ModelServability {
+                ok: false,
+                reason: Some("insufficient_vram".to_string()),
+                detail: Some(format!(
+                    "{free_mb} MiB free, need at least {required_mb} MiB"
+                )),
+            }),
+            Err(other) => Some(ModelServability {
+                ok: false,
+                reason: Some("unavailable".to_string()),
+                detail: Some(other.to_string()),
+            }),
         }
-        Some(ModelServability {
-            ok: false,
-            // Matches the code the request itself would fail with, so an
-            // operator sees the same word in the health surface and in
-            // the client's error.
-            reason: Some("insufficient_vram".to_string()),
-            detail: Some(format!(
-                "{free_mb} MiB free, need at least {min} MiB to start a prefill"
-            )),
-        })
     }
 
     /// `true` when the model's tokenizer contains recognised tool-call
@@ -1616,6 +1635,24 @@ fn validate_request(
     if prompt_len > max {
         return Err(InferenceError::PromptTooLong { prompt_len, max });
     }
+    check_vram(prompt_len, vram_free_mb, profile, cfg)
+}
+
+/// The VRAM half of [`validate_request`], split out so the serviceability
+/// probe (#245) can ask the same question the request will ask.
+///
+/// Keeping one implementation is the point. The first version of the
+/// probe re-checked only the static floor, and immediately disagreed
+/// with reality: a freshly-loaded 27B on beast sat at 4948 MiB free —
+/// far above the 1500 MiB floor, so the probe said servable — while
+/// every request was rejected by the length-aware backstop below. Two
+/// copies of "can this serve" will always drift; one cannot.
+fn check_vram(
+    prompt_len: usize,
+    vram_free_mb: u64,
+    profile: Option<&super::context_limit::ContextProfile>,
+    cfg: &crate::config::ContextLimitConfig,
+) -> Result<(), InferenceError> {
     // VRAM checks are skipped on CPU loads (vram_free_mb == 0 sentinel)
     // because the (0, 0) reply from `query_vram` is also what a missing
     // worker returns. The CPU path has no per-GPU memory limit anyway —
@@ -3449,7 +3486,7 @@ impl Harness for CandleHarness {
                 cost: None,
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
-                servable: h.servability(),
+                servable: h.servability(&self.context_limit_cfg),
             });
         }
         // Models mid-recovery whose registry slot is absent (the
@@ -7501,6 +7538,59 @@ fn unix_subsec_nanos() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::super::context_limit::ContextProfile;
+
+    /// Why the serviceability probe shares [`check_vram`] with the
+    /// request path rather than re-implementing the floor.
+    ///
+    /// There is a real band — above the static floor, below the floor
+    /// plus activation headroom plus the output reserve's KV — where a
+    /// floor-only probe reports `ok` and every request is nonetheless
+    /// rejected. Sharing one function means the probe cannot disagree
+    /// with the answer the request will get.
+    #[test]
+    fn floor_alone_is_not_enough_to_call_a_model_servable() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 2,
+        };
+        // Comfortably above the floor, so a floor-only check says "fine".
+        let free_mb = 3000;
+        assert!(free_mb > min_free_vram_mb());
+
+        // The real check disagrees, at the cheapest request there is:
+        // the reserve's KV plus activation headroom plus the floor
+        // already exceeds what is free.
+        assert!(
+            check_vram(0, free_mb, Some(&profile), &cfg).is_err(),
+            "an empty prompt must still be rejected when the output \
+             reserve cannot fit"
+        );
+    }
+
+    /// The same model with room reports servable, so the assertion above
+    /// is detecting the condition rather than always failing.
+    #[test]
+    fn a_model_with_headroom_is_servable() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 2,
+        };
+        assert!(check_vram(0, 60_000, Some(&profile), &cfg).is_ok());
+    }
+
+    /// CPU loads report free VRAM as the `0` sentinel and must not be
+    /// judged at all — the host has no per-GPU budget to run out of.
+    #[test]
+    fn the_cpu_sentinel_is_never_a_rejection() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        assert!(check_vram(0, 0, None, &cfg).is_ok());
+    }
+
     use super::*;
 
     const IM_START: u32 = 999;
