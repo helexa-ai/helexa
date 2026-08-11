@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run prerender",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "i18n:check": "node ./scripts/check-i18n-keys.mjs",
     "i18n:meta": "node ./scripts/check-i18n-metadata.mjs",
-    "i18n:lang-labels": "node ./scripts/check-i18n-lang-labels.mjs"
+    "i18n:lang-labels": "node ./scripts/check-i18n-lang-labels.mjs",
+    "prerender": "vite build --ssr src/prerender/entry-server.tsx --outDir dist-ssr --emptyOutDir --logLevel warn && node ./scripts/prerender-docs.mjs"
   },
   "dependencies": {
     "@fingerprintjs/fingerprintjs": "^4.6.2",

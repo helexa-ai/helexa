@@ -1,3 +1,8 @@
+---
+title: Context limits
+description: How the numeric knobs governing usable context fit together.
+---
+
 # Context-window & token-limit settings
 
 How the numeric knobs that govern usable context fit together, what the

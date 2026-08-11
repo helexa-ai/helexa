@@ -9,6 +9,7 @@ import Mission from "./pages/Mission";
 import Privacy from "./pages/Privacy";
 import Chat from "./pages/Chat";
 import Images from "./pages/Images";
+import Docs from "./pages/Docs";
 import Landing from "./pages/Landing";
 import Auth from "./pages/auth/Auth";
 import Login from "./pages/auth/Login";
@@ -39,6 +40,11 @@ export default function App() {
               <Route path="/" element={<Landing />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/images" element={<Images />} />
+              {/* Documentation. The splat route lets the sidebar tree be
+                  arbitrarily deep without enumerating routes here — the
+                  page resolves the slug against the content tree. */}
+              <Route path="/docs" element={<Docs />} />
+              <Route path="/docs/*" element={<Docs />} />
               <Route path="/mission" element={<Mission />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/auth" element={<Auth />} />

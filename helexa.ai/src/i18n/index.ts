@@ -14,10 +14,12 @@ import enMission from "./resources/en/mission.json";
 import ruMission from "./resources/ru/mission.json";
 import enChat from "./resources/en/chat.json";
 import enImages from "./resources/en/images.json";
+import enDocs from "./resources/en/docs.json";
 import enAccount from "./resources/en/account.json";
 import enPrivacy from "./resources/en/privacy.json";
 import ruChat from "./resources/ru/chat.json";
 import ruImages from "./resources/ru/images.json";
+import ruDocs from "./resources/ru/docs.json";
 import ruAccount from "./resources/ru/account.json";
 import ruPrivacy from "./resources/ru/privacy.json";
 
@@ -26,6 +28,7 @@ import daCommon from "./resources/da/common.json";
 import daMission from "./resources/da/mission.json";
 import daChat from "./resources/da/chat.json";
 import daImages from "./resources/da/images.json";
+import daDocs from "./resources/da/docs.json";
 import daAccount from "./resources/da/account.json";
 import daPrivacy from "./resources/da/privacy.json";
 
@@ -33,6 +36,7 @@ import fiCommon from "./resources/fi/common.json";
 import fiMission from "./resources/fi/mission.json";
 import fiChat from "./resources/fi/chat.json";
 import fiImages from "./resources/fi/images.json";
+import fiDocs from "./resources/fi/docs.json";
 import fiAccount from "./resources/fi/account.json";
 import fiPrivacy from "./resources/fi/privacy.json";
 
@@ -40,6 +44,7 @@ import noCommon from "./resources/no/common.json";
 import noMission from "./resources/no/mission.json";
 import noChat from "./resources/no/chat.json";
 import noImages from "./resources/no/images.json";
+import noDocs from "./resources/no/docs.json";
 import noAccount from "./resources/no/account.json";
 import noPrivacy from "./resources/no/privacy.json";
 
@@ -47,6 +52,7 @@ import svCommon from "./resources/sv/common.json";
 import svMission from "./resources/sv/mission.json";
 import svChat from "./resources/sv/chat.json";
 import svImages from "./resources/sv/images.json";
+import svDocs from "./resources/sv/docs.json";
 import svAccount from "./resources/sv/account.json";
 import svPrivacy from "./resources/sv/privacy.json";
 
@@ -54,6 +60,7 @@ import bgCommon from "./resources/bg/common.json";
 import bgMission from "./resources/bg/mission.json";
 import bgChat from "./resources/bg/chat.json";
 import bgImages from "./resources/bg/images.json";
+import bgDocs from "./resources/bg/docs.json";
 import bgAccount from "./resources/bg/account.json";
 import bgPrivacy from "./resources/bg/privacy.json";
 
@@ -61,6 +68,7 @@ import etCommon from "./resources/et/common.json";
 import etMission from "./resources/et/mission.json";
 import etChat from "./resources/et/chat.json";
 import etImages from "./resources/et/images.json";
+import etDocs from "./resources/et/docs.json";
 import etAccount from "./resources/et/account.json";
 import etPrivacy from "./resources/et/privacy.json";
 
@@ -69,6 +77,7 @@ import swCommon from "./resources/sw/common.json";
 import swMission from "./resources/sw/mission.json";
 import swChat from "./resources/sw/chat.json";
 import swImages from "./resources/sw/images.json";
+import swDocs from "./resources/sw/docs.json";
 import swAccount from "./resources/sw/account.json";
 import swPrivacy from "./resources/sw/privacy.json";
 
@@ -76,6 +85,7 @@ import arCommon from "./resources/ar/common.json";
 import arMission from "./resources/ar/mission.json";
 import arChat from "./resources/ar/chat.json";
 import arImages from "./resources/ar/images.json";
+import arDocs from "./resources/ar/docs.json";
 import arAccount from "./resources/ar/account.json";
 import arPrivacy from "./resources/ar/privacy.json";
 
@@ -83,6 +93,7 @@ import faCommon from "./resources/fa/common.json";
 import faMission from "./resources/fa/mission.json";
 import faChat from "./resources/fa/chat.json";
 import faImages from "./resources/fa/images.json";
+import faDocs from "./resources/fa/docs.json";
 import faAccount from "./resources/fa/account.json";
 import faPrivacy from "./resources/fa/privacy.json";
 
@@ -90,6 +101,7 @@ import haCommon from "./resources/ha/common.json";
 import haMission from "./resources/ha/mission.json";
 import haChat from "./resources/ha/chat.json";
 import haImages from "./resources/ha/images.json";
+import haDocs from "./resources/ha/docs.json";
 import haAccount from "./resources/ha/account.json";
 import haPrivacy from "./resources/ha/privacy.json";
 
@@ -97,6 +109,7 @@ import amCommon from "./resources/am/common.json";
 import amMission from "./resources/am/mission.json";
 import amChat from "./resources/am/chat.json";
 import amImages from "./resources/am/images.json";
+import amDocs from "./resources/am/docs.json";
 import amAccount from "./resources/am/account.json";
 import amPrivacy from "./resources/am/privacy.json";
 
@@ -104,6 +117,7 @@ import yoCommon from "./resources/yo/common.json";
 import yoMission from "./resources/yo/mission.json";
 import yoChat from "./resources/yo/chat.json";
 import yoImages from "./resources/yo/images.json";
+import yoDocs from "./resources/yo/docs.json";
 import yoAccount from "./resources/yo/account.json";
 import yoPrivacy from "./resources/yo/privacy.json";
 
@@ -111,6 +125,7 @@ import zuCommon from "./resources/zu/common.json";
 import zuMission from "./resources/zu/mission.json";
 import zuChat from "./resources/zu/chat.json";
 import zuImages from "./resources/zu/images.json";
+import zuDocs from "./resources/zu/docs.json";
 import zuAccount from "./resources/zu/account.json";
 import zuPrivacy from "./resources/zu/privacy.json";
 
@@ -119,6 +134,7 @@ import maCommon from "./resources/ma/common.json";
 import maMission from "./resources/ma/mission.json";
 import maChat from "./resources/ma/chat.json";
 import maImages from "./resources/ma/images.json";
+import maDocs from "./resources/ma/docs.json";
 import maAccount from "./resources/ma/account.json";
 import maPrivacy from "./resources/ma/privacy.json";
 
@@ -127,6 +143,7 @@ import esCommon from "./resources/es/common.json";
 import esMission from "./resources/es/mission.json";
 import esChat from "./resources/es/chat.json";
 import esImages from "./resources/es/images.json";
+import esDocs from "./resources/es/docs.json";
 import esAccount from "./resources/es/account.json";
 import esPrivacy from "./resources/es/privacy.json";
 
@@ -134,6 +151,7 @@ import frCommon from "./resources/fr/common.json";
 import frMission from "./resources/fr/mission.json";
 import frChat from "./resources/fr/chat.json";
 import frImages from "./resources/fr/images.json";
+import frDocs from "./resources/fr/docs.json";
 import frAccount from "./resources/fr/account.json";
 import frPrivacy from "./resources/fr/privacy.json";
 
@@ -141,6 +159,7 @@ import deCommon from "./resources/de/common.json";
 import deMission from "./resources/de/mission.json";
 import deChat from "./resources/de/chat.json";
 import deImages from "./resources/de/images.json";
+import deDocs from "./resources/de/docs.json";
 import deAccount from "./resources/de/account.json";
 import dePrivacy from "./resources/de/privacy.json";
 
@@ -148,6 +167,7 @@ import elCommon from "./resources/el/common.json";
 import elMission from "./resources/el/mission.json";
 import elChat from "./resources/el/chat.json";
 import elImages from "./resources/el/images.json";
+import elDocs from "./resources/el/docs.json";
 import elAccount from "./resources/el/account.json";
 import elPrivacy from "./resources/el/privacy.json";
 
@@ -155,6 +175,7 @@ import itCommon from "./resources/it/common.json";
 import itMission from "./resources/it/mission.json";
 import itChat from "./resources/it/chat.json";
 import itImages from "./resources/it/images.json";
+import itDocs from "./resources/it/docs.json";
 import itAccount from "./resources/it/account.json";
 import itPrivacy from "./resources/it/privacy.json";
 
@@ -162,6 +183,7 @@ import heCommon from "./resources/he/common.json";
 import heMission from "./resources/he/mission.json";
 import heChat from "./resources/he/chat.json";
 import heImages from "./resources/he/images.json";
+import heDocs from "./resources/he/docs.json";
 import heAccount from "./resources/he/account.json";
 import hePrivacy from "./resources/he/privacy.json";
 
@@ -169,6 +191,7 @@ import ptCommon from "./resources/pt/common.json";
 import ptMission from "./resources/pt/mission.json";
 import ptChat from "./resources/pt/chat.json";
 import ptImages from "./resources/pt/images.json";
+import ptDocs from "./resources/pt/docs.json";
 import ptAccount from "./resources/pt/account.json";
 import ptPrivacy from "./resources/pt/privacy.json";
 
@@ -176,6 +199,7 @@ import roCommon from "./resources/ro/common.json";
 import roMission from "./resources/ro/mission.json";
 import roChat from "./resources/ro/chat.json";
 import roImages from "./resources/ro/images.json";
+import roDocs from "./resources/ro/docs.json";
 import roAccount from "./resources/ro/account.json";
 import roPrivacy from "./resources/ro/privacy.json";
 
@@ -183,6 +207,7 @@ import kaCommon from "./resources/ka/common.json";
 import kaMission from "./resources/ka/mission.json";
 import kaChat from "./resources/ka/chat.json";
 import kaImages from "./resources/ka/images.json";
+import kaDocs from "./resources/ka/docs.json";
 import kaAccount from "./resources/ka/account.json";
 import kaPrivacy from "./resources/ka/privacy.json";
 
@@ -190,6 +215,7 @@ import trCommon from "./resources/tr/common.json";
 import trMission from "./resources/tr/mission.json";
 import trChat from "./resources/tr/chat.json";
 import trImages from "./resources/tr/images.json";
+import trDocs from "./resources/tr/docs.json";
 import trAccount from "./resources/tr/account.json";
 import trPrivacy from "./resources/tr/privacy.json";
 
@@ -197,6 +223,7 @@ import plCommon from "./resources/pl/common.json";
 import plMission from "./resources/pl/mission.json";
 import plChat from "./resources/pl/chat.json";
 import plImages from "./resources/pl/images.json";
+import plDocs from "./resources/pl/docs.json";
 import plAccount from "./resources/pl/account.json";
 import plPrivacy from "./resources/pl/privacy.json";
 
@@ -204,6 +231,7 @@ import ukCommon from "./resources/uk/common.json";
 import ukMission from "./resources/uk/mission.json";
 import ukChat from "./resources/uk/chat.json";
 import ukImages from "./resources/uk/images.json";
+import ukDocs from "./resources/uk/docs.json";
 import ukAccount from "./resources/uk/account.json";
 import ukPrivacy from "./resources/uk/privacy.json";
 
@@ -211,6 +239,7 @@ import nlCommon from "./resources/nl/common.json";
 import nlMission from "./resources/nl/mission.json";
 import nlChat from "./resources/nl/chat.json";
 import nlImages from "./resources/nl/images.json";
+import nlDocs from "./resources/nl/docs.json";
 import nlAccount from "./resources/nl/account.json";
 import nlPrivacy from "./resources/nl/privacy.json";
 
@@ -218,6 +247,7 @@ import srCommon from "./resources/sr/common.json";
 import srMission from "./resources/sr/mission.json";
 import srChat from "./resources/sr/chat.json";
 import srImages from "./resources/sr/images.json";
+import srDocs from "./resources/sr/docs.json";
 import srAccount from "./resources/sr/account.json";
 import srPrivacy from "./resources/sr/privacy.json";
 
@@ -225,6 +255,7 @@ import kkCommon from "./resources/kk/common.json";
 import kkMission from "./resources/kk/mission.json";
 import kkChat from "./resources/kk/chat.json";
 import kkImages from "./resources/kk/images.json";
+import kkDocs from "./resources/kk/docs.json";
 import kkAccount from "./resources/kk/account.json";
 import kkPrivacy from "./resources/kk/privacy.json";
 
@@ -232,6 +263,7 @@ import uzCommon from "./resources/uz/common.json";
 import uzMission from "./resources/uz/mission.json";
 import uzChat from "./resources/uz/chat.json";
 import uzImages from "./resources/uz/images.json";
+import uzDocs from "./resources/uz/docs.json";
 import uzAccount from "./resources/uz/account.json";
 import uzPrivacy from "./resources/uz/privacy.json";
 
@@ -240,60 +272,70 @@ import caCommon from "./resources/ca/common.json";
 import caMission from "./resources/ca/mission.json";
 import caChat from "./resources/ca/chat.json";
 import caImages from "./resources/ca/images.json";
+import caDocs from "./resources/ca/docs.json";
 import caAccount from "./resources/ca/account.json";
 import caPrivacy from "./resources/ca/privacy.json";
 import csCommon from "./resources/cs/common.json";
 import csMission from "./resources/cs/mission.json";
 import csChat from "./resources/cs/chat.json";
 import csImages from "./resources/cs/images.json";
+import csDocs from "./resources/cs/docs.json";
 import csAccount from "./resources/cs/account.json";
 import csPrivacy from "./resources/cs/privacy.json";
 import gaCommon from "./resources/ga/common.json";
 import gaMission from "./resources/ga/mission.json";
 import gaChat from "./resources/ga/chat.json";
 import gaImages from "./resources/ga/images.json";
+import gaDocs from "./resources/ga/docs.json";
 import gaAccount from "./resources/ga/account.json";
 import gaPrivacy from "./resources/ga/privacy.json";
 import hrCommon from "./resources/hr/common.json";
 import hrMission from "./resources/hr/mission.json";
 import hrChat from "./resources/hr/chat.json";
 import hrImages from "./resources/hr/images.json";
+import hrDocs from "./resources/hr/docs.json";
 import hrAccount from "./resources/hr/account.json";
 import hrPrivacy from "./resources/hr/privacy.json";
 import huCommon from "./resources/hu/common.json";
 import huMission from "./resources/hu/mission.json";
 import huChat from "./resources/hu/chat.json";
 import huImages from "./resources/hu/images.json";
+import huDocs from "./resources/hu/docs.json";
 import huAccount from "./resources/hu/account.json";
 import huPrivacy from "./resources/hu/privacy.json";
 import ltCommon from "./resources/lt/common.json";
 import ltMission from "./resources/lt/mission.json";
 import ltChat from "./resources/lt/chat.json";
 import ltImages from "./resources/lt/images.json";
+import ltDocs from "./resources/lt/docs.json";
 import ltAccount from "./resources/lt/account.json";
 import ltPrivacy from "./resources/lt/privacy.json";
 import lvCommon from "./resources/lv/common.json";
 import lvMission from "./resources/lv/mission.json";
 import lvChat from "./resources/lv/chat.json";
 import lvImages from "./resources/lv/images.json";
+import lvDocs from "./resources/lv/docs.json";
 import lvAccount from "./resources/lv/account.json";
 import lvPrivacy from "./resources/lv/privacy.json";
 import mtCommon from "./resources/mt/common.json";
 import mtMission from "./resources/mt/mission.json";
 import mtChat from "./resources/mt/chat.json";
 import mtImages from "./resources/mt/images.json";
+import mtDocs from "./resources/mt/docs.json";
 import mtAccount from "./resources/mt/account.json";
 import mtPrivacy from "./resources/mt/privacy.json";
 import skCommon from "./resources/sk/common.json";
 import skMission from "./resources/sk/mission.json";
 import skChat from "./resources/sk/chat.json";
 import skImages from "./resources/sk/images.json";
+import skDocs from "./resources/sk/docs.json";
 import skAccount from "./resources/sk/account.json";
 import skPrivacy from "./resources/sk/privacy.json";
 import slCommon from "./resources/sl/common.json";
 import slMission from "./resources/sl/mission.json";
 import slChat from "./resources/sl/chat.json";
 import slImages from "./resources/sl/images.json";
+import slDocs from "./resources/sl/docs.json";
 import slAccount from "./resources/sl/account.json";
 import slPrivacy from "./resources/sl/privacy.json";
 
@@ -310,6 +352,7 @@ const resources: Resource = {
     mission: enMission,
     chat: enChat,
     images: enImages,
+    docs: enDocs,
     account: enAccount,
     privacy: enPrivacy,
   },
@@ -318,6 +361,7 @@ const resources: Resource = {
     mission: ruMission,
     chat: ruChat,
     images: ruImages,
+    docs: ruDocs,
     account: ruAccount,
     privacy: ruPrivacy,
   },
@@ -326,6 +370,7 @@ const resources: Resource = {
     mission: bgMission,
     chat: bgChat,
     images: bgImages,
+    docs: bgDocs,
     account: bgAccount,
     privacy: bgPrivacy,
   },
@@ -334,6 +379,7 @@ const resources: Resource = {
     mission: daMission,
     chat: daChat,
     images: daImages,
+    docs: daDocs,
     account: daAccount,
     privacy: daPrivacy,
   },
@@ -342,6 +388,7 @@ const resources: Resource = {
     mission: etMission,
     chat: etChat,
     images: etImages,
+    docs: etDocs,
     account: etAccount,
     privacy: etPrivacy,
   },
@@ -350,6 +397,7 @@ const resources: Resource = {
     mission: fiMission,
     chat: fiChat,
     images: fiImages,
+    docs: fiDocs,
     account: fiAccount,
     privacy: fiPrivacy,
   },
@@ -358,6 +406,7 @@ const resources: Resource = {
     mission: kkMission,
     chat: kkChat,
     images: kkImages,
+    docs: kkDocs,
     account: kkAccount,
     privacy: kkPrivacy,
   },
@@ -366,6 +415,7 @@ const resources: Resource = {
     mission: uzMission,
     chat: uzChat,
     images: uzImages,
+    docs: uzDocs,
     account: uzAccount,
     privacy: uzPrivacy,
   },
@@ -376,6 +426,7 @@ const resources: Resource = {
     mission: swMission,
     chat: swChat,
     images: swImages,
+    docs: swDocs,
     account: swAccount,
     privacy: swPrivacy,
   },
@@ -384,6 +435,7 @@ const resources: Resource = {
     mission: arMission,
     chat: arChat,
     images: arImages,
+    docs: arDocs,
     account: arAccount,
     privacy: arPrivacy,
   },
@@ -392,6 +444,7 @@ const resources: Resource = {
     mission: faMission,
     chat: faChat,
     images: faImages,
+    docs: faDocs,
     account: faAccount,
     privacy: faPrivacy,
   },
@@ -400,6 +453,7 @@ const resources: Resource = {
     mission: haMission,
     chat: haChat,
     images: haImages,
+    docs: haDocs,
     account: haAccount,
     privacy: haPrivacy,
   },
@@ -408,6 +462,7 @@ const resources: Resource = {
     mission: amMission,
     chat: amChat,
     images: amImages,
+    docs: amDocs,
     account: amAccount,
     privacy: amPrivacy,
   },
@@ -416,6 +471,7 @@ const resources: Resource = {
     mission: yoMission,
     chat: yoChat,
     images: yoImages,
+    docs: yoDocs,
     account: yoAccount,
     privacy: yoPrivacy,
   },
@@ -424,6 +480,7 @@ const resources: Resource = {
     mission: zuMission,
     chat: zuChat,
     images: zuImages,
+    docs: zuDocs,
     account: zuAccount,
     privacy: zuPrivacy,
   },
@@ -432,6 +489,7 @@ const resources: Resource = {
     mission: maMission,
     chat: maChat,
     images: maImages,
+    docs: maDocs,
     account: maAccount,
     privacy: maPrivacy,
   },
@@ -442,6 +500,7 @@ const resources: Resource = {
     mission: esMission,
     chat: esChat,
     images: esImages,
+    docs: esDocs,
     account: esAccount,
     privacy: esPrivacy,
   },
@@ -450,6 +509,7 @@ const resources: Resource = {
     mission: frMission,
     chat: frChat,
     images: frImages,
+    docs: frDocs,
     account: frAccount,
     privacy: frPrivacy,
   },
@@ -458,6 +518,7 @@ const resources: Resource = {
     mission: deMission,
     chat: deChat,
     images: deImages,
+    docs: deDocs,
     account: deAccount,
     privacy: dePrivacy,
   },
@@ -466,6 +527,7 @@ const resources: Resource = {
     mission: elMission,
     chat: elChat,
     images: elImages,
+    docs: elDocs,
     account: elAccount,
     privacy: elPrivacy,
   },
@@ -474,6 +536,7 @@ const resources: Resource = {
     mission: itMission,
     chat: itChat,
     images: itImages,
+    docs: itDocs,
     account: itAccount,
     privacy: itPrivacy,
   },
@@ -482,6 +545,7 @@ const resources: Resource = {
     mission: heMission,
     chat: heChat,
     images: heImages,
+    docs: heDocs,
     account: heAccount,
     privacy: hePrivacy,
   },
@@ -490,6 +554,7 @@ const resources: Resource = {
     mission: ptMission,
     chat: ptChat,
     images: ptImages,
+    docs: ptDocs,
     account: ptAccount,
     privacy: ptPrivacy,
   },
@@ -498,6 +563,7 @@ const resources: Resource = {
     mission: roMission,
     chat: roChat,
     images: roImages,
+    docs: roDocs,
     account: roAccount,
     privacy: roPrivacy,
   },
@@ -506,6 +572,7 @@ const resources: Resource = {
     mission: kaMission,
     chat: kaChat,
     images: kaImages,
+    docs: kaDocs,
     account: kaAccount,
     privacy: kaPrivacy,
   },
@@ -514,6 +581,7 @@ const resources: Resource = {
     mission: trMission,
     chat: trChat,
     images: trImages,
+    docs: trDocs,
     account: trAccount,
     privacy: trPrivacy,
   },
@@ -522,6 +590,7 @@ const resources: Resource = {
     mission: plMission,
     chat: plChat,
     images: plImages,
+    docs: plDocs,
     account: plAccount,
     privacy: plPrivacy,
   },
@@ -530,6 +599,7 @@ const resources: Resource = {
     mission: ukMission,
     chat: ukChat,
     images: ukImages,
+    docs: ukDocs,
     account: ukAccount,
     privacy: ukPrivacy,
   },
@@ -538,6 +608,7 @@ const resources: Resource = {
     mission: nlMission,
     chat: nlChat,
     images: nlImages,
+    docs: nlDocs,
     account: nlAccount,
     privacy: nlPrivacy,
   },
@@ -546,6 +617,7 @@ const resources: Resource = {
     mission: srMission,
     chat: srChat,
     images: srImages,
+    docs: srDocs,
     account: srAccount,
     privacy: srPrivacy,
   },
@@ -554,6 +626,7 @@ const resources: Resource = {
     mission: noMission,
     chat: noChat,
     images: noImages,
+    docs: noDocs,
     account: noAccount,
     privacy: noPrivacy,
   },
@@ -562,6 +635,7 @@ const resources: Resource = {
     mission: svMission,
     chat: svChat,
     images: svImages,
+    docs: svDocs,
     account: svAccount,
     privacy: svPrivacy,
   },
@@ -571,6 +645,7 @@ const resources: Resource = {
     mission: caMission,
     chat: caChat,
     images: caImages,
+    docs: caDocs,
     account: caAccount,
     privacy: caPrivacy,
   },
@@ -579,6 +654,7 @@ const resources: Resource = {
     mission: csMission,
     chat: csChat,
     images: csImages,
+    docs: csDocs,
     account: csAccount,
     privacy: csPrivacy,
   },
@@ -587,6 +663,7 @@ const resources: Resource = {
     mission: gaMission,
     chat: gaChat,
     images: gaImages,
+    docs: gaDocs,
     account: gaAccount,
     privacy: gaPrivacy,
   },
@@ -595,6 +672,7 @@ const resources: Resource = {
     mission: hrMission,
     chat: hrChat,
     images: hrImages,
+    docs: hrDocs,
     account: hrAccount,
     privacy: hrPrivacy,
   },
@@ -603,6 +681,7 @@ const resources: Resource = {
     mission: huMission,
     chat: huChat,
     images: huImages,
+    docs: huDocs,
     account: huAccount,
     privacy: huPrivacy,
   },
@@ -611,6 +690,7 @@ const resources: Resource = {
     mission: ltMission,
     chat: ltChat,
     images: ltImages,
+    docs: ltDocs,
     account: ltAccount,
     privacy: ltPrivacy,
   },
@@ -619,6 +699,7 @@ const resources: Resource = {
     mission: lvMission,
     chat: lvChat,
     images: lvImages,
+    docs: lvDocs,
     account: lvAccount,
     privacy: lvPrivacy,
   },
@@ -627,6 +708,7 @@ const resources: Resource = {
     mission: mtMission,
     chat: mtChat,
     images: mtImages,
+    docs: mtDocs,
     account: mtAccount,
     privacy: mtPrivacy,
   },
@@ -635,6 +717,7 @@ const resources: Resource = {
     mission: skMission,
     chat: skChat,
     images: skImages,
+    docs: skDocs,
     account: skAccount,
     privacy: skPrivacy,
   },
@@ -643,6 +726,7 @@ const resources: Resource = {
     mission: slMission,
     chat: slChat,
     images: slImages,
+    docs: slDocs,
     account: slAccount,
     privacy: slPrivacy,
   },

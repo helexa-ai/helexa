@@ -1884,3 +1884,182 @@ html[dir="rtl"] .hx-landing-composer textarea {
 .hx-image-empty {
     grid-column: 1 / -1;
 }
+
+/* -- Documentation (/docs) ------------------------------------------------ */
+
+/* Three columns on a wide screen: navigation, prose, page rail. The prose
+ * column is capped in `ch` rather than pixels — measure is a function of
+ * the font, and documentation is read rather than scanned. */
+.hx-docs {
+    max-width: 1400px;
+}
+
+.hx-docs-grid {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr) 13rem;
+    gap: 2.5rem;
+    align-items: start;
+    padding: 2rem 0 4rem;
+}
+
+.hx-docs-nav,
+.hx-docs-toc {
+    position: sticky;
+    top: 1.5rem;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    font-size: 0.9rem;
+}
+
+.hx-docs-nav ul,
+.hx-docs-toc ul {
+    list-style: none;
+    margin: 0 0 1.25rem;
+    padding: 0;
+}
+
+.hx-docs-section-label,
+.hx-docs-toc-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    opacity: 0.6;
+    margin-bottom: 0.5rem;
+}
+
+.hx-docs-link {
+    display: block;
+    padding: 0.3rem 0.6rem;
+    border-radius: 0.375rem;
+    text-decoration: none;
+    color: inherit;
+    opacity: 0.8;
+}
+
+.hx-docs-link:hover {
+    background: rgba(128, 128, 128, 0.12);
+    opacity: 1;
+}
+
+/* The current page is marked with a bar as well as weight, so the cue
+ * does not depend on colour alone. */
+.hx-docs-link.active {
+    font-weight: 600;
+    opacity: 1;
+    box-shadow: inset 2px 0 0 currentColor;
+}
+
+.hx-docs-body {
+    min-width: 0;
+    max-width: 78ch;
+}
+
+.hx-docs-toc a {
+    display: block;
+    padding: 0.2rem 0;
+    text-decoration: none;
+    color: inherit;
+    opacity: 0.75;
+}
+
+.hx-docs-toc a:hover {
+    opacity: 1;
+}
+
+.hx-docs-toc li.depth-3 a {
+    padding-left: 0.85rem;
+    font-size: 0.85em;
+}
+
+/* The anchor sits in the gutter and appears on hover, so headings read
+ * cleanly but stay linkable. */
+.hx-doc-heading {
+    scroll-margin-top: 5rem;
+    position: relative;
+}
+
+.hx-doc-anchor {
+    position: absolute;
+    left: -1.1rem;
+    opacity: 0;
+    text-decoration: none;
+    font-weight: 400;
+}
+
+.hx-doc-heading:hover .hx-doc-anchor,
+.hx-doc-anchor:focus-visible {
+    opacity: 0.45;
+}
+
+.hx-docs-untranslated {
+    padding: 0.6rem 0.9rem;
+    margin-bottom: 1.5rem;
+    border-radius: 0.5rem;
+    background: rgba(128, 128, 128, 0.12);
+    font-size: 0.9rem;
+}
+
+.hx-docs-rule {
+    margin: 3rem 0 1.5rem;
+    opacity: 0.15;
+}
+
+.hx-docs-pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.hx-docs-pager a {
+    display: flex;
+    flex-direction: column;
+    padding: 0.7rem 1rem;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+    border-radius: 0.5rem;
+    text-decoration: none;
+    color: inherit;
+    max-width: 48%;
+}
+
+.hx-docs-pager .hx-docs-next {
+    text-align: right;
+    margin-left: auto;
+}
+
+.hx-docs-pager span {
+    font-size: 0.75rem;
+    opacity: 0.6;
+}
+
+/* Below the wide breakpoint the page rail is the first thing to go: it
+ * is a convenience, and on a narrow screen it costs more width than it
+ * returns. The sidebar follows, moving above the prose rather than
+ * disappearing, so navigation stays reachable without a menu. */
+@media (max-width: 1200px) {
+    .hx-docs-grid {
+        grid-template-columns: 14rem minmax(0, 1fr);
+    }
+
+    .hx-docs-toc {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .hx-docs-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1.5rem;
+    }
+
+    .hx-docs-nav {
+        position: static;
+        max-height: none;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+    }
+
+    .hx-doc-anchor {
+        display: none;
+    }
+}
