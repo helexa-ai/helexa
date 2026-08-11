@@ -166,8 +166,12 @@ name = "benjy"
 endpoint = "http://benjy.internal:13131"
 ```
 
-Model placement profiles (VRAM requirements, quant, device minimums,
-pinning) live in `models.toml` — see `models.example.toml`.
+Model placement profiles — VRAM requirements, quant, device minimums,
+which neurons a model may run on, and what it may displace when one runs
+out of VRAM — live in `models.toml`. `models.example.toml` is the field
+reference; [`doc/placement.md`](doc/placement.md) explains how placement
+and displacement fit together, and is worth reading before you set
+`residency_priority` on anything.
 
 ## Run
 
