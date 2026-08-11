@@ -31,6 +31,21 @@ const DIST = path.join(ROOT, "dist");
 const SSR_ENTRY = path.join(ROOT, "dist-ssr", "entry-server.js");
 const SITE = process.env.SITE_ORIGIN || "https://helexa.ai";
 
+/**
+ * Whether search engines should index these pages.
+ *
+ * Off until the content has been written out and proofread. Prerendering
+ * still runs — readers who follow a link, and readers without
+ * JavaScript, get the real page — but the pages carry `noindex` and no
+ * sitemap is emitted. A sitemap is a stronger invitation to crawlers
+ * than any link in the interface, so leaving it on while the docs are
+ * unfinished would publicise them more effectively than the navigation
+ * entry that is deliberately hidden.
+ *
+ * Set DOCS_INDEXABLE=1 in the publish workflow to turn both on.
+ */
+const INDEXABLE = process.env.DOCS_INDEXABLE === "1";
+
 function fail(message) {
   console.error(`prerender: ${message}`);
   process.exit(1);
@@ -65,6 +80,7 @@ function withHead(html, title, description, canonical) {
       ? `<meta name="description" content="${escape(description)}">`
       : "",
     `<link rel="canonical" href="${escape(canonical)}">`,
+    INDEXABLE ? "" : '<meta name="robots" content="noindex, nofollow">',
   ]
     .filter(Boolean)
     .join("");
@@ -102,13 +118,18 @@ for (const slug of slugs()) {
 }
 
 // A sitemap so the pages are discoverable without relying on a crawler
-// walking the sidebar.
-const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+// walking the sidebar — only once they are meant to be found.
+if (INDEXABLE) {
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${written.map((w) => `  <url><loc>${escape(w.canonical)}</loc></url>`).join("\n")}
 </urlset>
 `;
-fs.mkdirSync(path.join(DIST, "docs"), { recursive: true });
-fs.writeFileSync(path.join(DIST, "docs", "sitemap.xml"), sitemap);
+  fs.mkdirSync(path.join(DIST, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(DIST, "docs", "sitemap.xml"), sitemap);
+}
 
-console.log(`prerender: wrote ${written.length} pages + sitemap`);
+console.log(
+  `prerender: wrote ${written.length} pages` +
+    (INDEXABLE ? " + sitemap" : " (noindex, no sitemap — DOCS_INDEXABLE=1 to publish)"),
+);
