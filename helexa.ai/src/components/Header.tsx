@@ -8,6 +8,7 @@ import { AUTONYM_MAP, type LanguageCode, isRtlLanguage } from "../i18n/languages
 import { getLanguageOptionsByUsage } from "../i18n/translation-priority";
 import { useAuth } from "../auth/context";
 import { accountApi } from "../api/account";
+import { isInternalHost } from "../lib/host";
 
 /**
  * Top navigation: brand, primary routes (chat at `/`, `/mission`), an
@@ -105,6 +106,22 @@ const Header: React.FC = () => {
             >
               {t("nav.images")}
             </NavLink>
+            {/* Documentation is reachable on every host — this only
+                decides whether it is advertised. The pages are still
+                being written and proofread, so the link is shown on the
+                internal mesh and in development, and anyone who knows
+                the URL can still open /docs on the public site. Remove
+                the condition once the content is ready to promote. */}
+            {isInternalHost() && (
+              <NavLink
+                to="/docs"
+                className={({ isActive }): string =>
+                  isActive ? "nav-link active" : "nav-link"
+                }
+              >
+                {t("nav.docs")}
+              </NavLink>
+            )}
             <NavLink
               to="/mission"
               className={({ isActive }): string =>

@@ -169,9 +169,13 @@ endpoint = "http://benjy.internal:13131"
 Model placement profiles — VRAM requirements, quant, device minimums,
 which neurons a model may run on, and what it may displace when one runs
 out of VRAM — live in `models.toml`. `models.example.toml` is the field
-reference; [`doc/placement.md`](doc/placement.md) explains how placement
-and displacement fit together, and is worth reading before you set
+reference; [placement & displacement](https://helexa.ai/docs/operating/placement)
+explains how the two fit together, and is worth reading before you set
 `residency_priority` on anything.
+
+Full documentation — using helexa and operating it — is at
+[helexa.ai/docs](https://helexa.ai/docs); the source lives under
+`helexa.ai/content/docs/`.
 
 ## Run
 

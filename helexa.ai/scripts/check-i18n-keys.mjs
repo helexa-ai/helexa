@@ -23,7 +23,15 @@ const ROOT = path.resolve(
 const RESOURCES_DIR = path.join(ROOT, "src", "i18n", "resources");
 
 // Namespaces to validate.
-const NAMESPACES = ["common", "mission", "chat", "images", "account", "privacy"];
+const NAMESPACES = [
+  "common",
+  "mission",
+  "chat",
+  "images",
+  "account",
+  "privacy",
+  "docs",
+];
 
 // Languages to validate should track SUPPORTED_LANGUAGES in src/i18n/languages.ts.
 // NOTE: This list is intentionally narrower than SUPPORTED_LANGUAGES and does not

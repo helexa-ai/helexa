@@ -1,0 +1,23 @@
+{
+  "nav": {
+    "label": "Documentation"
+  },
+  "toc": {
+    "label": "On this page"
+  },
+  "pager": {
+    "label": "Page navigation",
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "sections": {
+    "using": "Using helexa",
+    "operating": "Operating helexa"
+  },
+  "untranslated": "This page has not been translated into your language yet, so it is shown in English.",
+  "notFound": {
+    "title": "Page not found",
+    "body": "That documentation page does not exist. It may have been renamed.",
+    "back": "Back to the documentation"
+  }
+}

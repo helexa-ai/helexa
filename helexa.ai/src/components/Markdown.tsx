@@ -128,10 +128,21 @@ function Markdown({
   caret = false,
   highlight = true,
   className,
+  components,
 }: {
   content: string;
   /** Draw a caret at the end of the text (the message is still arriving). */
   caret?: boolean;
+  /**
+   * Element overrides merged over the defaults.
+   *
+   * Exists for first-party prose — documentation — which needs different
+   * handling from model output: its links are internal and should
+   * navigate in-app rather than open a tab, and its headings need ids to
+   * be linkable. The defaults stay tuned for untrusted model output,
+   * which is the common case and the one where getting it wrong matters.
+   */
+  components?: Components;
   /**
    * Highlight code blocks. Pass `false` while the message is streaming:
    * every delta re-parses the whole document, and re-tokenising each
@@ -158,7 +169,7 @@ function Markdown({
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         rehypePlugins={highlight ? plugins : undefined}
-        components={COMPONENTS}
+        components={components ? { ...COMPONENTS, ...components } : COMPONENTS}
       >
         {/* Trim first: a trailing newline would make the caret its own
           * paragraph, which flickers a blank line in on every delta. */}

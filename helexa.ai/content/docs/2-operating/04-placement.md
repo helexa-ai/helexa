@@ -1,3 +1,8 @@
+---
+title: Placement & displacement
+description: Which neuron a model lands on, and what it may push aside to get there.
+---
+
 # Model placement & displacement
 
 Which neuron a model lands on, and what it is allowed to push aside to

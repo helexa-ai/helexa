@@ -57,7 +57,8 @@
 #                        priority defaults to 1000, preserving the
 #                        immunity pinned_on used to imply on its own.
 #
-#                        See doc/placement.md for worked examples.
+#                        See https://helexa.ai/docs/operating/placement for
+#                        worked examples.
 #   source             - optional source scheme ("huggingface", "helexa",
 #                        operator mirror tag). When set, cortex forwards
 #                        the load to neuron as `scheme:id` so the daemon
