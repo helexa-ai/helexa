@@ -19,8 +19,30 @@
 #   min_device_vram_mb - each device must meet this VRAM floor for the
 #                        neuron to be considered "feasible".
 #   pinned_on          - optional whitelist of neuron names. Non-empty
-#                        narrows feasibility to just those neurons and
-#                        protects the model from LRU eviction there.
+#                        narrows feasibility to just those neurons.
+#                        Affinity only: it says where the model may run,
+#                        not whether it may be evicted once there.
+#   residency_priority - how strongly the model holds its place when a
+#                        node runs out of VRAM. A model may displace a
+#                        resident one only if it ranks STRICTLY higher,
+#                        so equal-ranked models never evict each other.
+#                        Default 100; a profile with pinned_on and no
+#                        explicit priority defaults to 1000, preserving
+#                        the eviction immunity pinned_on used to imply
+#                        on its own.
+#
+#                        This is what lets a fleet say "the image model
+#                        may take the mid tier's node, but never the
+#                        flagship's, while the frontier tier may take
+#                        the flagship's" — three rules that a single
+#                        pinned/unpinned flag cannot express, because
+#                        it can only protect a model from everything or
+#                        from nothing.
+#
+#                        Priority decides who MAY be displaced, never
+#                        whether a displacement is NEEDED: a node with
+#                        room for both evicts nothing, however the two
+#                        rank.
 #   source             - optional source scheme ("huggingface", "helexa",
 #                        operator mirror tag). When set, cortex forwards
 #                        the load to neuron as `scheme:id` so the daemon
@@ -49,6 +71,9 @@ vram_mb = 54000
 min_devices = 2
 min_device_vram_mb = 24000
 pinned_on = ["your-multi-gpu-neuron"]
+# Ranked above the everyday models so a smaller one cannot cold-swap the
+# flagship out, but below anything you want to be able to displace it.
+residency_priority = 300
 # Token budget: context wall, compaction trigger (input headroom), max output.
 limit.context = 32768
 limit.input = 28672

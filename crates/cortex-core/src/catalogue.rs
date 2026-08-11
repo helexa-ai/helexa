@@ -22,9 +22,28 @@ pub struct ModelProfile {
     /// Minimum VRAM per device in MB.
     #[serde(default)]
     pub min_device_vram_mb: Option<u64>,
-    /// Neurons where this model should never be evicted.
+    /// Neurons this model is allowed to run on. Empty = anywhere its
+    /// device constraints are satisfied.
+    ///
+    /// This is an *affinity* constraint — where the model may be placed.
+    /// It says nothing about whether the model may be evicted once
+    /// resident; that is [`ModelProfile::residency_priority`]. The two
+    /// were a single field once, which made "run only here" and "never
+    /// evict here" impossible to ask for separately.
     #[serde(default)]
     pub pinned_on: Vec<String>,
+    /// How strongly this model holds its place when a node runs out of
+    /// VRAM. A model may displace a resident one only if it ranks
+    /// strictly higher, so equal-ranked models never evict each other.
+    ///
+    /// Unset means [`DEFAULT_RESIDENCY_PRIORITY`], except for profiles
+    /// carrying `pinned_on`, which default to
+    /// [`PINNED_RESIDENCY_PRIORITY`] — before these were separate
+    /// fields, `pinned_on` implied immunity from eviction, and a
+    /// catalogue written against that meaning must not silently start
+    /// allowing its flagship to be evicted.
+    #[serde(default)]
+    pub residency_priority: Option<u32>,
     /// Source scheme this profile's weights come from. When set, the
     /// router prefixes `id` with `scheme:` before forwarding the load
     /// request to neuron, ensuring the daemon fetches from the right
@@ -56,6 +75,18 @@ pub struct ModelProfile {
 fn default_min_devices() -> u32 {
     1
 }
+
+/// Residency priority for a model that declares none. Deliberately not
+/// zero: an operator needs room to rank something *below* the ordinary
+/// case (a scratch or experimental model that should yield to anything)
+/// without editing every other entry.
+pub const DEFAULT_RESIDENCY_PRIORITY: u32 = 100;
+
+/// Residency priority assumed for a profile that carries `pinned_on` but
+/// no explicit priority. High enough that nothing with a default
+/// priority can evict it, preserving the immunity `pinned_on` used to
+/// grant on its own.
+pub const PINNED_RESIDENCY_PRIORITY: u32 = 1000;
 
 /// The full model catalogue.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -95,11 +126,39 @@ impl ModelCatalogue {
         }
     }
 
-    /// Check if a model is pinned on a given neuron.
-    pub fn is_pinned(&self, model_id: &str, neuron_name: &str) -> bool {
-        self.models
-            .iter()
-            .any(|p| p.id == model_id && p.pinned_on.contains(&neuron_name.to_string()))
+    /// How strongly `model_id` holds its place. Models absent from the
+    /// catalogue rank at the default — a model can be resident on a
+    /// neuron without a profile (loaded directly, or left over from an
+    /// earlier catalogue), and treating those as unevictable would let
+    /// an unlisted model wedge a node permanently.
+    pub fn residency_priority(&self, model_id: &str) -> u32 {
+        self.get(model_id)
+            .map(|p| {
+                p.residency_priority.unwrap_or({
+                    if p.pinned_on.is_empty() {
+                        DEFAULT_RESIDENCY_PRIORITY
+                    } else {
+                        PINNED_RESIDENCY_PRIORITY
+                    }
+                })
+            })
+            .unwrap_or(DEFAULT_RESIDENCY_PRIORITY)
+    }
+
+    /// May `incoming` take VRAM from `resident` when a node cannot hold
+    /// both?
+    ///
+    /// Strictly-greater, so equal-ranked models never displace one
+    /// another. That matters more than it looks: it stops two models of
+    /// the same class thrashing a node, each evicting the other on
+    /// alternate requests, which is the failure mode a boolean
+    /// pinned/unpinned split cannot express at all.
+    ///
+    /// This governs only *whether* a displacement is permitted, never
+    /// whether one is needed. A node with room for both evicts nothing,
+    /// however the two rank.
+    pub fn may_displace(&self, incoming_id: &str, resident_id: &str) -> bool {
+        self.residency_priority(incoming_id) > self.residency_priority(resident_id)
     }
 
     /// Find a profile by model id.
@@ -167,6 +226,7 @@ mod tests {
             min_devices: 2,
             min_device_vram_mb: Some(24_000),
             pinned_on: vec![],
+            residency_priority: None,
             source: None,
             limit: None,
             cost: None,
@@ -210,6 +270,137 @@ mod tests {
         p.min_device_vram_mb = None;
         let devices = [device(0, 1_000), device(1, 1_000)];
         assert!(p.is_feasible_on("anywhere", &devices));
+    }
+
+    /// A catalogue shaped like a real fleet: a flagship confined to one
+    /// big node, a frontier model that may take that node from it, an
+    /// image generator that may take the mid tier's node but never the
+    /// flagship's, and the mid tier itself.
+    fn tiered_catalogue() -> ModelCatalogue {
+        toml::from_str(
+            r#"
+[[models]]
+id = "flagship"
+harness = "candle"
+pinned_on = ["big-node"]
+residency_priority = 300
+
+[[models]]
+id = "frontier"
+harness = "candle"
+residency_priority = 400
+
+[[models]]
+id = "image"
+harness = "candle"
+residency_priority = 200
+
+[[models]]
+id = "mid"
+harness = "candle"
+residency_priority = 100
+"#,
+        )
+        .expect("parse tiered catalogue")
+    }
+
+    #[test]
+    fn image_generation_displaces_the_mid_tier() {
+        assert!(tiered_catalogue().may_displace("image", "mid"));
+    }
+
+    #[test]
+    fn image_generation_never_displaces_the_flagship() {
+        // The image generator's device constraints alone would let it
+        // land on the flagship's node, so this is the case priority
+        // exists to prevent -- not a hypothetical one.
+        assert!(!tiered_catalogue().may_displace("image", "flagship"));
+    }
+
+    #[test]
+    fn the_frontier_tier_displaces_the_flagship() {
+        // The requirement a boolean pin cannot express: the flagship is
+        // protected from one model and not from another.
+        assert!(tiered_catalogue().may_displace("frontier", "flagship"));
+    }
+
+    #[test]
+    fn equal_rank_never_displaces_either_way() {
+        let cat = tiered_catalogue();
+        assert!(!cat.may_displace("mid", "mid"));
+        assert!(!cat.may_displace("flagship", "flagship"));
+    }
+
+    #[test]
+    fn a_lower_tier_cannot_displace_a_higher_one() {
+        assert!(!tiered_catalogue().may_displace("mid", "image"));
+    }
+
+    #[test]
+    fn pinned_on_alone_still_protects_a_catalogue_written_before_priorities() {
+        // `pinned_on` used to mean "never evict here". A catalogue that
+        // predates the split says nothing about priority, and must not
+        // silently start allowing its flagship to be evicted.
+        let cat: ModelCatalogue = toml::from_str(
+            r#"
+[[models]]
+id = "flagship"
+harness = "candle"
+pinned_on = ["big-node"]
+
+[[models]]
+id = "ordinary"
+harness = "candle"
+"#,
+        )
+        .expect("parse legacy catalogue");
+        assert!(!cat.may_displace("ordinary", "flagship"));
+        assert!(cat.may_displace("flagship", "ordinary"));
+    }
+
+    #[test]
+    fn an_unlisted_resident_is_displaceable_by_a_ranked_model() {
+        // A model can be resident without a profile. Treating it as
+        // unevictable would let an unlisted model wedge a node forever.
+        let cat = tiered_catalogue();
+        assert_eq!(
+            cat.residency_priority("never-heard-of-it"),
+            DEFAULT_RESIDENCY_PRIORITY
+        );
+        assert!(cat.may_displace("image", "never-heard-of-it"));
+    }
+
+    #[test]
+    fn affinity_and_immunity_are_independently_expressible() {
+        // The whole point of the split: confine a model to a node
+        // without protecting it there, and protect one without
+        // confining it anywhere.
+        let cat: ModelCatalogue = toml::from_str(
+            r#"
+[[models]]
+id = "confined-but-evictable"
+harness = "candle"
+pinned_on = ["big-node"]
+residency_priority = 50
+
+[[models]]
+id = "roaming-but-protected"
+harness = "candle"
+residency_priority = 900
+"#,
+        )
+        .expect("parse catalogue");
+        let devices = [device(0, 32_000)];
+
+        let confined = cat.get("confined-but-evictable").unwrap();
+        assert!(confined.is_feasible_on("big-node", &devices));
+        assert!(!confined.is_feasible_on("other-node", &devices));
+
+        let roaming = cat.get("roaming-but-protected").unwrap();
+        assert!(roaming.is_feasible_on("other-node", &devices));
+
+        assert!(cat.may_displace("roaming-but-protected", "confined-but-evictable"));
+        assert!(!cat.may_displace("confined-but-evictable", "roaming-but-protected"));
     }
 
     #[test]

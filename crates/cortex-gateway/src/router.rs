@@ -254,7 +254,8 @@ pub async fn resolve(
         // free enough was ranked below one that can).
         if !fits_free {
             for _ in 0..3 {
-                match crate::evictor::evict_lru_on_node(fleet, &node_name).await {
+                match crate::evictor::evict_lru_on_node(fleet, &node_name, Some(&profile.id)).await
+                {
                     Ok(Some(evicted)) => {
                         tracing::info!(
                             model = %profile.id,
@@ -298,9 +299,14 @@ async fn node_fits_free(fleet: &Arc<CortexState>, node_name: &str, profile: &Mod
 /// profile. Preference order (#203):
 ///   1. A neuron from `profile.pinned_on` that is healthy + feasible.
 ///   2. One whose live free VRAM already fits the profile.
-///   3. One whose *evictable* (loaded, not catalogue-pinned) models
-///      plus free VRAM could fit it after a cold-swap eviction.
+///   3. One whose *displaceable* models — loaded, and outranked by this
+///      profile's residency priority — plus free VRAM could fit it
+///      after a cold-swap eviction.
 ///   4. Any healthy + feasible neuron, stable by name.
+///
+/// Free-fit outranks evict-fit, so a model never displaces anything
+/// while a node with room exists. Priority decides who may be
+/// displaced, never whether a displacement is needed.
 ///
 /// Returns `(name, endpoint, fits_free)` — `fits_free = false` tells
 /// the caller a cold-swap eviction is needed before loading.
@@ -329,14 +335,16 @@ async fn pick_feasible_neuron(
             .unwrap_or(0);
         let need = profile.vram_mb.unwrap_or(0);
         let fits_free = max_free >= need;
-        // Evictable estimate: free + the VRAM of loaded models that the
-        // catalogue does not pin to this node.
+        // Evictable estimate: free + the VRAM of loaded models this
+        // profile is permitted to displace. The predicate must be the
+        // same one the evictor applies, or a node ranks as able to make
+        // room and then declines to make any.
         let evictable: u64 = node
             .models
             .values()
             .filter(|m| {
                 matches!(m.status, cortex_core::node::ModelStatus::Loaded)
-                    && !fleet.catalogue.is_pinned(&m.id, &node.name)
+                    && fleet.catalogue.may_displace(&profile.id, &m.id)
             })
             // neuron reports vram_used_mb: null today; fall back to the
             // catalogue's declared footprint so the evictable estimate
@@ -632,6 +640,7 @@ mod tests {
             min_devices: 1,
             min_device_vram_mb: None,
             pinned_on: vec![],
+            residency_priority: None,
             source: source.map(String::from),
             limit: None,
             cost: None,

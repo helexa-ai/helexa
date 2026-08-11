@@ -56,6 +56,74 @@ async fn spawn_eviction_mock() -> (String, Arc<tokio::sync::Mutex<Vec<String>>>)
     (base_url, unloaded)
 }
 
+/// A fleet whose catalogue ranks models, so the displacement rules are
+/// exercised rather than defaulted. Writes the catalogue to a temp file
+/// because `CortexState` loads it from a path.
+fn make_fleet_with_catalogue(
+    endpoint: &str,
+    catalogue_toml: &str,
+    tag: &str,
+) -> (Arc<CortexState>, std::path::PathBuf) {
+    let path = std::env::temp_dir().join(format!("cortex-evict-catalogue-{tag}.toml"));
+    std::fs::write(&path, catalogue_toml).expect("write test catalogue");
+    let config = GatewayConfig {
+        gateway: GatewaySettings {
+            listen: "127.0.0.1:0".into(),
+            metrics_listen: "127.0.0.1:0".into(),
+        },
+        eviction: EvictionSettings {
+            strategy: EvictionStrategy::Lru,
+            defrag_after_cycles: 0,
+        },
+        neurons: vec![NeuronEndpoint {
+            name: "gpu-node".into(),
+            endpoint: endpoint.to_string(),
+        }],
+        models_config: path.to_string_lossy().into_owned(),
+        entitlements: Default::default(),
+        upstream: Default::default(),
+    };
+    (Arc::new(CortexState::from_config(&config)), path)
+}
+
+fn loaded(id: &str, age_secs: i64) -> ModelEntry {
+    ModelEntry {
+        id: id.into(),
+        status: ModelStatus::Loaded,
+        last_accessed: Some(Utc::now() - chrono::Duration::seconds(age_secs)),
+        vram_estimate_mb: Some(8000),
+        capabilities: Vec::new(),
+        tool_call: false,
+        reasoning: false,
+        limit: None,
+        servable: None,
+    }
+}
+
+/// The fleet policy under test: image generation outranks the mid tier
+/// but not the flagship; the frontier tier outranks the flagship.
+const TIERED: &str = r#"
+[[models]]
+id = "flagship"
+harness = "candle"
+residency_priority = 300
+
+[[models]]
+id = "frontier"
+harness = "candle"
+residency_priority = 400
+
+[[models]]
+id = "image"
+harness = "candle"
+residency_priority = 200
+
+[[models]]
+id = "mid"
+harness = "candle"
+residency_priority = 100
+"#;
+
 fn make_fleet(endpoint: &str, defrag_after: u32) -> Arc<CortexState> {
     let config = GatewayConfig {
         gateway: GatewaySettings {
@@ -116,7 +184,7 @@ async fn test_evict_lru_model() {
         );
     }
 
-    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node")
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", None)
         .await
         .expect("eviction should succeed");
 
@@ -149,7 +217,7 @@ async fn test_eviction_nothing_to_evict() {
         nodes.get_mut("gpu-node").unwrap().healthy = true;
     }
 
-    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node")
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", None)
         .await
         .expect("eviction should succeed");
 
@@ -184,7 +252,7 @@ async fn test_eviction_increments_lifecycle_cycles() {
         );
     }
 
-    cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node")
+    cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", None)
         .await
         .expect("eviction should succeed");
 
@@ -230,4 +298,104 @@ async fn test_last_accessed_updated_on_request() {
             .last_accessed
             .is_some()
     );
+}
+
+/// Image generation must take the mid tier's node when it needs it —
+/// this is existing fleet behaviour and the change must preserve it.
+#[tokio::test]
+async fn image_generation_evicts_the_mid_tier() {
+    let (mock_url, unloaded) = spawn_eviction_mock().await;
+    let (fleet, path) = make_fleet_with_catalogue(&mock_url, TIERED, "image-takes-mid");
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("gpu-node").unwrap();
+        node.healthy = true;
+        node.models.insert("mid".into(), loaded("mid", 60));
+    }
+
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", Some("image"))
+        .await
+        .expect("eviction should succeed");
+
+    assert_eq!(evicted, Some("mid".to_string()));
+    assert_eq!(unloaded.lock().await.as_slice(), ["mid"]);
+    std::fs::remove_file(path).ok();
+}
+
+/// Image generation must never take the flagship's node. Its device
+/// constraints alone would let it land there, so nothing but priority
+/// stops this.
+#[tokio::test]
+async fn image_generation_cannot_evict_the_flagship() {
+    let (mock_url, unloaded) = spawn_eviction_mock().await;
+    let (fleet, path) = make_fleet_with_catalogue(&mock_url, TIERED, "image-spares-flagship");
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("gpu-node").unwrap();
+        node.healthy = true;
+        node.models
+            .insert("flagship".into(), loaded("flagship", 9999));
+    }
+
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", Some("image"))
+        .await
+        .expect("eviction should succeed");
+
+    assert_eq!(
+        evicted, None,
+        "the flagship outranks image generation, however stale it is"
+    );
+    assert!(unloaded.lock().await.is_empty());
+    std::fs::remove_file(path).ok();
+}
+
+/// The frontier tier may cold-swap the flagship off its node.
+#[tokio::test]
+async fn the_frontier_tier_evicts_the_flagship() {
+    let (mock_url, unloaded) = spawn_eviction_mock().await;
+    let (fleet, path) = make_fleet_with_catalogue(&mock_url, TIERED, "frontier-takes-flagship");
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("gpu-node").unwrap();
+        node.healthy = true;
+        node.models
+            .insert("flagship".into(), loaded("flagship", 10));
+    }
+
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", Some("frontier"))
+        .await
+        .expect("eviction should succeed");
+
+    assert_eq!(evicted, Some("flagship".to_string()));
+    assert_eq!(unloaded.lock().await.as_slice(), ["flagship"]);
+    std::fs::remove_file(path).ok();
+}
+
+/// LRU still decides *which* victim, but only among the models the
+/// incoming one outranks. Here the flagship is by far the stalest, so a
+/// purely age-ordered evictor would take it.
+#[tokio::test]
+async fn lru_picks_the_oldest_displaceable_model_not_the_oldest_model() {
+    let (mock_url, unloaded) = spawn_eviction_mock().await;
+    let (fleet, path) = make_fleet_with_catalogue(&mock_url, TIERED, "lru-within-rank");
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("gpu-node").unwrap();
+        node.healthy = true;
+        node.models
+            .insert("flagship".into(), loaded("flagship", 9999));
+        node.models.insert("mid".into(), loaded("mid", 60));
+    }
+
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", Some("image"))
+        .await
+        .expect("eviction should succeed");
+
+    assert_eq!(evicted, Some("mid".to_string()));
+    assert_eq!(unloaded.lock().await.as_slice(), ["mid"]);
+    std::fs::remove_file(path).ok();
 }

@@ -17,11 +17,23 @@ pub async fn eviction_loop(fleet: Arc<CortexState>) {
     }
 }
 
-/// Evict the least-recently-used model on a given node.
-/// Returns the model ID that was evicted, or None if nothing could be evicted.
+/// Evict the least-recently-used model on a given node that `incoming`
+/// is permitted to displace.
+///
+/// `incoming` is the model the caller is trying to make room for. It is
+/// load-bearing, not diagnostic: whether a displacement is allowed is a
+/// question about the *pair*, so an evictor that only knows the victim
+/// cannot answer it. Passing `None` means "no particular model" and
+/// permits displacing anything at or below the default priority, which
+/// is the right reading for maintenance-driven eviction rather than a
+/// cold-load making room for itself.
+///
+/// Returns the model ID that was evicted, or None when nothing on the
+/// node may be displaced.
 pub async fn evict_lru_on_node(
     fleet: &CortexState,
     node_name: &str,
+    incoming: Option<&str>,
 ) -> anyhow::Result<Option<String>> {
     let (neuron_endpoint, candidate) = {
         let nodes = fleet.nodes.read().await;
@@ -29,13 +41,18 @@ pub async fn evict_lru_on_node(
             anyhow::bail!("node '{node_name}' not found");
         };
 
-        // Find the loaded model with the oldest last_accessed,
-        // excluding models pinned on this neuron (from catalogue).
+        // Oldest first, among the models this incoming model outranks.
         let candidate = node
             .models
             .values()
             .filter(|m| m.status == ModelStatus::Loaded)
-            .filter(|m| !fleet.catalogue.is_pinned(&m.id, node_name))
+            .filter(|m| match incoming {
+                Some(inc) => fleet.catalogue.may_displace(inc, &m.id),
+                None => {
+                    fleet.catalogue.residency_priority(&m.id)
+                        <= cortex_core::catalogue::DEFAULT_RESIDENCY_PRIORITY
+                }
+            })
             .min_by_key(|m| m.last_accessed)
             .map(|m| m.id.clone());
 
@@ -43,7 +60,11 @@ pub async fn evict_lru_on_node(
     };
 
     let Some(model_id) = candidate else {
-        tracing::info!(node = node_name, "no evictable models found");
+        tracing::info!(
+            node = node_name,
+            incoming = incoming.unwrap_or("(none)"),
+            "no displaceable models found"
+        );
         return Ok(None);
     };
 
