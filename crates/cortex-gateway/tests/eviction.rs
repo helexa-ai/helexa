@@ -100,8 +100,10 @@ fn loaded(id: &str, age_secs: i64) -> ModelEntry {
     }
 }
 
-/// The fleet policy under test: image generation outranks the mid tier
-/// but not the flagship; the frontier tier outranks the flagship.
+/// The fleet policy under test. Two residency classes: image generation
+/// and the mid tier share a node and take turns on it; the flagship and
+/// the frontier model share a bigger one and take turns on that. Nothing
+/// in the everyday class may touch the big-node class.
 const TIERED: &str = r#"
 [[models]]
 id = "flagship"
@@ -111,7 +113,7 @@ residency_priority = 300
 [[models]]
 id = "frontier"
 harness = "candle"
-residency_priority = 400
+residency_priority = 300
 
 [[models]]
 id = "image"
@@ -121,7 +123,7 @@ residency_priority = 200
 [[models]]
 id = "mid"
 harness = "candle"
-residency_priority = 100
+residency_priority = 200
 "#;
 
 fn make_fleet(endpoint: &str, defrag_after: u32) -> Arc<CortexState> {
@@ -397,5 +399,31 @@ async fn lru_picks_the_oldest_displaceable_model_not_the_oldest_model() {
 
     assert_eq!(evicted, Some("mid".to_string()));
     assert_eq!(unloaded.lock().await.as_slice(), ["mid"]);
+    std::fs::remove_file(path).ok();
+}
+
+/// The other half of the cold-swap: after an image generation has taken
+/// the node, the next text request must be able to take it back. A
+/// strict priority order would let whichever model arrived first hold
+/// the node forever, which looks to a user like the text tier vanishing
+/// once somebody generated an image.
+#[tokio::test]
+async fn the_mid_tier_takes_its_node_back_from_image_generation() {
+    let (mock_url, unloaded) = spawn_eviction_mock().await;
+    let (fleet, path) = make_fleet_with_catalogue(&mock_url, TIERED, "mid-swaps-back");
+
+    {
+        let mut nodes = fleet.nodes.write().await;
+        let node = nodes.get_mut("gpu-node").unwrap();
+        node.healthy = true;
+        node.models.insert("image".into(), loaded("image", 30));
+    }
+
+    let evicted = cortex_gateway::evictor::evict_lru_on_node(&fleet, "gpu-node", Some("mid"))
+        .await
+        .expect("eviction should succeed");
+
+    assert_eq!(evicted, Some("image".to_string()));
+    assert_eq!(unloaded.lock().await.as_slice(), ["image"]);
     std::fs::remove_file(path).ok();
 }

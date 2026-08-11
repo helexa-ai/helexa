@@ -32,9 +32,11 @@ pub struct ModelProfile {
     /// evict here" impossible to ask for separately.
     #[serde(default)]
     pub pinned_on: Vec<String>,
-    /// How strongly this model holds its place when a node runs out of
-    /// VRAM. A model may displace a resident one only if it ranks
-    /// strictly higher, so equal-ranked models never evict each other.
+    /// Which residency class this model belongs to when a node runs out
+    /// of VRAM. A model may displace residents of its own class or
+    /// below, and none above it — so models that should take turns on a
+    /// node share a number, and a model is protected by being ranked
+    /// *above* whatever must not evict it.
     ///
     /// Unset means [`DEFAULT_RESIDENCY_PRIORITY`], except for profiles
     /// carrying `pinned_on`, which default to
@@ -148,17 +150,27 @@ impl ModelCatalogue {
     /// May `incoming` take VRAM from `resident` when a node cannot hold
     /// both?
     ///
-    /// Strictly-greater, so equal-ranked models never displace one
-    /// another. That matters more than it looks: it stops two models of
-    /// the same class thrashing a node, each evicting the other on
-    /// alternate requests, which is the failure mode a boolean
-    /// pinned/unpinned split cannot express at all.
+    /// Greater-or-equal, which makes the priority a *class* rather than
+    /// a strict order: a model may displace anything in its own class or
+    /// below, and nothing above it.
+    ///
+    /// Equal rank has to permit displacement, because mutual
+    /// displacement is what cold-swap *is*. Two models that share a node
+    /// and take turns on it — an image generator and a mid-tier text
+    /// model, or two generations of the same flagship being compared —
+    /// each need to evict the other on demand. Under a strict
+    /// greater-than the first one to arrive would win permanently and
+    /// the other could never come back, which reads as "the model
+    /// vanished after we generated an image".
+    ///
+    /// Protection therefore comes from ranking a model *above* its
+    /// would-be evictor, not from ranking every model differently.
     ///
     /// This governs only *whether* a displacement is permitted, never
     /// whether one is needed. A node with room for both evicts nothing,
     /// however the two rank.
     pub fn may_displace(&self, incoming_id: &str, resident_id: &str) -> bool {
-        self.residency_priority(incoming_id) > self.residency_priority(resident_id)
+        self.residency_priority(incoming_id) >= self.residency_priority(resident_id)
     }
 
     /// Find a profile by model id.
@@ -272,10 +284,12 @@ mod tests {
         assert!(p.is_feasible_on("anywhere", &devices));
     }
 
-    /// A catalogue shaped like a real fleet: a flagship confined to one
-    /// big node, a frontier model that may take that node from it, an
-    /// image generator that may take the mid tier's node but never the
-    /// flagship's, and the mid tier itself.
+    /// A catalogue shaped like a real fleet. Two residency classes: the
+    /// big-node class holds a flagship and a frontier model that take
+    /// turns on the one machine large enough for either; the everyday
+    /// class holds an image generator and a mid-tier text model that
+    /// take turns on a smaller one. Nothing in the everyday class may
+    /// touch the big-node class.
     fn tiered_catalogue() -> ModelCatalogue {
         toml::from_str(
             r#"
@@ -288,7 +302,7 @@ residency_priority = 300
 [[models]]
 id = "frontier"
 harness = "candle"
-residency_priority = 400
+residency_priority = 300
 
 [[models]]
 id = "image"
@@ -297,6 +311,11 @@ residency_priority = 200
 
 [[models]]
 id = "mid"
+harness = "candle"
+residency_priority = 200
+
+[[models]]
+id = "tiny"
 harness = "candle"
 residency_priority = 100
 "#,
@@ -307,6 +326,24 @@ residency_priority = 100
     #[test]
     fn image_generation_displaces_the_mid_tier() {
         assert!(tiered_catalogue().may_displace("image", "mid"));
+    }
+
+    #[test]
+    fn the_mid_tier_comes_back_after_an_image_takes_its_node() {
+        // The swap-back half. An image request evicts the text model;
+        // the next text request must be able to evict the image model,
+        // or the text tier disappears until someone restarts something.
+        assert!(tiered_catalogue().may_displace("mid", "image"));
+    }
+
+    #[test]
+    fn two_generations_of_a_flagship_can_swap_in_both_directions() {
+        // Comparing a new flagship against the incumbent needs traffic
+        // to move each way on demand. A strict order would let whichever
+        // arrived first hold the node permanently.
+        let cat = tiered_catalogue();
+        assert!(cat.may_displace("frontier", "flagship"));
+        assert!(cat.may_displace("flagship", "frontier"));
     }
 
     #[test]
@@ -325,15 +362,15 @@ residency_priority = 100
     }
 
     #[test]
-    fn equal_rank_never_displaces_either_way() {
+    fn a_lower_class_cannot_displace_a_higher_one() {
         let cat = tiered_catalogue();
-        assert!(!cat.may_displace("mid", "mid"));
-        assert!(!cat.may_displace("flagship", "flagship"));
+        assert!(!cat.may_displace("tiny", "mid"));
+        assert!(!cat.may_displace("tiny", "flagship"));
     }
 
     #[test]
-    fn a_lower_tier_cannot_displace_a_higher_one() {
-        assert!(!tiered_catalogue().may_displace("mid", "image"));
+    fn a_higher_class_can_displace_a_lower_one() {
+        assert!(tiered_catalogue().may_displace("flagship", "tiny"));
     }
 
     #[test]
