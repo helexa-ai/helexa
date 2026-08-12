@@ -58,9 +58,17 @@ hf_public() {
         "https://huggingface.co/api/models/$1" 2>/dev/null)" = "200" ]
 }
 
+# ModelScope answers 200 with an empty payload for a repo id that has
+# been *reserved* but not published — the countdown pages that appear
+# ahead of a launch behave exactly this way. Asking for the file tree
+# instead is the honest question: it succeeds only once there are files.
+#
+# Testing the model endpoint alone reports every announced-but-unreleased
+# model as available, once per poll, which is worse than no signal at
+# all — it trains you to ignore the one that means something.
 ms_public() {
-    [ "$(curl -sf -o /dev/null -w '%{http_code}' \
-        "https://modelscope.cn/api/v1/models/$1" 2>/dev/null)" = "200" ]
+    curl -sf "https://modelscope.cn/api/v1/models/$1/repo/files?Revision=master" \
+        2>/dev/null | grep -q '"Success": *true'
 }
 
 log() { echo "[$(date -u +%H:%M:%S)] $*"; }
@@ -116,6 +124,7 @@ log "WATCHING $* (cache=$CACHE_DIR poll=${POLL_SECS}s)"
 
 deadline=$(( $(date +%s) + MAX_HOURS * 3600 ))
 remaining=("$@")
+announced=()
 
 while [ "${#remaining[@]}" -gt 0 ]; do
     if [ "$(date +%s)" -ge "$deadline" ]; then
@@ -129,11 +138,21 @@ while [ "${#remaining[@]}" -gt 0 ]; do
             log "APPEARED $repo (huggingface)"
             fetch "$repo" || still+=("$repo")
         elif ms_public "$repo"; then
-            # Visible on ModelScope but not yet HF. Report it — the
-            # mirror usually follows within minutes and it is a useful
-            # heads-up — but keep watching, since `hf download` cannot
-            # fetch from ModelScope.
-            log "APPEARED $repo (modelscope; awaiting hf mirror)"
+            # Published on ModelScope but not yet mirrored to HF. Useful
+            # as a heads-up, since the mirror usually follows within
+            # minutes, but `hf download` cannot fetch from ModelScope so
+            # the watch continues.
+            #
+            # Announced once per repo, not once per poll: this state can
+            # last a while, and a line a minute would bury whatever
+            # follows it.
+            case " ${announced[*]-} " in
+                *" $repo "*) ;;
+                *)
+                    log "APPEARED $repo (modelscope; awaiting hf mirror)"
+                    announced+=("$repo")
+                    ;;
+            esac
             still+=("$repo")
         else
             still+=("$repo")
