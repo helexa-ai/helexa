@@ -314,11 +314,6 @@ export default function Images() {
         </div>
       ) : null}
 
-      {/* Only meaningful to someone who can actually generate. */}
-      {authed ? (
-        <p className="text-muted small mt-3">{t("images:textHint")}</p>
-      ) : null}
-
       <section className="hx-image-gallery">
         {(images ?? []).length === 0 ? (
           <p className="text-muted small hx-image-empty">{t("images:galleryEmpty")}</p>

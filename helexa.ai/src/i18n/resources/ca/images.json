@@ -23,7 +23,6 @@
   "delete": "Suprimeix",
   "preparing": "S’està preparant el vostre compte…",
   "signInPrompt": "La generació d’imatges està disponible per als titulars d’un compte.",
-  "textHint": "El text dins de les imatges no és fiable: eviteu demanar paraules.",
   "galleryEmpty": "Les vostres imatges apareixen aquí i es queden en aquest navegador.",
   "errorGeneric": "No s’ha pogut generar la imatge."
 }

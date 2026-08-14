@@ -23,7 +23,6 @@
   "delete": "Törlés",
   "preparing": "Fiók előkészítése…",
   "signInPrompt": "A képgenerálás fiókkal rendelkezők számára érhető el.",
-  "textHint": "A képen belüli felirat megbízhatatlan — kerülje a szavak kérését.",
   "galleryEmpty": "A képei itt jelennek meg, és ebben a böngészőben maradnak.",
   "errorGeneric": "A képet nem sikerült létrehozni."
 }

@@ -23,7 +23,6 @@
   "delete": "Delete",
   "preparing": "Preparing your account…",
   "signInPrompt": "Image generation is available to account holders.",
-  "textHint": "Lettering inside images is unreliable — avoid asking for words.",
   "galleryEmpty": "Your images appear here, and stay in this browser.",
   "errorGeneric": "The image could not be generated."
 }

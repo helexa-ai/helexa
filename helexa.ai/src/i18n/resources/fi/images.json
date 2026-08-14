@@ -23,7 +23,6 @@
   "delete": "Poista",
   "preparing": "Valmistellaan tiliäsi…",
   "signInPrompt": "Kuvien luonti on tilinhaltijoiden käytössä.",
-  "textHint": "Kuvien sisällä oleva teksti on epäluotettavaa — vältä sanojen pyytämistä.",
   "galleryEmpty": "Kuvasi näkyvät täällä ja pysyvät tässä selaimessa.",
   "errorGeneric": "Kuvaa ei voitu luoda."
 }

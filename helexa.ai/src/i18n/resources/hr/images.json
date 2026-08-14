@@ -23,7 +23,6 @@
   "delete": "Izbriši",
   "preparing": "Pripremamo vaš račun…",
   "signInPrompt": "Generiranje slika dostupno je vlasnicima računa.",
-  "textHint": "Tekst unutar slika nije pouzdan — izbjegavajte tražiti riječi.",
   "galleryEmpty": "Vaše slike pojavljuju se ovdje i ostaju u ovom pregledniku.",
   "errorGeneric": "Sliku nije bilo moguće generirati."
 }

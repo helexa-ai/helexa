@@ -23,7 +23,6 @@
   "delete": "Slet",
   "preparing": "Forbereder din konto…",
   "signInPrompt": "Billedgenerering er tilgængelig for kontohavere.",
-  "textHint": "Tekst inde i billeder er upålidelig — undgå at bede om ord.",
   "galleryEmpty": "Dine billeder vises her og forbliver i denne browser.",
   "errorGeneric": "Billedet kunne ikke genereres."
 }

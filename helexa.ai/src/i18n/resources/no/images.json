@@ -23,7 +23,6 @@
   "delete": "Slett",
   "preparing": "Forbereder kontoen din…",
   "signInPrompt": "Bildegenerering er tilgjengelig for kontoinnehavere.",
-  "textHint": "Tekst inne i bilder er upålitelig — unngå å be om ord.",
   "galleryEmpty": "Bildene dine vises her og blir værende i denne nettleseren.",
   "errorGeneric": "Bildet kunne ikke genereres."
 }

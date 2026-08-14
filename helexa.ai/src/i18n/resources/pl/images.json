@@ -23,7 +23,6 @@
   "delete": "Usuń",
   "preparing": "Przygotowywanie konta…",
   "signInPrompt": "Generowanie obrazów jest dostępne dla posiadaczy konta.",
-  "textHint": "Napisy wewnątrz obrazów bywają błędne — unikaj proszenia o słowa.",
   "galleryEmpty": "Twoje obrazy pojawią się tutaj i pozostaną w tej przeglądarce.",
   "errorGeneric": "Nie udało się wygenerować obrazu."
 }

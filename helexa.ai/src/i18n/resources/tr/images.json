@@ -23,7 +23,6 @@
   "delete": "Sil",
   "preparing": "Hesabınız hazırlanıyor…",
   "signInPrompt": "Görsel üretimi hesap sahiplerine açıktır.",
-  "textHint": "Görsel içindeki yazılar güvenilir değildir — kelime istemekten kaçının.",
   "galleryEmpty": "Görselleriniz burada görünür ve bu tarayıcıda kalır.",
   "errorGeneric": "Görsel üretilemedi."
 }
