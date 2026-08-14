@@ -23,7 +23,6 @@
   "delete": "Löschen",
   "preparing": "Konto wird vorbereitet…",
   "signInPrompt": "Die Bilderzeugung steht Kontoinhaberinnen und Kontoinhabern zur Verfügung.",
-  "textHint": "Schrift in Bildern ist unzuverlässig — vermeiden Sie Wörter im Motiv.",
   "galleryEmpty": "Ihre Bilder erscheinen hier und bleiben in diesem Browser.",
   "errorGeneric": "Das Bild konnte nicht erzeugt werden."
 }

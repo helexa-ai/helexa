@@ -23,7 +23,6 @@
   "delete": "Kustuta",
   "preparing": "Valmistame su konto ette…",
   "signInPrompt": "Piltide loomine on saadaval kontoomanikele.",
-  "textHint": "Tekst piltide sees on ebausaldusväärne — väldi sõnade küsimist.",
   "galleryEmpty": "Sinu pildid ilmuvad siia ja jäävad sellesse brauserisse.",
   "errorGeneric": "Pilti ei õnnestunud luua."
 }

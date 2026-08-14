@@ -23,7 +23,6 @@
   "delete": "Eliminar",
   "preparing": "Preparando su cuenta…",
   "signInPrompt": "La generación de imágenes está disponible para titulares de una cuenta.",
-  "textHint": "El texto dentro de las imágenes no es fiable: evite pedir palabras.",
   "galleryEmpty": "Sus imágenes aparecen aquí y permanecen en este navegador.",
   "errorGeneric": "No se pudo generar la imagen."
 }

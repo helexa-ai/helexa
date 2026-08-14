@@ -23,7 +23,6 @@
   "delete": "Radera",
   "preparing": "Förbereder ditt konto…",
   "signInPrompt": "Bildgenerering är tillgänglig för kontoinnehavare.",
-  "textHint": "Text inuti bilder är opålitlig — undvik att be om ord.",
   "galleryEmpty": "Dina bilder visas här och stannar i den här webbläsaren.",
   "errorGeneric": "Bilden kunde inte skapas."
 }

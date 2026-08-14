@@ -23,7 +23,6 @@
   "delete": "Șterge",
   "preparing": "Se pregătește contul dumneavoastră…",
   "signInPrompt": "Generarea de imagini este disponibilă titularilor de cont.",
-  "textHint": "Textul din interiorul imaginilor nu este fiabil — evitați să cereți cuvinte.",
   "galleryEmpty": "Imaginile dumneavoastră apar aici și rămân în acest browser.",
   "errorGeneric": "Imaginea nu a putut fi generată."
 }

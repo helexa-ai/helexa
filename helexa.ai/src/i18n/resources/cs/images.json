@@ -23,7 +23,6 @@
   "delete": "Smazat",
   "preparing": "Připravuje se váš účet…",
   "signInPrompt": "Generování obrázků je dostupné držitelům účtu.",
-  "textHint": "Text uvnitř obrázků není spolehlivý — vyhněte se žádostem o slova.",
   "galleryEmpty": "Vaše obrázky se objeví zde a zůstanou v tomto prohlížeči.",
   "errorGeneric": "Obrázek se nepodařilo vygenerovat."
 }

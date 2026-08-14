@@ -23,7 +23,6 @@
   "delete": "Supprimer",
   "preparing": "Préparation de votre compte…",
   "signInPrompt": "La génération d’images est réservée aux titulaires d’un compte.",
-  "textHint": "Le texte à l’intérieur des images n’est pas fiable — évitez de demander des mots.",
   "galleryEmpty": "Vos images apparaissent ici et restent dans ce navigateur.",
   "errorGeneric": "L’image n’a pas pu être générée."
 }

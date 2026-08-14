@@ -23,7 +23,6 @@
   "delete": "Dzēst",
   "preparing": "Sagatavojam jūsu kontu…",
   "signInPrompt": "Attēlu ģenerēšana ir pieejama konta īpašniekiem.",
-  "textHint": "Teksts attēlos nav uzticams — izvairieties prasīt vārdus.",
   "galleryEmpty": "Jūsu attēli parādās šeit un paliek šajā pārlūkā.",
   "errorGeneric": "Attēlu neizdevās ģenerēt."
 }
