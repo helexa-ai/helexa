@@ -10,9 +10,25 @@
 #   id                 - Repo id in the source registry (e.g. "Qwen/Qwen3.6-27B").
 #                        Exact match.
 #   harness            - which engine handles inference (currently "candle").
-#   quant              - GGUF quantisation tag for the file in the HF repo
-#                        (e.g. "Q4_K_M"). Omit/empty for the dense
-#                        safetensors path. TP requires dense.
+#   quant              - quantisation to serve this model with. Either a
+#                        GGUF tag naming a file in the repo (e.g.
+#                        "Q4_K_M"), or an in-situ tag applied to dense
+#                        safetensors at load (e.g. "q6k", "q4k", "q8_0")
+#                        — the latter is what TP models use, since TP
+#                        requires dense weights.
+#
+#                        SET THIS whenever the model is served
+#                        quantised, even if a neuron's `default_models`
+#                        already says so. The two are separate paths to
+#                        the same model: activation reads neuron.toml,
+#                        cold-load reads this file. Omitting it here
+#                        means a cold-load silently loads full-precision
+#                        weights, which for a large model can leave too
+#                        little VRAM to prefill — it reports `loaded`
+#                        and then fails every request (#252).
+#
+#                        Omit only when full precision is genuinely what
+#                        you want served.
 #   vram_mb            - rough estimate; advisory only, not enforced.
 #   min_devices        - GPU count this profile needs. TP profiles use
 #                        the same value as the tensor-parallel size.
