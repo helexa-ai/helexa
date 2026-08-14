@@ -25,7 +25,12 @@ name = "candle"
 max_in_flight = 8
 
 [[default_models]]
-model_id = "Qwen/Qwen3.6-27B"
+# Qwen3.8-27B is the resident flagship (#251). Architecturally identical
+# to the 3.6-27B it replaced — same model_type, layer counts and vision
+# tower — so the load spec is unchanged. The 3.6-27B stays catalogued at
+# the same residency class, so it can still be cold-loaded on demand and
+# the two displace each other in either direction.
+model_id = "Qwen/Qwen3.8-27B"
 harness = "candle"
 quant = "q6k"
 tensor_parallel = 2
