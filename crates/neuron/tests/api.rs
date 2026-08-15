@@ -709,3 +709,71 @@ async fn test_images_chat_at_image_endpoint_is_not_found_for_text_model() {
         .unwrap();
     assert_eq!(resp.status(), 404);
 }
+
+/// A malformed body must come back as the #63 envelope, not axum's bare
+/// string (#253). An OpenAI client reads `error.code` / `error.type`; a
+/// plain string leaves it with nothing to act on, which is exactly how a
+/// harness ended up quitting silently mid-session.
+#[tokio::test]
+async fn malformed_body_returns_a_parseable_error_envelope() {
+    let base = spawn_neuron(fake_discovery()).await;
+    let client = reqwest::Client::new();
+
+    // Valid JSON, wrong shape for the request type → 422.
+    let resp = client
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&json!({"model": "m", "messages": "not-an-array"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 422);
+    let body: serde_json::Value = resp.json().await.expect("body must be JSON");
+    assert_eq!(body["error"]["type"], "invalid_request_error");
+    assert_eq!(body["error"]["code"], "invalid_request_body");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .is_some_and(|m| !m.is_empty()),
+        "message must say what was wrong: {body}"
+    );
+
+    // Not JSON at all → 400, distinguished from the above so the caller
+    // knows whether to fix its serializer or its schema.
+    let resp = client
+        .post(format!("{base}/v1/chat/completions"))
+        .header("content-type", "application/json")
+        .body("{not json")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body: serde_json::Value = resp.json().await.expect("body must be JSON");
+    assert_eq!(body["error"]["code"], "malformed_json");
+}
+
+/// The shape from #253 itself: an assistant turn carrying only
+/// `tool_calls`. It must be *accepted* now — this guards the envelope
+/// work from quietly re-breaking what #253 fixed.
+#[tokio::test]
+async fn null_assistant_content_is_not_a_body_rejection() {
+    let base = spawn_neuron(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{base}/v1/chat/completions"))
+        .json(&json!({
+            "model": "m",
+            "messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": null, "tool_calls": [
+                    {"id": "c1", "type": "function",
+                     "function": {"name": "b", "arguments": "{}"}}]},
+                {"role": "tool", "content": "ok", "tool_call_id": "c1"}
+            ]
+        }))
+        .send()
+        .await
+        .unwrap();
+    // 503 (no candle harness in this fixture) — the point is that it got
+    // past body extraction rather than being rejected as malformed.
+    assert_ne!(resp.status(), 422, "null content must not be a body error");
+    assert_ne!(resp.status(), 400, "null content must not be a body error");
+}

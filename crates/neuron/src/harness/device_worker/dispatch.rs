@@ -850,7 +850,7 @@ fn load_gguf_inner(
     tracing::info!(model = %model_id, path = ?gguf_path, "loading GGUF");
     let mut file = std::fs::File::open(gguf_path).context("open GGUF file")?;
     let content =
-        gguf_file::Content::read(&mut file).map_err(|e| anyhow::anyhow!("parse GGUF: {e}"))?;
+        gguf_file::Content::read(&mut file).map_err(|e| anyhow::anyhow!("parse GGUF: {e:#}"))?;
 
     let architecture = content
         .metadata
@@ -865,7 +865,7 @@ fn load_gguf_inner(
     match architecture.as_str() {
         "qwen3" => {
             let weights = QuantizedQwen3Weights::from_gguf(content, &mut file, device)
-                .map_err(|e| anyhow::anyhow!("from_gguf qwen3: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("from_gguf qwen3: {e:#}"))?;
             Ok(ModelArch::Qwen3Quantized(weights))
         }
         "qwen3moe" => {
@@ -874,12 +874,12 @@ fn load_gguf_inner(
             // accumulation precision and gives the best tokens/sec on
             // consumer cards.
             let weights = GGUFQWenMoE::from_gguf(content, &mut file, device, DType::F16)
-                .map_err(|e| anyhow::anyhow!("from_gguf qwen3_moe: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("from_gguf qwen3_moe: {e:#}"))?;
             Ok(ModelArch::Qwen3MoeQuantized(weights))
         }
         "llama" => {
             let weights = QuantizedLlamaWeights::from_gguf(content, &mut file, device)
-                .map_err(|e| anyhow::anyhow!("from_gguf llama: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("from_gguf llama: {e:#}"))?;
             Ok(ModelArch::LlamaQuantized(weights))
         }
         other => anyhow::bail!(
@@ -943,14 +943,14 @@ fn load_dense_inner(
             let cfg: qwen3_dense::Config =
                 serde_json::from_str(&cfg_text).context("parse Qwen3 config.json")?;
             let model = qwen3_dense::ModelForCausalLM::new(&cfg, vb)
-                .map_err(|e| anyhow::anyhow!("build Qwen3 dense model: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("build Qwen3 dense model: {e:#}"))?;
             Ok(ModelArch::Qwen3Dense(model))
         }
         "qwen3_moe" => {
             let cfg: qwen3_moe_dense::Config =
                 serde_json::from_str(&cfg_text).context("parse Qwen3 MoE config.json")?;
             let model = qwen3_moe_dense::ModelForCausalLM::new(&cfg, vb)
-                .map_err(|e| anyhow::anyhow!("build Qwen3 MoE dense model: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("build Qwen3 MoE dense model: {e:#}"))?;
             Ok(ModelArch::Qwen3MoeDense(model))
         }
         "llama" => {
@@ -960,7 +960,7 @@ fn load_dense_inner(
             let cache = llama_dense::Cache::new(true, dtype, &config, device)
                 .context("build Llama Cache")?;
             let model = llama_dense::Llama::load(vb, &config)
-                .map_err(|e| anyhow::anyhow!("build Llama dense model: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("build Llama dense model: {e:#}"))?;
             Ok(ModelArch::LlamaDense(Box::new(
                 crate::harness::candle::LlamaDense::from_parts(
                     model,
