@@ -431,11 +431,11 @@ async fn responses(
                     .first()
                     .map(|c| match &c.message.content {
                         MessageContent::Text(t) => t.clone(),
-                        MessageContent::Parts(_) => {
+                        MessageContent::Parts(_) | MessageContent::Null => {
                             // Candle output is always text today;
-                            // a Parts response would be surprising.
-                            // Empty-string fallback is safer than
-                            // a panic.
+                            // a Parts or absent response would be
+                            // surprising. Empty-string fallback is
+                            // safer than a panic.
                             String::new()
                         }
                     })

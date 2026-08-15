@@ -387,6 +387,7 @@ pub fn openai_to_anthropic(resp: ChatCompletionResponse) -> MessagesResponse {
             let text = match c.message.content {
                 MessageContent::Text(t) => t,
                 MessageContent::Parts(parts) => serde_json::to_string(&parts).unwrap_or_default(),
+                MessageContent::Null => String::new(),
             };
             let stop = c.finish_reason.map(|r| map_stop_reason(&r));
             (text, stop)

@@ -6435,6 +6435,7 @@ fn format_qwen3_prompt(messages: &[ChatMessage]) -> String {
                 .filter_map(|p| p.get("text").and_then(|v| v.as_str()))
                 .collect::<Vec<_>>()
                 .join(""),
+            MessageContent::Null => String::new(),
         };
         prompt.push_str("<|im_start|>");
         prompt.push_str(&msg.role);

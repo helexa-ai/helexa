@@ -30,17 +30,34 @@ pub struct ChatCompletionRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
+    /// Absent on an assistant turn that carries only `tool_calls` —
+    /// see [`MessageContent::Null`]. `#[serde(default)]` so a message
+    /// with no `content` key at all deserializes rather than being
+    /// rejected.
+    #[serde(default)]
     pub content: MessageContent,
     #[serde(flatten)]
     pub extra: Value,
 }
 
-/// Content can be a simple string or an array of content parts (for vision).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Content can be a simple string, an array of content parts (for
+/// vision), or absent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MessageContent {
     Text(String),
     Parts(Vec<Value>),
+    /// `"content": null`, or no `content` key at all.
+    ///
+    /// This is the OpenAI-canonical shape for an assistant turn whose
+    /// only payload is `tool_calls`, and agentic clients replay the
+    /// assistant turn verbatim on the follow-up request that carries
+    /// the tool result — so any client doing OpenAI-native tool
+    /// calling sends it on its second turn. HF chat templates model it
+    /// the same way (`content is none` renders as empty), so it maps
+    /// straight through to the prompt.
+    #[default]
+    Null,
 }
 
 // ── Chat completion response (non-streaming) ─────────────────────────
@@ -169,4 +186,81 @@ pub struct ModelObject {
     pub locations: Option<Vec<super::node::ModelLocation>>,
     #[serde(flatten)]
     pub extra: Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The follow-up request an OpenAI-native agentic client sends
+    /// after running a tool: it replays its own assistant turn, which
+    /// OpenAI emits with `"content": null` because the payload was
+    /// only `tool_calls`. Rejecting this shape breaks every such
+    /// client on its second turn.
+    #[test]
+    fn assistant_tool_call_turn_with_null_content_deserializes() {
+        let req: ChatCompletionRequest = serde_json::from_str(
+            r#"{
+                "model": "m",
+                "messages": [
+                    {"role": "user", "content": "list the files"},
+                    {"role": "assistant", "content": null, "tool_calls": [
+                        {"id": "call_0", "type": "function",
+                         "function": {"name": "bash", "arguments": "{\"command\":\"ls\"}"}}
+                    ]},
+                    {"role": "tool", "content": "a.txt", "tool_call_id": "call_0"}
+                ]
+            }"#,
+        )
+        .expect("null assistant content is a valid OpenAI request");
+
+        assert!(matches!(req.messages[1].content, MessageContent::Null));
+        // The tool calls survive in `extra`, where the chat template
+        // reads them from.
+        assert_eq!(
+            req.messages[1].extra["tool_calls"][0]["function"]["name"],
+            "bash"
+        );
+        assert_eq!(req.messages[2].extra["tool_call_id"], "call_0");
+    }
+
+    /// Some clients omit the key entirely rather than sending null.
+    #[test]
+    fn assistant_turn_with_no_content_key_deserializes() {
+        let msg: ChatMessage = serde_json::from_str(
+            r#"{"role": "assistant", "tool_calls": [
+                {"id": "c", "type": "function",
+                 "function": {"name": "bash", "arguments": "{}"}}]}"#,
+        )
+        .expect("absent content is a valid OpenAI message");
+        assert!(matches!(msg.content, MessageContent::Null));
+    }
+
+    /// Absent content round-trips back onto the wire as null, so a
+    /// translated or re-serialized request stays OpenAI-shaped.
+    #[test]
+    fn null_content_round_trips() {
+        let msg = ChatMessage {
+            role: "assistant".into(),
+            content: MessageContent::Null,
+            extra: Value::Null,
+        };
+        let v = serde_json::to_value(&msg).expect("serialize");
+        assert_eq!(v["content"], Value::Null);
+        assert!(v.get("content").is_some(), "content key must be present");
+    }
+
+    /// The string and array forms keep working unchanged.
+    #[test]
+    fn text_and_parts_content_still_deserialize() {
+        let text: ChatMessage =
+            serde_json::from_str(r#"{"role": "user", "content": "hi"}"#).expect("text");
+        assert!(matches!(text.content, MessageContent::Text(ref t) if t == "hi"));
+
+        let parts: ChatMessage = serde_json::from_str(
+            r#"{"role": "user", "content": [{"type": "text", "text": "hi"}]}"#,
+        )
+        .expect("parts");
+        assert!(matches!(parts.content, MessageContent::Parts(ref p) if p.len() == 1));
+    }
 }

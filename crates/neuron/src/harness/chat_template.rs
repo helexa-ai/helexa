@@ -227,6 +227,10 @@ pub fn render_chat_template(
             let content_value = match &m.content {
                 MessageContent::Text(s) => Value::String(s.clone()),
                 MessageContent::Parts(parts) => Value::Array(parts.clone()),
+                // Rendered as JSON null so the template's own
+                // `content is none` branch handles it — that is how HF
+                // templates model a tool-calls-only assistant turn.
+                MessageContent::Null => Value::Null,
             };
             let mut obj = serde_json::Map::new();
             obj.insert("role".into(), Value::String(m.role.clone()));
@@ -415,6 +419,56 @@ mod tests {
             "expected exactly one <|image_pad|>; rendered:\n{out}"
         );
         assert!(out.contains("<|vision_start|>") && out.contains("<|vision_end|>"));
+    }
+
+    /// The second turn of an OpenAI-native agentic loop: the client
+    /// replays its own assistant turn, which carries `tool_calls` and
+    /// `"content": null`. That must render as the tool-call block —
+    /// not as the literal string "none", and not as a render error
+    /// (which would silently drop back to the no-tools fallback
+    /// template and break tool calling for the rest of the session).
+    #[test]
+    fn real_template_renders_null_content_assistant_tool_call_turn() {
+        let template = include_str!("testdata/qwen3_6_chat_template.jinja");
+        let mut assistant_extras = serde_json::Map::new();
+        assistant_extras.insert(
+            "tool_calls".into(),
+            json!([{
+                "id": "call_0", "type": "function",
+                "function": {"name": "bash", "arguments": "{\"command\":\"ls\"}"}
+            }]),
+        );
+        let mut tool_extras = serde_json::Map::new();
+        tool_extras.insert("tool_call_id".into(), json!("call_0"));
+
+        let messages = vec![
+            user_msg("list the files"),
+            ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Null,
+                extra: Value::Object(assistant_extras),
+            },
+            ChatMessage {
+                role: "tool".into(),
+                content: MessageContent::Text("a.txt".into()),
+                extra: Value::Object(tool_extras),
+            },
+        ];
+
+        let out = render_chat_template(template, &messages, &Value::Null, &Value::Null)
+            .expect("null assistant content must render, not error");
+        assert!(
+            out.contains("<function=bash>"),
+            "tool call must survive the null-content turn; rendered:\n{out}"
+        );
+        assert!(
+            out.contains("<tool_response>\na.txt"),
+            "tool result must render; rendered:\n{out}"
+        );
+        assert!(
+            !out.contains("none"),
+            "null content must render as empty, not the literal \"none\"; rendered:\n{out}"
+        );
     }
 
     fn user_msg(text: &str) -> ChatMessage {
