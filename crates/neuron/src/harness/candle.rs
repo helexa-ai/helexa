@@ -5563,7 +5563,7 @@ async fn chat_completion_tp_inner(
         .admission
         .enter_with_kv(
             principal.as_deref(),
-            kv_reservation_mb(prompt_len, tp.context_profile.as_ref(), context_limit_cfg),
+            kv_reservation_mb(prompt_len, tp.context_profile.as_ref(), &context_limit_cfg),
         )
         .await
         .map_err(InferenceError::from)?;
