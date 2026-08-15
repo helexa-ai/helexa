@@ -157,6 +157,9 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         temperature: req.temperature,
         top_p: req.top_p,
         max_tokens: req.max_output_tokens,
+        // Responses spells the cap `max_output_tokens`, already
+        // resolved onto the legacy field above.
+        max_completion_tokens: None,
         stream: Some(req.stream),
         extra: Value::Object(extra),
     })

@@ -18,13 +18,33 @@ pub struct ChatCompletionRequest {
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
+    /// The deprecated spelling of the output cap. Still what most
+    /// clients send; see [`ChatCompletionRequest::effective_max_tokens`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u64>,
+    /// OpenAI's current spelling of the output cap, which deprecated
+    /// `max_tokens`. Newer SDKs and clients send only this one — it has
+    /// to be a named field rather than falling into `extra`, or the cap
+    /// is silently ignored and generation runs to the server default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     /// All other fields (tools, response_format, backend extensions, etc.)
     #[serde(flatten)]
     pub extra: Value,
+}
+
+impl ChatCompletionRequest {
+    /// The output cap the caller asked for, under either spelling.
+    ///
+    /// `max_completion_tokens` wins when both are present — it is the
+    /// current OpenAI field, and cortex's metering already reserves
+    /// against it (`metering::requested_max_output`), so preferring it
+    /// here keeps what we bill and what we generate in agreement.
+    pub fn effective_max_tokens(&self) -> Option<u64> {
+        self.max_completion_tokens.or(self.max_tokens)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -248,6 +268,59 @@ mod tests {
         let v = serde_json::to_value(&msg).expect("serialize");
         assert_eq!(v["content"], Value::Null);
         assert!(v.get("content").is_some(), "content key must be present");
+    }
+
+    /// Newer OpenAI SDKs send only `max_completion_tokens`; the cap
+    /// must survive as a named field rather than falling into `extra`,
+    /// where every generation loop would miss it.
+    #[test]
+    fn max_completion_tokens_is_the_effective_cap() {
+        let req: ChatCompletionRequest = serde_json::from_str(
+            r#"{"model": "m", "max_completion_tokens": 240,
+                "messages": [{"role": "user", "content": "hi"}]}"#,
+        )
+        .expect("deserialize");
+        assert_eq!(req.max_completion_tokens, Some(240));
+        assert_eq!(req.max_tokens, None);
+        assert_eq!(req.effective_max_tokens(), Some(240));
+        assert!(
+            req.extra.get("max_completion_tokens").is_none(),
+            "must be a named field, not swept into extra"
+        );
+    }
+
+    /// The legacy spelling keeps working on its own.
+    #[test]
+    fn legacy_max_tokens_still_caps() {
+        let req: ChatCompletionRequest = serde_json::from_str(
+            r#"{"model": "m", "max_tokens": 128,
+                "messages": [{"role": "user", "content": "hi"}]}"#,
+        )
+        .expect("deserialize");
+        assert_eq!(req.effective_max_tokens(), Some(128));
+    }
+
+    /// Clients that send both for compatibility must not be rejected,
+    /// and the current field wins — matching what cortex meters
+    /// against, so billed and generated caps agree.
+    #[test]
+    fn both_spellings_resolve_to_the_current_field() {
+        let req: ChatCompletionRequest = serde_json::from_str(
+            r#"{"model": "m", "max_tokens": 99, "max_completion_tokens": 256,
+                "messages": [{"role": "user", "content": "hi"}]}"#,
+        )
+        .expect("sending both must not be an error");
+        assert_eq!(req.effective_max_tokens(), Some(256));
+    }
+
+    /// Neither spelling present leaves the cap to the server default.
+    #[test]
+    fn absent_cap_is_none() {
+        let req: ChatCompletionRequest = serde_json::from_str(
+            r#"{"model": "m", "messages": [{"role": "user", "content": "hi"}]}"#,
+        )
+        .expect("deserialize");
+        assert_eq!(req.effective_max_tokens(), None);
     }
 
     /// The string and array forms keep working unchanged.

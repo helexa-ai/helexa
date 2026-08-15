@@ -294,6 +294,13 @@ async fn chat_completions(
             .into_response();
     };
 
+    // Collapse the two spellings of the output cap onto the one field
+    // the generation loops read. Clients that send only
+    // `max_completion_tokens` (OpenAI's current field — the DeepSeek
+    // Harness among them) would otherwise have their cap silently
+    // ignored and generate to the server default.
+    req.max_tokens = req.effective_max_tokens();
+
     // Reasoning-content opt-in. Off by default → naïve clients
     // (Zed's commit-message generator, vanilla OpenAI clients)
     // never see `<think>` blocks. On when the caller sends

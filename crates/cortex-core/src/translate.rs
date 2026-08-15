@@ -102,6 +102,8 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         temperature: req.temperature,
         top_p: req.top_p,
         max_tokens: Some(req.max_tokens),
+        // Anthropic has one spelling; it maps onto the legacy field.
+        max_completion_tokens: None,
         stream: req.stream,
         extra,
     }
