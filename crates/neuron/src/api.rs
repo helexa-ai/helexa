@@ -651,6 +651,24 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
         .with_retry_after(5)
         .with_extra("free_mb", json!(free_mb))
         .with_extra("required_mb", json!(required_mb)),
+        // Not backpressure: an idle node would refuse this prompt too, so
+        // there is nothing to retry (#257). 413 rather than 400 — the
+        // request is well-formed, it is the payload that is too large.
+        InferenceError::PromptTooLongForVram {
+            required_mb,
+            budget_mb,
+        } => OpenAiError::new(
+            413,
+            "invalid_request_error",
+            "prompt_too_long_for_vram",
+            format!(
+                "prompt needs {required_mb} MiB of KV cache but this model's \
+                 entire budget is {budget_mb} MiB. Shorten the conversation \
+                 or use a model with more headroom."
+            ),
+        )
+        .with_extra("required_mb", json!(required_mb))
+        .with_extra("budget_mb", json!(budget_mb)),
         InferenceError::VisionUnsupported { model_id } => OpenAiError::new(
             400,
             "invalid_request_error",

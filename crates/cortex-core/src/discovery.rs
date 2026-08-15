@@ -109,6 +109,23 @@ pub struct ModelLoad {
     /// (#54/#137). `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub rejected_per_principal: u64,
+    /// Cumulative requests that waited for KV budget and never got it
+    /// (#257) — the model is saturated by long-context sequences rather
+    /// than by request count. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub rejected_kv_timeout: u64,
+    /// Cumulative requests whose KV reservation exceeded the model's entire
+    /// budget (#257) — prompts too long for this node at any load, not a
+    /// load-shedding signal. `#[serde(default)]` for back-compat.
+    #[serde(default)]
+    pub rejected_kv_unservable: u64,
+    /// This model's total KV budget in MiB and how much of it is currently
+    /// unreserved (#257). `kv_budget_mb == 0` means the gate is disabled
+    /// (CPU load, or an arch with no context profile).
+    #[serde(default)]
+    pub kv_budget_mb: u64,
+    #[serde(default)]
+    pub kv_available_mb: u64,
     /// Live prefill throughput EMA in tokens/sec (#137) — prompt tokens
     /// processed per second. `0.0` before the first sample. `#[serde(default)]`
     /// for back-compat with pre-#137 neurons.
@@ -148,6 +165,10 @@ mod health_load_tests {
                 max_in_flight: 8,
                 max_queue_depth: 8,
                 rejected_queue_full: 0,
+                rejected_kv_timeout: 0,
+                rejected_kv_unservable: 0,
+                kv_budget_mb: 0,
+                kv_available_mb: 0,
                 rejected_timeout: 0,
                 rejected_per_principal: 0,
                 tok_s_prefill: 0.0,
