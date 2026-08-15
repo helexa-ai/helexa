@@ -116,3 +116,59 @@ function flatten(node: React.ReactNode): string {
 export function slugs(): string[] {
   return allDocSlugs();
 }
+
+/**
+ * Index pages for the directories that pages live under.
+ *
+ * Prerendering creates real directories on disk, and a real directory
+ * shadows the client-side route of the same name: nginx's
+ * `try_files $uri $uri/ /index.html` matches `$uri/`, looks for an index
+ * inside it, finds none, and answers **403** — it never falls through to
+ * the SPA shell. So `/docs` and each section 403'd while the pages
+ * beneath them served fine.
+ *
+ * Every directory the prerenderer creates therefore needs an index. They
+ * are useful in their own right — a crawler or a reader without
+ * JavaScript gets a table of contents rather than a redirect — and the
+ * SPA replaces them on mount as it does every other prerendered page.
+ */
+export function indexes(): { path: string; title: string; html: string }[] {
+  const tree = docTree();
+  const pages = tree.flatMap((s) => s.pages);
+
+  // Every ancestor directory of every page, derived from the slugs rather
+  // than from the section list — a page nested deeper than one level
+  // creates intermediate directories too, and missing one of those is the
+  // same 403 with a less obvious cause.
+  const dirs = new Set<string>([""]);
+  for (const p of pages) {
+    const parts = p.slug.split("/");
+    for (let i = 1; i < parts.length; i++) {
+      dirs.add(parts.slice(0, i).join("/"));
+    }
+  }
+
+  const labelFor = (dir: string): string => {
+    const section = tree.find((s) => s.id === dir);
+    if (section) return section.label;
+    const last = dir.split("/").pop() ?? dir;
+    return last.charAt(0).toUpperCase() + last.slice(1).replace(/[-_]/g, " ");
+  };
+
+  return [...dirs].sort().map((dir) => {
+    const prefix = dir ? `${dir}/` : "";
+    const children = pages.filter((p) => p.slug.startsWith(prefix));
+    const items = children
+      .map(
+        (p) =>
+          `<li><a href="/docs/${p.slug}">${escapeHtml(p.sidebarLabel)}</a></li>`,
+      )
+      .join("");
+    const title = dir ? labelFor(dir) : "Documentation";
+    return {
+      path: dir,
+      title,
+      html: `${navHtml("")}<article><h1>${escapeHtml(title)}</h1><ul>${items}</ul></article>`,
+    };
+  });
+}

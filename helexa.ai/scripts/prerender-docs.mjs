@@ -58,7 +58,9 @@ if (!fs.existsSync(SSR_ENTRY)) {
   fail(`${path.relative(ROOT, SSR_ENTRY)} is missing — run the SSR build first`);
 }
 
-const { renderDoc, slugs } = await import(url.pathToFileURL(SSR_ENTRY).href);
+const { renderDoc, slugs, indexes } = await import(
+  url.pathToFileURL(SSR_ENTRY).href
+);
 const template = fs.readFileSync(path.join(DIST, "index.html"), "utf8");
 
 // The shell must contain an empty #root for the markup to go into. If
@@ -115,6 +117,40 @@ for (const slug of slugs()) {
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, "index.html"), html);
   written.push({ slug, canonical });
+}
+
+// Index pages for every directory the loop above created. Without these
+// nginx answers 403 for /docs and each section: the directory exists, so
+// `try_files $uri/` matches, and with no index inside and autoindex off
+// there is nothing to serve and no fallthrough to the SPA shell.
+for (const idx of indexes()) {
+  const slugPath = idx.path ? `/docs/${idx.path}` : "/docs";
+  const html = withHead(
+    template.replace(ROOT_DIV, `<div id="root">${idx.html}</div>`),
+    idx.title,
+    undefined,
+    `${SITE}${slugPath}`,
+  );
+  const dir = idx.path
+    ? path.join(DIST, "docs", ...idx.path.split("/"))
+    : path.join(DIST, "docs");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "index.html"), html);
+}
+
+// Nothing the prerenderer creates may be left without an index — that is
+// the 403 above, and it is silent at build time.
+const missing = [];
+(function walk(dir) {
+  if (!fs.existsSync(dir)) return;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  if (!entries.some((e) => e.isFile() && e.name === "index.html")) {
+    missing.push(path.relative(DIST, dir));
+  }
+  for (const e of entries) if (e.isDirectory()) walk(path.join(dir, e.name));
+})(path.join(DIST, "docs"));
+if (missing.length) {
+  fail(`directories with no index.html would 403: ${missing.join(", ")}`);
 }
 
 // A sitemap so the pages are discoverable without relying on a crawler

@@ -111,6 +111,15 @@ export default function Docs() {
     return first ? <Navigate to={`/docs/${first}`} replace /> : null;
   }
 
+  // A section on its own — `/docs/operating` — is a directory rather than
+  // a page. It is reachable: the prerenderer writes an index there, and
+  // trimming a URL back to its parent is a thing people do. Send it to
+  // the section's first page rather than claiming it does not exist.
+  const section = tree.find((s) => s.id === slug);
+  if (section?.pages.length) {
+    return <Navigate to={`/docs/${section.pages[0].slug}`} replace />;
+  }
+
   if (!doc) {
     return (
       <main className="container py-5">
