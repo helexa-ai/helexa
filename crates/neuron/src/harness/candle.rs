@@ -270,7 +270,6 @@ impl LoadedHandle {
         &self,
         cfg: &crate::config::ContextLimitConfig,
     ) -> Option<cortex_core::harness::ModelServability> {
-        use cortex_core::harness::ModelServability;
         let (free_mb, profile) = match self {
             LoadedHandle::Single(m) => (m.last_free_mb.load(Ordering::Acquire), m.context_profile),
             #[cfg(feature = "cuda")]
@@ -284,7 +283,44 @@ impl LoadedHandle {
         if free_mb == 0 {
             return None;
         }
-        match check_vram(0, free_mb, profile.as_ref(), cfg) {
+        // With the KV gate enabled (#257), capacity is admission's job:
+        // free VRAM is *supposed* to sit near zero while long sequences
+        // are resident, and a request that does not fit queues rather
+        // than failing. Reporting "unservable" then is not just noise —
+        // cortex reads it as a dead location and tries to EVICT the model
+        // out from under the session that is using it (observed live
+        // 2026-08-15: `skipping loaded-but-unservable` → `evicting model`
+        // → eviction 404s → cold-load → proxy anyway). A model whose
+        // budget can still admit work is servable, full stop.
+        //
+        // The live-VRAM question below is kept for the case the gate
+        // cannot answer — no budget published, i.e. a CPU load or an arch
+        // with no context profile — which is also the case #245 was
+        // written for: VRAM eaten by something *outside* neuron, where no
+        // reservation accounting would ever see it.
+        let (kv_budget_mb, _) = self.kv_budget();
+        servability_from(kv_budget_mb, free_mb, profile.as_ref(), cfg)
+    }
+}
+
+/// The serviceability decision, split from [`LoadedHandle::servability`] so
+/// it can be tested without a loaded model on a GPU.
+fn servability_from(
+    kv_budget_mb: u64,
+    free_mb: u64,
+    profile: Option<&super::context_limit::ContextProfile>,
+    cfg: &crate::config::ContextLimitConfig,
+) -> Option<cortex_core::harness::ModelServability> {
+    use cortex_core::harness::ModelServability;
+    if kv_budget_mb > 0 {
+        return Some(ModelServability {
+            ok: true,
+            reason: None,
+            detail: None,
+        });
+    }
+    {
+        match check_vram(0, free_mb, profile, cfg) {
             Ok(()) => Some(ModelServability {
                 ok: true,
                 reason: None,
@@ -311,7 +347,9 @@ impl LoadedHandle {
             }),
         }
     }
+}
 
+impl LoadedHandle {
     /// `true` when the model's tokenizer contains recognised tool-call
     /// marker tokens (`<tool_call>` / `</tool_call>` convention).
     pub fn has_tool_call(&self) -> bool {
@@ -8205,6 +8243,47 @@ mod tests {
     /// A prompt under the cap with ample free VRAM passes; the same
     /// prompt over the cap is `PromptTooLong` before any VRAM math.
     #[test]
+    /// Regression, observed live 2026-08-15. With the KV gate enabled,
+    /// free VRAM is *supposed* to sit near zero while long sequences are
+    /// resident — that is admission working, not the node dying. The
+    /// probe used to read that as `insufficient_vram`, and cortex acted
+    /// on it: `skipping loaded-but-unservable` → `evicting model` →
+    /// eviction 404s → cold-load → proxy anyway. It only survived because
+    /// the eviction *failed*; a successful one would have unloaded the
+    /// flagship model out from under a live session.
+    #[test]
+    fn saturated_model_with_a_budget_is_still_servable() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+
+        // beast mid-session: budget published, live free VRAM squeezed to
+        // 2726 MiB by the KV of the sequences currently running.
+        let s = servability_from(4_713, 2_726, Some(&profile), &cfg)
+            .expect("a model with a budget has an opinion");
+        assert!(
+            s.ok,
+            "saturated-but-serving must not report unservable: {:?}",
+            s.reason
+        );
+        assert!(s.reason.is_none());
+    }
+
+    /// Without a budget the gate cannot answer, so the live-VRAM question
+    /// stands — which is the case #245 was written for: VRAM eaten by
+    /// something *outside* neuron, which no reservation accounting sees.
+    #[test]
+    fn without_a_budget_the_live_vram_check_still_applies() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+
+        let starved = servability_from(0, 2_726, Some(&profile), &cfg).expect("has an opinion");
+        assert!(!starved.ok, "no budget + no VRAM must still be unservable");
+        assert_eq!(starved.reason.as_deref(), Some("insufficient_vram"));
+
+        let healthy = servability_from(0, 40_000, Some(&profile), &cfg).expect("has an opinion");
+        assert!(healthy.ok);
+    }
+
     /// The #257 session, in numbers. beast's TP-2 27B loaded with ~9286 MiB
     /// free per card; a 67,881-token turn is what got a 503 while two like
     /// it were resident.
