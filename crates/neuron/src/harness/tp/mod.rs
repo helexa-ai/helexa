@@ -497,7 +497,7 @@ impl WorkerPool {
             .leader_worker
             .nccl_init(leader_cfg, comm_id.clone())
             .await
-            .map_err(|e| anyhow::anyhow!("leader NCCL init via device worker: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("leader NCCL init via device worker: {e:#}"))?;
         match leader_resp {
             rpc::WorkerResponse::InitOk => {}
             rpc::WorkerResponse::Error { kind, message } => {
@@ -569,7 +569,7 @@ impl WorkerPool {
             .leader_worker
             .nccl_sanity()
             .await
-            .map_err(|e| anyhow::anyhow!("leader NCCL sanity via device worker: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("leader NCCL sanity via device worker: {e:#}"))?;
 
         let expected = self.world_size;
         let leader_sum = match leader_resp {
@@ -694,7 +694,7 @@ impl WorkerPool {
                 world_size,
             )
             .await
-            .map_err(|e| anyhow::anyhow!("leader TP shard load via device worker: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("leader TP shard load via device worker: {e:#}"))?;
 
         // 3. Collect worker confirmations. Anything other than
         //    LoadDenseShardOk aborts the whole load — the leader's
@@ -1250,7 +1250,7 @@ impl WorkerPool {
             .leader_worker
             .query_vram()
             .await
-            .map_err(|e| anyhow::anyhow!("leader query_vram: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("leader query_vram: {e:#}"))?;
         let mut frees = vec![leader_free_mb];
         let worker_errors = drain_workers(&mut self.workers, |r| match r {
             WorkerResponse::VramInfo { free_mb, .. } => {

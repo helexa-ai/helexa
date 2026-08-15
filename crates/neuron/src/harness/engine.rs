@@ -170,7 +170,7 @@ async fn op_step(
         (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => worker
             .forward_logits_batch(*handle, tokens, prefix_lens, padded_len, step)
             .await
-            .map_err(|e| anyhow::anyhow!("batched decode step {step}: {e}")),
+            .map_err(|e| anyhow::anyhow!("batched decode step {step}: {e:#}")),
         #[cfg(feature = "cuda")]
         (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => pool
             .generate_step_batch(
@@ -182,7 +182,7 @@ async fn op_step(
                 step,
             )
             .await
-            .map_err(|e| anyhow::anyhow!("TP batched decode step {step}: {e}")),
+            .map_err(|e| anyhow::anyhow!("TP batched decode step {step}: {e:#}")),
         #[cfg(feature = "cuda")]
         _ => anyhow::bail!("engine backend/session mismatch"),
     }
@@ -204,13 +204,13 @@ async fn op_assemble(
             worker
                 .assemble_kv_batch(*handle, seqs)
                 .await
-                .map_err(|e| anyhow::anyhow!("assemble_kv_batch: {e}"))
+                .map_err(|e| anyhow::anyhow!("assemble_kv_batch: {e:#}"))
         }
         #[cfg(feature = "cuda")]
         (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => pool
             .assemble_kv_batch(&tp.model_id, tp.leader_handle, seqs)
             .await
-            .map_err(|e| anyhow::anyhow!("TP assemble_kv_batch: {e}")),
+            .map_err(|e| anyhow::anyhow!("TP assemble_kv_batch: {e:#}")),
         #[cfg(feature = "cuda")]
         _ => anyhow::bail!("engine backend/session mismatch"),
     }
@@ -229,7 +229,7 @@ async fn op_extract(
         (BackendConfig::Single { worker, handle, .. }, ActiveSession::Single { .. }) => Ok(worker
             .extract_kv_rows(*handle, rows, padded_len, steps)
             .await
-            .map_err(|e| anyhow::anyhow!("extract_kv_rows: {e}"))?
+            .map_err(|e| anyhow::anyhow!("extract_kv_rows: {e:#}"))?
             .into_iter()
             .map(|(id, _bytes)| id.0)
             .collect()),
@@ -247,7 +247,7 @@ async fn op_extract(
                 ids.clone(),
             )
             .await
-            .map_err(|e| anyhow::anyhow!("TP extract_kv_rows: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("TP extract_kv_rows: {e:#}"))?;
             Ok(ids)
         }
         #[cfg(feature = "cuda")]
@@ -262,13 +262,13 @@ async fn op_snapshot_seq(cfg: &EngineConfig, session: &mut ActiveSession) -> Res
             .snapshot_kv(*handle)
             .await
             .map(|(id, _bytes)| id.0)
-            .map_err(|e| anyhow::anyhow!("snapshot after prefill: {e}")),
+            .map_err(|e| anyhow::anyhow!("snapshot after prefill: {e:#}")),
         #[cfg(feature = "cuda")]
         (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
             let id = tp.next_snapshot_id.fetch_add(1, Ordering::Relaxed);
             pool.snapshot_kv_cache(&tp.model_id, tp.leader_handle, id)
                 .await
-                .map_err(|e| anyhow::anyhow!("TP snapshot after prefill: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("TP snapshot after prefill: {e:#}"))?;
             Ok(id)
         }
         #[cfg(feature = "cuda")]

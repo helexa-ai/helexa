@@ -71,15 +71,46 @@ pub async fn forward_request(
         })?;
 
     if !response.status().is_success() {
-        // Streaming body — can't snippet without breaking the stream
-        // pass-through. Log status + URL; the client still gets the
-        // upstream status, just without the leaked body.
-        tracing::warn!(
-            node = %route.node_name,
-            url = %url,
-            status = response.status().as_u16(),
-            "proxy: upstream returned non-2xx"
-        );
+        // Buffer the error body so the journal records WHY, then hand the
+        // same bytes on. Streaming is what a success body needs; an error
+        // body is a few hundred bytes and streaming it only guarantees
+        // that nobody ever sees the reason.
+        //
+        // This was a real dead end: neuron answered 503 `insufficient_vram`
+        // with the deficit in the body, and cortex logged only
+        // `status=503`. Neither journal held the cause, and the guard
+        // responsible could only be found by reading neuron's source
+        // (#257). The body is upstream-generated (our own #63 envelope),
+        // not caller content, and it is truncated in the log.
+        const MAX_ERROR_BODY: usize = 64 * 1024;
+        let status = response.status();
+        let (parts, body) = response.into_parts();
+        return match axum::body::to_bytes(body, MAX_ERROR_BODY).await {
+            Ok(bytes) => {
+                let snippet: String = String::from_utf8_lossy(&bytes).chars().take(600).collect();
+                tracing::warn!(
+                    node = %route.node_name,
+                    url = %url,
+                    status = status.as_u16(),
+                    body = %snippet,
+                    "proxy: upstream returned non-2xx"
+                );
+                Ok(Response::from_parts(parts, axum::body::Body::from(bytes)))
+            }
+            // Over the cap or a read failure: the body is consumed and
+            // cannot be handed on. Say so rather than passing an empty
+            // body off as the upstream's answer.
+            Err(e) => {
+                tracing::warn!(
+                    node = %route.node_name,
+                    url = %url,
+                    status = status.as_u16(),
+                    error = %e,
+                    "proxy: upstream returned non-2xx (body unreadable, dropped)"
+                );
+                Ok(Response::from_parts(parts, axum::body::Body::empty()))
+            }
+        };
     }
 
     Ok(response)

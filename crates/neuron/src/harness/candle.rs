@@ -1957,7 +1957,7 @@ pub(crate) async fn chunked_prefill_via_worker(
         let logits = worker
             .forward_logits(handle, chunk, offset)
             .await
-            .map_err(|e| anyhow::anyhow!("prefill chunk {chunk_idx}/{total_chunks}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("prefill chunk {chunk_idx}/{total_chunks}: {e:#}"))?;
         tracing::debug!(
             chunk_idx,
             total_chunks,
@@ -2008,7 +2008,7 @@ pub(crate) async fn chunked_prefill_tp(
         let logits = pool
             .generate_step(model_id, leader_handle, chunk, offset)
             .await
-            .map_err(|e| anyhow::anyhow!("TP prefill chunk {chunk_idx}/{total_chunks}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("TP prefill chunk {chunk_idx}/{total_chunks}: {e:#}"))?;
         tracing::debug!(
             chunk_idx,
             total_chunks,
@@ -2318,7 +2318,7 @@ impl CandleHarness {
             tracing::info!(model = %model_id_for_log, path = ?gguf_path_for_load, "loading GGUF");
             let mut file = std::fs::File::open(&gguf_path_for_load).context("open GGUF file")?;
             let content = gguf_file::Content::read(&mut file)
-                .map_err(|e| anyhow::anyhow!("parse GGUF: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("parse GGUF: {e:#}"))?;
 
             let architecture = content
                 .metadata
@@ -2334,7 +2334,7 @@ impl CandleHarness {
                 "qwen3" => {
                     let weights =
                         QuantizedQwen3Weights::from_gguf(content, &mut file, &device_for_load)
-                            .map_err(|e| anyhow::anyhow!("from_gguf qwen3: {e}"))?;
+                            .map_err(|e| anyhow::anyhow!("from_gguf qwen3: {e:#}"))?;
                     Ok(ModelArch::Qwen3Quantized(weights))
                 }
                 "qwen3moe" => {
@@ -2344,13 +2344,13 @@ impl CandleHarness {
                     // gives the best tokens/sec on consumer cards.
                     let weights =
                         GGUFQWenMoE::from_gguf(content, &mut file, &device_for_load, DType::F16)
-                            .map_err(|e| anyhow::anyhow!("from_gguf qwen3_moe: {e}"))?;
+                            .map_err(|e| anyhow::anyhow!("from_gguf qwen3_moe: {e:#}"))?;
                     Ok(ModelArch::Qwen3MoeQuantized(weights))
                 }
                 "llama" => {
                     let weights =
                         QuantizedLlamaWeights::from_gguf(content, &mut file, &device_for_load)
-                            .map_err(|e| anyhow::anyhow!("from_gguf llama: {e}"))?;
+                            .map_err(|e| anyhow::anyhow!("from_gguf llama: {e:#}"))?;
                     Ok(ModelArch::LlamaQuantized(weights))
                 }
                 other => anyhow::bail!(
@@ -2422,14 +2422,14 @@ impl CandleHarness {
                     let cfg: qwen3_dense::Config =
                         serde_json::from_str(&cfg_text).context("parse Qwen3 config.json")?;
                     let model = qwen3_dense::ModelForCausalLM::new(&cfg, vb)
-                        .map_err(|e| anyhow::anyhow!("build Qwen3 dense model: {e}"))?;
+                        .map_err(|e| anyhow::anyhow!("build Qwen3 dense model: {e:#}"))?;
                     Ok(ModelArch::Qwen3Dense(model))
                 }
                 "qwen3_moe" => {
                     let cfg: qwen3_moe_dense::Config =
                         serde_json::from_str(&cfg_text).context("parse Qwen3 MoE config.json")?;
                     let model = qwen3_moe_dense::ModelForCausalLM::new(&cfg, vb)
-                        .map_err(|e| anyhow::anyhow!("build Qwen3 MoE dense model: {e}"))?;
+                        .map_err(|e| anyhow::anyhow!("build Qwen3 MoE dense model: {e:#}"))?;
                     Ok(ModelArch::Qwen3MoeDense(model))
                 }
                 "llama" => {
@@ -2444,7 +2444,7 @@ impl CandleHarness {
                     let cache = llama_dense::Cache::new(true, dtype, &config, &device_for_load)
                         .context("build Llama Cache")?;
                     let model = llama_dense::Llama::load(vb, &config)
-                        .map_err(|e| anyhow::anyhow!("build Llama dense model: {e}"))?;
+                        .map_err(|e| anyhow::anyhow!("build Llama dense model: {e:#}"))?;
                     Ok(ModelArch::LlamaDense(Box::new(LlamaDense {
                         model,
                         cache,
@@ -2661,7 +2661,7 @@ impl CandleHarness {
             let encoding = loaded
                 .tokenizer
                 .encode(prompt.as_str(), true)
-                .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e}")))?;
+                .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e:#}")))?;
             let mut prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
 
             // Stage B: when the request carries images, preprocess
@@ -2691,7 +2691,7 @@ impl CandleHarness {
                 })?;
                 let profile = super::preprocess::PreprocessProfile::qwen3_6();
                 let images = extract_images_from_request(&request, &profile).map_err(|e| {
-                    InferenceError::Other(anyhow::anyhow!("extract_images: {e}"))
+                    InferenceError::Other(anyhow::anyhow!("extract_images: {e:#}"))
                 })?;
                 if images.is_empty() {
                     // request_has_images said true but extract returned
@@ -2918,7 +2918,7 @@ impl CandleHarness {
             let completion_text = loaded
                 .tokenizer
                 .decode(content_ids, true)
-                .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e}")))?;
+                .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e:#}")))?;
             // The first answer token after `</think>` is usually a
             // newline pair; trim it so `content` starts at the answer.
             let completion_text = if reasoning_tokens > 0 {
@@ -3128,7 +3128,7 @@ impl CandleHarness {
         let encoding = loaded
             .tokenizer
             .encode(prompt.as_str(), true)
-            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e}")))?;
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e:#}")))?;
         let mut prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
 
         // Stage C1: vision routing for the streaming path. Mirrors the
@@ -3160,7 +3160,7 @@ impl CandleHarness {
                         })?;
                 let profile = super::preprocess::PreprocessProfile::qwen3_6();
                 let images = extract_images_from_request(&request, &profile)
-                    .map_err(|e| InferenceError::Other(anyhow::anyhow!("extract_images: {e}")))?;
+                    .map_err(|e| InferenceError::Other(anyhow::anyhow!("extract_images: {e:#}")))?;
                 if images.is_empty() {
                     return Err(InferenceError::Other(anyhow::anyhow!(
                         "request has image content but extractor produced zero images"
@@ -3751,7 +3751,7 @@ impl Harness for CandleHarness {
                 let handle = w
                     .load_gguf(gguf_path, spec.model_id.clone())
                     .await
-                    .map_err(|e| anyhow::anyhow!("worker load_gguf: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("worker load_gguf: {e:#}"))?;
                 // GGUF Qwen3.6 releases don't ship the vision tower
                 // (Qwen-VL weights are in the dense safetensors only),
                 // so a GGUF load is text-only by construction. GGUF
@@ -3787,7 +3787,7 @@ impl Harness for CandleHarness {
                 let handle = w
                     .load_dense(config_path, safetensors_paths, spec.model_id.clone())
                     .await
-                    .map_err(|e| anyhow::anyhow!("worker load_dense: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("worker load_dense: {e:#}"))?;
                 (
                     tokenizer_path,
                     None,
@@ -3821,7 +3821,7 @@ impl Harness for CandleHarness {
         };
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("load tokenizer: {e:#}"))?;
 
         // Probe for reasoning markers in the tokenizer's
         // added-tokens table — `<think>` / `</think>` on Qwen3 +
@@ -4128,7 +4128,7 @@ impl CandleHarness {
 
         let files = self.resolve_image_files(source_id).await?;
         let tokenizer = Tokenizer::from_file(&files.tokenizer)
-            .map_err(|e| anyhow::anyhow!("load tokenizer for '{}': {e}", spec.model_id))?;
+            .map_err(|e| anyhow::anyhow!("load tokenizer for '{}': {e:#}", spec.model_id))?;
 
         // Optional in-situ DiT quantization (#204): `quant = "q8_0"`
         // halves the resident DiT (~12 -> ~6.4 GB), opening 12 GB
@@ -4349,7 +4349,7 @@ impl CandleHarness {
         let tokens = img
             .tokenizer
             .encode(super::image::format_prompt(&request.prompt).as_str(), true)
-            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize prompt: {e}")))?
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize prompt: {e:#}")))?
             .get_ids()
             .to_vec();
         let negative_tokens = match &request.negative_prompt {
@@ -4357,7 +4357,7 @@ impl CandleHarness {
                 img.tokenizer
                     .encode(super::image::format_prompt(neg).as_str(), true)
                     .map_err(|e| {
-                        InferenceError::Other(anyhow::anyhow!("tokenize negative prompt: {e}"))
+                        InferenceError::Other(anyhow::anyhow!("tokenize negative prompt: {e:#}"))
                     })?
                     .get_ids()
                     .to_vec(),
@@ -4388,7 +4388,7 @@ impl CandleHarness {
             super::image::encode_png(&result.rgb, result.width, result.height)
         })
         .await
-        .map_err(|e| InferenceError::Other(anyhow::anyhow!("png encode task: {e}")))?
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("png encode task: {e:#}")))?
         .map_err(InferenceError::Other)?;
 
         let image_units = super::image::megapixel_steps(width, height, timing.steps, timing.cfg);
@@ -4493,7 +4493,7 @@ impl CandleHarness {
 
         // 6. Tokenizer (same as single-GPU path).
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("load tokenizer: {e:#}"))?;
         // Reasoning + tool-call marker probes — identical to the
         // single-GPU path. See LoadedModel's matching fields for
         // the why.
@@ -4793,7 +4793,7 @@ impl CandleHarness {
         let encoding = tp
             .tokenizer
             .encode(prompt.as_str(), true)
-            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e}")))?;
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e:#}")))?;
         let mut prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
 
         // TP-vision (streaming): same detection + pad expansion as the
@@ -4833,7 +4833,7 @@ impl CandleHarness {
                 .map(|(i, uri)| {
                     let (h, w) =
                         super::preprocess::resized_dims_for_uri(uri, &profile).map_err(|e| {
-                            InferenceError::Other(anyhow::anyhow!("resized_dims image #{i}: {e}"))
+                            InferenceError::Other(anyhow::anyhow!("resized_dims image #{i}: {e:#}"))
                         })?;
                     Ok::<usize, InferenceError>((h as usize / factor) * (w as usize / factor))
                 })
@@ -5509,7 +5509,7 @@ async fn chat_completion_tp_inner(
     let encoding = tp
         .tokenizer
         .encode(prompt.as_str(), true)
-        .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e}")))?;
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("tokenize: {e:#}")))?;
     let mut prompt_tokens: Vec<u32> = encoding.get_ids().to_vec();
 
     // TP-vision: when the request carries images (and the model has a
@@ -5547,7 +5547,7 @@ async fn chat_completion_tp_inner(
             .map(|(i, uri)| {
                 let (h, w) =
                     super::preprocess::resized_dims_for_uri(uri, &profile).map_err(|e| {
-                        InferenceError::Other(anyhow::anyhow!("resized_dims image #{i}: {e}"))
+                        InferenceError::Other(anyhow::anyhow!("resized_dims image #{i}: {e:#}"))
                     })?;
                 Ok::<usize, InferenceError>((h as usize / factor) * (w as usize / factor))
             })
@@ -5720,7 +5720,7 @@ async fn chat_completion_tp_inner(
     // No device touch on the async caller's thread — sampling reads
     // from CPU memory only.
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)
-        .map_err(|e| InferenceError::Other(anyhow::anyhow!("build cpu logits: {e}")))?;
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("build cpu logits: {e:#}")))?;
     let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
         Ok(t) => t,
         Err(e) => {
@@ -5756,7 +5756,7 @@ async fn chat_completion_tp_inner(
                 .await
                 .map_err(InferenceError::Other)?;
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu).map_err(|e| {
-                InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e}"))
+                InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e:#}"))
             })?;
             next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
                 Ok(t) => t,
@@ -5805,7 +5805,7 @@ async fn chat_completion_tp_inner(
     let completion_text = tp
         .tokenizer
         .decode(content_ids, true)
-        .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e}")))?;
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("detokenize: {e:#}")))?;
     let completion_text = if reasoning_tokens > 0 {
         completion_text.trim_start().to_string()
     } else {
@@ -6722,13 +6722,13 @@ async fn run_inference_with_images_via_worker(
     worker
         .clear_kv_cache(handle)
         .await
-        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e:#}"))?;
 
     // Single-shot prefill with image splicing.
     let logits_vec = worker
         .forward_logits_with_images(handle, prompt_tokens.to_vec(), 0, images, image_token_id)
         .await
-        .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e:#}"))?;
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
     let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
         Ok(t) => t,
@@ -6751,7 +6751,7 @@ async fn run_inference_with_images_via_worker(
         let logits_vec = worker
             .forward_logits(handle, vec![next_token], prompt_len + index)
             .await
-            .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
         next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
             Ok(t) => t,
@@ -6858,7 +6858,7 @@ pub(crate) async fn restore_or_clear_via_worker(
     worker
         .clear_kv_cache(handle)
         .await
-        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e:#}"))?;
     Ok(0)
 }
 
@@ -7138,7 +7138,7 @@ async fn run_inference_via_worker(
             let logits_vec = worker
                 .forward_logits(handle, vec![next_token], prompt_len + index)
                 .await
-                .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
             next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
                 Ok(t) => t,
@@ -7261,11 +7261,11 @@ async fn stream_inference_via_worker(
             worker
                 .clear_kv_cache(handle)
                 .await
-                .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e}"))?;
+                .map_err(|e| anyhow::anyhow!("clear_kv_cache: {e:#}"))?;
             worker
                 .forward_logits_with_images(handle, prompt_tokens.clone(), 0, imgs, image_token_id)
                 .await
-                .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e}"))?
+                .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e:#}"))?
         }
         None => {
             let reused =
@@ -7422,7 +7422,7 @@ async fn stream_inference_via_worker(
         let logits_vec = worker
             .forward_logits(handle, vec![next_token], prompt_len + index)
             .await
-            .map_err(|e| anyhow::anyhow!("decode step {index}: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
         next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
             Ok(t) => t,
@@ -7984,6 +7984,43 @@ mod tests {
         assert!(
             format!("{err:#}").contains("config.json"),
             "message should mention config.json"
+        );
+    }
+
+    /// A flattened error chain can turn a benign failure into a poison.
+    ///
+    /// `is_device_fault` is default-true: it poisons unless it sees a
+    /// known non-device marker, and those markers live in the *inner*
+    /// error. Rebuilding an error as `anyhow!("ctx: {e}")` keeps only the
+    /// outermost context, so the marker vanishes and a pre-kernel shape
+    /// error is classified as a device fault — poisoning the model and
+    /// forcing an unload+reload for nothing. `{e:#}` keeps the chain.
+    #[test]
+    fn flattened_chain_hides_the_non_device_marker() {
+        let inner = anyhow::anyhow!("shape mismatch in broadcast_add, lhs: [1, 32], rhs: [1, 1]");
+        let wrapped = anyhow::Error::new(std::io::Error::other(inner.to_string()))
+            .context("AssembleKvBatch: leader assembly failed");
+
+        // What the old code produced: outermost context only.
+        let flattened = format!("{}", anyhow::anyhow!("TP assemble_kv_batch: {}", wrapped));
+        assert!(
+            !flattened.contains("shape mismatch"),
+            "precondition: flattening drops the marker"
+        );
+        assert!(
+            is_device_fault(&flattened),
+            "flattened chain is misread as a device fault"
+        );
+
+        // What the fix produces: the whole chain, marker intact.
+        let full = format!("{}", anyhow::anyhow!("TP assemble_kv_batch: {:#}", wrapped));
+        assert!(
+            full.contains("shape mismatch"),
+            "chain must survive: {full}"
+        );
+        assert!(
+            !is_device_fault(&full),
+            "with the chain intact this is correctly not a device fault"
         );
     }
 

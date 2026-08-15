@@ -97,7 +97,7 @@ async fn list_models(State(state): State<Arc<NeuronState>>) -> impl IntoResponse
 
 async fn load_model(
     State(state): State<Arc<NeuronState>>,
-    Json(spec): Json<ModelSpec>,
+    ApiJson(spec): ApiJson<ModelSpec>,
 ) -> impl IntoResponse {
     // Driver/library mismatch preflight (#19): every CUDA load is
     // guaranteed to fail until the host reboots. Reject up front with
@@ -168,7 +168,7 @@ fn preflight_kind(err: &PreflightError) -> &'static str {
 
 async fn unload_model(
     State(state): State<Arc<NeuronState>>,
-    Json(body): Json<Value>,
+    ApiJson(body): ApiJson<Value>,
 ) -> impl IntoResponse {
     let model_id = match body.get("model_id").and_then(|v| v.as_str()) {
         Some(id) => id.to_string(),
@@ -284,7 +284,7 @@ fn principal_key(headers: &axum::http::HeaderMap) -> Option<String> {
 async fn chat_completions(
     State(state): State<Arc<NeuronState>>,
     headers: axum::http::HeaderMap,
-    Json(mut req): Json<ChatCompletionRequest>,
+    ApiJson(mut req): ApiJson<ChatCompletionRequest>,
 ) -> impl IntoResponse {
     let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
         return (
@@ -366,7 +366,7 @@ async fn chat_completions(
 async fn responses(
     State(state): State<Arc<NeuronState>>,
     headers: axum::http::HeaderMap,
-    Json(req): Json<ResponsesRequest>,
+    ApiJson(req): ApiJson<ResponsesRequest>,
 ) -> impl IntoResponse {
     let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
         return (
@@ -490,7 +490,7 @@ async fn responses(
 async fn images_generations(
     State(state): State<Arc<NeuronState>>,
     headers: axum::http::HeaderMap,
-    Json(req): Json<cortex_core::images::ImagesGenerationRequest>,
+    ApiJson(req): ApiJson<cortex_core::images::ImagesGenerationRequest>,
 ) -> impl IntoResponse {
     use cortex_core::error_envelope::OpenAiError;
     use cortex_core::images as wire;
@@ -731,6 +731,23 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
         .with_retry_after(retry_after_secs),
         InferenceError::Other(e) => OpenAiError::without_code(500, "api_error", format!("{e:#}")),
     };
+    // Every failed request says why, once, here (#63). Before this the
+    // envelope went to the client and nothing reached the journal: a 503
+    // `insufficient_vram` was returned in 225 ms with no server-side
+    // trace, and the guard responsible could only be identified by
+    // reading the source and reproducing its arithmetic (#257).
+    //
+    // `extra` carries the numbers that make a rejection actionable —
+    // free_mb/required_mb, prompt_len/max, retry_after — so the log line
+    // is self-contained rather than a pointer to go and look elsewhere.
+    tracing::warn!(
+        status = env.status,
+        error_type = %env.error_type,
+        code = env.code.as_deref().unwrap_or("-"),
+        detail = %env.message,
+        extra = %serde_json::to_string(&env.extra).unwrap_or_default(),
+        "request rejected"
+    );
     envelope_response(env)
 }
 
@@ -961,5 +978,70 @@ mod error_envelope_tests {
         assert_eq!(error["type"], "api_error");
         assert_eq!(error["code"], Value::Null);
         assert!(error["message"].as_str().unwrap().contains("kaboom"));
+    }
+}
+
+// ── Request-body extraction (#63) ────────────────────────────────────
+
+/// `Json<T>` that fails like the rest of our API instead of like axum.
+///
+/// axum's own extractor answers a malformed body with a bare string —
+/// `"Failed to deserialize the JSON body into the target type: …"` —
+/// at 400/422, *before any handler runs*, so nothing logs it either.
+/// Both halves of that hurt: no OpenAI client can parse the body (they
+/// look for `error.code` / `error.type`), and the operator sees nothing
+/// at all in the journal.
+///
+/// That combination cost a real session (#253): a client sent a
+/// spec-legal shape our types didn't model, got 422 with an unparseable
+/// body, surfaced nothing to its user, and neuron logged not one line —
+/// the cause was findable only by reading the wire types.
+///
+/// So: same #63 envelope as every other error, plus a `WARN` naming the
+/// endpoint and the deserialization detail.
+pub struct ApiJson<T>(pub T);
+
+impl<T, S> axum::extract::FromRequest<S> for ApiJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = axum::response::Response;
+
+    async fn from_request(req: axum::extract::Request, state: &S) -> Result<Self, Self::Rejection> {
+        use axum::extract::rejection::JsonRejection;
+        let (method, uri) = (req.method().clone(), req.uri().clone());
+        match Json::<T>::from_request(req, state).await {
+            Ok(Json(value)) => Ok(ApiJson(value)),
+            Err(rejection) => {
+                // Distinguish "shape we don't accept" (422 — the body
+                // parsed as JSON but not as this request) from "not JSON
+                // at all" (400) and a wrong content-type (415), because
+                // they need different fixes from the caller.
+                let (status, code) = match &rejection {
+                    JsonRejection::JsonDataError(_) => (422, "invalid_request_body"),
+                    JsonRejection::JsonSyntaxError(_) => (400, "malformed_json"),
+                    JsonRejection::MissingJsonContentType(_) => (415, "unsupported_media_type"),
+                    _ => (400, "invalid_request_body"),
+                };
+                let detail = rejection.body_text();
+                tracing::warn!(
+                    method = %method,
+                    uri = %uri,
+                    status,
+                    code,
+                    detail = %detail,
+                    "request body rejected before dispatch"
+                );
+                Err(envelope_response(
+                    cortex_core::error_envelope::OpenAiError::new(
+                        status,
+                        "invalid_request_error",
+                        code,
+                        detail,
+                    ),
+                ))
+            }
+        }
     }
 }
