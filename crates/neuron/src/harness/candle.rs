@@ -192,6 +192,18 @@ impl LoadedHandle {
         }
     }
 
+    /// This model's KV budget and its unreserved remainder, in MiB (#257).
+    /// `(0, 0)` when the gate is disabled.
+    pub fn kv_budget(&self) -> (u64, u64) {
+        let admission = match self {
+            LoadedHandle::Single(m) => &m.admission,
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => &m.admission,
+            LoadedHandle::Image(m) => &m.admission,
+        };
+        (admission.kv_budget_mb(), admission.kv_available_mb())
+    }
+
     /// Live throughput EMAs (#137): `(prefill_tok_s, decode_tok_s)`, each
     /// `0.0` until its phase has a sample.
     pub fn rates(&self) -> (f64, f64) {
@@ -1635,7 +1647,92 @@ fn validate_request(
     if prompt_len > max {
         return Err(InferenceError::PromptTooLong { prompt_len, max });
     }
-    check_vram(prompt_len, vram_free_mb, profile, cfg)
+    // Only the catastrophic floor here. The length-aware KV fit moved into
+    // admission (#257), which reserves the sequence's KV from a budget
+    // measured at load: a request that doesn't fit *yet* now queues until a
+    // running sequence returns its KV, instead of being rejected outright
+    // while the admission queue sits empty. Checking it here as well would
+    // reinstate exactly that rejection, one call earlier.
+    //
+    // `check_vram` below keeps the length-aware form for the serviceability
+    // probe (#245), which asks a deliberately different question — "could a
+    // minimal request start right now" (it passes `prompt_len == 0`) —
+    // rather than "will this particular prompt ever fit".
+    let _ = profile;
+    let _ = cfg;
+    check_vram_floor(vram_free_mb)
+}
+
+/// The static floor: refuse when free VRAM is so low that even a trivial
+/// prefill would fault. Shared by the request path and [`check_vram`] so
+/// there is one definition of "catastrophically out of memory".
+fn check_vram_floor(vram_free_mb: u64) -> Result<(), InferenceError> {
+    // VRAM checks are skipped on CPU loads (vram_free_mb == 0 sentinel).
+    if vram_free_mb == 0 {
+        return Ok(());
+    }
+    let min = min_free_vram_mb();
+    if vram_free_mb < min {
+        return Err(InferenceError::InsufficientVram {
+            free_mb: vram_free_mb,
+            required_mb: min,
+        });
+    }
+    Ok(())
+}
+
+/// MiB of KV cache one sequence of `prompt_len` tokens will hold for its
+/// lifetime, including the output reserve it may grow into (#257). This is
+/// what a request reserves from the model's KV budget at admission.
+///
+/// `0` means "unpriced" — no context profile, or a degenerate zero-KV
+/// profile (no full-attention layers) — and disables the gate for that
+/// request, matching the fallback `derive_limit` takes.
+pub(crate) fn kv_reservation_mb(
+    prompt_len: usize,
+    profile: Option<&super::context_limit::ContextProfile>,
+    cfg: &crate::config::ContextLimitConfig,
+) -> u64 {
+    let Some(profile) = profile else { return 0 };
+    if profile.kv_bytes_per_token_per_card == 0 {
+        return 0;
+    }
+    let tokens = (prompt_len as u64).saturating_add(cfg.output_reserve_tokens as u64);
+    profile
+        .kv_bytes_per_token_per_card
+        .saturating_mul(tokens)
+        .saturating_div(1024 * 1024)
+}
+
+/// The KV budget a freshly-loaded model may hand out to concurrent
+/// sequences (#257): free VRAM measured while idle, less everything else
+/// that will claim the same VRAM later.
+///
+/// Three subtractions, each for VRAM that must stay available no matter
+/// how many sequences are resident:
+///
+/// - the prefill activation headroom,
+/// - the static floor,
+/// - **the prefix cache's own budget (#11)**. Snapshots live on the
+///   model's device and grow into this same free VRAM, but the budget is
+///   measured at load while the cache is still empty — so without this the
+///   gate would hand out VRAM the cache is entitled to and over-admit by
+///   up to `prefix_cache.budget_mb` (1 GiB by default, ~18% of beast's
+///   budget). `0` when the cache is disabled.
+pub(crate) fn kv_budget_mb(
+    free_at_load_mb: u64,
+    cfg: &crate::config::ContextLimitConfig,
+    prefix_cache_budget_mb: u64,
+) -> u64 {
+    free_at_load_mb
+        .saturating_sub(cfg.activation_headroom_mb)
+        .saturating_sub(min_free_vram_mb())
+        .saturating_sub(prefix_cache_budget_mb)
+}
+
+/// The VRAM the prefix cache may claim, or `0` when it is switched off.
+fn prefix_cache_reserved_mb(cfg: &crate::config::PrefixCacheConfig) -> u64 {
+    if cfg.enabled { cfg.budget_mb } else { 0 }
 }
 
 /// The VRAM half of [`validate_request`], split out so the serviceability
@@ -1660,13 +1757,8 @@ fn check_vram(
     if vram_free_mb == 0 {
         return Ok(());
     }
+    check_vram_floor(vram_free_mb)?;
     let min = min_free_vram_mb();
-    if vram_free_mb < min {
-        return Err(InferenceError::InsufficientVram {
-            free_mb: vram_free_mb,
-            required_mb: min,
-        });
-    }
     // Length-aware backstop (#65): KV the whole sequence (prompt +
     // generation reserve) will occupy, plus the prefill activation
     // headroom, plus the static floor as an additive cushion — all per
@@ -2505,6 +2597,13 @@ impl CandleHarness {
         // Admission control (#53): refuse fast if the bounded queue is full
         // or the wait elapses, rather than joining an unbounded lock-wait.
         // The permit is held for the whole request (released on drop).
+        // Unpriced (#257): this path admits before the prompt is built, so
+        // there is no length to reserve KV for yet. The gate is therefore
+        // skipped here — long-context agentic traffic arrives streaming, on
+        // the paths above, which is where the budget has to hold. Pricing
+        // this one means moving admission after prompt construction, which
+        // reorders the queue against the poison/vision checks; deliberately
+        // left for its own change.
         let _admit = loaded
             .admission
             .enter(principal.as_deref())
@@ -3138,7 +3237,14 @@ impl CandleHarness {
         // into the inference task and is held until it completes.
         let admit = loaded
             .admission
-            .enter(principal.as_deref())
+            .enter_with_kv(
+                principal.as_deref(),
+                kv_reservation_mb(
+                    prompt_len,
+                    loaded.context_profile.as_ref(),
+                    &self.context_limit_cfg,
+                ),
+            )
             .await
             .map_err(InferenceError::from)?;
 
@@ -3346,6 +3452,7 @@ impl CandleHarness {
                 let (in_flight, queue_depth) = handle.load();
                 let (max_in_flight, max_queue_depth) = handle.capacity();
                 let rej = handle.rejections();
+                let (kv_budget_mb, kv_available_mb) = handle.kv_budget();
                 let (tok_s_prefill, tok_s_decode) = handle.rates();
                 cortex_core::discovery::ModelLoad {
                     id: handle.model_id().to_string(),
@@ -3356,6 +3463,10 @@ impl CandleHarness {
                     rejected_queue_full: rej.queue_full,
                     rejected_timeout: rej.timeout,
                     rejected_per_principal: rej.per_principal,
+                    rejected_kv_timeout: rej.kv_timeout,
+                    rejected_kv_unservable: rej.kv_unservable,
+                    kv_budget_mb,
+                    kv_available_mb,
                     tok_s_prefill,
                     tok_s_decode,
                 }
@@ -3796,6 +3907,21 @@ impl Harness for CandleHarness {
         let (free_mb, _) = loaded.query_vram().await;
         if free_mb > 0 {
             loaded.last_free_mb.store(free_mb, Ordering::Release);
+            // Publish the KV budget while nothing is in flight (#257) —
+            // the only moment a free-VRAM reading is not already net of
+            // some running sequence's reservations.
+            let budget = kv_budget_mb(
+                free_mb,
+                &self.context_limit_cfg,
+                prefix_cache_reserved_mb(&self.prefix_cache_cfg),
+            );
+            loaded.admission.set_kv_budget_mb(budget);
+            tracing::info!(
+                model = %spec.model_id,
+                free_at_load_mb = free_mb,
+                kv_budget_mb = budget,
+                "admission: KV budget published"
+            );
         }
 
         let mut models = self.models.write().await;
@@ -4002,7 +4128,7 @@ impl CandleHarness {
             worker,
             handle,
             poisoned: Arc::new(AtomicBool::new(false)),
-            admission: super::admission::AdmissionController::new(&admission_cfg),
+            admission: crate::harness::admission::AdmissionController::new(&admission_cfg),
             inference_lock: Arc::new(tokio::sync::Mutex::new(())),
             max_dim: self.image_cfg.max_dim,
         };
@@ -4450,6 +4576,20 @@ impl CandleHarness {
         let free_mb = tp_loaded.query_vram_tightest_free_mb().await;
         if free_mb > 0 {
             tp_loaded.last_free_mb.store(free_mb, Ordering::Release);
+            // Tightest-free across ranks is the binding constraint, so the
+            // budget is per-card and every rank stays within it (#257).
+            let budget = kv_budget_mb(
+                free_mb,
+                &self.context_limit_cfg,
+                prefix_cache_reserved_mb(&self.prefix_cache_cfg),
+            );
+            tp_loaded.admission.set_kv_budget_mb(budget);
+            tracing::info!(
+                model = %spec.model_id,
+                free_at_load_mb = free_mb,
+                kv_budget_mb = budget,
+                "admission: KV budget published (TP, tightest rank)"
+            );
         }
 
         let mut models = self.models.write().await;
@@ -4749,7 +4889,14 @@ impl CandleHarness {
         // permit moves into the orchestration task and is held for its life.
         let admit = tp
             .admission
-            .enter(principal.as_deref())
+            .enter_with_kv(
+                principal.as_deref(),
+                kv_reservation_mb(
+                    prompt_len,
+                    tp.context_profile.as_ref(),
+                    &self.context_limit_cfg,
+                ),
+            )
             .await
             .map_err(InferenceError::from)?;
 
@@ -5414,7 +5561,10 @@ async fn chat_completion_tp_inner(
     // the pool-lock wait. Held for the whole request (released on drop).
     let _admit = tp
         .admission
-        .enter(principal.as_deref())
+        .enter_with_kv(
+            principal.as_deref(),
+            kv_reservation_mb(prompt_len, tp.context_profile.as_ref(), &context_limit_cfg),
+        )
         .await
         .map_err(InferenceError::from)?;
 
@@ -6059,6 +6209,14 @@ pub enum InferenceError {
         "insufficient free VRAM for prefill: {free_mb} MiB free, need at least {required_mb} MiB"
     )]
     InsufficientVram { free_mb: u64, required_mb: u64 },
+    /// The prompt's KV reservation exceeds this model's *entire* KV budget
+    /// (#257). Unlike [`InsufficientVram`](Self::InsufficientVram) this is
+    /// not backpressure: an empty node would refuse it too, so retrying is
+    /// pointless and the caller must shorten the prompt.
+    #[error(
+        "prompt needs {required_mb} MiB of KV cache but this model's entire budget is {budget_mb} MiB"
+    )]
+    PromptTooLongForVram { required_mb: u64, budget_mb: u64 },
     /// Request carried `image_url` content but the loaded model has
     /// no vision tower. Stage B6 — replaces the silent-drop pattern
     /// from issue #3 with an explicit 400 + `vision_unsupported`
@@ -6115,6 +6273,26 @@ impl From<super::admission::AdmissionRejection> for InferenceError {
             AdmissionRejection::PrincipalCap { retry_after_secs } => {
                 InferenceError::PerPrincipalLimit { retry_after_secs }
             }
+            // The KV budget never freed in time. Transient like any other
+            // load rejection, but reported as `InsufficientVram` so the
+            // body carries the MiB that explain it (#257).
+            AdmissionRejection::KvTimeout {
+                required_mb,
+                budget_mb,
+                ..
+            } => InferenceError::InsufficientVram {
+                free_mb: budget_mb,
+                required_mb,
+            },
+            // Waiting can never admit this prompt on this node, so it is a
+            // client-side length error rather than backpressure.
+            AdmissionRejection::KvUnservable {
+                required_mb,
+                budget_mb,
+            } => InferenceError::PromptTooLongForVram {
+                required_mb,
+                budget_mb,
+            },
         }
     }
 }
@@ -8027,6 +8205,81 @@ mod tests {
     /// A prompt under the cap with ample free VRAM passes; the same
     /// prompt over the cap is `PromptTooLong` before any VRAM math.
     #[test]
+    /// The #257 session, in numbers. beast's TP-2 27B loaded with ~9286 MiB
+    /// free per card; a 67,881-token turn is what got a 503 while two like
+    /// it were resident.
+    ///
+    /// Note what the prefix-cache subtraction costs: two such turns need
+    /// 4754 MiB and the budget is 4714, so this card now admits ONE at a
+    /// time and queues the second. Live, two did coexist — because the
+    /// cache held ~433 MiB of its 1024 MiB entitlement at that moment, not
+    /// all of it. Reserving the configured budget rather than the current
+    /// usage is the conservative direction on purpose: over-admitting
+    /// re-creates the OOM this issue is about, while over-reserving only
+    /// queues a request that is still served. Making the cache evict
+    /// snapshots to admit a sequence — rather than the two silently
+    /// competing — is the natural follow-up.
+    fn kv_budget_prices_a_long_context_session() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = super::super::context_limit::ContextProfile {
+            max_position_embeddings: 262_144,
+            kv_bytes_per_token_per_card: 32_768,
+            world_size: 2,
+        };
+        // 9286 − 2048 activation − 1500 floor − 1024 prefix cache
+        let budget = kv_budget_mb(9_286, &cfg, 1_024);
+        assert_eq!(budget, 4_714);
+
+        let per_seq = kv_reservation_mb(67_881, Some(&profile), &cfg);
+        // (67_881 + 8_192) * 32_768 / 1 MiB
+        assert_eq!(per_seq, 2_377);
+
+        // The invariant that actually matters: a single long turn is
+        // servable, so it queues rather than being refused outright as
+        // KvUnservable. That is the difference between the session
+        // surviving and being discarded.
+        assert!(
+            per_seq <= budget,
+            "one long turn must fit the budget: {per_seq} vs {budget}"
+        );
+        assert!(
+            per_seq * 2 > budget,
+            "two must not both be admitted once the cache is reserved"
+        );
+    }
+
+    /// With the prefix cache disabled, its MiB return to the sequence
+    /// budget — the operator's lever if they would rather have concurrency
+    /// than cache hits.
+    #[test]
+    fn disabling_the_prefix_cache_returns_its_budget() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        assert_eq!(kv_budget_mb(9_286, &cfg, 0), 5_738);
+        assert_eq!(kv_budget_mb(9_286, &cfg, 1_024), 4_714);
+    }
+
+    /// No context profile (or a zero-KV one) leaves the request unpriced, so
+    /// the gate stays out of the way rather than admitting on a bogus zero.
+    #[test]
+    fn unpriced_without_profile() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        assert_eq!(kv_reservation_mb(50_000, None, &cfg), 0);
+        let degenerate = super::super::context_limit::ContextProfile {
+            max_position_embeddings: 262_144,
+            kv_bytes_per_token_per_card: 0,
+            world_size: 1,
+        };
+        assert_eq!(kv_reservation_mb(50_000, Some(&degenerate), &cfg), 0);
+    }
+
+    /// A card with less free VRAM than the fixed reserves yields a zero
+    /// budget rather than underflowing into a huge one.
+    #[test]
+    fn budget_saturates_at_zero() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        assert_eq!(kv_budget_mb(100, &cfg, 1_024), 0);
+    }
+
     fn validate_request_cap_and_fit() {
         let cfg = crate::config::ContextLimitConfig::default();
         let profile = backstop_profile();
@@ -8074,41 +8327,65 @@ mod tests {
         assert!(validate_request(500_000, 5_000, 1_000_000, None, &cfg).is_ok());
     }
 
-    /// The acceptance test (#65): a cap derived against *ample* free VRAM
-    /// is later applied at request time against *tightened* free VRAM. A
-    /// prompt sized exactly at the now-stale `effective_prompt_cap()`
-    /// clears the cap and the static floor, yet no longer fits — the
-    /// length-aware backstop catches it with a clean `InsufficientVram`
-    /// instead of an OOM-poisoned context. Same prompt with the original
-    /// ample VRAM still passes, proving the guard only bites on staleness.
-    #[test]
-    fn validate_request_catches_poll_vs_request_staleness() {
+    /// The #65 acceptance scenario, re-pointed at where the guard now
+    /// lives (#257).
+    ///
+    /// #65 protected against a cap derived from *polled* free VRAM being
+    /// applied when free VRAM had since tightened — the length-aware
+    /// backstop caught the over-footprint prompt with a clean
+    /// `InsufficientVram` instead of an OOM-poisoned context.
+    ///
+    /// That protection is now the admission KV gate, and the staleness it
+    /// guarded against is structurally gone: the budget is fixed when the
+    /// model loads rather than re-read from a live poll, so it cannot
+    /// disagree with itself between poll and request. What remains to
+    /// prove is that an over-footprint prompt is still refused — and that
+    /// the same prompt on an ample card still passes, so the guard bites
+    /// only when VRAM is genuinely short.
+    #[tokio::test]
+    async fn oversized_footprint_is_refused_by_the_kv_gate() {
         let cfg = crate::config::ContextLimitConfig::default();
         let profile = backstop_profile();
 
-        // Cap derived at /models poll time with 40 GB free on the tightest
-        // card — throughput binds, giving input = 87040 (the issue's
-        // worked beast figure).
         let limit = super::super::context_limit::derive_limit(&profile, 40_000, 800.0, None, &cfg);
         let cap = limit.input.expect("input budget derived");
         assert_eq!(cap, 87_040);
 
-        // With that same ample VRAM, a prompt at the cap still fits.
-        assert!(validate_request(cap, 40_000, cap, Some(&profile), &cfg).is_ok());
+        // (87_040 + 8_192) tokens × 32 KiB / 1 MiB
+        let footprint = kv_reservation_mb(cap, Some(&profile), &cfg);
+        assert_eq!(footprint, 2_976);
 
-        // Now free VRAM has dropped to 5 GB between the poll and the
-        // request (a co-resident model loaded). The prompt is still ≤ cap
-        // and clears the 1500 MiB floor, but its footprint —
-        // (87040 + 8192)/32 + 2048 + 1500 = 6524 MiB — exceeds 5000 MiB.
-        let err = validate_request(cap, 5_000, cap, Some(&profile), &cfg)
-            .expect_err("stale cap must not let an over-VRAM prompt through");
+        // `validate_request` keeps the cap and the static floor. It no
+        // longer opines on the footprint — checking it there would reject
+        // pre-admission, which is exactly the behaviour #257 removed.
+        assert!(validate_request(cap, 40_000, cap, Some(&profile), &cfg).is_ok());
+        assert!(validate_request(cap, 5_000, cap, Some(&profile), &cfg).is_ok());
         assert!(matches!(
-            err,
-            InferenceError::InsufficientVram {
-                free_mb: 5_000,
-                required_mb: 6_524
-            }
+            validate_request(cap + 1, 40_000, cap, Some(&profile), &cfg),
+            Err(InferenceError::PromptTooLong { .. })
         ));
+
+        let admission_cfg = crate::config::AdmissionConfig::default();
+
+        // Loaded with 40 GB free: budget 35_428 MiB, the prompt fits.
+        let ample = crate::harness::admission::AdmissionController::new(&admission_cfg);
+        ample.set_kv_budget_mb(kv_budget_mb(40_000, &cfg, 1_024));
+        assert_eq!(ample.kv_budget_mb(), 35_428);
+        assert!(ample.enter_with_kv(None, footprint).await.is_ok());
+
+        // Loaded with 5 GB free: budget 428 MiB. The prompt exceeds the
+        // whole budget, so it is refused immediately as unservable rather
+        // than queued against a wait that could never satisfy it.
+        let tight = crate::harness::admission::AdmissionController::new(&admission_cfg);
+        tight.set_kv_budget_mb(kv_budget_mb(5_000, &cfg, 1_024));
+        assert_eq!(tight.kv_budget_mb(), 428);
+        match tight.enter_with_kv(None, footprint).await {
+            Err(crate::harness::admission::AdmissionRejection::KvUnservable {
+                required_mb,
+                budget_mb,
+            }) => assert_eq!((required_mb, budget_mb), (2_976, 428)),
+            other => panic!("expected KvUnservable, got {other:?}"),
+        }
     }
 
     // ── Tool-call body parsing ───────────────────────────────────────

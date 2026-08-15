@@ -40,6 +40,17 @@ pub enum AdmissionRejection {
     /// This principal already has `max_per_principal` requests in flight or
     /// queued (#54 fair-share) — one principal can't monopolize the model.
     PrincipalCap { retry_after_secs: u64 },
+    /// Enough KV budget never freed within `kv_max_wait` (#257). Transient:
+    /// the in-flight sequences holding it will finish.
+    KvTimeout {
+        retry_after_secs: u64,
+        required_mb: u64,
+        budget_mb: u64,
+    },
+    /// The request's KV reservation exceeds the model's *entire* KV budget,
+    /// so no amount of waiting can admit it (#257). Permanent for this
+    /// prompt on this node — the caller must shorten it.
+    KvUnservable { required_mb: u64, budget_mb: u64 },
 }
 
 impl AdmissionRejection {
@@ -47,7 +58,12 @@ impl AdmissionRejection {
         match self {
             AdmissionRejection::QueueFull { retry_after_secs }
             | AdmissionRejection::Timeout { retry_after_secs }
-            | AdmissionRejection::PrincipalCap { retry_after_secs } => *retry_after_secs,
+            | AdmissionRejection::PrincipalCap { retry_after_secs }
+            | AdmissionRejection::KvTimeout {
+                retry_after_secs, ..
+            } => *retry_after_secs,
+            // Waiting cannot help; advertise no retry.
+            AdmissionRejection::KvUnservable { .. } => 0,
         }
     }
 }
@@ -60,6 +76,8 @@ struct RejectionCounters {
     queue_full: AtomicU64,
     timeout: AtomicU64,
     per_principal: AtomicU64,
+    kv_timeout: AtomicU64,
+    kv_unservable: AtomicU64,
 }
 
 /// Snapshot of [`RejectionCounters`] for the `/health` payload — the
@@ -70,6 +88,10 @@ pub struct RejectionCounts {
     pub queue_full: u64,
     pub timeout: u64,
     pub per_principal: u64,
+    /// KV budget never freed in time (#257).
+    pub kv_timeout: u64,
+    /// Prompt too large for this model's whole KV budget (#257).
+    pub kv_unservable: u64,
 }
 
 /// Admission accounting, mutated under a brief lock (never held across an
@@ -86,6 +108,12 @@ struct AdmissionState {
 pub struct AdmissionController {
     /// In-flight slots — `max_in_flight` permits (1 for batch-1).
     slots: Arc<Semaphore>,
+    /// KV budget in MiB, one permit per MiB (#257). Starts empty and is
+    /// filled once by [`set_kv_budget_mb`](Self::set_kv_budget_mb) after the
+    /// model's weights are resident; `kv_budget_mb == 0` means the gate is
+    /// disabled (CPU loads, or an arch with no captured context profile).
+    kv_budget: Arc<Semaphore>,
+    kv_budget_mb: AtomicU64,
     /// Queued + in-flight accounting (overall + per principal).
     state: Arc<Mutex<AdmissionState>>,
     /// `max_in_flight + max_queue_depth` — the overall rejection threshold.
@@ -94,6 +122,7 @@ pub struct AdmissionController {
     max_per_principal: usize,
     max_in_flight: usize,
     max_wait: Duration,
+    kv_max_wait: Duration,
     rejections: RejectionCounters,
 }
 
@@ -103,13 +132,45 @@ impl AdmissionController {
         let max_in_flight = cfg.max_in_flight.max(1);
         Self {
             slots: Arc::new(Semaphore::new(max_in_flight)),
+            kv_budget: Arc::new(Semaphore::new(0)),
+            kv_budget_mb: AtomicU64::new(0),
             state: Arc::new(Mutex::new(AdmissionState::default())),
             max_pending: max_in_flight + cfg.max_queue_depth,
             max_per_principal: cfg.max_per_principal,
             max_in_flight,
             max_wait: Duration::from_secs(cfg.max_wait_secs),
+            kv_max_wait: Duration::from_secs(cfg.kv_max_wait_secs),
             rejections: RejectionCounters::default(),
         }
+    }
+
+    /// Publish this model's KV budget, once, after its weights are resident
+    /// and before it serves (#257).
+    ///
+    /// The budget is measured with **nothing in flight**, which is the whole
+    /// point: free VRAM read at any later moment already excludes the KV of
+    /// running sequences, so deriving the budget from a live reading would
+    /// double-count their reservations and progressively starve the model.
+    ///
+    /// Idempotent in the sense that matters — calling it twice would add
+    /// permits twice, so it refuses after the first call rather than
+    /// silently inflating the budget.
+    pub fn set_kv_budget_mb(&self, budget_mb: u64) {
+        if self.kv_budget_mb.load(Ordering::Acquire) != 0 || budget_mb == 0 {
+            return;
+        }
+        self.kv_budget_mb.store(budget_mb, Ordering::Release);
+        self.kv_budget.add_permits(budget_mb as usize);
+    }
+
+    /// This model's total KV budget in MiB; `0` when the gate is disabled.
+    pub fn kv_budget_mb(&self) -> u64 {
+        self.kv_budget_mb.load(Ordering::Acquire)
+    }
+
+    /// KV budget currently unreserved, in MiB.
+    pub fn kv_available_mb(&self) -> u64 {
+        self.kv_budget.available_permits() as u64
     }
 
     /// Admit a request for `principal` (`None` = anonymous, exempt from the
@@ -128,9 +189,33 @@ impl AdmissionController {
     /// slot, ratcheting the model into a permanent instant-429 state
     /// under client retry storms. Observed live 2026-07-02:
     /// `queue_depth: 1` pinned on an idle model.)
+    /// Admit with no KV reservation — the gate is skipped entirely. Used by
+    /// paths with no context profile to price a sequence with (image
+    /// generation, CPU loads).
     pub async fn enter(
         &self,
         principal: Option<&str>,
+    ) -> Result<AdmissionPermit, AdmissionRejection> {
+        self.enter_with_kv(principal, 0).await
+    }
+
+    /// Admit a request that will hold `kv_mb` MiB of KV cache for its
+    /// lifetime (#257).
+    ///
+    /// Two gates, and the **order between them is load-bearing**: the KV
+    /// budget is taken first, then the in-flight slot. Taking the slot first
+    /// deadlocks — every slot could be held by a request waiting for KV
+    /// while the KV is held by requests waiting for a slot, and nothing
+    /// would ever run to release either. Acquiring KV first means a waiter
+    /// holds nothing anyone else needs, and the requests that do hold both
+    /// are, by construction, running.
+    ///
+    /// tokio's semaphore is FIFO, so a large reservation queues fairly
+    /// rather than being starved by a stream of small ones behind it.
+    pub async fn enter_with_kv(
+        &self,
+        principal: Option<&str>,
+        kv_mb: u64,
     ) -> Result<AdmissionPermit, AdmissionRejection> {
         // Decision + reservation under one brief lock so concurrent callers
         // can't both slip past the thresholds. No await is held here.
@@ -163,13 +248,52 @@ impl AdmissionController {
             }
         };
 
+        // Gate 1 — KV budget. Skipped when the budget is unset (CPU / no
+        // context profile) or the caller priced the request at zero.
+        let budget_mb = self.kv_budget_mb.load(Ordering::Acquire);
+        let kv_permit = if kv_mb > 0 && budget_mb > 0 {
+            if kv_mb > budget_mb {
+                // No amount of waiting frees more than the whole budget.
+                // Rejecting immediately is the honest answer, and the only
+                // one that doesn't hang the caller until its deadline.
+                self.rejections
+                    .kv_unservable
+                    .fetch_add(1, Ordering::Relaxed);
+                return Err(AdmissionRejection::KvUnservable {
+                    required_mb: kv_mb,
+                    budget_mb,
+                });
+            }
+            match tokio::time::timeout(
+                self.kv_max_wait,
+                Arc::clone(&self.kv_budget).acquire_many_owned(kv_mb as u32),
+            )
+            .await
+            {
+                Ok(Ok(p)) => Some(p),
+                Ok(Err(_)) | Err(_) => {
+                    self.rejections.kv_timeout.fetch_add(1, Ordering::Relaxed);
+                    return Err(AdmissionRejection::KvTimeout {
+                        retry_after_secs: self.retry_hint(self.max_pending),
+                        required_mb: kv_mb,
+                        budget_mb,
+                    });
+                }
+            }
+        } else {
+            None
+        };
+
+        // Gate 2 — in-flight slot.
         match tokio::time::timeout(self.max_wait, Arc::clone(&self.slots).acquire_owned()).await {
             Ok(Ok(permit)) => Ok(AdmissionPermit {
                 _permit: permit,
+                _kv_permit: kv_permit,
                 _reservation: reservation,
             }),
             // Semaphore is never closed; treat a closed/elapsed wait the
-            // same. `reservation` drops here, rolling back the counts.
+            // same. `reservation` and the KV permit drop here, rolling back
+            // the counts and returning the reservation to the budget.
             Ok(Err(_)) | Err(_) => {
                 self.rejections.timeout.fetch_add(1, Ordering::Relaxed);
                 Err(AdmissionRejection::Timeout {
@@ -212,6 +336,8 @@ impl AdmissionController {
             queue_full: self.rejections.queue_full.load(Ordering::Relaxed),
             timeout: self.rejections.timeout.load(Ordering::Relaxed),
             per_principal: self.rejections.per_principal.load(Ordering::Relaxed),
+            kv_timeout: self.rejections.kv_timeout.load(Ordering::Relaxed),
+            kv_unservable: self.rejections.kv_unservable.load(Ordering::Relaxed),
         }
     }
 
@@ -259,12 +385,136 @@ impl Drop for PendingReservation {
 #[derive(Debug)]
 pub struct AdmissionPermit {
     _permit: OwnedSemaphorePermit,
+    /// KV budget reservation (#257); `None` when the gate is disabled.
+    /// Dropping it returns the MiB to the model's budget, which is what
+    /// lets a queued long-context request proceed.
+    _kv_permit: Option<OwnedSemaphorePermit>,
     _reservation: PendingReservation,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Config with a KV wait long enough that the gate queues rather than
+    /// times out, for the tests that assert queueing.
+    fn kv_cfg(
+        max_in_flight: usize,
+        max_queue_depth: usize,
+        kv_max_wait_secs: u64,
+    ) -> AdmissionConfig {
+        AdmissionConfig {
+            max_in_flight,
+            max_queue_depth,
+            max_wait_secs: 30,
+            max_per_principal: 0,
+            kv_max_wait_secs,
+        }
+    }
+
+    /// The regression #257 was filed for: a request whose KV does not fit
+    /// *yet* must WAIT for a running sequence to return its budget, not be
+    /// rejected while the queue sits empty. Before this, the pre-admission
+    /// VRAM backstop killed a 30-minute agentic session outright.
+    #[tokio::test]
+    async fn oversized_request_waits_for_budget_instead_of_being_rejected() {
+        let ctrl = Arc::new(AdmissionController::new(&kv_cfg(4, 8, 30)));
+        ctrl.set_kv_budget_mb(3_000);
+
+        // Two 1200 MiB sequences resident → 600 MiB left.
+        let a = ctrl.enter_with_kv(None, 1_200).await.expect("a admits");
+        let _b = ctrl.enter_with_kv(None, 1_200).await.expect("b admits");
+        assert_eq!(ctrl.kv_available_mb(), 600);
+
+        // A third 1200 MiB request cannot fit yet.
+        let ctrl2 = Arc::clone(&ctrl);
+        let waiter = tokio::spawn(async move { ctrl2.enter_with_kv(None, 1_200).await.map(drop) });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "must queue, not reject");
+
+        // Freeing one admits it.
+        drop(a);
+        assert!(
+            waiter.await.expect("join").is_ok(),
+            "queued request must be admitted once budget frees"
+        );
+    }
+
+    /// A reservation larger than the entire budget can never be satisfied,
+    /// so it must fail fast rather than hang until the deadline.
+    #[tokio::test]
+    async fn request_larger_than_whole_budget_fails_fast() {
+        let ctrl = AdmissionController::new(&kv_cfg(4, 8, 600));
+        ctrl.set_kv_budget_mb(2_000);
+        let started = std::time::Instant::now();
+        match ctrl.enter_with_kv(None, 5_000).await {
+            Err(AdmissionRejection::KvUnservable {
+                required_mb,
+                budget_mb,
+            }) => {
+                assert_eq!((required_mb, budget_mb), (5_000, 2_000));
+            }
+            other => panic!("expected KvUnservable, got {other:?}"),
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "must not wait out the deadline for something that can never fit"
+        );
+        assert_eq!(ctrl.rejections().kv_unservable, 1);
+    }
+
+    /// Dropping the permit returns the reservation, so the budget does not
+    /// leak across requests.
+    #[tokio::test]
+    async fn budget_is_returned_on_drop() {
+        let ctrl = AdmissionController::new(&kv_cfg(4, 8, 30));
+        ctrl.set_kv_budget_mb(1_000);
+        assert_eq!(ctrl.kv_available_mb(), 1_000);
+        {
+            let _p = ctrl.enter_with_kv(None, 400).await.expect("admits");
+            assert_eq!(ctrl.kv_available_mb(), 600);
+        }
+        assert_eq!(ctrl.kv_available_mb(), 1_000);
+    }
+
+    /// An unset budget (CPU load, or an arch with no context profile) leaves
+    /// the gate disabled — every request passes it regardless of size.
+    #[tokio::test]
+    async fn unset_budget_disables_the_gate() {
+        let ctrl = AdmissionController::new(&kv_cfg(2, 4, 30));
+        assert_eq!(ctrl.kv_budget_mb(), 0);
+        let _a = ctrl.enter_with_kv(None, 99_999).await.expect("admits");
+        let _b = ctrl.enter_with_kv(None, 99_999).await.expect("admits");
+    }
+
+    /// The budget is published once. A second call must not inflate it —
+    /// a re-seeded budget would over-admit and OOM the card.
+    #[tokio::test]
+    async fn budget_is_published_once() {
+        let ctrl = AdmissionController::new(&kv_cfg(2, 4, 30));
+        ctrl.set_kv_budget_mb(1_000);
+        ctrl.set_kv_budget_mb(1_000);
+        assert_eq!(ctrl.kv_budget_mb(), 1_000);
+        assert_eq!(ctrl.kv_available_mb(), 1_000);
+    }
+
+    /// Waiting for budget that never frees ends in a bounded, retryable
+    /// rejection rather than an unbounded hang.
+    #[tokio::test]
+    async fn kv_wait_times_out() {
+        let ctrl = AdmissionController::new(&kv_cfg(4, 8, 0));
+        ctrl.set_kv_budget_mb(1_000);
+        let _held = ctrl.enter_with_kv(None, 800).await.expect("admits");
+        match ctrl.enter_with_kv(None, 800).await {
+            Err(AdmissionRejection::KvTimeout {
+                required_mb,
+                budget_mb,
+                ..
+            }) => assert_eq!((required_mb, budget_mb), (800, 1_000)),
+            other => panic!("expected KvTimeout, got {other:?}"),
+        }
+        assert_eq!(ctrl.rejections().kv_timeout, 1);
+    }
 
     /// Config with the per-principal cap disabled (0) — most tests exercise
     /// the overall queue with anonymous (`None`) callers.
@@ -274,6 +524,7 @@ mod tests {
             max_queue_depth,
             max_wait_secs,
             max_per_principal: 0,
+            kv_max_wait_secs: 30,
         }
     }
 
@@ -348,6 +599,7 @@ mod tests {
             max_queue_depth: 8,
             max_wait_secs: 30,
             max_per_principal: 1,
+            kv_max_wait_secs: 30,
         };
         let ctrl = Arc::new(AdmissionController::new(&cfg));
 
@@ -387,6 +639,7 @@ mod tests {
             // sit at 3 == cap and the post-cancel enter below would hit
             // PrincipalCap instead of queueing.
             max_per_principal: 3,
+            kv_max_wait_secs: 30,
         };
         let ctrl = Arc::new(AdmissionController::new(&cfg));
         let running = ctrl.enter(Some("acct/key")).await.expect("admit running");

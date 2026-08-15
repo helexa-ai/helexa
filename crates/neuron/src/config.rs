@@ -183,6 +183,14 @@ pub struct AdmissionConfig {
     /// disables the cap; anonymous requests are always exempt.
     #[serde(default = "default_admission_max_per_principal")]
     pub max_per_principal: usize,
+    /// Maximum seconds a request waits for enough **KV budget** to free
+    /// before it is refused (#257). Deliberately far longer than
+    /// `max_wait_secs`: that one waits for a slot to turn over, this one
+    /// waits for a whole long-context sequence to finish, which on a 27B at
+    /// 64k context is minutes rather than seconds. Too short and the queue
+    /// merely converts a fast rejection into a slow one.
+    #[serde(default = "default_admission_kv_max_wait_secs")]
+    pub kv_max_wait_secs: u64,
 }
 
 impl Default for AdmissionConfig {
@@ -192,6 +200,7 @@ impl Default for AdmissionConfig {
             max_queue_depth: default_admission_max_queue_depth(),
             max_wait_secs: default_admission_max_wait_secs(),
             max_per_principal: default_admission_max_per_principal(),
+            kv_max_wait_secs: default_admission_kv_max_wait_secs(),
         }
     }
 }
@@ -326,6 +335,13 @@ fn default_bootstrap_prefill_tok_per_sec() -> f64 {
     // beast Qwen3.6-27B TP=2 measured ~850 tok/s prefill; a conservative
     // floor so the cold-start ceiling isn't wildly optimistic.
     800.0
+}
+
+/// Long enough for a multi-minute long-context turn ahead of us to finish
+/// and return its KV, but inside cortex's 300 s proxy timeout so the
+/// caller is still listening when we answer.
+fn default_admission_kv_max_wait_secs() -> u64 {
+    240
 }
 
 fn default_activation_headroom_mb() -> u64 {
