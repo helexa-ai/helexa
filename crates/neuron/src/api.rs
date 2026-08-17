@@ -729,6 +729,18 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
             "too many concurrent requests for this key; retry shortly",
         )
         .with_retry_after(retry_after_secs),
+        // Draining (#256). 503 + Retry-After, like any transient capacity
+        // condition: the node is coming back, and a well-behaved client
+        // should retry rather than surface a failure. Deliberately not
+        // `rate_limit_exceeded` — nothing about this is the caller's
+        // fault or their rate.
+        InferenceError::ShuttingDown => OpenAiError::new(
+            503,
+            "api_error",
+            "shutting_down",
+            "neuron is shutting down; retry shortly",
+        )
+        .with_retry_after(15),
         InferenceError::Other(e) => OpenAiError::without_code(500, "api_error", format!("{e:#}")),
     };
     // Every failed request says why, once, here (#63). Before this the

@@ -163,6 +163,23 @@ impl AdmissionController {
         self.kv_budget.add_permits(budget_mb as usize);
     }
 
+    /// Stop admitting and wake every waiter, for shutdown (#256).
+    ///
+    /// Closing the semaphores makes pending `acquire` calls return `Err`
+    /// immediately, which `enter_with_kv` already treats as a rejection —
+    /// so queued requests fail fast with a retryable signal instead of
+    /// waiting out `max_wait` while the process is trying to exit.
+    ///
+    /// Without this the drain waits for work that will never be admitted:
+    /// on 2026-08-15 a queued request sat through the whole shutdown and
+    /// systemd SIGKILLed at `TimeoutStopSec`. Requests already running are
+    /// untouched — they hold their permits and either finish or die with
+    /// the process, which is the drain's business, not admission's.
+    pub fn close(&self) {
+        self.slots.close();
+        self.kv_budget.close();
+    }
+
     /// This model's total KV budget in MiB; `0` when the gate is disabled.
     pub fn kv_budget_mb(&self) -> u64 {
         self.kv_budget_mb.load(Ordering::Acquire)
@@ -395,6 +412,69 @@ pub struct AdmissionPermit {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #256: closing admission must wake queued waiters immediately, so a
+    /// drain has a bounded amount of work to wait for.
+    ///
+    /// Before this, a request queued behind a busy model kept waiting
+    /// through the whole shutdown; axum's graceful drain waits for it, and
+    /// systemd SIGKILLed at TimeoutStopSec.
+    #[tokio::test]
+    async fn close_wakes_queued_waiters() {
+        let ctrl = Arc::new(AdmissionController::new(&kv_cfg(1, 4, 30)));
+        let _running = ctrl.enter(None).await.expect("first admits");
+
+        let ctrl2 = Arc::clone(&ctrl);
+        let waiter = tokio::spawn(async move { ctrl2.enter(None).await.map(drop) });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "precondition: the second is queued");
+
+        ctrl.close();
+        let outcome = tokio::time::timeout(Duration::from_secs(2), waiter)
+            .await
+            .expect("closing must wake the waiter, not leave it queued")
+            .expect("join");
+        assert!(
+            outcome.is_err(),
+            "a waiter woken by close must be refused, not admitted into a dying process"
+        );
+    }
+
+    /// Closing also refuses callers that arrive afterwards — the listener
+    /// may still accept for a moment while the drain proceeds.
+    #[tokio::test]
+    async fn close_refuses_later_arrivals() {
+        let ctrl = AdmissionController::new(&kv_cfg(4, 8, 30));
+        ctrl.close();
+        assert!(
+            ctrl.enter(None).await.is_err(),
+            "a closed controller must admit nothing"
+        );
+    }
+
+    /// The KV gate is closed too — a request waiting on budget is just as
+    /// stuck as one waiting on a slot.
+    #[tokio::test]
+    async fn close_wakes_kv_budget_waiters() {
+        let ctrl = Arc::new(AdmissionController::new(&kv_cfg(4, 8, 600)));
+        ctrl.set_kv_budget_mb(1_000);
+        let _held = ctrl.enter_with_kv(None, 800).await.expect("admits");
+
+        let ctrl2 = Arc::clone(&ctrl);
+        let waiter = tokio::spawn(async move { ctrl2.enter_with_kv(None, 800).await.map(drop) });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(!waiter.is_finished(), "precondition: queued on KV budget");
+
+        ctrl.close();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), waiter)
+                .await
+                .expect("closing must wake a KV waiter too")
+                .expect("join")
+                .is_err(),
+            "a KV waiter woken by close must be refused"
+        );
+    }
 
     /// Config with a KV wait long enough that the gate queues rather than
     /// times out, for the tests that assert queueing.
