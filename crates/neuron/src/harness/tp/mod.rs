@@ -30,9 +30,9 @@ pub mod worker;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", test))]
 use std::sync::Arc;
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", test))]
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -326,7 +326,7 @@ pub struct WorkerPool {
 /// How long the watchdog waits for `ncclCommAbort` to return before
 /// concluding the process is unrecoverable (#265). Generous relative to a
 /// healthy abort (milliseconds) and short relative to a human noticing.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", test))]
 fn tp_abort_deadline() -> std::time::Duration {
     let secs = std::env::var("NEURON_TP_ABORT_DEADLINE_S")
         .ok()
@@ -343,7 +343,7 @@ fn tp_abort_deadline() -> std::time::Duration {
 /// Split out from the deadman thread so the decision is testable without
 /// a GPU: the branch that ends the process is the one most worth
 /// exercising, and the one hardest to reach by accident.
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", test))]
 fn wait_for_abort(done: &AtomicBool, deadline: std::time::Duration) -> bool {
     let start = std::time::Instant::now();
     while start.elapsed() < deadline {
@@ -1571,7 +1571,7 @@ impl WorkerPool {
     }
 }
 
-#[cfg(all(test, feature = "cuda"))]
+#[cfg(test)]
 mod watchdog_tests {
     use super::*;
     use std::time::Duration;
