@@ -44,6 +44,23 @@ use tracing::Instrument;
 /// In-process candle harness. Owns the loaded model registry.
 pub struct CandleHarness {
     models: Arc<RwLock<HashMap<String, LoadedHandle>>>,
+    /// One gate per model id, held for the whole of that model's load
+    /// (#255).
+    ///
+    /// The membership check in `load_model` is a check-then-act: it takes
+    /// the `models` read lock, sees the id absent, releases, and only then
+    /// loads. Concurrent callers for the same id all pass that check and
+    /// all proceed, each spawning its own TP worker set. On beast
+    /// 2026-08-17 that produced FIVE rank-1 workers loading the same shard
+    /// onto one card, which exhausted its VRAM so every attempt failed —
+    /// and because the failures left traffic unserved, the next request
+    /// started another. It does not converge on its own.
+    ///
+    /// Entries are keyed by model id and never removed. The key space is
+    /// the catalogue, so it is bounded and tiny; reclaiming them would
+    /// need care to avoid dropping a gate another task is waiting on, for
+    /// no benefit worth that risk.
+    loading: Arc<tokio::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>>,
     /// Post-resolution source map: scheme → endpoint/token/cache. Built
     /// in `new()` from the operator's `CandleHarnessConfig`; auth tokens
     /// are read from their configured env vars at startup so secrets
@@ -2094,6 +2111,7 @@ impl CandleHarness {
         let (recovery_tx, recovery_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
         let this = Arc::new(Self {
             models: Arc::new(RwLock::new(HashMap::new())),
+            loading: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
             sources,
             default_source,
             bind_url,
@@ -3479,6 +3497,22 @@ pub struct InferenceStream {
 /// Auto-recovery (#17) — rebuild a poisoned model's device context
 /// automatically instead of leaving it bricked until a human reloads.
 impl CandleHarness {
+    /// This model's load gate, created on first use (#255).
+    ///
+    /// Keyed per model id on purpose: loading one model must not block
+    /// loading a different one. A single global load lock would serialise
+    /// the whole fleet's cold-loads behind whichever model happened to be
+    /// first, which on a multi-model node is a worse problem than the one
+    /// being fixed.
+    pub(crate) async fn load_gate(&self, model_id: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut gates = self.loading.lock().await;
+        Arc::clone(
+            gates
+                .entry(model_id.to_string())
+                .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(()))),
+        )
+    }
+
     /// Per-model admission load for `GET /health` (#53): in-flight + queued
     /// counts for every resident model. Lock-free per-model reads, so this
     /// only briefly holds the registry read lock to enumerate handles.
@@ -3669,9 +3703,25 @@ impl Harness for CandleHarness {
             anyhow::bail!("expected harness=candle, got harness={}", spec.harness);
         }
 
+        // Single-flight per model id (#255). Take this model's gate before
+        // the membership check, so concurrent callers queue here instead of
+        // all deciding the model is absent and each starting its own load.
+        // Held for the whole load: releasing early would reopen the race
+        // for however long the weights take to materialise, which for a
+        // 27B is minutes.
+        let gate = self.load_gate(&spec.model_id).await;
+        let _load_guard = gate.lock().await;
+
+        // Re-check UNDER the gate. A caller that queued behind a load
+        // which has since succeeded must see it, not start a second one —
+        // this is the check that actually protects the device, the one
+        // above the gate could only ever have been advisory.
         {
             let models = self.models.read().await;
             if models.contains_key(&spec.model_id) {
+                // Same error as before: cortex reads "already loaded" as
+                // success on its cold-load path, so a coalesced caller
+                // gets the outcome it wanted.
                 anyhow::bail!("model '{}' already loaded", spec.model_id);
             }
         }
@@ -8319,6 +8369,69 @@ mod tests {
 
         let healthy = servability_from(0, 40_000, Some(&profile), &cfg).expect("has an opinion");
         assert!(healthy.ok);
+    }
+
+    /// A harness with default config — enough for the gate tests, which
+    /// touch no device, no network and no model.
+    fn test_harness() -> Arc<CandleHarness> {
+        CandleHarness::new(
+            "http://localhost:13131".into(),
+            &crate::config::CandleHarnessConfig::default(),
+        )
+    }
+
+    /// #255: concurrent loads of the SAME model must serialise.
+    ///
+    /// The failure this prevents: five callers each passed a
+    /// check-then-act membership test, each spawned its own rank-1 TP
+    /// worker, and five copies of one shard exhausted the card. The gate
+    /// is what makes the second caller wait rather than start.
+    #[tokio::test]
+    async fn same_model_loads_serialise() {
+        let h = test_harness();
+        let a = h.load_gate("Qwen/Qwen3.8-27B").await;
+        let b = h.load_gate("Qwen/Qwen3.8-27B").await;
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "the same model id must yield the same gate, or callers cannot contend"
+        );
+
+        let held = a.lock().await;
+        let waiter = tokio::spawn(async move {
+            let _g = b.lock().await;
+            true
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        assert!(
+            !waiter.is_finished(),
+            "a second load of the same model must wait, not proceed"
+        );
+        drop(held);
+        assert!(
+            waiter.await.unwrap(),
+            "it must proceed once the first is done"
+        );
+    }
+
+    /// ...but loading one model must NOT block loading another. A single
+    /// global load lock would serialise every cold-load on the node
+    /// behind whichever model got there first.
+    #[tokio::test]
+    async fn different_models_do_not_block_each_other() {
+        let h = test_harness();
+        let a = h.load_gate("Qwen/Qwen3.8-27B").await;
+        let b = h.load_gate("Tongyi-MAI/Z-Image-Turbo").await;
+        assert!(
+            !Arc::ptr_eq(&a, &b),
+            "different model ids must have independent gates"
+        );
+
+        let _held = a.lock().await;
+        // The other model's gate must be free right now.
+        assert!(
+            b.try_lock().is_ok(),
+            "holding one model's load gate must not block another model's load"
+        );
     }
 
     /// The #257 session, in numbers. beast's TP-2 27B loaded with ~9286 MiB
