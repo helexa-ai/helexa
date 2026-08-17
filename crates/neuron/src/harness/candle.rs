@@ -198,6 +198,16 @@ impl LoadedHandle {
         }
     }
 
+    /// Close this model's admission so nothing new is admitted (#256).
+    pub fn close_admission(&self) {
+        match self {
+            LoadedHandle::Single(m) => m.admission.close(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.admission.close(),
+            LoadedHandle::Image(m) => m.admission.close(),
+        }
+    }
+
     /// Cumulative admission rejections by reason (#137) — the load-shedding
     /// signal surfaced on `/health`.
     pub fn rejections(&self) -> super::admission::RejectionCounts {
@@ -1838,6 +1848,28 @@ fn check_vram(
     Ok(())
 }
 
+/// Set once, when SIGTERM/SIGINT arrives (#256).
+///
+/// Read by the unbounded waits — the pool lock below, and admission via
+/// `AdmissionController::close` — so a draining process stops waiting for
+/// work it is never going to do.
+pub static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Notified alongside [`SHUTTING_DOWN`] so waiters wake immediately
+/// rather than at their next poll.
+pub static SHUTDOWN_NOTIFY: tokio::sync::Notify = tokio::sync::Notify::const_new();
+
+/// Announce shutdown to every in-process waiter (#256).
+pub fn begin_shutdown() {
+    SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::Release);
+    SHUTDOWN_NOTIFY.notify_waiters();
+}
+
+/// Whether shutdown has begun.
+pub fn shutting_down() -> bool {
+    SHUTTING_DOWN.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// Threshold above which `pool.lock().await` blocking is interesting
 /// enough to warn about. Healthy concurrent requests serialise behind
 /// the pool in single-digit ms — anything past 2 seconds is either a
@@ -1855,14 +1887,21 @@ const POOL_LOCK_WARN_THRESHOLD: Duration = Duration::from_secs(2);
 async fn acquire_pool_lock<'a>(
     pool: &'a tokio::sync::Mutex<super::tp::WorkerPool>,
     model_id: &str,
-) -> tokio::sync::MutexGuard<'a, super::tp::WorkerPool> {
+) -> Result<tokio::sync::MutexGuard<'a, super::tp::WorkerPool>, InferenceError> {
     let start = std::time::Instant::now();
+    // Refuse before waiting at all if we are already draining — a request
+    // that has not started has nothing to preserve.
+    if shutting_down() {
+        return Err(InferenceError::ShuttingDown);
+    }
     // Tick once at the threshold so a stuck request shows up in
     // journalctl even while it's still waiting. Without this the wait
     // looks like silence in the log right up until the lock is freed.
     tokio::pin! {
         let lock = pool.lock();
     }
+    let shutdown = SHUTDOWN_NOTIFY.notified();
+    tokio::pin!(shutdown);
     loop {
         tokio::select! {
             guard = &mut lock => {
@@ -1874,7 +1913,21 @@ async fn acquire_pool_lock<'a>(
                         "TP chat_completion: pool lock acquired after long wait"
                     );
                 }
-                return guard;
+                return Ok(guard);
+            }
+            // Shutdown: abandon the wait (#256). This wait is unbounded —
+            // it is held by whichever request is mid-forward — so without
+            // this branch a queued request keeps waiting through the whole
+            // drain, axum's graceful shutdown never completes, and systemd
+            // SIGKILLs at TimeoutStopSec. Observed 2026-08-15: a 2-minute
+            // stall then a hard kill, on a node that was otherwise fine.
+            _ = &mut shutdown => {
+                tracing::warn!(
+                    model = %model_id,
+                    waited_ms = start.elapsed().as_millis(),
+                    "TP chat_completion: abandoning pool-lock wait — shutting down"
+                );
+                return Err(InferenceError::ShuttingDown);
             }
             _ = tokio::time::sleep(POOL_LOCK_WARN_THRESHOLD) => {
                 tracing::warn!(
@@ -3513,6 +3566,19 @@ impl CandleHarness {
         )
     }
 
+    /// Close admission on every loaded model (#256). Called once when
+    /// shutdown begins, before the drain waits on in-flight work.
+    pub async fn close_all_admission(&self) {
+        let models = self.models.read().await;
+        for handle in models.values() {
+            handle.close_admission();
+        }
+        tracing::info!(
+            models = models.len(),
+            "admission closed for shutdown; queued requests will be refused"
+        );
+    }
+
     /// Per-model admission load for `GET /health` (#53): in-flight + queued
     /// counts for every resident model. Lock-free per-model reads, so this
     /// only briefly holds the registry read lock to enumerate handles.
@@ -5026,7 +5092,13 @@ impl CandleHarness {
             async move {
                 let _admit = admit;
                 let mut failure: Option<String> = None;
-                let mut pool = acquire_pool_lock(&tp_for_task.pool, &model_id).await;
+                let mut pool = match acquire_pool_lock(&tp_for_task.pool, &model_id).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        failure = Some(e.to_string());
+                        return;
+                    }
+                };
                 let leader_handle = tp_for_task.leader_handle;
 
                 let mut all_tokens: Vec<u32> = Vec::new();
@@ -5662,7 +5734,7 @@ async fn chat_completion_tp_inner(
     // traffic — but holding it for the whole request still keeps
     // concurrent chat_completions against the same TP model from
     // interleaving prefill/decode jobs.
-    let mut pool = acquire_pool_lock(&tp.pool, &model_id).await;
+    let mut pool = acquire_pool_lock(&tp.pool, &model_id).await?;
     let leader_handle = tp.leader_handle;
 
     // Prefix-cache decision (#11): restore the longest matching
@@ -6291,6 +6363,10 @@ pub struct ImageGenerationOutput {
 pub enum InferenceError {
     #[error("model '{0}' not loaded on this neuron")]
     ModelNotLoaded(String),
+    /// The daemon is draining (#256). Distinct from ordinary overload:
+    /// retrying this node now is pointless, but it will be back.
+    #[error("neuron is shutting down; retry shortly")]
+    ShuttingDown,
     #[error("prompt has {prompt_len} tokens but max is {max}")]
     PromptTooLong { prompt_len: usize, max: usize },
     #[error(

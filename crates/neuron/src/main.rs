@@ -186,6 +186,9 @@ async fn daemon(args: Args) -> Result<()> {
     let registry = HarnessRegistry::from_configs(&cfg.harnesses, &bind_url, &cfg.harness);
     discovery_result.harnesses = registry.names();
     let candle = registry.candle();
+    // A second handle for the shutdown future: it must close admission
+    // before the drain begins, and `candle` is moved into NeuronState.
+    let shutdown_candle = candle.clone();
 
     let health_cache = Arc::new(health::HealthCache::new());
     health_cache
@@ -246,7 +249,7 @@ async fn daemon(args: Args) -> Result<()> {
     }
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(startup::shutdown_signal())
+        .with_graceful_shutdown(startup::shutdown_signal(shutdown_candle))
         .await?;
 
     // Deactivation: serve has returned (graceful shutdown signal

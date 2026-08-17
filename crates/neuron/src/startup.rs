@@ -9,6 +9,7 @@ use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
 use crate::harness::preflight::PreflightError;
 use cortex_core::harness::ModelSpec;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::signal;
 
@@ -165,7 +166,18 @@ fn preflight_kind(err: &PreflightError) -> &'static str {
 /// Wired into `axum::serve(...).with_graceful_shutdown(shutdown_signal())`
 /// so the HTTP listener stops accepting new connections, lets in-flight
 /// requests drain, and then yields control back to main for cleanup.
-pub async fn shutdown_signal() {
+///
+/// **Before returning, it closes admission and wakes every waiter (#256).**
+/// Order matters: axum's graceful shutdown waits for *all* in-flight
+/// requests, and a request queued behind the TP pool lock is in-flight as
+/// far as axum is concerned. Those waits are unbounded — held by whichever
+/// request is mid-forward — so without this the drain cannot finish and
+/// systemd SIGKILLs at `TimeoutStopSec`. Observed 2026-08-15: SIGTERM at
+/// 13:03:14, one queued request logging "still waiting on pool lock" every
+/// two seconds, `Failed with result 'timeout'` at 13:05:24. The same node
+/// drained in about a second when idle, which is what identified the
+/// queued waiter as the cause.
+pub async fn shutdown_signal(candle: Option<Arc<crate::harness::candle::CandleHarness>>) {
     let ctrl_c = async {
         signal::ctrl_c().await.ok();
     };
@@ -178,6 +190,13 @@ pub async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => tracing::info!("received SIGINT, shutting down"),
         _ = terminate => tracing::info!("received SIGTERM, shutting down"),
+    }
+    // Refuse new admissions and abandon the unbounded waits, so the drain
+    // that starts the moment this future resolves has a bounded amount of
+    // work left to wait for.
+    crate::harness::candle::begin_shutdown();
+    if let Some(candle) = candle {
+        candle.close_all_admission().await;
     }
 }
 
