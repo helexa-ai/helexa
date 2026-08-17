@@ -27,7 +27,15 @@ use sqlx::Row;
 use uuid::Uuid;
 
 pub fn router(state: &AppState) -> Router<AppState> {
-    let protected = Router::new()
+    // Session-only: identity management and the full account view.
+    //
+    // Key management stays here deliberately (#264). If an inference key
+    // could mint keys, one leaked credential would become a foothold that
+    // SURVIVES revoking the original — a spending problem turning into an
+    // eviction problem. `/account` stays too: it carries `angel_access`,
+    // and whatever field is added to it next would otherwise be exposed to
+    // inference credentials by default.
+    let session_only = Router::new()
         .route("/web/v1/account", get(account))
         .route("/web/v1/keys", get(list_keys).post(create_key))
         .route("/web/v1/keys/{id}/archive", post(archive_key))
@@ -35,11 +43,23 @@ pub fn router(state: &AppState) -> Router<AppState> {
             "/web/v1/keys/{id}/limit",
             axum::routing::patch(update_key_limit),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            require_session,
+        ));
+
+    // Session **or** API key: reading and refilling the allocation.
+    //
+    // A service that watches its own balance should not have to hold its
+    // owner's password — the credential that can mint and revoke keys — to
+    // read a number it is already entitled to spend against.
+    let account_auth = Router::new()
+        .route("/web/v1/allocation", get(allocation))
         .route("/web/v1/redeem", post(redeem))
         .route("/web/v1/topup/request", post(request_topup))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
-            require_session,
+            require_account,
         ));
 
     Router::new()
@@ -49,7 +69,8 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .route("/web/v1/login", post(login))
         .route("/web/v1/password-reset/request", post(reset_request))
         .route("/web/v1/password-reset/confirm", post(reset_confirm))
-        .merge(protected)
+        .merge(session_only)
+        .merge(account_auth)
 }
 
 // ── errors ──────────────────────────────────────────────────────────
@@ -140,6 +161,71 @@ async fn require_session(State(state): State<AppState>, mut req: Request, next: 
         }
         None => WebError::Unauthorized.into_response(),
     }
+}
+
+/// Authenticated **account**, injected by [`require_account`]. Unlike
+/// [`AuthUser`] this says nothing about *who* is calling — only which
+/// account the call bills to — because an API key identifies an account
+/// without identifying a person.
+#[derive(Clone, Copy)]
+struct AuthAccount(Uuid);
+
+/// Accept **either** a web session or an inference API key, and resolve
+/// both to an account id (#264).
+///
+/// Routes behind this may read and refill an allocation. They may not
+/// touch keys: a service watching its own balance should not have to
+/// hold the credential that can mint and revoke credentials. See the
+/// router for why key management stays session-only.
+///
+/// The two token shapes are unambiguous — API keys carry the
+/// `sk-helexa-` prefix (`crypto::generate_api_key`) and JWTs cannot — so
+/// this dispatches on the prefix rather than trying to decode a session
+/// and falling back, which would log a decode failure for every
+/// perfectly valid key.
+async fn require_account(State(state): State<AppState>, mut req: Request, next: Next) -> Response {
+    let Some(token) = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .map(str::to_string)
+    else {
+        return WebError::Unauthorized.into_response();
+    };
+
+    let account = if token.starts_with("sk-helexa-") {
+        // `resolve_key` already requires both key and account to be
+        // `active`, so an archived key or a deactivated account
+        // authenticates nothing — no extra check needed here.
+        match crate::ledger::resolve_key(&state.pool, &sha256(&token)).await {
+            Ok(Some(principal)) => principal.account_id,
+            Ok(None) => return WebError::Unauthorized.into_response(),
+            Err(e) => {
+                tracing::error!(error = %e, "key resolve failed on account route");
+                return WebError::Internal.into_response();
+            }
+        }
+    } else {
+        let uid = decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(state.config.auth.jwt_secret.as_bytes()),
+            &Validation::default(),
+        )
+        .ok()
+        .and_then(|d| Uuid::parse_str(&d.claims.sub).ok());
+        let Some(uid) = uid else {
+            return WebError::Unauthorized.into_response();
+        };
+        match account_id_for(&state, uid).await {
+            Ok(a) => a,
+            Err(e) => return e.into_response(),
+        }
+    };
+
+    req.extensions_mut().insert(AuthAccount(account));
+    next.run(req).await
 }
 
 /// The caller's single account id.
@@ -635,6 +721,46 @@ async fn account(
     .into_response())
 }
 
+/// `GET /web/v1/allocation` — the account's token balance, readable with
+/// **either** a session or an API key (#264).
+///
+/// Deliberately narrower than [`account`]: balance and top-up
+/// availability, nothing else. `/account` also returns `angel_access`,
+/// and whatever field is added to it next would otherwise be handed to
+/// every inference key by default. A separate projection means widening
+/// the account view can never widen what a key can see.
+async fn allocation(
+    State(state): State<AppState>,
+    Extension(AuthAccount(acct)): Extension<AuthAccount>,
+) -> WebResult<Response> {
+    let row = sqlx::query(
+        "SELECT allocation_total, allocation_spent, allocation_reserved FROM accounts WHERE id = $1",
+    )
+    .bind(acct)
+    .fetch_one(&state.pool)
+    .await?;
+    // Same display-only eligibility the dashboard uses, so an automated
+    // caller can check before asking and avoid provoking a 409. The grant
+    // path re-checks, so a stale read cannot conjure a top-up.
+    let (topup_available, topup_reason) =
+        match crate::topup::auto_eligibility(&state.pool, acct).await {
+            Ok(Ok(())) => (true, None),
+            Ok(Err(reason)) => (false, Some(reason.to_string())),
+            Err(e) => {
+                tracing::warn!(error = %e, "top-up eligibility check failed");
+                (false, None)
+            }
+        };
+    Ok(Json(json!({
+        "allocation_total": row.get::<i64, _>("allocation_total"),
+        "allocation_spent": row.get::<i64, _>("allocation_spent"),
+        "allocation_reserved": row.get::<i64, _>("allocation_reserved"),
+        "topup_available": topup_available,
+        "topup_reason": topup_reason,
+    }))
+    .into_response())
+}
+
 /// Whether this user holds any investor-portal grant.
 ///
 /// A **boolean, and deliberately nothing more**. helexa.ai is a static
@@ -680,10 +806,9 @@ async fn has_angel_access(state: &AppState, user_id: Uuid) -> bool {
 /// caller is authenticated and asking about their own account.
 async fn request_topup(
     State(state): State<AppState>,
-    Extension(user): Extension<AuthUser>,
+    Extension(AuthAccount(acct)): Extension<AuthAccount>,
 ) -> WebResult<Response> {
     use crate::topup::AutoTopUpError;
-    let acct = account_id_for(&state, user.0).await?;
     match crate::topup::auto_grant(&state.pool, acct).await {
         Ok(grant) => {
             tracing::info!(
@@ -859,10 +984,9 @@ struct RedeemReq {
 /// or already-redeemed code (no oracle).
 async fn redeem(
     State(state): State<AppState>,
-    Extension(user): Extension<AuthUser>,
+    Extension(AuthAccount(acct)): Extension<AuthAccount>,
     Json(req): Json<RedeemReq>,
 ) -> WebResult<Response> {
-    let acct = account_id_for(&state, user.0).await?;
     match crate::topup::redeem(&state.pool, acct, &req.code).await {
         Ok(new_total) => Ok(Json(json!({ "allocation_total": new_total })).into_response()),
         Err(crate::topup::TopUpError::Invalid) => {

@@ -424,3 +424,157 @@ async fn topup_concurrent_double_redeem_one_winner() {
         .count();
     assert_eq!(wins, 1, "exactly one redemption wins the single-use code");
 }
+
+/// An API key may read its own allocation and refill it, but must never
+/// reach key management (#264).
+///
+/// The second half is the assertion that matters. If an inference key
+/// could mint keys, one leaked credential would become a foothold that
+/// survives revoking the original — a spending problem turning into an
+/// eviction problem. The first half is the point of the change: a service
+/// watching its own balance should not need the account password.
+#[tokio::test]
+async fn api_key_reads_allocation_but_cannot_touch_keys() {
+    let Some((base, pool)) = spawn_or_skip("api_key_reads_allocation_but_cannot_touch_keys").await
+    else {
+        return;
+    };
+    let client = reqwest::Client::new();
+    let email = unique_email();
+    post(
+        format!("{base}/web/v1/register"),
+        json!({"email": email, "password": "password123"}),
+        None,
+    )
+    .await;
+    pool.execute(
+        sqlx::query("UPDATE users SET email_verified = true WHERE email = $1").bind(&email),
+    )
+    .await
+    .unwrap();
+    let session = post(
+        format!("{base}/web/v1/login"),
+        json!({"email": email, "password": "password123"}),
+        None,
+    )
+    .await
+    .json::<Value>()
+    .await
+    .unwrap()["token"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let created = post(
+        format!("{base}/web/v1/keys"),
+        json!({"label": "service"}),
+        Some(&session),
+    )
+    .await
+    .json::<Value>()
+    .await
+    .unwrap();
+    let raw_key = created["key"].as_str().unwrap().to_string();
+    let key_id = created["id"].as_str().unwrap().to_string();
+
+    // ── the key CAN read its own allocation ──────────────────────────
+    let r = client
+        .get(format!("{base}/web/v1/allocation"))
+        .bearer_auth(&raw_key)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        r.status(),
+        200,
+        "an API key must be able to read allocation"
+    );
+    let body: Value = r.json().await.unwrap();
+    assert!(body["allocation_total"].is_i64());
+    assert!(body["allocation_spent"].is_i64());
+    assert!(body["allocation_reserved"].is_i64());
+    assert!(body["topup_available"].is_boolean());
+    // Narrower than /account on purpose: nothing about the human.
+    assert!(
+        body.get("angel_access").is_none(),
+        "allocation must not leak account-holder fields to an inference key: {body}"
+    );
+
+    // A session reaches the same route.
+    let r = client
+        .get(format!("{base}/web/v1/allocation"))
+        .bearer_auth(&session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200, "a session must still work here");
+
+    // ── the key CANNOT manage keys ───────────────────────────────────
+    let r = post(
+        format!("{base}/web/v1/keys"),
+        json!({"label": "minted-by-a-key"}),
+        Some(&raw_key),
+    )
+    .await;
+    assert_eq!(
+        r.status(),
+        401,
+        "an API key must not be able to mint another key"
+    );
+
+    let r = client
+        .get(format!("{base}/web/v1/keys"))
+        .bearer_auth(&raw_key)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 401, "an API key must not be able to list keys");
+
+    let r = post(
+        format!("{base}/web/v1/keys/{key_id}/archive"),
+        json!({}),
+        Some(&raw_key),
+    )
+    .await;
+    assert_eq!(
+        r.status(),
+        401,
+        "an API key must not be able to archive a key"
+    );
+
+    // /account stays session-only — it carries account-holder fields.
+    let r = client
+        .get(format!("{base}/web/v1/account"))
+        .bearer_auth(&raw_key)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 401, "/account must remain session-only");
+
+    // ── an archived key authenticates nothing ────────────────────────
+    let r = post(
+        format!("{base}/web/v1/keys/{key_id}/archive"),
+        json!({}),
+        Some(&session),
+    )
+    .await;
+    assert!(r.status().is_success(), "archive via session should work");
+    let r = client
+        .get(format!("{base}/web/v1/allocation"))
+        .bearer_auth(&raw_key)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 401, "an archived key must authenticate nothing");
+
+    // Garbage bearers are refused on both shapes.
+    for bogus in ["sk-helexa-nonsense", "not-a-jwt"] {
+        let r = client
+            .get(format!("{base}/web/v1/allocation"))
+            .bearer_auth(bogus)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 401, "bogus bearer {bogus} must be refused");
+    }
+}
