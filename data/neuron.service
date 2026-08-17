@@ -2,6 +2,22 @@
 Description=Neuron — per-node GPU discovery and harness daemon for cortex
 After=network-online.target
 Wants=network-online.target
+# Start-limit bound for the self-restart path (#265). When a TP forward
+# wedges and the NCCL abort that would unblock it also hangs, neuron
+# exits 70 so Restart=on-failure recovers it in seconds instead of the
+# 70-minute outage that needed a human on 2026-08-17.
+#
+# That only helps if the wedge is transient. A deterministic one — a bad
+# build, a sick card, a model that wedges on load — would otherwise
+# restart forever, and a flapping node is WORSE than a down one: cortex
+# marks it healthy between restarts and keeps routing to it, so every
+# client sees intermittent failures instead of one node cleanly out.
+#
+# Four failures in ten minutes stops the unit and leaves it `failed`,
+# where `systemctl status` and an alert can see it. Visibly broken beats
+# invisibly cycling.
+StartLimitIntervalSec=600
+StartLimitBurst=4
 
 [Service]
 Type=simple
@@ -24,6 +40,11 @@ TimeoutStartSec=1800s
 # On stop, neuron drains in-flight requests then unloads every model
 # to release CUDA contexts cleanly. Allow generous time for big-model
 # unloads; systemd will SIGKILL after this bound.
+#
+# Note this bound does NOT apply to the self-restart path (#265): a
+# wedged process exits directly rather than draining, precisely because
+# draining cannot work when the collective is stuck — and waiting this
+# out would add two minutes to an outage that is already total.
 TimeoutStopSec=120s
 KillSignal=SIGTERM
 

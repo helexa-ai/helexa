@@ -30,6 +30,10 @@ pub mod worker;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+#[cfg(feature = "cuda")]
+use std::sync::Arc;
+#[cfg(feature = "cuda")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
@@ -319,6 +323,87 @@ pub struct WorkerPool {
     leader_comm: Option<nccl_state::SendComm>,
 }
 
+/// How long the watchdog waits for `ncclCommAbort` to return before
+/// concluding the process is unrecoverable (#265). Generous relative to a
+/// healthy abort (milliseconds) and short relative to a human noticing.
+#[cfg(feature = "cuda")]
+fn tp_abort_deadline() -> std::time::Duration {
+    let secs = std::env::var("NEURON_TP_ABORT_DEADLINE_S")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|s| *s > 0)
+        .unwrap_or(60);
+    std::time::Duration::from_secs(secs)
+}
+
+/// Wait for the abort thread to signal completion. `true` if it returned
+/// in time (recovery proceeds normally), `false` if the deadline elapsed
+/// (the process is unrecoverable).
+///
+/// Split out from the deadman thread so the decision is testable without
+/// a GPU: the branch that ends the process is the one most worth
+/// exercising, and the one hardest to reach by accident.
+#[cfg(feature = "cuda")]
+fn wait_for_abort(done: &AtomicBool, deadline: std::time::Duration) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < deadline {
+        if done.load(Ordering::Acquire) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    // One last look: the abort may have landed inside the final sleep.
+    done.load(Ordering::Acquire)
+}
+
+/// Exit non-zero so systemd's `Restart=on-failure` restarts us (#265).
+///
+/// Called only when the process cannot recover on its own: the NCCL
+/// collective is wedged and the abort that would unblock it has itself
+/// hung. The daemon then serves nothing — on beast 2026-08-17 it sat in
+/// that state for 70 minutes with GPUs idle, weights resident, 27
+/// connections queued on the listener, and `systemctl` reporting it
+/// active. A process that knows it is unrecoverable should not wait for a
+/// human.
+///
+/// **Everything diagnostic is logged first.** A restart destroys the
+/// state that explains the hang, so trading a diagnosable outage for an
+/// undiagnosable self-healing one would be a poor bargain.
+///
+/// `process::exit` deliberately skips destructors and the graceful-drain
+/// path. That is normally the wrong instinct, but draining a wedged
+/// process cannot work — and `TimeoutStopSec=120s` plus
+/// `TimeoutStopFailureMode=abort` would add two more minutes of outage on
+/// top of the wedge (#256).
+#[cfg(feature = "cuda")]
+fn exit_unrecoverable(model_id: &str, reason: &str) -> ! {
+    // Read straight from the driver rather than any cached value: the
+    // cache is refreshed by the very machinery that is wedged.
+    let vram = std::process::Command::new("nvidia-smi")
+        .args([
+            "--query-gpu=index,memory.used,memory.free,utilization.gpu",
+            "--format=csv,noheader",
+        ])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).replace('\n', " | "))
+        .unwrap_or_else(|| "unavailable".into());
+    tracing::error!(
+        model = %model_id,
+        reason = %reason,
+        vram = %vram,
+        pid = std::process::id(),
+        "tp watchdog: UNRECOVERABLE — exiting non-zero so systemd restarts this daemon (#265). \
+         The GPU state above is from immediately before the exit; the wedged collective and its \
+         request id are in the preceding watchdog lines."
+    );
+    // Give the logging layer a moment to flush before the process dies —
+    // an exit that eats its own explanation is the failure mode this
+    // whole change exists to avoid.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    std::process::exit(70) // EX_SOFTWARE
+}
+
 /// Per-step deadline for a TP forward (#17 Stage 2). A healthy decode
 /// step or chunked prefill completes in well under a second; a wedged
 /// NCCL collective never returns. Generous default so no legitimate step
@@ -349,23 +434,66 @@ impl WorkerPool {
             "tp watchdog: leader forward exceeded deadline — NCCL collective wedged; \
              aborting comm to unblock the leader thread for auto-recovery"
         );
-        match &self.leader_comm {
-            Some(c) => match c.0.abort() {
-                Ok(()) => tracing::error!(
-                    model = %model_id,
-                    "tp watchdog: ncclCommAbort succeeded — wedged collective unblocked; \
-                     failing the step so the model auto-recovers (unload+reload)"
-                ),
-                Err(e) => tracing::error!(
-                    model = %model_id, error = ?e,
-                    "tp watchdog: ncclCommAbort failed — recovery may stall until a process restart"
-                ),
-            },
-            None => tracing::error!(
+        let Some(comm) = self.leader_comm.as_ref().map(|c| c.0.clone()) else {
+            tracing::error!(
                 model = %model_id,
-                "tp watchdog: no cached leader comm handle — cannot abort; recovery will rely \
-                 on a process restart"
-            ),
+                "tp watchdog: no cached leader comm handle — cannot abort; exiting so \
+                 systemd restarts us (#265)"
+            );
+            exit_unrecoverable(model_id, "no leader comm handle to abort");
+        };
+
+        // `ncclCommAbort` can itself block forever — observed on beast
+        // 2026-08-17, where neither the success nor the failure branch below
+        // was ever reached and the daemon sat wedged for 70 minutes with 27
+        // connections queued on its listener (#265). So the abort runs on its
+        // own thread and the deadline below does NOT depend on it returning:
+        // an abort that hangs must not take the supervisor with it.
+        let done = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&done);
+        let owned_model = model_id.to_string();
+        std::thread::Builder::new()
+            .name("tp-watchdog-abort".into())
+            .spawn(move || {
+                match comm.abort() {
+                    Ok(()) => tracing::error!(
+                        model = %owned_model,
+                        "tp watchdog: ncclCommAbort succeeded — wedged collective unblocked; \
+                         failing the step so the model auto-recovers (unload+reload)"
+                    ),
+                    Err(e) => tracing::error!(
+                        model = %owned_model, error = ?e,
+                        "tp watchdog: ncclCommAbort failed — the collective is still wedged"
+                    ),
+                }
+                // Returning at all is the signal, success or failure: a
+                // returned abort leaves the process responsive, so
+                // auto-recovery can run and we must not exit under it.
+                signal.store(true, Ordering::Release);
+            })
+            .map(|_| ())
+            .unwrap_or_else(|e| {
+                // Cannot even spawn a thread — nothing here can recover.
+                tracing::error!(model = %model_id, error = %e, "tp watchdog: abort thread spawn failed");
+                exit_unrecoverable(model_id, "could not spawn the abort thread");
+            });
+
+        // Deadman. Disarmed only by the abort returning.
+        let deadline = tp_abort_deadline();
+        let owned_model = model_id.to_string();
+        if let Err(e) = std::thread::Builder::new()
+            .name("tp-watchdog-deadman".into())
+            .spawn(move || {
+                if wait_for_abort(&done, deadline) {
+                    return; // abort came back; the normal path owns recovery
+                }
+                exit_unrecoverable(
+                    &owned_model,
+                    "ncclCommAbort did not return within the deadline",
+                );
+            })
+        {
+            tracing::error!(model = %model_id, error = %e, "tp watchdog: deadman spawn failed");
         }
     }
 
@@ -1440,5 +1568,75 @@ impl WorkerPool {
 
     pub fn binary_path(&self) -> &PathBuf {
         &self.exe
+    }
+}
+
+#[cfg(all(test, feature = "cuda"))]
+mod watchdog_tests {
+    use super::*;
+    use std::time::Duration;
+
+    /// An abort that returns disarms the deadman — the normal path then
+    /// owns recovery and the process must NOT exit.
+    #[test]
+    fn abort_returning_disarms_the_deadman() {
+        let done = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&done);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            signal.store(true, Ordering::Release);
+        });
+        assert!(
+            wait_for_abort(&done, Duration::from_secs(5)),
+            "a returning abort must disarm the deadman"
+        );
+    }
+
+    /// The #265 case: `ncclCommAbort` never returns. The deadline must
+    /// elapse and report unrecoverable, which is what triggers the exit.
+    #[test]
+    fn abort_that_never_returns_trips_the_deadline() {
+        let done = Arc::new(AtomicBool::new(false)); // never set
+        let start = std::time::Instant::now();
+        assert!(
+            !wait_for_abort(&done, Duration::from_millis(200)),
+            "an abort that never returns must trip the deadline"
+        );
+        assert!(
+            start.elapsed() >= Duration::from_millis(200),
+            "must actually wait the deadline rather than failing fast"
+        );
+    }
+
+    /// An abort landing in the last instant still counts as returned —
+    /// exiting on a race would restart a process that had just recovered.
+    #[test]
+    fn abort_landing_at_the_deadline_still_counts() {
+        let done = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&done);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(180));
+            signal.store(true, Ordering::Release);
+        });
+        assert!(
+            wait_for_abort(&done, Duration::from_millis(200)),
+            "an abort landing at the deadline must not be treated as a hang"
+        );
+    }
+
+    /// The deadline is operator-tunable but never zero — a zero deadline
+    /// would exit the moment any watchdog fired.
+    #[test]
+    fn deadline_defaults_sanely_and_rejects_zero() {
+        assert_eq!(tp_abort_deadline(), Duration::from_secs(60));
+        unsafe { std::env::set_var("NEURON_TP_ABORT_DEADLINE_S", "0") };
+        assert_eq!(
+            tp_abort_deadline(),
+            Duration::from_secs(60),
+            "zero must fall back, not exit instantly on every watchdog"
+        );
+        unsafe { std::env::set_var("NEURON_TP_ABORT_DEADLINE_S", "15") };
+        assert_eq!(tp_abort_deadline(), Duration::from_secs(15));
+        unsafe { std::env::remove_var("NEURON_TP_ABORT_DEADLINE_S") };
     }
 }
