@@ -19,7 +19,7 @@ gateway.
 
 ```
                  ┌──────────────┐
-   clients ─────▶│    cortex    │   :31313 API, :31314 metrics
+   clients ────▶│    cortex    │   :31313 API, :31314 metrics
                  └──┬────┬────┬─┘
                     │    │    │
                ┌────▼┐ ┌─▼──┐ ┌▼────┐
