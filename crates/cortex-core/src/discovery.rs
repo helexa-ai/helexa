@@ -109,6 +109,23 @@ pub struct ModelLoad {
     /// (#54/#137). `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub rejected_per_principal: u64,
+    /// Anonymous requests currently holding a seat (#262). Read against
+    /// `in_flight` it says how much of this model's load is unattributable;
+    /// against `anon_max_in_flight`, how close that traffic is to the
+    /// ceiling that keeps it from starving identified callers.
+    #[serde(default)]
+    pub anon_in_flight: usize,
+    /// Seats anonymous traffic may hold at once (#262); `0` = refused
+    /// outright. `#[serde(default)]` (→ 0) for pre-#262 neurons, which
+    /// applied no ceiling at all — cortex skips the gauge rather than
+    /// publish a 0 that reads as the opposite of the truth.
+    #[serde(default)]
+    pub anon_max_in_flight: usize,
+    /// Cumulative anonymous requests refused for want of leftover capacity
+    /// (#262). Rising here with a flat `rejected_timeout` means the
+    /// reservation is working, not that the model is overloaded.
+    #[serde(default)]
+    pub rejected_anon_yield: u64,
     /// Cumulative requests that waited for KV budget and never got it
     /// (#257) — the model is saturated by long-context sequences rather
     /// than by request count. `#[serde(default)]` for back-compat.
@@ -171,6 +188,9 @@ mod health_load_tests {
                 kv_available_mb: 0,
                 rejected_timeout: 0,
                 rejected_per_principal: 0,
+                anon_in_flight: 2,
+                anon_max_in_flight: 7,
+                rejected_anon_yield: 0,
                 tok_s_prefill: 0.0,
                 tok_s_decode: 0.0,
             }],
@@ -182,6 +202,8 @@ mod health_load_tests {
         assert_eq!(back.models[0].queue_depth, 3);
         assert_eq!(back.models[0].max_in_flight, 8);
         assert_eq!(back.models[0].max_queue_depth, 8);
+        assert_eq!(back.models[0].anon_in_flight, 2);
+        assert_eq!(back.models[0].anon_max_in_flight, 7);
     }
 
     #[test]
@@ -193,6 +215,10 @@ mod health_load_tests {
         assert_eq!(m.in_flight, 2);
         assert_eq!(m.max_in_flight, 0);
         assert_eq!(m.max_queue_depth, 0);
+        // Likewise a pre-#262 neuron, which enforced no anonymous ceiling.
+        assert_eq!(m.anon_in_flight, 0);
+        assert_eq!(m.anon_max_in_flight, 0);
+        assert_eq!(m.rejected_anon_yield, 0);
     }
 }
 

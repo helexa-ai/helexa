@@ -198,6 +198,29 @@ impl LoadedHandle {
         }
     }
 
+    /// Anonymous seats held and permitted (#262):
+    /// `(anon_in_flight, anon_max_in_flight)`. Advertised on `/health` so an
+    /// operator can see how much of a model's load is unattributable, and
+    /// how close it is to the ceiling that keeps it from starving
+    /// identified callers.
+    pub fn anon_load(&self) -> (usize, usize) {
+        match self {
+            LoadedHandle::Single(m) => (
+                m.admission.anon_in_flight(),
+                m.admission.anon_max_in_flight(),
+            ),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => (
+                m.admission.anon_in_flight(),
+                m.admission.anon_max_in_flight(),
+            ),
+            LoadedHandle::Image(m) => (
+                m.admission.anon_in_flight(),
+                m.admission.anon_max_in_flight(),
+            ),
+        }
+    }
+
     /// Close this model's admission so nothing new is admitted (#256).
     pub fn close_admission(&self) {
         match self {
@@ -3589,6 +3612,7 @@ impl CandleHarness {
             .map(|handle| {
                 let (in_flight, queue_depth) = handle.load();
                 let (max_in_flight, max_queue_depth) = handle.capacity();
+                let (anon_in_flight, anon_max_in_flight) = handle.anon_load();
                 let rej = handle.rejections();
                 let (kv_budget_mb, kv_available_mb) = handle.kv_budget();
                 let (tok_s_prefill, tok_s_decode) = handle.rates();
@@ -3601,6 +3625,9 @@ impl CandleHarness {
                     rejected_queue_full: rej.queue_full,
                     rejected_timeout: rej.timeout,
                     rejected_per_principal: rej.per_principal,
+                    anon_in_flight,
+                    anon_max_in_flight,
+                    rejected_anon_yield: rej.anon_yield,
                     rejected_kv_timeout: rej.kv_timeout,
                     rejected_kv_unservable: rej.kv_unservable,
                     kv_budget_mb,
@@ -6431,7 +6458,14 @@ impl From<super::admission::AdmissionRejection> for InferenceError {
         use super::admission::AdmissionRejection;
         match rejection {
             AdmissionRejection::QueueFull { retry_after_secs }
-            | AdmissionRejection::Timeout { retry_after_secs } => {
+            | AdmissionRejection::Timeout { retry_after_secs }
+            // No leftover capacity for an anonymous caller (#262). Reported
+            // as ordinary backpressure: it is server-side load, transient,
+            // and retryable. The caller is told to come back later, not
+            // that it should have authenticated — that would be a policy
+            // hint the daemon isn't in a position to give, since the same
+            // request may well be admitted a second later.
+            | AdmissionRejection::AnonYield { retry_after_secs } => {
                 InferenceError::Overloaded { retry_after_secs }
             }
             AdmissionRejection::PrincipalCap { retry_after_secs } => {

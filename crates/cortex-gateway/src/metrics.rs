@@ -111,7 +111,15 @@ fn describe_metrics() {
     );
     metrics::describe_counter!(
         "cortex_model_rejections_total",
-        "Admission rejections per neuron:model by reason: queue_full / wait_timeout / per_principal — the load-shedding signal (#137)"
+        "Admission rejections per neuron:model by reason: queue_full / wait_timeout / per_principal / anon_yield — the load-shedding signal (#137, #262)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_anon_in_flight",
+        "Anonymous (unattributable) requests holding a seat on a neuron:model (#262)"
+    );
+    metrics::describe_gauge!(
+        "cortex_model_anon_max_in_flight",
+        "Seats anonymous traffic may hold at once, so it cannot starve identified callers (#262)"
     );
     metrics::describe_gauge!(
         "cortex_model_tok_s_decode",

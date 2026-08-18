@@ -380,6 +380,21 @@ fn export_health_metrics(node: &str, h: &HealthResponse) {
         counter!("cortex_model_rejections_total",
             "node" => node.to_string(), "model" => m.id.clone(), "reason" => "per_principal")
         .absolute(m.rejected_per_principal);
+        counter!("cortex_model_rejections_total",
+            "node" => node.to_string(), "model" => m.id.clone(), "reason" => "anon_yield")
+        .absolute(m.rejected_anon_yield);
+        // How much of this model's load is unattributable (#262), and the
+        // ceiling that keeps it from starving identified callers. 0 for a
+        // pre-#262 neuron, which had no ceiling — skip rather than publish
+        // a 0 that reads as "anonymous is refused" when it means the
+        // opposite.
+        gauge!("cortex_model_anon_in_flight", "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.anon_in_flight as f64);
+        if m.anon_max_in_flight > 0 {
+            gauge!("cortex_model_anon_max_in_flight",
+                "node" => node.to_string(), "model" => m.id.clone())
+            .set(m.anon_max_in_flight as f64);
+        }
     }
     for d in &h.devices {
         let device = d.index.to_string();
