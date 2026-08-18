@@ -39,24 +39,34 @@ env:
   CARGO_TARGET_DIR: target-${{ github.job }}
 
 jobs:
+  # Two independent questions: does this change need the Rust gate, and
+  # does it need the web gate.
+  #
   # The SPA under helexa.ai/ is built and shipped by its own deploy job and
   # is not read by any crate, build script or spec file — so a change
   # confined to it cannot alter a Rust result. Waiting up to 70 minutes for
   # a CUDA type-check to prove that is pure latency, and the wait is what
-  # tempts people to merge front-end work unchecked.
+  # tempts people to merge front-end work unchecked. Documentation is inert
+  # the same way, and more obviously: no crate `include_str!`s a markdown
+  # file, no spec packages `doc/`, no build script reads one.
   #
-  # The classification is deliberately one-directional: it only ever
-  # narrows the gate when *every* changed path is front-end, and every
+  # Conversely a Rust-only change cannot break the SPA, so it need not
+  # spend three minutes on `npm ci` + lint + typecheck + build.
+  #
+  # The classification stays deliberately one-directional: it only ever
+  # narrows the gate when *every* changed path is known-inert, and every
   # other outcome — a tag, an unknown base, an empty diff, a mixed
   # changeset — falls through to the full gate. A new top-level directory
   # is therefore covered on the day it appears, without anyone
-  # remembering to add it here.
+  # remembering to add it here. Adding an inert pattern is the only way to
+  # widen what gets skipped, which is the property worth keeping.
   changes:
     name: Classify changes
     timeout-minutes: 10
     runs-on: fedora-43
     outputs:
       rust: ${{ steps.classify.outputs.rust }}
+      web: ${{ steps.classify.outputs.web }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +74,12 @@ jobs:
       - id: classify
         run: |
           set -u
-          full() { echo "→ full gate: $1"; echo "rust=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          full() {
+            echo "→ full gate: $1"
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
 
           # Tags build the SRPMs from the whole tree, and the srpm jobs
           # gate on fmt/clippy/test/cuda-check. Never narrow there.
@@ -86,11 +101,31 @@ jobs:
           echo "changed files:"
           printf '%s\n' "${files}" | sed 's/^/  /'
 
-          other="$(printf '%s\n' "${files}" | grep -v '^helexa\.ai/' || true)"
-          [ -z "${other}" ] || full "changes outside helexa.ai/"
+          # Inert for Rust: the SPA, and documentation. Markdown is
+          # matched only at the repo root and under doc/ — a .md inside
+          # crates/ is left to fall through, since `include_str!` could
+          # make one load-bearing without this file knowing.
+          rust_relevant="$(printf '%s\n' "${files}" \
+            | grep -v '^helexa\.ai/' \
+            | grep -v '^doc/' \
+            | grep -vE '^[^/]+\.md$' \
+            || true)"
+          if [ -n "${rust_relevant}" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            echo "→ Rust gate: required"
+          else
+            echo "rust=false" >> "$GITHUB_OUTPUT"
+            echo "→ Rust gate: skipped (front-end and/or docs only)"
+          fi
 
-          echo "→ front-end only: skipping the Rust gate"
-          echo "rust=false" >> "$GITHUB_OUTPUT"
+          # The web gate is needed only when the SPA itself changed.
+          if printf '%s\n' "${files}" | grep -q '^helexa\.ai/'; then
+            echo "web=true" >> "$GITHUB_OUTPUT"
+            echo "→ web gate: required"
+          else
+            echo "web=false" >> "$GITHUB_OUTPUT"
+            echo "→ web gate: skipped (nothing under helexa.ai/)"
+          fi
 
   fmt:
     name: Format
@@ -106,6 +141,8 @@ jobs:
     name: Web (lint + typecheck + i18n + build)
     timeout-minutes: 20
     runs-on: fedora-43
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     defaults:
       run:
         working-directory: helexa.ai

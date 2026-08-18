@@ -105,6 +105,11 @@ jobs:
           echo "commit_timestamp=${COMMIT_TIMESTAMP}" >> "$GITHUB_OUTPUT"
 
       - id: changes
+        env:
+          # The push's own range. Empty on workflow_dispatch and all
+          # zeroes for a new branch; `decide` treats both as unusable and
+          # falls back to the full gate.
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
           set -ux
           # Default: build everything. Detection only ever narrows
@@ -189,9 +194,30 @@ jobs:
               BUILD_TOOLS=$(decide "$TOOLS_BASE" "$TOOLS_RE")
               BUILD_ANGELS=$(decide "$ANGELS_BASE" "$ANGELS_RE")
               if [ "$BUILD_CORTEX" = "true" ] || [ "$BUILD_NEURON" = "true" ] || [ "$BUILD_BENCH" = "true" ] || [ "$BUILD_UPSTREAM" = "true" ] || [ "$BUILD_ROUTER" = "true" ] || [ "$BUILD_TOOLS" = "true" ] || [ "$BUILD_ANGELS" = "true" ]; then
+                # Anything we are about to build gets linted and tested.
+                # This is the invariant that matters: no artefact reaches
+                # the fleet unchecked, however the branch below behaves.
                 CHECK_RUST=true
               else
-                CHECK_RUST=$(decide "$CORTEX_BASE" "$RUST_RE")
+                # Nothing is being built, so nothing will be published.
+                # The only question left is whether THIS PUSH touched
+                # Rust — and the honest base for that is the push's own
+                # range, not a package's publication lag.
+                #
+                # This used to ask "has anything Rust changed since
+                # cortex was last published". Cortex is only rebuilt when
+                # cortex paths change, so after a run of neuron-only work
+                # its base sits days behind and the diff from it sweeps in
+                # every unrelated Rust commit since. A one-character
+                # whitespace fix to a doc then re-ran fmt, clippy and the
+                # full test suite over a delta that had already been
+                # linted on the branch that introduced it (2026-08-18,
+                # base fec5b33).
+                #
+                # `decide` returns true for an unusable base, so a new
+                # branch (all-zero before-sha) or a force-push still gets
+                # the full gate.
+                CHECK_RUST=$(decide "$PUSH_BEFORE" "$RUST_RE")
               fi
             fi
           fi
