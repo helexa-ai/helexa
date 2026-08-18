@@ -180,9 +180,36 @@ pub struct AdmissionConfig {
     /// for any single principal (resolved from the `x-helexa-*` headers
     /// cortex stamps), so one client can't monopolize the queue while others
     /// wait. Over-cap → `429 rate_limit_exceeded` + `Retry-After`. `0`
-    /// disables the cap; anonymous requests are always exempt.
+    /// disables the cap.
+    ///
+    /// Anonymous requests carry no principal and so cannot be capped by it.
+    /// They are bounded instead by `anon_max_in_flight` / `anon_max_pending`
+    /// below (#262).
     #[serde(default = "default_admission_max_per_principal")]
     pub max_per_principal: usize,
+    /// Ceiling on **anonymous** requests holding an in-flight seat (#262).
+    ///
+    /// Anonymous traffic is served from capacity left over once identified
+    /// traffic is satisfied: it never takes a seat while an identified
+    /// request is waiting, and it may never hold every seat at once — which
+    /// is what this bounds, because a request already running cannot be
+    /// preempted. Reserving one seat is what caps how long a newly arrived
+    /// identified request waits: one request's duration, not all of them.
+    ///
+    /// Unset (the default) derives `max_in_flight - 1`, floored at 1 so a
+    /// single-seat model still serves anonymous callers. `0` refuses
+    /// anonymous traffic outright.
+    #[serde(default)]
+    pub anon_max_in_flight: Option<usize>,
+    /// Ceiling on anonymous requests in flight **plus** queued (#262).
+    ///
+    /// The queue needs the same reservation as the seats: without it an
+    /// anonymous flood fills the queue and identified callers are refused at
+    /// the door, before priority can help them.
+    ///
+    /// Unset derives `max_in_flight + max_queue_depth - 1`, floored at 1.
+    #[serde(default)]
+    pub anon_max_pending: Option<usize>,
     /// Maximum seconds a request waits for enough **KV budget** to free
     /// before it is refused (#257). Deliberately far longer than
     /// `max_wait_secs`: that one waits for a slot to turn over, this one
@@ -200,6 +227,8 @@ impl Default for AdmissionConfig {
             max_queue_depth: default_admission_max_queue_depth(),
             max_wait_secs: default_admission_max_wait_secs(),
             max_per_principal: default_admission_max_per_principal(),
+            anon_max_in_flight: None,
+            anon_max_pending: None,
             kv_max_wait_secs: default_admission_kv_max_wait_secs(),
         }
     }

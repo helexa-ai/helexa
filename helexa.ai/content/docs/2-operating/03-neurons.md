@@ -108,6 +108,43 @@ KV cache for several concurrent long contexts is itself substantial.
 `max_per_principal` is what stops one busy client consuming the whole
 model.
 
+### Anonymous callers
+
+Fair share is keyed on the account and key cortex resolves from the
+bearer token. A caller that sends no credential — or one that does not
+resolve, which `require_auth = false` deliberately tolerates — has no
+key to be shared out, so `max_per_principal` cannot bind it.
+
+Anonymous traffic is therefore served from the capacity left over once
+identified traffic is satisfied. It never takes a seat while an
+authenticated request is waiting for one, whoever arrived first, and it
+cannot hold every seat at once:
+
+```toml
+anon_max_in_flight = 7   # unset: max_in_flight - 1, floored at 1
+anon_max_pending = 15    # unset: max_in_flight + max_queue_depth - 1
+```
+
+The defaults hold back one seat and one queue place, which is what
+bounds how long an authenticated request can be made to wait: a request
+already running cannot be preempted, so without a reserved seat an
+anonymous burst arriving during an idle moment locks the model for as
+long as all of it takes to finish. On a single-seat model the floor
+keeps anonymous callers served — priority alone decides who wins there.
+
+Set `anon_max_in_flight = 0` to refuse anonymous traffic outright, or
+`require_auth = true` on the gateway to make attribution universal.
+Anonymous callers still contend with each other, and under sustained
+authenticated load they are refused rather than served slowly — the
+refusal is a retryable `503`, so a client that backs off gets served
+when the load passes.
+
+Watch it with `cortex_model_anon_in_flight` against
+`cortex_model_in_flight` (how much of a model's load is unattributable)
+and `cortex_model_rejections_total{reason="anon_yield"}`. That last
+counter rising while `reason="wait_timeout"` stays flat means the
+reservation is doing its job, not that the model is overloaded.
+
 ## VRAM guards
 
 neuron refuses work it cannot finish rather than crashing partway:
