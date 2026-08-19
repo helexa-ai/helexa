@@ -365,6 +365,12 @@ async fn run_projection(
     // final `response.completed` payload so clients that only read
     // the terminal response still see the calls.
     let mut tool_items: Vec<Value> = Vec::new();
+    // Reasoning item state (#267) and whether the message item's
+    // opening frames have gone out. The message is opened lazily,
+    // because its `output_index` depends on whether a reasoning item
+    // claimed index 0 first.
+    let mut reasoning = ReasoningTracker::default();
+    let mut message_open = false;
 
     while let Some(event) = rx.recv().await {
         match event {
@@ -378,12 +384,22 @@ async fn run_projection(
                 if text.is_empty() {
                     continue;
                 }
+                // Thinking is over the moment visible text starts.
+                if !close_reasoning(&tx, &meta, &mut reasoning).await {
+                    return;
+                }
+                if !message_open {
+                    if !emit_message_open_frames(&tx, &meta, reasoning.message_index()).await {
+                        return;
+                    }
+                    message_open = true;
+                }
                 accumulated.push_str(&text);
                 let frame = ResponseStreamFrame {
                     event_name: events::OUTPUT_TEXT_DELTA,
                     data: json!({
                         "item_id": meta.message_item_id,
-                        "output_index": 0,
+                        "output_index": reasoning.message_index(),
                         "content_index": 0,
                         "delta": text,
                     }),
@@ -392,10 +408,45 @@ async fn run_projection(
                     return;
                 }
             }
-            InferenceEvent::ReasoningDelta(_) => {
-                // No representation in our Responses model yet.
-                // Stage where it'd land: a `response.reasoning_*`
-                // event family alongside `response.output_text.*`.
+            InferenceEvent::ReasoningDelta(text) => {
+                // Stream the think block as its own output item (#267).
+                // This used to be dropped on the floor, which meant a
+                // model that reasoned for minutes emitted no events at
+                // all and clients closed the stream as dead — dsh
+                // reports `pi-ai stream idle timeout after 300000ms`.
+                // Its watchdog resets on any parsed event, so surfacing
+                // reasoning is what keeps a thinking model alive on the
+                // wire; SSE comment keep-alives cannot, because idle
+                // timers count events, not comments.
+                if text.is_empty() {
+                    continue;
+                }
+                if !reasoning.open {
+                    if reasoning.item.is_some() {
+                        // Reasoning resumed after visible text. Our
+                        // model has one reasoning item per response, so
+                        // fold it into the existing summary rather than
+                        // opening a second item out of order.
+                        continue;
+                    }
+                    if !emit_reasoning_open_frames(&tx, &meta).await {
+                        return;
+                    }
+                    reasoning.open = true;
+                }
+                reasoning.text.push_str(&text);
+                let frame = ResponseStreamFrame {
+                    event_name: events::REASONING_SUMMARY_TEXT_DELTA,
+                    data: json!({
+                        "item_id": reasoning_item_id(&meta),
+                        "output_index": 0,
+                        "summary_index": 0,
+                        "delta": text,
+                    }),
+                };
+                if tx.send(frame).await.is_err() {
+                    return;
+                }
             }
             InferenceEvent::ToolCall {
                 index,
@@ -403,9 +454,19 @@ async fn run_projection(
                 name,
                 arguments,
             } => {
-                // The message item opened by the start frames holds
-                // output_index 0; function_call items follow it.
-                let output_index = 1 + index as u64;
+                if !close_reasoning(&tx, &meta, &mut reasoning).await {
+                    return;
+                }
+                if !message_open {
+                    if !emit_message_open_frames(&tx, &meta, reasoning.message_index()).await {
+                        return;
+                    }
+                    message_open = true;
+                }
+                // function_call items follow the message item, which
+                // itself follows any reasoning item — so the base is the
+                // message's index, not a hardcoded 0.
+                let output_index = reasoning.message_index() + 1 + index as u64;
                 let item_id = format!(
                     "fc_{}_{index}",
                     meta.response_id.trim_start_matches("resp_")
@@ -508,16 +569,156 @@ async fn run_projection(
         return;
     }
 
+    // A stream can end while still thinking — a reasoning model that
+    // exhausts max_output_tokens mid-block never emits visible text.
+    // Close the item so the client sees a finished response rather than
+    // a reasoning item left open forever.
+    if !close_reasoning(&tx, &meta, &mut reasoning).await {
+        return;
+    }
+    // The message item is opened lazily, so a response that produced no
+    // text (tool-call-only turns, or the case above) has not announced
+    // it yet. The finish frames reference it, so it must exist first.
+    if !message_open && !emit_message_open_frames(&tx, &meta, reasoning.message_index()).await {
+        return;
+    }
+
     let reason = finish.unwrap_or(FinishReason::Stop);
     let _ = emit_finish_frames(
         &tx,
         &meta,
-        &accumulated,
-        reason,
-        usage.as_ref(),
-        &tool_items,
+        FinishContext {
+            full_text: &accumulated,
+            reason,
+            usage: usage.as_ref(),
+            tool_items: &tool_items,
+            message_index: reasoning.message_index(),
+            reasoning_item: reasoning.item.as_ref(),
+        },
     )
     .await;
+}
+
+/// Streaming state for a reasoning model's think block (#267).
+///
+/// The block is its own output item, ahead of the message, so the
+/// message's `output_index` depends on whether reasoning happened —
+/// which is only known once the first token arrives. This tracks that
+/// decision and the accumulated summary text.
+#[derive(Default)]
+struct ReasoningTracker {
+    /// Frames opening the reasoning item have been emitted.
+    open: bool,
+    /// Everything the model has thought so far, for the `*.done` frames
+    /// and the terminal `completed` payload.
+    text: String,
+    /// The finished reasoning item, replayed inside `response.completed`
+    /// so a client that only reads the terminal response still sees it.
+    item: Option<Value>,
+}
+
+impl ReasoningTracker {
+    /// `output_index` the message item takes: 1 when a reasoning item
+    /// occupies 0, else 0.
+    fn message_index(&self) -> u64 {
+        u64::from(self.open || self.item.is_some())
+    }
+}
+
+fn reasoning_item_id(meta: &ResponseMeta) -> String {
+    format!("rs_{}", meta.response_id.trim_start_matches("resp_"))
+}
+
+/// Open the reasoning item and its summary part, once.
+async fn emit_reasoning_open_frames(
+    tx: &mpsc::Sender<ResponseStreamFrame>,
+    meta: &ResponseMeta,
+) -> bool {
+    let item_id = reasoning_item_id(meta);
+    let frames = [
+        ResponseStreamFrame {
+            event_name: events::OUTPUT_ITEM_ADDED,
+            data: json!({
+                "output_index": 0,
+                "item": {
+                    "type": "reasoning",
+                    "id": item_id,
+                    "summary": [],
+                    "status": "in_progress",
+                },
+            }),
+        },
+        ResponseStreamFrame {
+            event_name: events::REASONING_SUMMARY_PART_ADDED,
+            data: json!({
+                "item_id": item_id,
+                "output_index": 0,
+                "summary_index": 0,
+                "part": { "type": "summary_text", "text": "" },
+            }),
+        },
+    ];
+    for frame in frames {
+        if tx.send(frame).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Close the reasoning item, if one was opened, and record it for the
+/// terminal payload. Idempotent — every path that emits a non-reasoning
+/// item calls this first, and only the first call does anything.
+async fn close_reasoning(
+    tx: &mpsc::Sender<ResponseStreamFrame>,
+    meta: &ResponseMeta,
+    reasoning: &mut ReasoningTracker,
+) -> bool {
+    if !reasoning.open {
+        return true;
+    }
+    reasoning.open = false;
+    let item_id = reasoning_item_id(meta);
+    let full_item = json!({
+        "type": "reasoning",
+        "id": item_id,
+        "summary": [{ "type": "summary_text", "text": reasoning.text }],
+        "status": "completed",
+    });
+    let frames = [
+        ResponseStreamFrame {
+            event_name: events::REASONING_SUMMARY_TEXT_DONE,
+            data: json!({
+                "item_id": item_id,
+                "output_index": 0,
+                "summary_index": 0,
+                "text": reasoning.text,
+            }),
+        },
+        ResponseStreamFrame {
+            event_name: events::REASONING_SUMMARY_PART_DONE,
+            data: json!({
+                "item_id": item_id,
+                "output_index": 0,
+                "summary_index": 0,
+                "part": { "type": "summary_text", "text": reasoning.text },
+            }),
+        },
+        ResponseStreamFrame {
+            event_name: events::OUTPUT_ITEM_DONE,
+            data: json!({
+                "output_index": 0,
+                "item": full_item.clone(),
+            }),
+        },
+    ];
+    reasoning.item = Some(full_item);
+    for frame in frames {
+        if tx.send(frame).await.is_err() {
+            return false;
+        }
+    }
+    true
 }
 
 async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &ResponseMeta) -> bool {
@@ -540,10 +741,31 @@ async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &Respon
             event_name: events::IN_PROGRESS,
             data: json!({ "response": shell }),
         },
+    ];
+    for frame in frames {
+        if tx.send(frame).await.is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Open the message item, once, at `output_index`.
+///
+/// Deferred rather than emitted with the start frames because the
+/// message is no longer guaranteed to be `output[0]`: a reasoning model
+/// puts its think block in an item ahead of it, and an item's index has
+/// to be right the first time it is announced.
+async fn emit_message_open_frames(
+    tx: &mpsc::Sender<ResponseStreamFrame>,
+    meta: &ResponseMeta,
+    output_index: u64,
+) -> bool {
+    let frames = [
         ResponseStreamFrame {
             event_name: events::OUTPUT_ITEM_ADDED,
             data: json!({
-                "output_index": 0,
+                "output_index": output_index,
                 "item": empty_message_item(&meta.message_item_id),
             }),
         },
@@ -551,7 +773,7 @@ async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &Respon
             event_name: events::CONTENT_PART_ADDED,
             data: json!({
                 "item_id": meta.message_item_id,
-                "output_index": 0,
+                "output_index": output_index,
                 "content_index": 0,
                 "part": { "type": "output_text", "text": "", "annotations": [] },
             }),
@@ -565,14 +787,34 @@ async fn emit_start_frames(tx: &mpsc::Sender<ResponseStreamFrame>, meta: &Respon
     true
 }
 
+/// Everything the terminal frames need that isn't stream identity.
+/// Grouped rather than passed loose: the reasoning item (#267) pushed
+/// the argument list past the point where positional `&str`/`u64`
+/// parameters are safe to read at a call site.
+struct FinishContext<'a> {
+    full_text: &'a str,
+    reason: FinishReason,
+    usage: Option<&'a ResponsesUsage>,
+    tool_items: &'a [Value],
+    /// Where the message item sits — 1 when a reasoning item took 0.
+    message_index: u64,
+    /// The completed reasoning item, replayed inside `completed`.
+    reasoning_item: Option<&'a Value>,
+}
+
 async fn emit_finish_frames(
     tx: &mpsc::Sender<ResponseStreamFrame>,
     meta: &ResponseMeta,
-    full_text: &str,
-    reason: FinishReason,
-    usage: Option<&ResponsesUsage>,
-    tool_items: &[Value],
+    ctx: FinishContext<'_>,
 ) -> bool {
+    let FinishContext {
+        full_text,
+        reason,
+        usage,
+        tool_items,
+        message_index,
+        reasoning_item,
+    } = ctx;
     let status = finish_to_status(reason);
     let full_part = json!({
         "type": "output_text",
@@ -586,10 +828,14 @@ async fn emit_finish_frames(
         "content": [full_part.clone()],
         "status": status,
     });
-    // Terminal output array: the message item (always present — its
-    // open frames were emitted eagerly at stream start) followed by
-    // any completed function_call items.
-    let mut output_items = Vec::with_capacity(1 + tool_items.len());
+    // Terminal output array, in wire order: the reasoning item (when
+    // the model thought), then the message, then any completed
+    // function_call items. Order matters — a client reconstructing the
+    // response from `completed` alone should see what the stream showed.
+    let mut output_items = Vec::with_capacity(2 + tool_items.len());
+    if let Some(item) = reasoning_item {
+        output_items.push(item.clone());
+    }
     output_items.push(full_item.clone());
     output_items.extend(tool_items.iter().cloned());
     let frames = [
@@ -597,7 +843,7 @@ async fn emit_finish_frames(
             event_name: events::OUTPUT_TEXT_DONE,
             data: json!({
                 "item_id": meta.message_item_id,
-                "output_index": 0,
+                "output_index": message_index,
                 "content_index": 0,
                 "text": full_text,
             }),
@@ -606,7 +852,7 @@ async fn emit_finish_frames(
             event_name: events::CONTENT_PART_DONE,
             data: json!({
                 "item_id": meta.message_item_id,
-                "output_index": 0,
+                "output_index": message_index,
                 "content_index": 0,
                 "part": full_part,
             }),
@@ -614,7 +860,7 @@ async fn emit_finish_frames(
         ResponseStreamFrame {
             event_name: events::OUTPUT_ITEM_DONE,
             data: json!({
-                "output_index": 0,
+                "output_index": message_index,
                 "item": full_item.clone(),
             }),
         },
@@ -1093,6 +1339,170 @@ mod tests {
             out.push(f);
         }
         out
+    }
+
+    /// The regression #267 was filed for: a reasoning model must put
+    /// events on the wire while it thinks.
+    ///
+    /// These deltas used to be dropped, so a model that reasoned for
+    /// minutes emitted nothing at all and clients closed the stream as
+    /// dead — dsh reports `pi-ai stream idle timeout after 300000ms`
+    /// and retries, so a task whose thinking outlasts the client's idle
+    /// timeout could never finish. Its watchdog resets on any parsed
+    /// event, which is why emitting these fixes it and why SSE comment
+    /// keep-alives could not: idle timers count events, not comments.
+    #[tokio::test]
+    async fn reasoning_projects_a_full_item_lifecycle_before_the_message() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(16);
+        let out = project_responses_stream(rx, meta());
+
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::ReasoningDelta("think".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::ReasoningDelta("ing".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::TextDelta("answer".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 2,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let frames = collect(out).await;
+        let names: Vec<&str> = frames.iter().map(|f| f.event_name).collect();
+        assert_eq!(
+            names,
+            vec![
+                events::CREATED,
+                events::IN_PROGRESS,
+                events::OUTPUT_ITEM_ADDED,
+                events::REASONING_SUMMARY_PART_ADDED,
+                events::REASONING_SUMMARY_TEXT_DELTA,
+                events::REASONING_SUMMARY_TEXT_DELTA,
+                events::REASONING_SUMMARY_TEXT_DONE,
+                events::REASONING_SUMMARY_PART_DONE,
+                events::OUTPUT_ITEM_DONE,
+                events::OUTPUT_ITEM_ADDED,
+                events::CONTENT_PART_ADDED,
+                events::OUTPUT_TEXT_DELTA,
+                events::OUTPUT_TEXT_DONE,
+                events::CONTENT_PART_DONE,
+                events::OUTPUT_ITEM_DONE,
+                events::COMPLETED,
+            ]
+        );
+
+        // The reasoning item owns output_index 0, so the message shifts
+        // to 1 — an item's index has to be right when it is announced,
+        // which is why the message is opened lazily.
+        let reasoning_added = &frames[2];
+        assert_eq!(reasoning_added.data["output_index"], 0);
+        assert_eq!(reasoning_added.data["item"]["type"], "reasoning");
+        let message_added = &frames[9];
+        assert_eq!(message_added.data["output_index"], 1);
+        assert_eq!(message_added.data["item"]["type"], "message");
+        assert_eq!(frames[11].data["output_index"], 1, "text delta index");
+
+        // Accumulated thinking, not just the last fragment.
+        assert_eq!(frames[6].data["text"], "thinking");
+
+        // The terminal payload replays both items, in wire order, so a
+        // client reading only `completed` sees what the stream showed.
+        let output = frames.last().unwrap().data["response"]["output"]
+            .as_array()
+            .expect("output array");
+        assert_eq!(output.len(), 2);
+        assert_eq!(output[0]["type"], "reasoning");
+        assert_eq!(output[0]["summary"][0]["text"], "thinking");
+        assert_eq!(output[1]["type"], "message");
+    }
+
+    /// A model can exhaust its budget mid-thought and never produce
+    /// visible text. The reasoning item must still be closed and the
+    /// message still opened, or the client waits on a response that
+    /// never resolves.
+    #[tokio::test]
+    async fn reasoning_only_stream_still_closes_cleanly() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(16);
+        let out = project_responses_stream(rx, meta());
+
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::ReasoningDelta("pondering".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Length,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 1,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let frames = collect(out).await;
+        let names: Vec<&str> = frames.iter().map(|f| f.event_name).collect();
+        assert!(names.contains(&events::REASONING_SUMMARY_PART_DONE));
+        assert!(
+            names.contains(&events::CONTENT_PART_ADDED),
+            "message item must still be opened so the finish frames refer to something"
+        );
+        assert_eq!(names.last(), Some(&events::COMPLETED));
+        let last = frames.last().unwrap();
+        assert_eq!(last.data["response"]["status"], "incomplete");
+    }
+
+    /// Tool calls sit after the message, which sits after any reasoning
+    /// item — so their index is relative to the message, not a
+    /// hardcoded 0.
+    #[tokio::test]
+    async fn tool_call_index_shifts_past_a_reasoning_item() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(16);
+        let out = project_responses_stream(rx, meta());
+
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::ReasoningDelta("plan".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::ToolCall {
+            index: 0,
+            id: "call_1".into(),
+            name: "bash".into(),
+            arguments: "{}".into(),
+        })
+        .await
+        .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::ToolCalls,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 1,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let frames = collect(out).await;
+        let call_added = frames
+            .iter()
+            .find(|f| {
+                f.event_name == events::OUTPUT_ITEM_ADDED
+                    && f.data["item"]["type"] == "function_call"
+            })
+            .expect("function_call item announced");
+        // reasoning=0, message=1, first call=2.
+        assert_eq!(call_added.data["output_index"], 2);
     }
 
     #[tokio::test]
