@@ -139,11 +139,35 @@ pub fn project_chat_stream_with(
                 }
                 InferenceEvent::ReasoningDelta(text) => {
                     if !config.include_thinking {
-                        // Default path — reasoning has no slot in
-                        // chat completions, so it's dropped. Naïve
-                        // clients (Zed commit-message generator,
-                        // any vanilla OpenAI client) get clean
-                        // output.
+                        // Default path. This used to `continue` —
+                        // dropping the token and emitting nothing at
+                        // all — to keep model-internal scratchpad out
+                        // of naïve clients' UIs. That goal was right;
+                        // the method silenced the stream.
+                        //
+                        // A reasoning model can think for minutes on a
+                        // hard prompt, and for that whole span not one
+                        // SSE event went out. Clients time that out: the
+                        // DeepSeek Harness reports `pi-ai stream idle
+                        // timeout after 300000ms` and retries, so a task
+                        // that reasons for over five minutes could never
+                        // complete no matter how healthy the model was.
+                        // SSE comment keep-alives do not help — idle
+                        // timers reset on events, not comments.
+                        //
+                        // Emitting `reasoning_content` instead keeps the
+                        // original guarantee (it is not `content`, so
+                        // unaware clients still show clean output) while
+                        // the stream stays visibly alive, and hands
+                        // reasoning-aware clients the field they are
+                        // already looking for.
+                        if text.is_empty() {
+                            continue;
+                        }
+                        let chunk = reasoning_chunk(&id, created, &model_id, &text);
+                        if tx.send(chunk).await.is_err() {
+                            return;
+                        }
                         continue;
                     }
                     let Some(markers) = config.reasoning_markers.as_ref() else {
@@ -238,6 +262,35 @@ fn role_chunk(id: &str, created: u64, model_id: &str) -> ChatCompletionChunk {
         choices: vec![ChunkChoice {
             index: 0,
             delta: json!({ "role": "assistant" }),
+            finish_reason: None,
+            extra: serde_json::Value::Object(Default::default()),
+        }],
+        usage: None,
+        extra: serde_json::Value::Object(Default::default()),
+    }
+}
+
+/// A reasoning delta, in the field reasoning-aware clients read.
+///
+/// `reasoning_content` is not in the OpenAI spec, but it is the
+/// de-facto slot: DeepSeek's API emits it, and so do vLLM and SGLang
+/// for reasoning models. Our own consumers already expect it —
+/// `helexa-acp`'s OpenAI provider reads `choice.delta.reasoning_content`,
+/// and `helexa-bench` times a stream's first reasoning token from it.
+///
+/// Crucially it is NOT `content`, so a client that has never heard of
+/// reasoning ignores the unknown field and sees clean output — the
+/// property the old drop-it-entirely default was protecting, kept
+/// without the silence that came with it.
+fn reasoning_chunk(id: &str, created: u64, model_id: &str, text: &str) -> ChatCompletionChunk {
+    ChatCompletionChunk {
+        id: id.into(),
+        object: "chat.completion.chunk".into(),
+        created,
+        model: model_id.into(),
+        choices: vec![ChunkChoice {
+            index: 0,
+            delta: json!({ "reasoning_content": text }),
             finish_reason: None,
             extra: serde_json::Value::Object(Default::default()),
         }],
@@ -500,10 +553,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reasoning_delta_is_dropped_in_chat_projection() {
+    /// Reasoning is streamed as `reasoning_content`, never as `content`.
+    ///
+    /// Both halves matter. Keeping it out of `content` is what stops
+    /// scratchpad material appearing in the UI of a client that has
+    /// never heard of reasoning — the guarantee the previous
+    /// drop-everything default provided.
+    ///
+    /// But emitting *something* is what keeps the connection alive. A
+    /// model can think for minutes; while it did, this projection sent
+    /// no events at all, and clients closed the stream as dead. The
+    /// DeepSeek Harness reports `pi-ai stream idle timeout after
+    /// 300000ms`, so any task whose reasoning outlasts the client's
+    /// idle timeout could never complete. SSE comment keep-alives do
+    /// not help, because idle timers reset on events, not comments.
+    async fn reasoning_delta_is_streamed_as_reasoning_content() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
         let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
-        tx.send(InferenceEvent::ReasoningDelta("<think>".into()))
+        tx.send(InferenceEvent::ReasoningDelta("pondering".into()))
             .await
             .unwrap();
         tx.send(InferenceEvent::TextDelta("real".into()))
@@ -511,8 +578,27 @@ mod tests {
             .unwrap();
         drop(tx);
         let out = collect(out_rx).await;
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].choices[0].delta["content"], "real");
+        assert_eq!(out.len(), 2, "reasoning must produce a chunk, not silence");
+        assert_eq!(out[0].choices[0].delta["reasoning_content"], "pondering");
+        assert!(
+            out[0].choices[0].delta.get("content").is_none(),
+            "reasoning must never arrive as content"
+        );
+        assert_eq!(out[1].choices[0].delta["content"], "real");
+    }
+
+    /// An empty reasoning delta is still nothing to say — it must not
+    /// manufacture a chunk, matching the text path.
+    #[tokio::test]
+    async fn empty_reasoning_delta_is_dropped() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
+        tx.send(InferenceEvent::ReasoningDelta(String::new()))
+            .await
+            .unwrap();
+        drop(tx);
+        let out = collect(out_rx).await;
+        assert!(out.is_empty(), "empty reasoning deltas produce no chunks");
     }
 
     fn pair() -> ReasoningTokenPair {
@@ -667,10 +753,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn include_thinking_off_drops_reasoning_even_with_markers() {
-        // Default behaviour even when markers happen to be
-        // configured. The flag is the gate, not the marker
-        // presence.
+    /// With the flag off, reasoning stays out of `content` whether or
+    /// not markers are configured — the flag is the gate, not the
+    /// marker presence. It now travels as `reasoning_content` instead
+    /// of being discarded, so this asserts the containment guarantee
+    /// only: nothing model-internal reaches a naive client's `content`.
+    async fn include_thinking_off_keeps_reasoning_out_of_content() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
         let out_rx = project_chat_stream_with(
             rx,
