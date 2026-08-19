@@ -20,6 +20,11 @@ pub struct MessagesRequest {
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
+    /// Anthropic's Messages API carries `top_k` natively, so it maps
+    /// straight onto the OpenAI-side field rather than being dropped in
+    /// translation (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
     #[serde(flatten)]

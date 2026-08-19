@@ -55,6 +55,21 @@ pub struct ResponsesRequest {
     pub temperature: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
+    /// Truncate sampling to the `k` most likely tokens (#272). Not in
+    /// the Responses schema, but a sampling parameter that lands in
+    /// `extra` is accepted and silently discarded, which is the defect
+    /// this closes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    /// Pin the sampler's RNG for reproducible output (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    /// Penalty on recently-generated tokens; `1.0` disables (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
+    /// Window `repetition_penalty` considers (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_last_n: Option<usize>,
     /// Chained-conversation identifier. We don't store responses
     /// server-side yet; if this is `Some`, the handler returns 400.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use candle_core::quantized::gguf_file;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
-use candle_transformers::generation::{LogitsProcessor, Sampling};
+use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::llama as llama_dense;
 use candle_transformers::models::quantized_llama::ModelWeights as QuantizedLlamaWeights;
 use candle_transformers::models::quantized_qwen3::ModelWeights as QuantizedQwen3Weights;
@@ -568,8 +568,30 @@ impl LoadedImageModel {
 /// A loaded model with its tokenizer, device placement, and architecture-
 /// specific weights. The `arch` is `Arc<Mutex<>>` so the lock guard can be
 /// moved into `spawn_blocking` for synchronous candle forward passes.
+/// Collect the sampling knobs a request expressed (#272).
+///
+/// Everything optional — absent means "no opinion", which defers to the
+/// model's `generation_config.json` and then to the built-in fallback.
+/// Kept in one place so a new knob is added once rather than at each of
+/// the four request-handling paths.
+fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::RequestedSampling {
+    super::sampling::RequestedSampling {
+        temperature: request.temperature,
+        top_p: request.top_p,
+        top_k: request.top_k,
+        seed: request.seed,
+        repeat_penalty: request.repetition_penalty,
+        repeat_last_n: request.repeat_last_n,
+    }
+}
+
 pub struct LoadedModel {
     pub model_id: String,
+    /// What the model published in `generation_config.json` (#272).
+    /// Defaults for any sampling field the request leaves unset — so a
+    /// caller that says nothing gets what the model's authors intended
+    /// rather than an untruncated distribution.
+    pub generation_defaults: super::sampling::ModelGenerationDefaults,
     /// Local (async-side) handle to the model architecture. `Some`
     /// only when the model loaded onto the CPU device (no CUDA
     /// available); the inference path then takes this mutex via
@@ -742,6 +764,8 @@ impl LoadedModel {
 #[cfg(feature = "cuda")]
 pub struct TpLoadedModel {
     pub model_id: String,
+    /// What the model published in `generation_config.json` (#272).
+    pub generation_defaults: super::sampling::ModelGenerationDefaults,
     pub tokenizer: Tokenizer,
     pub devices: Vec<u32>,
     /// One end-to-end gate: the pool's RPC stream to the subprocess
@@ -2815,10 +2839,14 @@ impl CandleHarness {
             // inference closure takes ownership of `prompt_tokens`.
             let prompt_opened_reasoning =
                 prompt_opens_reasoning(&prompt_tokens, loaded.reasoning_tokens.as_ref());
-            let temperature = request.temperature.unwrap_or(0.7);
-            let top_p = request.top_p;
+            // Resolve sampling once: request → the model's
+            // generation_config.json → built-in fallback (#272).
+            let sampling = super::sampling::SamplingParams::resolve(
+                &requested_sampling(&request),
+                &loaded.generation_defaults,
+                unix_subsec_nanos(),
+            );
             let max_new = request.max_tokens.unwrap_or(8192) as usize;
-            let seed = unix_subsec_nanos();
 
             let eos_id = loaded
                 .tokenizer
@@ -2829,8 +2857,10 @@ impl CandleHarness {
             tracing::info!(
                 prompt_len,
                 max_new,
-                temperature,
-                ?top_p,
+                temperature = sampling.temperature,
+                top_p = ?sampling.top_p,
+                top_k = ?sampling.top_k,
+                seed = sampling.seed,
                 ?eos_id,
                 vram_free_mb,
                 vram_total_mb,
@@ -2874,9 +2904,7 @@ impl CandleHarness {
                                 images.clone(),
                                 *image_token_id,
                                 max_new,
-                                temperature,
-                                top_p,
-                                seed,
+                                sampling.clone(),
                                 eos_id,
                             )
                             .await
@@ -2889,9 +2917,7 @@ impl CandleHarness {
                                 loaded.prefix_cache.as_deref(),
                                 loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
-                                temperature,
-                                top_p,
-                                seed,
+                                sampling.clone(),
                                 eos_id,
                             )
                             .await
@@ -2941,9 +2967,7 @@ impl CandleHarness {
                             loaded_for_cache.prefix_cache.as_deref(),
                             im_start_id,
                             max_new,
-                            temperature,
-                            top_p,
-                            seed,
+                            sampling.clone(),
                             eos_id,
                         )
                     })
@@ -3273,10 +3297,14 @@ impl CandleHarness {
                 None
             };
 
-        let temperature = request.temperature.unwrap_or(0.7);
-        let top_p = request.top_p;
+        // Resolve sampling once: request → the model's
+        // generation_config.json → built-in fallback (#272).
+        let sampling = super::sampling::SamplingParams::resolve(
+            &requested_sampling(&request),
+            &loaded.generation_defaults,
+            unix_subsec_nanos(),
+        );
         let max_new = request.max_tokens.unwrap_or(8192) as usize;
-        let seed = unix_subsec_nanos();
 
         let eos_id = loaded
             .tokenizer
@@ -3333,8 +3361,10 @@ impl CandleHarness {
             tracing::info!(
                 prompt_len,
                 max_new,
-                temperature,
-                ?top_p,
+                temperature = sampling.temperature,
+                top_p = ?sampling.top_p,
+                top_k = ?sampling.top_k,
+                seed = sampling.seed,
                 ?eos_id,
                 vram_free_mb,
                 vram_total_mb,
@@ -3392,9 +3422,7 @@ impl CandleHarness {
                 .submit(super::engine::EngineRequest {
                     prompt_tokens,
                     max_new,
-                    temperature,
-                    top_p,
-                    seed,
+                    sampling: sampling.clone(),
                     eos_id,
                     tool_schemas,
                     tx,
@@ -3423,9 +3451,7 @@ impl CandleHarness {
                             loaded_for_task.prefix_cache.as_deref(),
                             &loaded_for_task.prefill_rate,
                             max_new,
-                            temperature,
-                            top_p,
-                            seed,
+                            sampling.clone(),
                             eos_id,
                             reasoning_tokens_inner,
                             tool_call_tokens_inner,
@@ -3487,9 +3513,7 @@ impl CandleHarness {
                     &prompt_tokens,
                     loaded_for_task.prefix_cache.as_deref(),
                     max_new,
-                    temperature,
-                    top_p,
-                    seed,
+                    sampling.clone(),
                     eos_id,
                     reasoning_tokens_inner.as_ref(),
                     tool_call_tokens_inner.as_ref(),
@@ -4047,8 +4071,17 @@ impl Harness for CandleHarness {
             }
             _ => None,
         };
+        // The model's published sampling, read from the snapshot dir
+        // beside the tokenizer (#272). Absent is fine — it falls back to
+        // the built-in defaults, which is what every model did before.
+        let generation_defaults = super::sampling::ModelGenerationDefaults::load_from_dir(
+            tokenizer_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(".")),
+        );
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
+            generation_defaults,
             arch: arch_local,
             tokenizer,
             device,
@@ -4680,8 +4713,16 @@ impl CandleHarness {
             );
         }
 
+        // Same source as the single-GPU path (#272): the model's own
+        // generation_config.json, read from the snapshot dir.
+        let generation_defaults = super::sampling::ModelGenerationDefaults::load_from_dir(
+            tokenizer_path
+                .parent()
+                .unwrap_or_else(|| std::path::Path::new(".")),
+        );
         let tp_loaded = StdArc::new(TpLoadedModel {
             model_id: spec.model_id.clone(),
+            generation_defaults,
             tokenizer,
             devices: devices.clone(),
             pool: StdArc::new(TMutex::new(pool)),
@@ -4991,10 +5032,14 @@ impl CandleHarness {
 
         let prompt_len = prompt_tokens.len();
 
-        let temperature = request.temperature.unwrap_or(0.7);
-        let top_p = request.top_p;
+        // Resolve sampling once: request → the model's
+        // generation_config.json → built-in fallback (#272).
+        let sampling = super::sampling::SamplingParams::resolve(
+            &requested_sampling(&request),
+            &tp.generation_defaults,
+            unix_subsec_nanos(),
+        );
         let max_new = request.max_tokens.unwrap_or(8192) as usize;
-        let seed = unix_subsec_nanos();
 
         let eos_id = tp
             .tokenizer
@@ -5047,8 +5092,10 @@ impl CandleHarness {
             parent: &span,
             prompt_len,
             max_new,
-            temperature,
-            ?top_p,
+            temperature = sampling.temperature,
+            top_p = ?sampling.top_p,
+            top_k = ?sampling.top_k,
+            seed = sampling.seed,
             ?eos_id,
             vram_free_mb,
             vram_total_mb,
@@ -5094,9 +5141,7 @@ impl CandleHarness {
                 .submit(super::engine::EngineRequest {
                     prompt_tokens,
                     max_new,
-                    temperature,
-                    top_p,
-                    seed,
+                    sampling: sampling.clone(),
                     eos_id,
                     tool_schemas,
                     tx,
@@ -5188,15 +5233,7 @@ impl CandleHarness {
                     reused_for_task = reused as u32;
 
                     let mut logits_processor = {
-                        let sampling = if temperature <= 0.0 {
-                            Sampling::ArgMax
-                        } else {
-                            match top_p {
-                                Some(p) => Sampling::TopP { p, temperature },
-                                None => Sampling::All { temperature },
-                            }
-                        };
-                        LogitsProcessor::from_sampling(seed, sampling)
+                        LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling())
                     };
 
                     // Chunked prefill — see `chunked_prefill_tp`. Each
@@ -5732,10 +5769,14 @@ async fn chat_completion_tp_inner(
 
     let prompt_len = prompt_tokens.len();
 
-    let temperature = request.temperature.unwrap_or(0.7);
-    let top_p = request.top_p;
+    // Resolve sampling once: request → the model's
+    // generation_config.json → built-in fallback (#272).
+    let sampling = super::sampling::SamplingParams::resolve(
+        &requested_sampling(&request),
+        &tp.generation_defaults,
+        unix_subsec_nanos(),
+    );
     let max_new = request.max_tokens.unwrap_or(8192) as usize;
-    let seed = unix_subsec_nanos();
 
     let eos_id = tp
         .tokenizer
@@ -5747,8 +5788,10 @@ async fn chat_completion_tp_inner(
         model = %model_id,
         prompt_len,
         max_new,
-        temperature,
-        ?top_p,
+        temperature = sampling.temperature,
+        top_p = ?sampling.top_p,
+        top_k = ?sampling.top_k,
+        seed = sampling.seed,
         ?eos_id,
         vram_free_mb,
         vram_total_mb,
@@ -5808,17 +5851,8 @@ async fn chat_completion_tp_inner(
         "TP chat_completion: kv cache ready"
     );
 
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut generated: Vec<u32> = Vec::new();
     let mut finish_reason = "length".to_string();
@@ -6881,22 +6915,11 @@ async fn run_inference_with_images_via_worker(
     images: Vec<super::device_worker::jobs::ImageInput>,
     image_token_id: u32,
     max_new: usize,
-    temperature: f64,
-    top_p: Option<f64>,
-    seed: u64,
+    sampling: super::sampling::SamplingParams,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut generated: Vec<u32> = Vec::new();
     let prompt_len = prompt_tokens.len();
@@ -7245,22 +7268,11 @@ async fn run_inference_via_worker(
     prefix_cache: Option<&ModelPrefixCache>,
     im_start_id: Option<u32>,
     max_new: usize,
-    temperature: f64,
-    top_p: Option<f64>,
-    seed: u64,
+    sampling: super::sampling::SamplingParams,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut generated: Vec<u32> = Vec::new();
     let prompt_len = prompt_tokens.len();
@@ -7372,9 +7384,7 @@ async fn stream_inference_via_worker(
     prefix_cache: Option<&ModelPrefixCache>,
     prefill_rate: &super::context_limit::PrefillRateEma,
     max_new: usize,
-    temperature: f64,
-    top_p: Option<f64>,
-    seed: u64,
+    sampling: super::sampling::SamplingParams,
     eos_id: Option<u32>,
     reasoning_tokens: Option<ReasoningTokenPair>,
     tool_call_tokens: Option<ToolCallTokenPair>,
@@ -7385,17 +7395,8 @@ async fn stream_inference_via_worker(
     // identity would be unsound for vision requests — they bypass the
     // prefix cache entirely (no restore, no snapshot).
     let prefix_cache = if images.is_some() { None } else { prefix_cache };
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut all_tokens: Vec<u32> = Vec::new();
     // Incremental detokenizer. Replaces the old "decode cumulative
@@ -7676,22 +7677,11 @@ fn run_inference(
     prefix_cache: Option<&ModelPrefixCache>,
     im_start_id: Option<u32>,
     max_new: usize,
-    temperature: f64,
-    top_p: Option<f64>,
-    seed: u64,
+    sampling: super::sampling::SamplingParams,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut generated: Vec<u32> = Vec::new();
 
@@ -7747,26 +7737,15 @@ fn run_inference_streaming(
     prompt_tokens: &[u32],
     prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
-    temperature: f64,
-    top_p: Option<f64>,
-    seed: u64,
+    sampling: super::sampling::SamplingParams,
     eos_id: Option<u32>,
     reasoning_tokens: Option<&ReasoningTokenPair>,
     tool_call_tokens: Option<&ToolCallTokenPair>,
     tool_schemas: ToolSchemas,
     tx: &mpsc::Sender<InferenceEvent>,
 ) -> Result<()> {
-    let mut logits_processor = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut logits_processor =
+        { LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling()) };
 
     let mut all_tokens: Vec<u32> = Vec::new();
     // Incremental detokenizer. See `stream_inference_via_worker` for

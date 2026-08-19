@@ -101,6 +101,13 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         messages,
         temperature: req.temperature,
         top_p: req.top_p,
+        // Anthropic models top_k too, so it survives the hop (#272).
+        top_k: req.top_k,
+        // Anthropic's Messages API has no seed or penalty knobs; absent
+        // means the model's own generation_config decides.
+        seed: None,
+        repetition_penalty: None,
+        repeat_last_n: None,
         max_tokens: Some(req.max_tokens),
         // Anthropic has one spelling; it maps onto the legacy field.
         max_completion_tokens: None,

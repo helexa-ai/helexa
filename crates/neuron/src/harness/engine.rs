@@ -406,9 +406,10 @@ async fn op_prefill(
 pub struct EngineRequest {
     pub prompt_tokens: Vec<u32>,
     pub max_new: usize,
-    pub temperature: f64,
-    pub top_p: Option<f64>,
-    pub seed: u64,
+    /// Sampling resolved once from request → model `generation_config`
+    /// → fallback (#272), rather than loose scalars each caller could
+    /// default differently.
+    pub sampling: crate::harness::sampling::SamplingParams,
     pub eos_id: Option<u32>,
     pub tool_schemas: ToolSchemas,
     pub tx: mpsc::Sender<InferenceEvent>,
@@ -774,14 +775,10 @@ async fn prefill_join(
     session: &mut ActiveSession,
     req: EngineRequest,
 ) -> Result<Option<(Slot, u64)>> {
-    use candle_transformers::generation::Sampling;
-
     let EngineRequest {
         prompt_tokens,
         max_new,
-        temperature,
-        top_p,
-        seed,
+        sampling,
         eos_id,
         tool_schemas,
         tx,
@@ -789,17 +786,7 @@ async fn prefill_join(
         span,
     } = req;
 
-    let mut lp = {
-        let sampling = if temperature <= 0.0 {
-            Sampling::ArgMax
-        } else {
-            match top_p {
-                Some(p) => Sampling::TopP { p, temperature },
-                None => Sampling::All { temperature },
-            }
-        };
-        LogitsProcessor::from_sampling(seed, sampling)
-    };
+    let mut lp = LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling());
 
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
@@ -1188,9 +1175,17 @@ mod tests {
             .submit(EngineRequest {
                 prompt_tokens: prompt,
                 max_new,
-                temperature: 0.0, // greedy — deterministic
-                top_p: None,
-                seed: 0,
+                // Greedy, deterministic: the fixture asserts exact
+                // token sequences.
+                sampling: crate::harness::sampling::SamplingParams::resolve(
+                    &crate::harness::sampling::RequestedSampling {
+                        temperature: Some(0.0),
+                        seed: Some(0),
+                        ..Default::default()
+                    },
+                    &crate::harness::sampling::ModelGenerationDefaults::default(),
+                    0,
+                ),
                 eos_id: None,
                 tool_schemas: ToolSchemas::new(),
                 tx,
