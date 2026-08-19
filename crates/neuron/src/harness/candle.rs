@@ -5599,6 +5599,21 @@ impl CandleHarness {
                             .prefill_rate
                             .record_decode(all_tokens.len(), d.elapsed());
                     }
+                    // Close the journal trail (#268) — the serialized
+                    // streaming path, like the engine one, previously
+                    // ended without saying how. Mirrors the field set
+                    // the non-streaming `chat_completion: done` emits.
+                    tracing::info!(
+                        prompt_tokens = prompt_len,
+                        completion_tokens = all_tokens.len(),
+                        reasoning_tokens = reasoning_token_count,
+                        finish_reason = ?finish_reason,
+                        prefill_ms = prefill_ms_measured,
+                        decode_ms = decode_start
+                            .map(|d| d.elapsed().as_millis() as u32)
+                            .unwrap_or(0),
+                        "chat_completion (stream): done"
+                    );
                     let _ = tx
                         .send(InferenceEvent::Finish {
                             reason: finish_reason,

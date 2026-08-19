@@ -890,6 +890,9 @@ async fn run_router(
     let mut tool_call_idx: usize = 0;
     let mut emitted_tool_call = false;
     let mut consumer_alive = true;
+    // Whether a Finish was seen, so the fall-through below can tell a
+    // clean end from a dropped slot.
+    let mut finished = false;
 
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -983,6 +986,29 @@ async fn run_router(
                 if emitted_tool_call && reason == FinishReason::Stop {
                     reason = FinishReason::ToolCalls;
                 }
+                // Close the journal trail for this turn (#268). The
+                // non-streaming path has always logged this; streamed
+                // turns logged nothing at all, so whether one finished,
+                // hit its output cap, or was abandoned mid-flight was
+                // unanswerable afterwards — and an absence of lines was
+                // repeatedly misread as an absence of work.
+                //
+                // `run_router` is instrumented with the request's span,
+                // so req_id and model come along without being passed.
+                tracing::info!(
+                    prompt_tokens,
+                    completion_tokens,
+                    reasoning_tokens = reasoning_token_count,
+                    finish_reason = ?reason,
+                    prefill_ms = timing.prefill_ms,
+                    decode_ms = timing.decode_ms,
+                    // The turn ran to completion with nobody reading it:
+                    // it held its admission permit and the pool lock the
+                    // whole time. Invisible until now.
+                    client_gone = !consumer_alive,
+                    "chat_completion (stream): done"
+                );
+                finished = true;
                 let _ = tx
                     .send(InferenceEvent::Finish {
                         reason,
@@ -995,6 +1021,17 @@ async fn run_router(
                 break;
             }
         }
+    }
+    // Fell out of the loop without a Finish: the engine dropped this
+    // slot's channel (fatal worker error, shutdown). The client's stream
+    // ends either way, but silently — so say so rather than leaving the
+    // turn's last trace to be a prefill line (#268).
+    if !finished {
+        tracing::warn!(
+            reasoning_tokens = reasoning_token_count,
+            client_gone = !consumer_alive,
+            "chat_completion (stream): ended without a finish event — engine dropped the slot"
+        );
     }
 }
 
@@ -1012,6 +1049,91 @@ mod tests {
     use super::*;
     use crate::config::AdmissionConfig;
     use crate::harness::admission::AdmissionController;
+
+    /// A streamed turn must close its own journal trail (#268).
+    ///
+    /// Streaming used to end silently: no token counts, no
+    /// `finish_reason`, no duration. That made a finished turn, a turn
+    /// that hit its output cap, and a turn abandoned by a disconnected
+    /// client indistinguishable after the fact — and during the #267
+    /// investigation an absence of log lines was twice mistaken for an
+    /// absence of work on a daemon that was healthy and decoding.
+    ///
+    /// Asserts the emitted line rather than the struct, because a
+    /// `Finish` event that reaches the client but leaves no server-side
+    /// record is exactly the state this fixes.
+    #[tokio::test]
+    async fn a_streamed_turn_logs_how_it_ended() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::prelude::*;
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture poisoned")
+                    .extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
+            type Writer = Self;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_writer(capture.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let (router_tx, router_rx) = mpsc::channel::<RouterMsg>(8);
+        let (tx, mut rx) = mpsc::channel::<InferenceEvent>(8);
+        let handle = tokio::spawn(run_router(
+            tiny_tokenizer(8),
+            None,
+            None,
+            ToolSchemas::default(),
+            false,
+            tx,
+            Arc::new(AtomicBool::new(false)),
+            router_rx,
+        ));
+
+        router_tx
+            .send(RouterMsg::Finish {
+                reason: FinishReason::Length,
+                prompt_tokens: 7413,
+                completion_tokens: 24576,
+                timing: FinishTiming {
+                    prefill_ms: 6000,
+                    decode_ms: 900_000,
+                    prefill_tokens: 7413,
+                },
+            })
+            .await
+            .expect("router accepts finish");
+        drop(router_tx);
+        handle.await.expect("router task joins");
+        while rx.recv().await.is_some() {}
+
+        let logged = String::from_utf8(capture.0.lock().expect("capture poisoned").clone())
+            .expect("utf8 log output");
+        assert!(
+            logged.contains("chat_completion (stream): done"),
+            "streamed turn left no completion line:\n{logged}"
+        );
+        // The counts are the point — "it ended" without them cannot
+        // distinguish a complete answer from an exhausted budget.
+        assert!(logged.contains("24576"), "no completion_tokens:\n{logged}");
+        assert!(logged.contains("Length"), "no finish_reason:\n{logged}");
+    }
 
     /// A WordLevel tokenizer whose vocab covers the whole fixture
     /// vocab (`w0`..`w511`), so every decoded token maps to a unique
