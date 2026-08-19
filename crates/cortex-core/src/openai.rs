@@ -18,6 +18,31 @@ pub struct ChatCompletionRequest {
     pub temperature: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f64>,
+    /// Truncate sampling to the `k` most likely tokens (#272).
+    ///
+    /// Not in the OpenAI schema but universal among serving stacks
+    /// (vLLM, SGLang, llama.cpp, Ollama), and required by models that
+    /// publish it — Qwen3 specifies `top_k = 20`. A named field rather
+    /// than `extra`, because a sampling parameter that lands in `extra`
+    /// is accepted and silently discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    /// Pin the sampler's RNG for reproducible output (OpenAI core).
+    ///
+    /// Previously ignored on every text path, which called
+    /// `unix_subsec_nanos()` regardless — a caller asking for
+    /// determinism got fresh randomness and a `200`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    /// Penalty applied to recently-generated tokens; `1.0` disables.
+    /// Defaults to 1.1 when absent (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition_penalty: Option<f32>,
+    /// How many recent tokens `repetition_penalty` considers. Defaults
+    /// to 64 — fine for chat, short for a long reasoning block, which is
+    /// why it is a knob rather than a constant (#272).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_last_n: Option<usize>,
     /// The deprecated spelling of the output cap. Still what most
     /// clients send; see [`ChatCompletionRequest::effective_max_tokens`].
     #[serde(skip_serializing_if = "Option::is_none")]
