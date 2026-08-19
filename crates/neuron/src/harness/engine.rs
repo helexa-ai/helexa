@@ -297,14 +297,23 @@ async fn op_drop_snap(cfg: &EngineConfig, session: &mut ActiveSession, id: u64) 
 
 /// Prefill one joining request at B=1 through the backend's existing
 /// chunked-prefill + prefix-cache paths. Returns the prefill logits.
+/// Prefill, returning the logits **and** how many leading tokens the
+/// prefix cache let us skip (#269).
+///
+/// The reuse count is computed here and was previously only logged, so
+/// no caller could report it — every client saw a 0% cache hit rate on
+/// a cache that was working. Returning it is what lets `usage` carry
+/// `cached_tokens`.
 async fn op_prefill(
     cfg: &EngineConfig,
     session: &mut ActiveSession,
     prompt_tokens: &[u32],
-) -> Result<Vec<f32>> {
+) -> Result<(Vec<f32>, usize)> {
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
-    let logits = match (&cfg.backend, session) {
+    // Each arm yields its logits plus how many leading tokens the
+    // prefix cache served, so neither can be forgotten.
+    let (logits, cached_tokens) = match (&cfg.backend, session) {
         (
             BackendConfig::Single {
                 worker,
@@ -340,7 +349,7 @@ async fn op_prefill(
                 None => chunked_prefill_via_worker(worker, *handle, prompt_tokens, reused).await?,
             };
             prefill_rate.record(prompt_len, prefill_start.elapsed());
-            logits
+            (logits, reused)
         }
         #[cfg(feature = "cuda")]
         (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
@@ -384,12 +393,12 @@ async fn op_prefill(
                 }
             };
             tp.prefill_rate.record(prompt_len, prefill_start.elapsed());
-            logits
+            (logits, reused)
         }
         #[cfg(feature = "cuda")]
         _ => anyhow::bail!("engine backend/session mismatch"),
     };
-    Ok(logits)
+    Ok((logits, cached_tokens))
 }
 
 /// One queued request. Admission has already been passed — the permit
@@ -439,6 +448,8 @@ enum RouterMsg {
         reason: FinishReason,
         prompt_tokens: u32,
         completion_tokens: u32,
+        /// Leading prompt tokens the prefix cache let us skip (#269).
+        cached_tokens: u32,
         timing: FinishTiming,
     },
 }
@@ -462,6 +473,9 @@ struct Slot {
     finished: Option<FinishReason>,
     prefill_ms: u32,
     prefill_tokens: u32,
+    /// Prompt tokens served from the prefix cache (#269), reported to
+    /// the caller as `cached_tokens` so a working cache is visible.
+    cached_tokens: u32,
     decode_start: std::time::Instant,
     _admit: AdmissionPermit,
 }
@@ -627,6 +641,7 @@ async fn finish_slot(slot: &mut Slot, reason: FinishReason, rate: &PrefillRateEm
             reason,
             prompt_tokens: slot.prompt_len as u32,
             completion_tokens: slot.generated.len() as u32,
+            cached_tokens: slot.cached_tokens,
             timing: FinishTiming {
                 prefill_ms: slot.prefill_ms,
                 decode_ms: slot.decode_start.elapsed().as_millis() as u32,
@@ -788,7 +803,7 @@ async fn prefill_join(
 
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
-    let logits_vec = op_prefill(cfg, session, &prompt_tokens).await?;
+    let (logits_vec, cached_tokens) = op_prefill(cfg, session, &prompt_tokens).await?;
     let prefill_elapsed = prefill_start.elapsed();
 
     // First token from the prefill logits.
@@ -827,6 +842,7 @@ async fn prefill_join(
     let mut slot = Slot {
         prefix_len: prompt_len,
         prompt_len,
+        cached_tokens: cached_tokens as u32,
         generated,
         next_token: first,
         max_new,
@@ -981,6 +997,7 @@ async fn run_router(
                 mut reason,
                 prompt_tokens,
                 completion_tokens,
+                cached_tokens,
                 timing,
             } => {
                 if emitted_tool_call && reason == FinishReason::Stop {
@@ -999,6 +1016,7 @@ async fn run_router(
                     prompt_tokens,
                     completion_tokens,
                     reasoning_tokens = reasoning_token_count,
+                    cached_tokens,
                     finish_reason = ?reason,
                     prefill_ms = timing.prefill_ms,
                     decode_ms = timing.decode_ms,
@@ -1015,6 +1033,7 @@ async fn run_router(
                         prompt_tokens,
                         completion_tokens,
                         reasoning_tokens: reasoning_token_count,
+                        cached_tokens,
                         timing: Some(timing),
                     })
                     .await;
@@ -1111,6 +1130,7 @@ mod tests {
                 reason: FinishReason::Length,
                 prompt_tokens: 7413,
                 completion_tokens: 24576,
+                cached_tokens: 2068,
                 timing: FinishTiming {
                     prefill_ms: 6000,
                     decode_ms: 900_000,

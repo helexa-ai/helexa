@@ -149,8 +149,9 @@ pub struct Usage {
     /// `completion_tokens`, never added into `total_tokens`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_tokens_details: Option<CompletionTokensDetails>,
-    /// OpenAI-standard breakdown of `prompt_tokens`. Populated once
-    /// prompt caching lands (#11); `None` until then.
+    /// OpenAI-standard breakdown of `prompt_tokens`, carrying
+    /// `cached_tokens` (#269). Omitted when nothing was reused, so
+    /// "absent" stays distinguishable from "measured as zero".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
     /// helexa extension (non-OpenAI): server-measured prefill/decode
@@ -182,8 +183,9 @@ pub struct CompletionTokensDetails {
 /// Sub-counts of `Usage::prompt_tokens`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptTokensDetails {
-    /// Prompt tokens served from cache (cache-read rate). Populated
-    /// once prompt caching lands (#11).
+    /// Prompt tokens served from neuron's prefix KV cache (#11), so a
+    /// caller can see the saving rather than assume none (#269). A
+    /// sub-count of `prompt_tokens`, never added into `total_tokens`.
     pub cached_tokens: u64,
 }
 

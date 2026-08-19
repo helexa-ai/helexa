@@ -27,7 +27,8 @@
 //! propagate without us writing any logic.
 
 use cortex_core::openai::{
-    ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, HelexaTiming, Usage,
+    ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, HelexaTiming, PromptTokensDetails,
+    Usage,
 };
 use serde_json::json;
 use tokio::sync::mpsc;
@@ -219,6 +220,7 @@ pub fn project_chat_stream_with(
                     prompt_tokens,
                     completion_tokens,
                     reasoning_tokens,
+                    cached_tokens,
                     timing,
                 } => {
                     // The finish_reason chunk, then an OpenAI-style
@@ -233,9 +235,12 @@ pub fn project_chat_stream_with(
                             &id,
                             created,
                             &model_id,
-                            prompt_tokens,
-                            completion_tokens,
-                            reasoning_tokens,
+                            UsageCounts {
+                                prompt_tokens,
+                                completion_tokens,
+                                reasoning_tokens,
+                                cached_tokens,
+                            },
                             timing,
                         ),
                     ]
@@ -385,15 +390,32 @@ fn final_chunk(
 /// ignore the empty-choices chunk; clients that do (opencode, and
 /// cortex's Anthropic translator) get the token counts they need to
 /// track context.
+/// The token counts a finished turn reports. Grouped rather than passed
+/// loose: adding `cached_tokens` (#269) put the list past the point
+/// where four adjacent bare `u32`s are safe to read at a call site.
+struct UsageCounts {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    /// Sub-count of `completion_tokens` — tokens spent reasoning.
+    reasoning_tokens: u32,
+    /// Sub-count of `prompt_tokens` — tokens served from the prefix
+    /// cache. Neither sub-count is added into `total_tokens`.
+    cached_tokens: u32,
+}
+
 fn usage_chunk(
     id: &str,
     created: u64,
     model_id: &str,
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    reasoning_tokens: u32,
+    counts: UsageCounts,
     timing: Option<FinishTiming>,
 ) -> ChatCompletionChunk {
+    let UsageCounts {
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        cached_tokens,
+    } = counts;
     ChatCompletionChunk {
         id: id.into(),
         object: "chat.completion.chunk".into(),
@@ -409,7 +431,12 @@ fn usage_chunk(
             completion_tokens_details: (reasoning_tokens > 0).then_some(CompletionTokensDetails {
                 reasoning_tokens: reasoning_tokens as u64,
             }),
-            prompt_tokens_details: None,
+            // Prefix-cache reuse (#269). Omitted at zero so a client
+            // sees unchanged JSON when nothing was cached, and so
+            // "absent" stays distinguishable from "measured as none".
+            prompt_tokens_details: (cached_tokens > 0).then_some(PromptTokensDetails {
+                cached_tokens: cached_tokens as u64,
+            }),
             // helexa extension (#85): server-measured prefill/decode
             // timing for the bench harness. Omitted on paths that don't
             // measure it so standard clients see unchanged JSON.
@@ -458,6 +485,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -496,6 +524,7 @@ mod tests {
             prompt_tokens: 128,
             completion_tokens: 64,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: Some(FinishTiming {
                 prefill_ms: 200,
                 decode_ms: 1500,
@@ -520,6 +549,73 @@ mod tests {
         assert_eq!(timing.prefill_tokens, 128);
     }
 
+    /// A cache hit must reach the caller (#269).
+    ///
+    /// Prefix caching has worked since #11 — neuron logs `reused=2068`
+    /// on prefills — but nothing carried the number onto the wire, so
+    /// every client reported a 0% hit rate on a cache that was saving
+    /// real prefill. dsh showed `Cache hit 0%` against a 42.1K-token
+    /// context, and an agentic harness that believes nothing is cached
+    /// may restructure the very prefix that was being reused.
+    #[tokio::test]
+    async fn cached_tokens_reach_the_usage_chunk() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 7413,
+            completion_tokens: 12,
+            reasoning_tokens: 0,
+            cached_tokens: 2068,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let out = collect(out_rx).await;
+        let usage = out
+            .iter()
+            .find_map(|c| c.usage.as_ref())
+            .expect("usage chunk present");
+        let details = usage
+            .prompt_tokens_details
+            .as_ref()
+            .expect("prompt_tokens_details populated when the cache was hit");
+        assert_eq!(details.cached_tokens, 2068);
+        // A sub-count of prompt_tokens, never added into the total —
+        // otherwise a cache hit would inflate what a caller is billed.
+        assert_eq!(usage.prompt_tokens, 7413);
+        assert_eq!(usage.total_tokens, 7425);
+    }
+
+    /// No reuse means no `prompt_tokens_details` at all, so a client
+    /// sees byte-identical JSON to before this landed — and "absent"
+    /// stays distinguishable from "measured as zero".
+    #[tokio::test]
+    async fn no_cache_hit_omits_the_details_object() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
+        let out_rx = project_chat_stream(rx, "id".into(), 1, "m".into());
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 10,
+            completion_tokens: 1,
+            reasoning_tokens: 0,
+            cached_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let usage = collect(out_rx)
+            .await
+            .iter()
+            .find_map(|c| c.usage.clone())
+            .expect("usage chunk present");
+        assert!(usage.prompt_tokens_details.is_none());
+    }
+
     #[tokio::test]
     async fn empty_text_delta_is_dropped() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(4);
@@ -541,6 +637,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -637,6 +734,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -689,6 +787,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -735,6 +834,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -781,6 +881,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -809,6 +910,7 @@ mod tests {
             prompt_tokens: 42,
             completion_tokens: 5,
             reasoning_tokens: 2,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -843,6 +945,7 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 7,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await

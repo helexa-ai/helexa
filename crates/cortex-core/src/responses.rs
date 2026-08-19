@@ -249,8 +249,8 @@ pub struct ResponsesUsage {
     /// sub-count of `output_tokens`, never added into `total_tokens`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_tokens_details: Option<OutputTokensDetails>,
-    /// OpenAI-standard breakdown of `input_tokens`. Populated once
-    /// prompt caching lands (#11); `None` until then.
+    /// OpenAI-standard breakdown of `input_tokens`, carrying
+    /// `cached_tokens` (#269). Omitted when nothing was reused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_tokens_details: Option<InputTokensDetails>,
 }
@@ -265,8 +265,8 @@ pub struct OutputTokensDetails {
 /// Sub-counts of `ResponsesUsage::input_tokens`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InputTokensDetails {
-    /// Input tokens served from cache (cache-read rate). Populated
-    /// once prompt caching lands (#11).
+    /// Input tokens served from neuron's prefix KV cache (#11), so a
+    /// caller can see the saving rather than assume none (#269).
     pub cached_tokens: u64,
 }
 

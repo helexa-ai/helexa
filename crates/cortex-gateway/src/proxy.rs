@@ -171,6 +171,9 @@ impl IntoResponse for ProxyError {
 //       over the decode window (first→last chunk); falls back to the
 //       full request duration for single-chunk (non-streaming) bodies
 //   cortex_prompt_tokens_total / cortex_completion_tokens_total (counters)
+//   cortex_cached_prompt_tokens_total   (counter) — prompt tokens served
+//       from neuron's prefix cache; over prompt_tokens_total this is the
+//       fleet's cache-hit rate (#269)
 
 /// Cap on the retained body tail. The usage object rides on the final
 /// chunk, so a generous tail is plenty; the cap bounds memory on huge
@@ -242,6 +245,15 @@ impl ChunkObserver for CortexMetrics {
 
             if let Some(prompt) = prompt {
                 metrics::counter!("cortex_prompt_tokens_total", &self.labels).increment(prompt);
+            }
+            // Prefix-cache reuse (#269), read from the same usage object.
+            // Against `cortex_prompt_tokens_total` this gives fleet-wide
+            // cache-hit rate as a ratio, which was previously only
+            // obtainable by grepping `reused=` out of a neuron journal —
+            // per-host, unaggregated, and gone on log rotation.
+            if let Some(cached) = last_count_for(self.tail.as_str(), "cached_tokens") {
+                metrics::counter!("cortex_cached_prompt_tokens_total", &self.labels)
+                    .increment(cached);
             }
             if let Some(completion) = completion.filter(|c| *c > 0) {
                 metrics::counter!("cortex_completion_tokens_total", &self.labels)

@@ -121,6 +121,10 @@ fn describe_metrics() {
         "cortex_request_errors_total",
         "Total number of failed proxy requests"
     );
+    metrics::describe_counter!(
+        "cortex_cached_prompt_tokens_total",
+        "Prompt tokens served from neuron's prefix KV cache; over cortex_prompt_tokens_total this is the cache-hit rate (#269)"
+    );
     metrics::describe_counter!("cortex_evictions_total", "Total number of model evictions");
     metrics::describe_counter!(
         "cortex_cold_starts_total",

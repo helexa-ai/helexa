@@ -5160,6 +5160,10 @@ impl CandleHarness {
                 let mut prefill_ms_measured: u32 = 0;
                 let mut decode_start: Option<std::time::Instant> = None;
 
+                // Hoisted out of `'work` so the completion path below
+                // can report it (#269) — the reuse count is decided
+                // inside the block but consumed after it.
+                let mut reused_for_task: u32 = 0;
                 'work: {
                     // Prefix-cache decision (#11): vision requests
                     // clear as before; text requests restore the
@@ -5181,6 +5185,7 @@ impl CandleHarness {
                             }
                         }
                     };
+                    reused_for_task = reused as u32;
 
                     let mut logits_processor = {
                         let sampling = if temperature <= 0.0 {
@@ -5607,6 +5612,7 @@ impl CandleHarness {
                         prompt_tokens = prompt_len,
                         completion_tokens = all_tokens.len(),
                         reasoning_tokens = reasoning_token_count,
+                        cached_tokens = reused_for_task,
                         finish_reason = ?finish_reason,
                         prefill_ms = prefill_ms_measured,
                         decode_ms = decode_start
@@ -5620,6 +5626,7 @@ impl CandleHarness {
                             prompt_tokens: prompt_len as u32,
                             completion_tokens: all_tokens.len() as u32,
                             reasoning_tokens: reasoning_token_count,
+                            cached_tokens: reused_for_task,
                             timing: Some(FinishTiming {
                                 prefill_ms: prefill_ms_measured,
                                 decode_ms: decode_start
@@ -7905,6 +7912,7 @@ fn run_inference_streaming(
         prompt_tokens: prompt_tokens.len() as u32,
         completion_tokens: all_tokens.len() as u32,
         reasoning_tokens: reasoning_token_count,
+        cached_tokens: reused as u32,
         timing: Some(FinishTiming {
             prefill_ms: prefill_elapsed.as_millis() as u32,
             decode_ms: decode_start.elapsed().as_millis() as u32,
