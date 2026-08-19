@@ -98,8 +98,29 @@ impl CortexState {
             neuron_configs: config.neurons.clone(),
             eviction: config.eviction.clone(),
             catalogue,
+            // READ timeout, not a total one. reqwest's `.timeout()` is a
+            // total deadline — "from when the request starts connecting
+            // until the response body has finished" — which for a streamed
+            // completion is a hard cap on how long a model may generate,
+            // not a liveness check. At 300s and ~13 tok/s that capped every
+            // stream at roughly 3.9k tokens: cortex severed the connection
+            // mid-answer, the client reported the stream as terminated, and
+            // neuron carried on generating into a socket nobody was reading.
+            // A long agentic turn could therefore never complete through the
+            // gateway however healthy the fleet was, and the failure looked
+            // like a model fault because the model was blameless.
+            //
+            // `.read_timeout()` resets on every successful read, so it times
+            // out a stalled upstream while letting a producing one run as
+            // long as it needs. The same 300s is kept deliberately: it is
+            // the headroom a cold model load needs before its first byte,
+            // which is what the original total timeout was reaching for.
+            //
+            // This pairs with neuron's 1s SSE keep-alive: a healthy stream
+            // puts bytes on the wire every second, so idle here means idle,
+            // and the deadline finally measures what it was meant to.
             http_client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(300))
+                .read_timeout(std::time::Duration::from_secs(300))
                 .build()
                 .expect("failed to build HTTP client"),
             entitlements,
