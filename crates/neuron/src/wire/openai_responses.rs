@@ -33,9 +33,9 @@
 
 use cortex_core::openai::{ChatCompletionRequest, ChatMessage, MessageContent};
 use cortex_core::responses::{
-    OutputTokensDetails, ResponsesContentPart, ResponsesInput, ResponsesInputElement,
-    ResponsesInputItem, ResponsesMessageContent, ResponsesOutputContent, ResponsesOutputItem,
-    ResponsesRequest, ResponsesResponse, ResponsesUsage, events,
+    InputTokensDetails, OutputTokensDetails, ResponsesContentPart, ResponsesInput,
+    ResponsesInputElement, ResponsesInputItem, ResponsesMessageContent, ResponsesOutputContent,
+    ResponsesOutputItem, ResponsesRequest, ResponsesResponse, ResponsesUsage, events,
 };
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -540,6 +540,7 @@ async fn run_projection(
                 prompt_tokens,
                 completion_tokens,
                 reasoning_tokens,
+                cached_tokens,
                 // Responses-side `helexa_timing` surfacing not wired yet;
                 // the bench harness reads timing off the chat path (#85).
                 timing: _,
@@ -556,7 +557,12 @@ async fn run_projection(
                     output_tokens_details: (reasoning_tokens > 0).then_some(OutputTokensDetails {
                         reasoning_tokens: reasoning_tokens as u64,
                     }),
-                    input_tokens_details: None,
+                    // Prefix-cache reuse (#269). Omitted at zero so a
+                    // client sees unchanged JSON when nothing was
+                    // cached.
+                    input_tokens_details: (cached_tokens > 0).then_some(InputTokensDetails {
+                        cached_tokens: cached_tokens as u64,
+                    }),
                 });
             }
         }
@@ -1351,6 +1357,41 @@ mod tests {
     /// timeout could never finish. Its watchdog resets on any parsed
     /// event, which is why emitting these fixes it and why SSE comment
     /// keep-alives could not: idle timers count events, not comments.
+    /// The Responses surface reports cache reuse too (#269), in its own
+    /// spelling: `input_tokens_details.cached_tokens`.
+    ///
+    /// This is the surface dsh uses, and the one that showed
+    /// `Cache hit 0%` against a 42.1K-token context while neuron was
+    /// reusing thousands of tokens per prefill.
+    #[tokio::test]
+    async fn cached_tokens_reach_the_completed_usage() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::TextDelta("ok".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 7413,
+            completion_tokens: 12,
+            reasoning_tokens: 0,
+            cached_tokens: 2068,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let frames = collect(out).await;
+        let usage = &frames.last().unwrap().data["response"]["usage"];
+        assert_eq!(usage["input_tokens_details"]["cached_tokens"], 2068);
+        assert_eq!(usage["input_tokens"], 7413);
+        // Sub-count, not additive — a cache hit must not inflate the total.
+        assert_eq!(usage["total_tokens"], 7425);
+    }
+
     #[tokio::test]
     async fn reasoning_projects_a_full_item_lifecycle_before_the_message() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(16);
@@ -1371,6 +1412,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 2,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1444,6 +1486,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 1,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1487,6 +1530,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 1,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1522,6 +1566,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1583,6 +1628,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1655,6 +1701,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1684,6 +1731,7 @@ mod tests {
             prompt_tokens: 30,
             completion_tokens: 12,
             reasoning_tokens: 4,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1715,6 +1763,7 @@ mod tests {
             prompt_tokens: 8,
             completion_tokens: 3,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1740,6 +1789,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await
@@ -1787,6 +1837,7 @@ mod tests {
             prompt_tokens: 0,
             completion_tokens: 0,
             reasoning_tokens: 0,
+            cached_tokens: 0,
             timing: None,
         })
         .await

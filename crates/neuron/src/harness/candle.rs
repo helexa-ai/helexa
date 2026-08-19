@@ -5160,6 +5160,10 @@ impl CandleHarness {
                 let mut prefill_ms_measured: u32 = 0;
                 let mut decode_start: Option<std::time::Instant> = None;
 
+                // Hoisted out of `'work` so the completion path below
+                // can report it (#269) — the reuse count is decided
+                // inside the block but consumed after it.
+                let mut reused_for_task: u32 = 0;
                 'work: {
                     // Prefix-cache decision (#11): vision requests
                     // clear as before; text requests restore the
@@ -5181,6 +5185,7 @@ impl CandleHarness {
                             }
                         }
                     };
+                    reused_for_task = reused as u32;
 
                     let mut logits_processor = {
                         let sampling = if temperature <= 0.0 {
@@ -5599,12 +5604,29 @@ impl CandleHarness {
                             .prefill_rate
                             .record_decode(all_tokens.len(), d.elapsed());
                     }
+                    // Close the journal trail (#268) — the serialized
+                    // streaming path, like the engine one, previously
+                    // ended without saying how. Mirrors the field set
+                    // the non-streaming `chat_completion: done` emits.
+                    tracing::info!(
+                        prompt_tokens = prompt_len,
+                        completion_tokens = all_tokens.len(),
+                        reasoning_tokens = reasoning_token_count,
+                        cached_tokens = reused_for_task,
+                        finish_reason = ?finish_reason,
+                        prefill_ms = prefill_ms_measured,
+                        decode_ms = decode_start
+                            .map(|d| d.elapsed().as_millis() as u32)
+                            .unwrap_or(0),
+                        "chat_completion (stream): done"
+                    );
                     let _ = tx
                         .send(InferenceEvent::Finish {
                             reason: finish_reason,
                             prompt_tokens: prompt_len as u32,
                             completion_tokens: all_tokens.len() as u32,
                             reasoning_tokens: reasoning_token_count,
+                            cached_tokens: reused_for_task,
                             timing: Some(FinishTiming {
                                 prefill_ms: prefill_ms_measured,
                                 decode_ms: decode_start
@@ -7416,6 +7438,9 @@ async fn stream_inference_via_worker(
     // effective rate — and the throughput ceiling it feeds — rises.
     let prefill_start = std::time::Instant::now();
     let prefill_prompt_len = prompt_tokens.len();
+    // Hoisted out of the match so the Finish event below can report it
+    // (#269). Vision requests clear the cache outright, so they keep 0.
+    let mut cached_tokens: u32 = 0;
     let logits_vec = match images {
         Some((imgs, image_token_id)) => {
             worker
@@ -7430,6 +7455,7 @@ async fn stream_inference_via_worker(
         None => {
             let reused =
                 restore_or_clear_via_worker(&worker, handle, prefix_cache, &prompt_tokens).await?;
+            cached_tokens = reused as u32;
             // Two-stage prefill around the retokenization-stable
             // snapshot boundary — see `run_inference_via_worker`.
             let cut = if prefix_cache.is_some() {
@@ -7613,12 +7639,24 @@ async fn stream_inference_via_worker(
     }
     // Fold this request's decode throughput into the model tracker (#137).
     prefill_rate.record_decode(all_tokens.len(), decode_start.elapsed());
+    // Close the journal trail (#268).
+    tracing::info!(
+        prompt_tokens = prompt_tokens.len(),
+        completion_tokens = all_tokens.len(),
+        reasoning_tokens = reasoning_token_count,
+        cached_tokens,
+        finish_reason = ?finish_reason,
+        prefill_ms = prefill_elapsed.as_millis(),
+        decode_ms = decode_start.elapsed().as_millis(),
+        "chat_completion (stream): done"
+    );
     let _ = tx
         .send(InferenceEvent::Finish {
             reason: finish_reason,
             prompt_tokens: prompt_tokens.len() as u32,
             completion_tokens: all_tokens.len() as u32,
             reasoning_tokens: reasoning_token_count,
+            cached_tokens,
             timing: Some(FinishTiming {
                 prefill_ms: prefill_elapsed.as_millis() as u32,
                 decode_ms: decode_start.elapsed().as_millis() as u32,
@@ -7885,11 +7923,21 @@ fn run_inference_streaming(
     if emitted_tool_call && finish_reason == FinishReason::Stop {
         finish_reason = FinishReason::ToolCalls;
     }
+    // Close the journal trail (#268).
+    tracing::info!(
+        prompt_tokens = prompt_tokens.len(),
+        completion_tokens = all_tokens.len(),
+        reasoning_tokens = reasoning_token_count,
+        cached_tokens = reused,
+        finish_reason = ?finish_reason,
+        "chat_completion (stream): done"
+    );
     let _ = tx.blocking_send(InferenceEvent::Finish {
         reason: finish_reason,
         prompt_tokens: prompt_tokens.len() as u32,
         completion_tokens: all_tokens.len() as u32,
         reasoning_tokens: reasoning_token_count,
+        cached_tokens: reused as u32,
         timing: Some(FinishTiming {
             prefill_ms: prefill_elapsed.as_millis() as u32,
             decode_ms: decode_start.elapsed().as_millis() as u32,

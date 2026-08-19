@@ -297,14 +297,23 @@ async fn op_drop_snap(cfg: &EngineConfig, session: &mut ActiveSession, id: u64) 
 
 /// Prefill one joining request at B=1 through the backend's existing
 /// chunked-prefill + prefix-cache paths. Returns the prefill logits.
+/// Prefill, returning the logits **and** how many leading tokens the
+/// prefix cache let us skip (#269).
+///
+/// The reuse count is computed here and was previously only logged, so
+/// no caller could report it — every client saw a 0% cache hit rate on
+/// a cache that was working. Returning it is what lets `usage` carry
+/// `cached_tokens`.
 async fn op_prefill(
     cfg: &EngineConfig,
     session: &mut ActiveSession,
     prompt_tokens: &[u32],
-) -> Result<Vec<f32>> {
+) -> Result<(Vec<f32>, usize)> {
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
-    let logits = match (&cfg.backend, session) {
+    // Each arm yields its logits plus how many leading tokens the
+    // prefix cache served, so neither can be forgotten.
+    let (logits, cached_tokens) = match (&cfg.backend, session) {
         (
             BackendConfig::Single {
                 worker,
@@ -340,7 +349,7 @@ async fn op_prefill(
                 None => chunked_prefill_via_worker(worker, *handle, prompt_tokens, reused).await?,
             };
             prefill_rate.record(prompt_len, prefill_start.elapsed());
-            logits
+            (logits, reused)
         }
         #[cfg(feature = "cuda")]
         (BackendConfig::Tp { .. }, ActiveSession::Tp { tp, pool }) => {
@@ -384,12 +393,12 @@ async fn op_prefill(
                 }
             };
             tp.prefill_rate.record(prompt_len, prefill_start.elapsed());
-            logits
+            (logits, reused)
         }
         #[cfg(feature = "cuda")]
         _ => anyhow::bail!("engine backend/session mismatch"),
     };
-    Ok(logits)
+    Ok((logits, cached_tokens))
 }
 
 /// One queued request. Admission has already been passed — the permit
@@ -439,6 +448,8 @@ enum RouterMsg {
         reason: FinishReason,
         prompt_tokens: u32,
         completion_tokens: u32,
+        /// Leading prompt tokens the prefix cache let us skip (#269).
+        cached_tokens: u32,
         timing: FinishTiming,
     },
 }
@@ -462,6 +473,9 @@ struct Slot {
     finished: Option<FinishReason>,
     prefill_ms: u32,
     prefill_tokens: u32,
+    /// Prompt tokens served from the prefix cache (#269), reported to
+    /// the caller as `cached_tokens` so a working cache is visible.
+    cached_tokens: u32,
     decode_start: std::time::Instant,
     _admit: AdmissionPermit,
 }
@@ -627,6 +641,7 @@ async fn finish_slot(slot: &mut Slot, reason: FinishReason, rate: &PrefillRateEm
             reason,
             prompt_tokens: slot.prompt_len as u32,
             completion_tokens: slot.generated.len() as u32,
+            cached_tokens: slot.cached_tokens,
             timing: FinishTiming {
                 prefill_ms: slot.prefill_ms,
                 decode_ms: slot.decode_start.elapsed().as_millis() as u32,
@@ -788,7 +803,7 @@ async fn prefill_join(
 
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
-    let logits_vec = op_prefill(cfg, session, &prompt_tokens).await?;
+    let (logits_vec, cached_tokens) = op_prefill(cfg, session, &prompt_tokens).await?;
     let prefill_elapsed = prefill_start.elapsed();
 
     // First token from the prefill logits.
@@ -827,6 +842,7 @@ async fn prefill_join(
     let mut slot = Slot {
         prefix_len: prompt_len,
         prompt_len,
+        cached_tokens: cached_tokens as u32,
         generated,
         next_token: first,
         max_new,
@@ -890,6 +906,9 @@ async fn run_router(
     let mut tool_call_idx: usize = 0;
     let mut emitted_tool_call = false;
     let mut consumer_alive = true;
+    // Whether a Finish was seen, so the fall-through below can tell a
+    // clean end from a dropped slot.
+    let mut finished = false;
 
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -978,23 +997,60 @@ async fn run_router(
                 mut reason,
                 prompt_tokens,
                 completion_tokens,
+                cached_tokens,
                 timing,
             } => {
                 if emitted_tool_call && reason == FinishReason::Stop {
                     reason = FinishReason::ToolCalls;
                 }
+                // Close the journal trail for this turn (#268). The
+                // non-streaming path has always logged this; streamed
+                // turns logged nothing at all, so whether one finished,
+                // hit its output cap, or was abandoned mid-flight was
+                // unanswerable afterwards — and an absence of lines was
+                // repeatedly misread as an absence of work.
+                //
+                // `run_router` is instrumented with the request's span,
+                // so req_id and model come along without being passed.
+                tracing::info!(
+                    prompt_tokens,
+                    completion_tokens,
+                    reasoning_tokens = reasoning_token_count,
+                    cached_tokens,
+                    finish_reason = ?reason,
+                    prefill_ms = timing.prefill_ms,
+                    decode_ms = timing.decode_ms,
+                    // The turn ran to completion with nobody reading it:
+                    // it held its admission permit and the pool lock the
+                    // whole time. Invisible until now.
+                    client_gone = !consumer_alive,
+                    "chat_completion (stream): done"
+                );
+                finished = true;
                 let _ = tx
                     .send(InferenceEvent::Finish {
                         reason,
                         prompt_tokens,
                         completion_tokens,
                         reasoning_tokens: reasoning_token_count,
+                        cached_tokens,
                         timing: Some(timing),
                     })
                     .await;
                 break;
             }
         }
+    }
+    // Fell out of the loop without a Finish: the engine dropped this
+    // slot's channel (fatal worker error, shutdown). The client's stream
+    // ends either way, but silently — so say so rather than leaving the
+    // turn's last trace to be a prefill line (#268).
+    if !finished {
+        tracing::warn!(
+            reasoning_tokens = reasoning_token_count,
+            client_gone = !consumer_alive,
+            "chat_completion (stream): ended without a finish event — engine dropped the slot"
+        );
     }
 }
 
@@ -1012,6 +1068,92 @@ mod tests {
     use super::*;
     use crate::config::AdmissionConfig;
     use crate::harness::admission::AdmissionController;
+
+    /// A streamed turn must close its own journal trail (#268).
+    ///
+    /// Streaming used to end silently: no token counts, no
+    /// `finish_reason`, no duration. That made a finished turn, a turn
+    /// that hit its output cap, and a turn abandoned by a disconnected
+    /// client indistinguishable after the fact — and during the #267
+    /// investigation an absence of log lines was twice mistaken for an
+    /// absence of work on a daemon that was healthy and decoding.
+    ///
+    /// Asserts the emitted line rather than the struct, because a
+    /// `Finish` event that reaches the client but leaves no server-side
+    /// record is exactly the state this fixes.
+    #[tokio::test]
+    async fn a_streamed_turn_logs_how_it_ended() {
+        use std::sync::{Arc, Mutex};
+        use tracing_subscriber::prelude::*;
+
+        #[derive(Clone, Default)]
+        struct Capture(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Capture {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                self.0
+                    .lock()
+                    .expect("capture poisoned")
+                    .extend_from_slice(buf);
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Capture {
+            type Writer = Self;
+            fn make_writer(&'a self) -> Self::Writer {
+                self.clone()
+            }
+        }
+
+        let capture = Capture::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::fmt::layer().with_writer(capture.clone()));
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let (router_tx, router_rx) = mpsc::channel::<RouterMsg>(8);
+        let (tx, mut rx) = mpsc::channel::<InferenceEvent>(8);
+        let handle = tokio::spawn(run_router(
+            tiny_tokenizer(8),
+            None,
+            None,
+            ToolSchemas::default(),
+            false,
+            tx,
+            Arc::new(AtomicBool::new(false)),
+            router_rx,
+        ));
+
+        router_tx
+            .send(RouterMsg::Finish {
+                reason: FinishReason::Length,
+                prompt_tokens: 7413,
+                completion_tokens: 24576,
+                cached_tokens: 2068,
+                timing: FinishTiming {
+                    prefill_ms: 6000,
+                    decode_ms: 900_000,
+                    prefill_tokens: 7413,
+                },
+            })
+            .await
+            .expect("router accepts finish");
+        drop(router_tx);
+        handle.await.expect("router task joins");
+        while rx.recv().await.is_some() {}
+
+        let logged = String::from_utf8(capture.0.lock().expect("capture poisoned").clone())
+            .expect("utf8 log output");
+        assert!(
+            logged.contains("chat_completion (stream): done"),
+            "streamed turn left no completion line:\n{logged}"
+        );
+        // The counts are the point — "it ended" without them cannot
+        // distinguish a complete answer from an exhausted budget.
+        assert!(logged.contains("24576"), "no completion_tokens:\n{logged}");
+        assert!(logged.contains("Length"), "no finish_reason:\n{logged}");
+    }
 
     /// A WordLevel tokenizer whose vocab covers the whole fixture
     /// vocab (`w0`..`w511`), so every decoded token maps to a unique

@@ -84,6 +84,13 @@ pub enum InferenceEvent {
         /// `output_tokens_details.reasoning_tokens` (responses).
         /// Zero for non-reasoning models.
         reasoning_tokens: u32,
+        /// Leading prompt tokens served from the prefix cache (#269) — a
+        /// sub-count of `prompt_tokens`, never added to `total_tokens`.
+        /// Surfaced as `prompt_tokens_details.cached_tokens` (chat) /
+        /// `input_tokens_details.cached_tokens` (responses). The cache
+        /// has worked since #11; without this the saving was invisible
+        /// and every client reported a 0% hit rate.
+        cached_tokens: u32,
         /// Server-measured prefill/decode timing for the request, or
         /// `None` on paths that don't measure it (CPU fallback that
         /// doesn't instrument, tests). Streaming projectors surface
