@@ -289,6 +289,16 @@ pub mod events {
     pub const OUTPUT_TEXT_DONE: &str = "response.output_text.done";
     pub const CONTENT_PART_DONE: &str = "response.content_part.done";
     pub const OUTPUT_ITEM_DONE: &str = "response.output_item.done";
+    /// Reasoning-item event family. A reasoning model's think block is
+    /// its own output item, emitted ahead of the message item, with a
+    /// summary part carrying the text. Streaming these is what keeps the
+    /// connection observably alive while a model thinks — clients time
+    /// out on silence, and SSE comment keep-alives don't count because
+    /// idle timers reset on parsed events, not comments.
+    pub const REASONING_SUMMARY_PART_ADDED: &str = "response.reasoning_summary_part.added";
+    pub const REASONING_SUMMARY_TEXT_DELTA: &str = "response.reasoning_summary_text.delta";
+    pub const REASONING_SUMMARY_TEXT_DONE: &str = "response.reasoning_summary_text.done";
+    pub const REASONING_SUMMARY_PART_DONE: &str = "response.reasoning_summary_part.done";
     pub const FUNCTION_CALL_ARGUMENTS_DELTA: &str = "response.function_call_arguments.delta";
     pub const FUNCTION_CALL_ARGUMENTS_DONE: &str = "response.function_call_arguments.done";
     pub const COMPLETED: &str = "response.completed";
