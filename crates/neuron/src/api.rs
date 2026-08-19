@@ -21,7 +21,7 @@ use futures::stream::{self, StreamExt};
 use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::RwLock;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -272,6 +272,35 @@ fn default_enable_thinking(req: &mut ChatCompletionRequest, include_thinking: bo
 /// client-supplied copy and asserts the authoritative value, so over the
 /// trusted WireGuard link these are safe to key fair-share on. `None` for an
 /// unauthenticated/direct request — exempt from the per-principal cap.
+/// SSE keep-alive for the inference streams.
+///
+/// A streamed completion emits its `role` delta immediately and then says
+/// **nothing at all until prefill finishes** — there is no token to send
+/// yet. On a long prompt that silence is seconds long: a 7.4k-token prompt
+/// on a TP-2 27B prefills in about six.
+///
+/// `KeepAlive::default()` is axum's 15s, which is longer than almost every
+/// prefill we serve, so in practice it never fired and the gap went out on
+/// the wire as dead air. Clients read dead air as a dropped stream: the
+/// DeepSeek Harness gives up after roughly a second and reports
+/// `terminated`, then retries — and because the abandoned request keeps its
+/// admission permit and the TP pool lock until it finishes, each retry
+/// queues behind the last one and waits *longer*, so the session never
+/// recovers on its own. Every attempt failed while the model was healthy
+/// and, by then, three sequences deep in work nobody was listening to.
+///
+/// One second is chosen to sit under the shortest client idle timeout we
+/// have met rather than to be tuned to any particular one. The cost is a
+/// 3-byte comment frame per idle second, which SSE parsers discard by
+/// spec; the benefit is that a prefill of any length looks alive.
+///
+/// This does not make a slow prefill fast — see the `chunked prefill`
+/// path for that — it stops a slow prefill being indistinguishable from a
+/// dead connection.
+fn prefill_keep_alive() -> KeepAlive {
+    KeepAlive::new().interval(Duration::from_secs(1))
+}
+
 fn principal_key(headers: &axum::http::HeaderMap) -> Option<String> {
     let account = headers.get(HEADER_ACCOUNT_ID)?.to_str().ok()?;
     let key = headers.get(HEADER_KEY_ID)?.to_str().ok()?;
@@ -346,7 +375,7 @@ async fn chat_completions(
                 let done_stream =
                     stream::once(async { Ok::<_, Infallible>(Event::default().data("[DONE]")) });
                 Sse::new(body_stream.chain(done_stream))
-                    .keep_alive(KeepAlive::default())
+                    .keep_alive(prefill_keep_alive())
                     .into_response()
             }
             Err(e) => inference_error_response(e),
@@ -419,7 +448,7 @@ async fn responses(
                     Ok::<_, Infallible>(Event::default().event(frame.event_name).data(body))
                 });
                 Sse::new(body_stream)
-                    .keep_alive(KeepAlive::default())
+                    .keep_alive(prefill_keep_alive())
                     .into_response()
             }
             Err(e) => inference_error_response(e),
@@ -1055,5 +1084,48 @@ where
                 ))
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod keep_alive_tests {
+    use super::*;
+    use futures::StreamExt;
+
+    /// A stream that emits its opening frame and then goes quiet — the
+    /// shape of every streamed completion while it prefills — must keep
+    /// putting bytes on the wire.
+    ///
+    /// The deadline here is the point: with axum's 15s default this test
+    /// times out, which is exactly the production failure. A 7.4k-token
+    /// prompt prefills in ~6s, so the default never fired once, the
+    /// connection sat silent for the whole prefill, and clients dropped it
+    /// as dead — the DeepSeek Harness after ~1s, reporting `terminated`.
+    ///
+    /// Asserted against observable output rather than the configured
+    /// interval because `KeepAlive` exposes no getter, and because what
+    /// broke was the behaviour, not the number.
+    #[tokio::test]
+    async fn a_silent_stream_still_sends_bytes_while_prefilling() {
+        let silent = stream::pending::<Result<Event, Infallible>>();
+        let response = Sse::new(silent)
+            .keep_alive(prefill_keep_alive())
+            .into_response();
+
+        let mut body = response.into_body().into_data_stream();
+        let frame = tokio::time::timeout(Duration::from_secs(3), body.next())
+            .await
+            .expect("a silent stream must emit a keep-alive well inside any client idle timeout")
+            .expect("stream ended instead of keeping alive")
+            .expect("keep-alive frame");
+
+        // SSE comment frames start with ':' and are discarded by parsers
+        // per spec, so this costs the client nothing but proves liveness.
+        assert_eq!(
+            frame.first(),
+            Some(&b':'),
+            "expected an SSE comment frame, got {:?}",
+            String::from_utf8_lossy(&frame)
+        );
     }
 }
