@@ -233,7 +233,24 @@ pub fn render_chat_template(
                 MessageContent::Null => Value::Null,
             };
             let mut obj = serde_json::Map::new();
-            obj.insert("role".into(), Value::String(m.role.clone()));
+            // `developer` is OpenAI's successor to `system` and is what
+            // a client sends once a model is declared reasoning-capable
+            // (pi-ai: `model.reasoning && supportsDeveloperRole`). Most
+            // chat templates — every one on this fleet — only know the
+            // older spelling and `raise_exception` on anything else, so
+            // an unmodified client got a 422 for a system prompt it sent
+            // correctly.
+            //
+            // Rewritten only when the template does not handle the role
+            // itself: a template that knows `developer` may treat it as
+            // distinct from `system`, and substituting there would be us
+            // deciding something the model's authors already decided.
+            let role = if m.role == "developer" && !template.contains("developer") {
+                "system"
+            } else {
+                m.role.as_str()
+            };
+            obj.insert("role".into(), Value::String(role.to_string()));
             obj.insert("content".into(), content_value);
             // Forward extras (e.g. tool_calls on assistant turns,
             // tool_call_id on tool result turns). HF templates that
@@ -498,6 +515,52 @@ mod tests {
     /// Minimal Qwen3-style template — enough surface to confirm
     /// our renderer threads role + content correctly without
     /// loading a real model's tokenizer_config.json.
+    /// A reasoning-capable model makes OpenAI clients send the system
+    /// prompt as `developer` — and every chat template on this fleet
+    /// raises on an unknown role, so the caller got a 422 for a prompt
+    /// it had sent correctly. Observed live: pi with `reasoning: true`,
+    /// `template_render_failed: Unexpected message role`.
+    #[test]
+    fn the_developer_role_reaches_a_template_that_only_knows_system() {
+        const SYSTEM_ONLY: &str = "{%- for message in messages -%}\
+{%- if message.role == 'system' -%}SYS:{{ message.content }}\
+{%- elif message.role == 'user' -%}USR:{{ message.content }}\
+{%- else -%}{{ raise_exception('Unexpected message role.') }}\
+{%- endif -%}\
+{%- endfor -%}";
+        let messages = vec![
+            ChatMessage {
+                role: "developer".into(),
+                content: MessageContent::Text("be terse".into()),
+                extra: Value::Object(Default::default()),
+            },
+            user_msg("hi"),
+        ];
+        let out = render_chat_template(SYSTEM_ONLY, &messages, &Value::Null, &Value::Null)
+            .expect("a developer role must not blow up a system-only template");
+        assert!(out.contains("SYS:be terse"), "got {out:?}");
+    }
+
+    /// A template that models `developer` itself keeps it: the role may
+    /// mean something distinct there, and substituting would override a
+    /// decision the model's authors already made.
+    #[test]
+    fn a_template_that_knows_developer_keeps_it() {
+        const KNOWS_DEVELOPER: &str = "{%- for message in messages -%}\
+{%- if message.role == 'developer' -%}DEV:{{ message.content }}\
+{%- else -%}{{ message.role }}:{{ message.content }}\
+{%- endif -%}\
+{%- endfor -%}";
+        let messages = vec![ChatMessage {
+            role: "developer".into(),
+            content: MessageContent::Text("be terse".into()),
+            extra: Value::Object(Default::default()),
+        }];
+        let out = render_chat_template(KNOWS_DEVELOPER, &messages, &Value::Null, &Value::Null)
+            .expect("render");
+        assert!(out.contains("DEV:be terse"), "got {out:?}");
+    }
+
     /// The fetcher and the reader must agree on the filenames, or the
     /// reader looks for something nobody downloaded and falls back to a
     /// built-in prompt format without anything failing (#280 — observed
