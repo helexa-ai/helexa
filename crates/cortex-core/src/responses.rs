@@ -145,12 +145,22 @@ pub enum ResponsesInputItem {
     /// string or an array of content parts; the translator renders
     /// either form to text rather than losing the tool result.
     FunctionCallOutput { call_id: String, output: Value },
-    /// Reasoning items emitted by o-series models. Accepted but
-    /// not forwarded to the model — neuron's candle path doesn't
-    /// surface reasoning separately yet.
+    /// A reasoning item the model emitted on an earlier turn, replayed
+    /// by the client so the model can continue its own train of thought.
+    ///
+    /// Both spellings are modelled because both are in the wild and one
+    /// of them is ours: OpenAI's o-series carries the text in `content`
+    /// as `reasoning_text` parts, while neuron emits `summary` with a
+    /// `summary_text` part. Clients round-trip the completed item
+    /// verbatim — pi-ai stores our `response.output_item.done` payload
+    /// and replays it unchanged — so whichever field we emit is the
+    /// field we get back, and reading only one of them silently loses
+    /// the turn's reasoning.
     Reasoning {
         #[serde(default)]
         content: Vec<Value>,
+        #[serde(default)]
+        summary: Vec<Value>,
     },
 }
 

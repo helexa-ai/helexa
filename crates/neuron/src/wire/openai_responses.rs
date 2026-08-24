@@ -113,8 +113,30 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
             });
         }
         ResponsesInput::Items(items) => {
+            // A reasoning item describes the assistant turn that
+            // follows it, so it is held until that turn arrives rather
+            // than becoming a message of its own (#277).
+            let mut pending_reasoning: Option<String> = None;
             for element in items {
                 let msg = match element {
+                    ResponsesInputElement::Typed(ResponsesInputItem::Reasoning {
+                        content,
+                        summary,
+                    }) => {
+                        if let Some(text) = reasoning_item_text(&content, &summary) {
+                            // Two reasoning items with no assistant turn
+                            // between them: keep both, in order, rather
+                            // than letting the second overwrite the first.
+                            match &mut pending_reasoning {
+                                Some(existing) => {
+                                    existing.push_str("\n\n");
+                                    existing.push_str(&text);
+                                }
+                                slot => *slot = Some(text),
+                            }
+                        }
+                        None
+                    }
                     ResponsesInputElement::Typed(item) => input_item_to_chat(item),
                     // Bare `{role, content}` (OpenAI EasyInputMessage —
                     // what litellm/agent-zero emit). `content: null`
@@ -128,26 +150,80 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
                         extra: Value::Object(Default::default()),
                     }),
                     // Forward-compat: an item shape we don't model.
-                    // Dropped rather than rejected (see
-                    // `ResponsesInputElement::Other`).
-                    ResponsesInputElement::Other(_) => None,
+                    // Counted and logged rather than vanishing silently —
+                    // a shape we drop must be discoverable from the
+                    // outside (#277), which is how this class of defect
+                    // stayed invisible for so long.
+                    ResponsesInputElement::Other(other) => {
+                        // Resolved before the macro: `tracing`'s own
+                        // `Value` trait is in scope inside it, and would
+                        // shadow `serde_json::Value` here.
+                        let item_type = other
+                            .get("type")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("<untyped>")
+                            .to_string();
+                        tracing::warn!(
+                            %item_type,
+                            "responses: dropping an input item shape this build does not model"
+                        );
+                        None
+                    }
                 };
-                if let Some(msg) = msg {
+                if let Some(mut msg) = msg {
+                    if msg.role == "assistant"
+                        && let Some(text) = pending_reasoning.take()
+                    {
+                        attach_reasoning(&mut msg, text);
+                    }
                     messages.push(msg);
                 }
+            }
+            // Reasoning with no assistant turn after it — the exact
+            // shape of a turn truncated mid-think and replayed with
+            // "continue". It is the whole payload of that turn, so it
+            // becomes an assistant turn of its own rather than being
+            // discarded for lack of a message to ride on.
+            if let Some(text) = pending_reasoning.take() {
+                let mut msg = ChatMessage {
+                    role: "assistant".into(),
+                    content: MessageContent::Text(String::new()),
+                    extra: Value::Object(Default::default()),
+                };
+                attach_reasoning(&mut msg, text);
+                messages.push(msg);
             }
         }
     }
 
-    // Forward tool definitions to the harness (#158). The chat path
-    // reads `extra["tools"]` for both the Jinja prompt render and
-    // argument-type coercion, so normalizing into the chat-wrapped
-    // shape here is all the plumbing tools need.
-    let mut extra = serde_json::Map::new();
-    if let Some(tools) = req.extra.get("tools").and_then(Value::as_array) {
-        let normalized: Vec<Value> = tools.iter().filter_map(normalize_tool).collect();
-        if !normalized.is_empty() {
-            extra.insert("tools".into(), Value::Array(normalized));
+    // Carry the caller's extension fields across the hop (#277).
+    //
+    // This used to start from an empty map and insert exactly one key,
+    // which meant every extension a caller sent to `/v1/responses` was
+    // discarded — including `chat_template_kwargs`, the only route by
+    // which `enable_thinking` can reach the template, which is why
+    // `/no_think` worked on chat/completions and not here (#223).
+    // Keys the chat path does not model are inert, so forwarding them
+    // costs nothing and stops the next control needing its own plumbing.
+    let mut extra = match req.extra {
+        Value::Object(map) => map,
+        _ => serde_json::Map::new(),
+    };
+    // Tool definitions are the exception: Responses flattens the
+    // function fields and the chat path (#158) reads the nested shape
+    // for both the Jinja render and argument coercion, so this key is
+    // rewritten rather than forwarded.
+    match extra.get("tools").and_then(Value::as_array) {
+        Some(tools) => {
+            let normalized: Vec<Value> = tools.iter().filter_map(normalize_tool).collect();
+            if normalized.is_empty() {
+                extra.remove("tools");
+            } else {
+                extra.insert("tools".into(), Value::Array(normalized));
+            }
+        }
+        None => {
+            extra.remove("tools");
         }
     }
 
@@ -243,10 +319,52 @@ fn input_item_to_chat(item: ResponsesInputItem) -> Option<ChatMessage> {
                 extra: Value::Object(extra),
             })
         }
-        // Reasoning items don't have a chat-completions equivalent
-        // we can faithfully forward. Silently drop — the alternative
-        // is rejecting a well-formed request, which is worse UX.
+        // Handled before this function is reached: a reasoning item
+        // belongs to the assistant turn that follows it, so the caller
+        // holds it and attaches it there (#277).
         ResponsesInputItem::Reasoning { .. } => None,
+    }
+}
+
+/// The text of a replayed reasoning item, under either spelling.
+///
+/// `summary` is what neuron emits (`summary_text` parts) and `content`
+/// is what OpenAI's o-series emits (`reasoning_text` parts); clients
+/// replay the completed item verbatim, so the field we read has to be
+/// the field the far end wrote. Parts are joined with a blank line,
+/// matching how pi-ai flattens the same item for display.
+///
+/// Returns `None` for an item with no usable text — an
+/// encrypted-content-only item, or an empty summary — so an assistant
+/// turn is not annotated with an empty think block.
+fn reasoning_item_text(content: &[Value], summary: &[Value]) -> Option<String> {
+    fn join(parts: &[Value]) -> String {
+        parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+    let text = match join(summary) {
+        s if !s.is_empty() => s,
+        _ => join(content),
+    };
+    (!text.is_empty()).then_some(text)
+}
+
+/// Hang a turn's reasoning on the assistant message it belongs to.
+///
+/// `reasoning_content` is the field HF chat templates read — Qwen3.8's
+/// renders it back inside `<think>` — and `render_chat_template`
+/// forwards message extras verbatim, so this is the whole of what the
+/// round-trip needs on our side.
+fn attach_reasoning(msg: &mut ChatMessage, text: String) {
+    if !msg.extra.is_object() {
+        msg.extra = Value::Object(Default::default());
+    }
+    if let Some(obj) = msg.extra.as_object_mut() {
+        obj.insert("reasoning_content".into(), Value::String(text));
     }
 }
 
@@ -1239,12 +1357,18 @@ mod tests {
         ));
     }
 
+    /// An item carrying no readable text — encrypted-content-only, or
+    /// an empty summary — must not manufacture an empty assistant turn
+    /// with a blank think block.
     #[test]
-    fn reasoning_items_are_silently_dropped() {
+    fn a_reasoning_item_with_no_text_adds_no_turn() {
         let req = ResponsesRequest {
             model: "m".into(),
             input: typed_items(vec![
-                ResponsesInputItem::Reasoning { content: vec![] },
+                ResponsesInputItem::Reasoning {
+                    content: vec![],
+                    summary: vec![],
+                },
                 ResponsesInputItem::Message {
                     role: "user".into(),
                     content: ResponsesMessageContent::Text("hi".into()),
@@ -1265,6 +1389,201 @@ mod tests {
         let chat = request_to_chat(req).unwrap();
         assert_eq!(chat.messages.len(), 1);
         assert_eq!(chat.messages[0].role, "user");
+    }
+
+    /// The shape neuron itself emits — `summary` with a `summary_text`
+    /// part — replayed by a client that round-trips the completed item
+    /// verbatim, which is what pi-ai/DSH does.
+    #[test]
+    fn replayed_reasoning_rides_on_the_assistant_turn_it_belongs_to() {
+        let raw = r#"{
+            "model": "Qwen/Qwen3.8-27B",
+            "input": [
+                {"type": "message", "role": "user", "content": "build it"},
+                {"type": "reasoning", "id": "rs_1", "status": "completed",
+                 "summary": [{"type": "summary_text", "text": "the plan so far"}]},
+                {"type": "message", "role": "assistant",
+                 "content": [{"type": "output_text", "text": "partial answer"}]},
+                {"type": "message", "role": "user", "content": "continue"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(chat.messages.len(), 3);
+        assert_eq!(chat.messages[1].role, "assistant");
+        assert_eq!(
+            chat.messages[1].extra.get("reasoning_content"),
+            Some(&Value::String("the plan so far".into())),
+            "the assistant turn must carry the thinking that produced it"
+        );
+    }
+
+    /// OpenAI's o-series spelling: the text lives in `content` as
+    /// `reasoning_text` parts. Same item, different field.
+    #[test]
+    fn the_content_spelling_of_a_reasoning_item_is_read_too() {
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"type": "reasoning", "id": "rs_1",
+                 "content": [{"type": "reasoning_text", "text": "step one"},
+                             {"type": "reasoning_text", "text": "step two"}]},
+                {"type": "message", "role": "assistant", "content": "done"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(
+            chat.messages[0].extra.get("reasoning_content"),
+            Some(&Value::String("step one\n\nstep two".into()))
+        );
+    }
+
+    /// The case that motivated #277: a turn truncated mid-think, then
+    /// `continue`. There is no assistant *message* to hang the
+    /// reasoning on — the reasoning is the entire turn — so it must
+    /// still reach the model, or the model restarts from nothing.
+    #[test]
+    fn a_truncated_turn_replayed_as_reasoning_alone_still_reaches_the_model() {
+        let raw = r#"{
+            "model": "Qwen/Qwen3.8-27B",
+            "input": [
+                {"type": "message", "role": "user", "content": "build a game"},
+                {"type": "reasoning", "id": "rs_1", "status": "incomplete",
+                 "summary": [{"type": "summary_text", "text": "24k tokens of design"}]},
+                {"type": "message", "role": "user", "content": "continue"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        let assistant: Vec<_> = chat
+            .messages
+            .iter()
+            .filter(|m| m.role == "assistant")
+            .collect();
+        assert_eq!(
+            assistant.len(),
+            1,
+            "the truncated turn must survive as a turn"
+        );
+        assert_eq!(
+            assistant[0].extra.get("reasoning_content"),
+            Some(&Value::String("24k tokens of design".into()))
+        );
+    }
+
+    /// Consecutive reasoning items with no assistant turn between them
+    /// accumulate rather than the later one erasing the earlier.
+    #[test]
+    fn consecutive_reasoning_items_accumulate() {
+        let raw = r#"{
+            "model": "m",
+            "input": [
+                {"type": "reasoning", "summary": [{"type": "summary_text", "text": "first"}]},
+                {"type": "reasoning", "summary": [{"type": "summary_text", "text": "second"}]},
+                {"type": "message", "role": "assistant", "content": "ok"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(
+            chat.messages[0].extra.get("reasoning_content"),
+            Some(&Value::String("first\n\nsecond".into()))
+        );
+    }
+
+    /// #223's root cause: `chat_template_kwargs` is how `enable_thinking`
+    /// reaches the template, and the translator used to rebuild `extra`
+    /// from an allowlist of one key, so it never arrived.
+    #[test]
+    fn extension_fields_survive_the_hop() {
+        let raw = r#"{
+            "model": "m",
+            "input": "hello",
+            "chat_template_kwargs": {"enable_thinking": false},
+            "some_future_control": 7
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(
+            chat.extra
+                .get("chat_template_kwargs")
+                .and_then(|k| k.get("enable_thinking")),
+            Some(&Value::Bool(false)),
+            "the thinking switch must reach the chat path"
+        );
+        assert_eq!(chat.extra.get("some_future_control"), Some(&Value::from(7)));
+    }
+
+    /// The end-to-end claim, asserted where it actually matters: on the
+    /// rendered prompt. A translator test proves we set a field; this
+    /// proves the model sees the thinking, through the same
+    /// `reasoning_content` branch Qwen3.8's real template uses.
+    ///
+    /// The same shape as the #179 system-prompt tests, and for the same
+    /// reason — the contract is what reaches the model, not what the
+    /// intermediate struct holds.
+    #[test]
+    fn replayed_reasoning_reaches_the_rendered_prompt() {
+        // The assistant branch of Qwen3.8's chat_template, reduced to
+        // the part under test.
+        const QWEN_REASONING_LIKE: &str = "{%- for message in messages -%}\
+{%- if message.role == 'assistant' -%}\
+<|im_start|>assistant\n<think>\n{{ message.reasoning_content }}\n</think>\n\n{{ message.content }}<|im_end|>\n\
+{%- else -%}\
+<|im_start|>{{ message.role }}\n{{ message.content }}<|im_end|>\n\
+{%- endif -%}\
+{%- endfor -%}";
+
+        let raw = r#"{
+            "model": "Qwen/Qwen3.8-27B",
+            "input": [
+                {"type": "message", "role": "user", "content": "build a game"},
+                {"type": "reasoning", "id": "rs_1",
+                 "summary": [{"type": "summary_text", "text": "the design so far"}]},
+                {"type": "message", "role": "user", "content": "continue"}
+            ]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        let prompt = crate::harness::chat_template::render_chat_template(
+            QWEN_REASONING_LIKE,
+            &chat.messages,
+            &Value::Null,
+            &Value::Null,
+        )
+        .expect("render");
+        assert!(
+            prompt.contains("<think>\nthe design so far\n</think>"),
+            "the replayed reasoning must reach the prompt; got:\n{prompt}"
+        );
+    }
+
+    /// Forwarding `extra` wholesale must not smuggle the Responses-shaped
+    /// tool array through — the chat path reads the nested spelling.
+    #[test]
+    fn tools_are_still_rewritten_not_forwarded_raw() {
+        let raw = r#"{
+            "model": "m",
+            "input": "hi",
+            "tools": [{"type": "function", "name": "run_code",
+                       "parameters": {"type": "object"}}]
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        let tools = chat
+            .extra
+            .get("tools")
+            .and_then(Value::as_array)
+            .expect("tools");
+        assert_eq!(
+            tools[0]["function"]["name"],
+            Value::String("run_code".into())
+        );
+        assert!(
+            tools[0].get("name").is_none(),
+            "the flat spelling must not survive"
+        );
     }
 
     #[test]
