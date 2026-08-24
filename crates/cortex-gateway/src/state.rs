@@ -66,6 +66,9 @@ impl CortexState {
                     endpoint: nc.endpoint.clone(),
                     healthy: false,
                     models: HashMap::new(),
+                    // Filled from the neuron's /models reply at the
+                    // first poll (#223).
+                    reasoning_budget: Vec::new(),
                     lifecycle_cycles: 0,
                     last_poll: None,
                     discovery: None,

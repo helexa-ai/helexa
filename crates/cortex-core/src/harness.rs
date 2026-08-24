@@ -76,6 +76,24 @@ fn is_zero(v: &usize) -> bool {
     *v == 0
 }
 
+/// What each reasoning effort level costs, in reasoning tokens (#223).
+///
+/// OpenAI-shaped clients can only send `minimal|low|medium|high` — the
+/// ladder is their entire vocabulary, and they cannot express a token
+/// count. So the server picks the numbers, and has to say what they are:
+/// a client choosing `low` with no idea whether that buys 2k tokens or
+/// 20k is guessing, which is the failure #274 exists to end.
+///
+/// Ordered rungs rather than a map, so the ladder reads in the order a
+/// client would climb it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReasoningBudgetRung {
+    /// The effort level as the caller spells it on the wire.
+    pub effort: String,
+    /// Reasoning tokens that level is allowed to spend.
+    pub tokens: usize,
+}
+
 /// Operator-set pricing, **USD per 1,000,000 tokens, as JSON numbers**
 /// (`float`) — the models.dev/opencode `cost` convention, which is what
 /// helexa's primary client reads. NOT per-token, NOT decimal strings (that
@@ -166,6 +184,11 @@ pub struct ModelInfo {
     /// from its own routing table.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub servable: Option<ModelServability>,
+    /// The reasoning-effort ladder this deployment honours (#223).
+    /// Absent when the model does not reason, or the harness has no
+    /// budget to offer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_budget: Vec<ReasoningBudgetRung>,
 }
 
 /// Why a loaded model can or cannot be served right now (#245).

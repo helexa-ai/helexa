@@ -90,6 +90,7 @@ fn router_entry(cortex: &str, e: &CortexModelEntry) -> CortexModelEntry {
             max_output_tokens: None,
             context_window: None,
             context_length: None,
+            reasoning_budget: Vec::new(),
             ..e.clone()
         }
     }
@@ -174,6 +175,7 @@ mod tests {
             max_output_tokens: None,
             context_window: None,
             context_length: None,
+            reasoning_budget: Vec::new(),
         }
     }
 

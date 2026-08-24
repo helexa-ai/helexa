@@ -94,6 +94,28 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         if let Some(tc) = tool_choice {
             obj.insert("tool_choice".into(), tc);
         }
+        // Anthropic's extended-thinking budget is the one quantitative
+        // reasoning control any of our wire formats offers (#223).
+        // Normalised onto `reasoning.max_tokens`, the shape the harness
+        // resolves, so all three inlets converge on one field instead of
+        // each generation loop learning three spellings.
+        let budget = obj
+            .get("thinking")
+            .filter(|t| t.get("type").and_then(Value::as_str) != Some("disabled"))
+            .and_then(|t| t.get("budget_tokens"))
+            .and_then(Value::as_u64)
+            .filter(|n| *n > 0);
+        if let Some(budget) = budget {
+            let reasoning = obj
+                .entry("reasoning")
+                .or_insert_with(|| Value::Object(Default::default()));
+            if !reasoning.is_object() {
+                *reasoning = Value::Object(Default::default());
+            }
+            if let Some(r) = reasoning.as_object_mut() {
+                r.entry("max_tokens").or_insert_with(|| Value::from(budget));
+            }
+        }
     }
 
     ChatCompletionRequest {

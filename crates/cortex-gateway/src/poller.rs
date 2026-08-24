@@ -130,6 +130,17 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<Vec<ModelInfo>>().await {
                 Ok(models) => {
+                    // The reasoning-effort ladder is host configuration:
+                    // every model on a neuron reports the same rungs, so
+                    // it is held once per node rather than copied onto
+                    // each model entry where the two could drift (#223).
+                    // Taken from the first model that offers one — a
+                    // non-reasoning model advertises none.
+                    node.reasoning_budget = models
+                        .iter()
+                        .map(|m| m.reasoning_budget.clone())
+                        .find(|rungs| !rungs.is_empty())
+                        .unwrap_or_default();
                     let mut seen = std::collections::HashSet::new();
                     for upstream in &models {
                         seen.insert(upstream.id.clone());

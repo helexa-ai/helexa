@@ -44,6 +44,12 @@ pub struct NodeState {
     /// just one whose total topology could. Empty until the first
     /// /health poll.
     pub device_health: Vec<crate::discovery::DeviceHealth>,
+    /// The reasoning-effort ladder this neuron honours (#223), copied
+    /// from its `/models` reply at poll time. Per-node rather than
+    /// per-model because it is host configuration — every model on a
+    /// neuron reports the same rungs — and duplicating it onto each
+    /// model entry would invite the two to disagree.
+    pub reasoning_budget: Vec<crate::harness::ReasoningBudgetRung>,
 }
 
 /// A model registered on a node, with its runtime status.
@@ -203,6 +209,10 @@ pub struct CortexModelEntry {
     /// `limit.output_ceiling`, falling back to `limit.output` (#278).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<usize>,
+    /// What each effort level buys, in reasoning tokens (#223) — so a
+    /// client picking `low` knows what it asked for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasoning_budget: Vec<crate::harness::ReasoningBudgetRung>,
 }
 
 impl CortexModelEntry {

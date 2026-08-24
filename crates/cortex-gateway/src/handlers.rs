@@ -800,6 +800,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 max_output_tokens: None,
                 context_window: None,
                 context_length: None,
+                // Catalogue-seeded: no neuron has reported rungs yet.
+                reasoning_budget: Vec::new(),
             },
         );
     }
@@ -841,6 +843,13 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     // so a client never overflows the most-constrained
                     // deployment that might serve it.
                     e.limit = tightest_limit(e.limit.take(), entry.limit.clone());
+                    // The reasoning ladder this neuron honours (#223).
+                    // First non-empty wins: a catalogue-seeded entry
+                    // starts with none, and neurons serving the same
+                    // model are configured alike.
+                    if e.reasoning_budget.is_empty() {
+                        e.reasoning_budget = node.reasoning_budget.clone();
+                    }
                 })
                 .or_insert_with(|| CortexModelEntry {
                     id: model_id.clone(),
@@ -862,6 +871,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     max_output_tokens: None,
                     context_window: None,
                     context_length: None,
+                    // What this neuron says each effort level buys (#223).
+                    reasoning_budget: node.reasoning_budget.clone(),
                 });
         }
     }
@@ -925,6 +936,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     max_output_tokens: None,
                     context_window: None,
                     context_length: None,
+                    // What this neuron says each effort level buys (#223).
+                    reasoning_budget: node.reasoning_budget.clone(),
                 });
         }
     }
@@ -964,6 +977,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 max_output_tokens: None,
                 context_window: None,
                 context_length: None,
+                // Catalogue-seeded: no neuron has reported rungs yet.
+                reasoning_budget: Vec::new(),
             },
         );
     }

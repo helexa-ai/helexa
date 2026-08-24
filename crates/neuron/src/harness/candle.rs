@@ -98,6 +98,9 @@ pub struct CandleHarness {
     /// Context-limit derivation settings (#67), read in `list_models`
     /// to compute each model's advertised `limit{context,input,output}`.
     context_limit_cfg: crate::config::ContextLimitConfig,
+    /// Effort-level → reasoning-token rungs (#223), resolved per request
+    /// so a caller can bound how long the model thinks.
+    reasoning_budget_cfg: super::reasoning_budget::ReasoningBudgetLadder,
     /// Admission-control settings (#53), used to build each loaded model's
     /// [`super::admission::AdmissionController`] at load time.
     admission_cfg: crate::config::AdmissionConfig,
@@ -574,6 +577,33 @@ impl LoadedImageModel {
 /// model's `generation_config.json` and then to the built-in fallback.
 /// Kept in one place so a new knob is added once rather than at each of
 /// the four request-handling paths.
+/// The reasoning-token budget this request asked for, if any (#223).
+///
+/// Three inlets converge on `extra.reasoning`: Anthropic's
+/// `thinking.budget_tokens` (normalised in translation), the explicit
+/// `reasoning.max_tokens` extension, and OpenAI's `reasoning.effort`
+/// ladder resolved against the operator's configured rungs. An explicit
+/// token count wins over a ladder rung — it is the more specific thing
+/// the caller reached for.
+///
+/// `None` means unbounded, which is the default and exactly how the
+/// model behaved before this existed.
+fn requested_reasoning_budget(
+    request: &ChatCompletionRequest,
+    ladder: &super::reasoning_budget::ReasoningBudgetLadder,
+) -> Option<usize> {
+    let reasoning = request.extra.get("reasoning")?;
+    if let Some(n) = reasoning
+        .get("max_tokens")
+        .and_then(|v| v.as_u64())
+        .filter(|n| *n > 0)
+    {
+        return Some(n as usize);
+    }
+    let effort = reasoning.get("effort").and_then(|v| v.as_str())?;
+    ladder.for_effort(effort)
+}
+
 fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::RequestedSampling {
     super::sampling::RequestedSampling {
         temperature: request.temperature,
@@ -1998,6 +2028,7 @@ pub(crate) fn sample_with_penalty(
     history: &[u32],
     logits_processor: &mut LogitsProcessor,
     sampling: &super::sampling::SamplingParams,
+    governor: Option<&mut super::reasoning_budget::ReasoningGovernor>,
 ) -> Result<u32> {
     let penalised = if (sampling.repeat_penalty - 1.0).abs() < f32::EPSILON
         || sampling.repeat_last_n == 0
@@ -2012,7 +2043,14 @@ pub(crate) fn sample_with_penalty(
             &history[start..],
         )?
     };
-    Ok(logits_processor.sample(&penalised)?)
+    let sampled = logits_processor.sample(&penalised)?;
+    // The reasoning budget governs which token is *emitted*, not which
+    // is sampled: over budget inside a think block, the model gets its
+    // own close marker so it transitions to answering (#223).
+    Ok(match governor {
+        Some(g) => g.govern(sampled),
+        None => sampled,
+    })
 }
 
 /// Chunked prefill against an in-process [`ModelArch`]. Splits
@@ -2231,6 +2269,7 @@ impl CandleHarness {
             recovery_tx,
             prefix_cache_cfg: config.prefix_cache.clone(),
             context_limit_cfg: config.context_limit.clone(),
+            reasoning_budget_cfg: config.reasoning_budget.clone(),
             admission_cfg: config.admission.clone(),
             image_cfg: config.image.clone(),
         });
@@ -2913,6 +2952,16 @@ impl CandleHarness {
                 &loaded.generation_defaults,
                 unix_subsec_nanos(),
             );
+            // Bound the think block if the caller asked for it (#223),
+            // so reasoning cannot consume the whole output budget.
+            let governor = super::reasoning_budget::ReasoningGovernor::new(
+                requested_reasoning_budget(&request, &self.reasoning_budget_cfg),
+                loaded
+                    .reasoning_tokens
+                    .as_ref()
+                    .map(|p| (p.open_id, p.close_id)),
+                prompt_opened_reasoning,
+            );
             // The output budget the request declared, under either
             // spelling (#254), and the fallback when it declares none.
             // One value drives generation, KV pricing and admission — they
@@ -2979,6 +3028,7 @@ impl CandleHarness {
                                 *image_token_id,
                                 max_new,
                                 sampling.clone(),
+                                governor,
                                 eos_id,
                             )
                             .await
@@ -2992,6 +3042,7 @@ impl CandleHarness {
                                 loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
                                 sampling.clone(),
+                                governor,
                                 eos_id,
                             )
                             .await
@@ -3042,6 +3093,7 @@ impl CandleHarness {
                             im_start_id,
                             max_new,
                             sampling.clone(),
+                            governor,
                             eos_id,
                         )
                     })
@@ -3378,6 +3430,15 @@ impl CandleHarness {
             &loaded.generation_defaults,
             unix_subsec_nanos(),
         );
+        // Bound the think block if the caller asked for it (#223).
+        let governor = super::reasoning_budget::ReasoningGovernor::new(
+            requested_reasoning_budget(&request, &self.reasoning_budget_cfg),
+            loaded
+                .reasoning_tokens
+                .as_ref()
+                .map(|p| (p.open_id, p.close_id)),
+            prompt_opens_reasoning(&prompt_tokens, loaded.reasoning_tokens.as_ref()),
+        );
         // The output budget the request declared, under either
         // spelling (#254), and the fallback when it declares none.
         // One value drives generation, KV pricing and admission — they
@@ -3505,6 +3566,12 @@ impl CandleHarness {
                     prompt_tokens,
                     max_new,
                     sampling: sampling.clone(),
+                    // The engine builds its own per-slot governor from
+                    // this, since slots in a batch differ (#223).
+                    reasoning_budget: requested_reasoning_budget(
+                        &request,
+                        &self.reasoning_budget_cfg,
+                    ),
                     eos_id,
                     tool_schemas,
                     tx,
@@ -3534,6 +3601,7 @@ impl CandleHarness {
                             &loaded_for_task.prefill_rate,
                             max_new,
                             sampling.clone(),
+                            governor,
                             eos_id,
                             reasoning_tokens_inner,
                             tool_call_tokens_inner,
@@ -3596,6 +3664,7 @@ impl CandleHarness {
                     loaded_for_task.prefix_cache.as_deref(),
                     max_new,
                     sampling.clone(),
+                    governor,
                     eos_id,
                     reasoning_tokens_inner.as_ref(),
                     tool_call_tokens_inner.as_ref(),
@@ -3869,6 +3938,24 @@ impl Harness for CandleHarness {
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
                 servable: h.servability(&self.context_limit_cfg),
+                // What each effort level buys (#223). Only meaningful
+                // for a model that reasons — advertising rungs on a
+                // model that never opens a think block would describe a
+                // control that does nothing.
+                reasoning_budget: if h.has_reasoning() {
+                    self.reasoning_budget_cfg
+                        .advertised()
+                        .into_iter()
+                        .map(
+                            |(effort, tokens)| cortex_core::harness::ReasoningBudgetRung {
+                                effort,
+                                tokens,
+                            },
+                        )
+                        .collect()
+                } else {
+                    Vec::new()
+                },
             });
         }
         // Models mid-recovery whose registry slot is absent (the
@@ -3891,6 +3978,9 @@ impl Harness for CandleHarness {
                     // Mid-recovery: the handle is gone, so there is
                     // nothing to evaluate. No opinion, not "unservable".
                     servable: None,
+                    // A recovering model is a trigger-time snapshot; it
+                    // is not serving, so it advertises no controls.
+                    reasoning_budget: Vec::new(),
                 });
             }
         }
@@ -4963,9 +5053,16 @@ impl CandleHarness {
 
         let tp_for_marker = Arc::clone(&tp);
         let context_limit_cfg = self.context_limit_cfg.clone();
+        let reasoning_budget_cfg = self.reasoning_budget_cfg.clone();
         let handle = tokio::spawn(
-            chat_completion_tp_inner(tp, request, principal, context_limit_cfg)
-                .instrument(span.clone()),
+            chat_completion_tp_inner(
+                tp,
+                request,
+                principal,
+                context_limit_cfg,
+                reasoning_budget_cfg,
+            )
+            .instrument(span.clone()),
         );
         match handle.await {
             Ok(Ok(resp)) => Ok(resp),
@@ -5121,6 +5218,14 @@ impl CandleHarness {
             &tp.generation_defaults,
             unix_subsec_nanos(),
         );
+        // Bound the think block if the caller asked for it (#223).
+        let mut governor = super::reasoning_budget::ReasoningGovernor::new(
+            requested_reasoning_budget(&request, &self.reasoning_budget_cfg),
+            tp.reasoning_tokens
+                .as_ref()
+                .map(|p| (p.open_id, p.close_id)),
+            prompt_opens_reasoning(&prompt_tokens, tp.reasoning_tokens.as_ref()),
+        );
         // The output budget the request declared, under either
         // spelling (#254), and the fallback when it declares none.
         // One value drives generation, KV pricing and admission — they
@@ -5232,6 +5337,12 @@ impl CandleHarness {
                     prompt_tokens,
                     max_new,
                     sampling: sampling.clone(),
+                    // The engine builds its own per-slot governor from
+                    // this, since slots in a batch differ (#223).
+                    reasoning_budget: requested_reasoning_budget(
+                        &request,
+                        &self.reasoning_budget_cfg,
+                    ),
                     eos_id,
                     tool_schemas,
                     tx,
@@ -5439,7 +5550,7 @@ impl CandleHarness {
                         }
                     };
                     let mut next_token =
-                        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
+                        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling, governor.as_mut()) {
                             Ok(t) => t,
                             Err(e) => {
                                 let health = logits_health_slice(&logits_vec);
@@ -5568,6 +5679,7 @@ impl CandleHarness {
                                 &all_tokens,
                                 &mut logits_processor,
                                 &sampling,
+                                governor.as_mut(),
                             ) {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -5800,6 +5912,7 @@ async fn chat_completion_tp_inner(
     request: ChatCompletionRequest,
     principal: Option<String>,
     context_limit_cfg: crate::config::ContextLimitConfig,
+    reasoning_budget_cfg: super::reasoning_budget::ReasoningBudgetLadder,
 ) -> Result<ChatCompletionResponse, InferenceError> {
     let req_start = std::time::Instant::now();
     let model_id = request.model.clone();
@@ -5866,6 +5979,14 @@ async fn chat_completion_tp_inner(
         &requested_sampling(&request),
         &tp.generation_defaults,
         unix_subsec_nanos(),
+    );
+    // Bound the think block if the caller asked for it (#223).
+    let mut governor = super::reasoning_budget::ReasoningGovernor::new(
+        requested_reasoning_budget(&request, &reasoning_budget_cfg),
+        tp.reasoning_tokens
+            .as_ref()
+            .map(|p| (p.open_id, p.close_id)),
+        prompt_opens_reasoning(&prompt_tokens, tp.reasoning_tokens.as_ref()),
     );
     // The output budget the request declared, under either
     // spelling (#254), and the fallback when it declares none.
@@ -6029,24 +6150,29 @@ async fn chat_completion_tp_inner(
     // from CPU memory only.
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)
         .map_err(|e| InferenceError::Other(anyhow::anyhow!("build cpu logits: {e:#}")))?;
-    let mut next_token =
-        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-            Ok(t) => t,
-            Err(e) => {
-                // Logits health snapshot — the surrounding wrapper logs
-                // "failed, model marked poisoned" with the error chain;
-                // this WARN sits just above that and carries the actual
-                // numerical state so an operator can tell at a glance
-                // whether it was a NaN cascade, an Inf, or something else.
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    model = %model_id,
-                    ?health,
-                    "TP chat_completion: prefill sample failed; logits unhealthy"
-                );
-                return Err(InferenceError::Other(e));
-            }
-        };
+    let mut next_token = match sample_with_penalty(
+        &logits,
+        &generated,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            // Logits health snapshot — the surrounding wrapper logs
+            // "failed, model marked poisoned" with the error chain;
+            // this WARN sits just above that and carries the actual
+            // numerical state so an operator can tell at a glance
+            // whether it was a NaN cascade, an Inf, or something else.
+            let health = logits_health_slice(&logits_vec);
+            tracing::warn!(
+                model = %model_id,
+                ?health,
+                "TP chat_completion: prefill sample failed; logits unhealthy"
+            );
+            return Err(InferenceError::Other(e));
+        }
+    };
 
     if Some(next_token) == eos_id {
         finish_reason = "stop".into();
@@ -6067,20 +6193,25 @@ async fn chat_completion_tp_inner(
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu).map_err(|e| {
                 InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e:#}"))
             })?;
-            next_token =
-                match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        let health = logits_health_slice(&logits_vec);
-                        tracing::warn!(
-                            model = %model_id,
-                            step = index,
-                            ?health,
-                            "TP chat_completion: decode sample failed; logits unhealthy"
-                        );
-                        return Err(InferenceError::Other(e));
-                    }
-                };
+            next_token = match sample_with_penalty(
+                &logits,
+                &generated,
+                &mut logits_processor,
+                &sampling,
+                governor.as_mut(),
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        model = %model_id,
+                        step = index,
+                        ?health,
+                        "TP chat_completion: decode sample failed; logits unhealthy"
+                    );
+                    return Err(InferenceError::Other(e));
+                }
+            };
             let step_vram_free_mb = tp.query_vram().await.0;
             tracing::trace!(
                 model = %model_id,
@@ -7021,6 +7152,9 @@ async fn run_inference_with_images_via_worker(
     image_token_id: u32,
     max_new: usize,
     sampling: super::sampling::SamplingParams,
+    // Bounds how long the model may think before it must answer (#223).
+    // `None` = unbounded, which is the default and the prior behaviour.
+    mut governor: Option<super::reasoning_budget::ReasoningGovernor>,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
     let mut logits_processor =
@@ -7040,18 +7174,23 @@ async fn run_inference_with_images_via_worker(
         .await
         .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e:#}"))?;
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token =
-        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    ?health,
-                    "chat_completion (worker, vision): prefill sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
+    let mut next_token = match sample_with_penalty(
+        &logits,
+        &generated,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            let health = logits_health_slice(&logits_vec);
+            tracing::warn!(
+                ?health,
+                "chat_completion (worker, vision): prefill sample failed; logits unhealthy"
+            );
+            return Err(e);
+        }
+    };
 
     if Some(next_token) == eos_id {
         return Ok((generated, "stop".into()));
@@ -7064,19 +7203,24 @@ async fn run_inference_with_images_via_worker(
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-        next_token =
-            match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-                Ok(t) => t,
-                Err(e) => {
-                    let health = logits_health_slice(&logits_vec);
-                    tracing::warn!(
-                        step = index,
-                        ?health,
-                        "chat_completion (worker, vision): decode sample failed; logits unhealthy"
-                    );
-                    return Err(e);
-                }
-            };
+        next_token = match sample_with_penalty(
+            &logits,
+            &generated,
+            &mut logits_processor,
+            &sampling,
+            governor.as_mut(),
+        ) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    step = index,
+                    ?health,
+                    "chat_completion (worker, vision): decode sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
         if Some(next_token) == eos_id {
             return Ok((generated, "stop".into()));
         }
@@ -7376,6 +7520,9 @@ async fn run_inference_via_worker(
     im_start_id: Option<u32>,
     max_new: usize,
     sampling: super::sampling::SamplingParams,
+    // Bounds how long the model may think before it must answer (#223).
+    // `None` = unbounded, which is the default and the prior behaviour.
+    mut governor: Option<super::reasoning_budget::ReasoningGovernor>,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
     let mut logits_processor =
@@ -7418,18 +7565,23 @@ async fn run_inference_via_worker(
         None => chunked_prefill_via_worker(worker, handle, prompt_tokens, reused).await?,
     };
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token =
-        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    ?health,
-                    "chat_completion (worker): prefill sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
+    let mut next_token = match sample_with_penalty(
+        &logits,
+        &generated,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            let health = logits_health_slice(&logits_vec);
+            tracing::warn!(
+                ?health,
+                "chat_completion (worker): prefill sample failed; logits unhealthy"
+            );
+            return Err(e);
+        }
+    };
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -7442,19 +7594,24 @@ async fn run_inference_via_worker(
                 .await
                 .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-            next_token =
-                match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        let health = logits_health_slice(&logits_vec);
-                        tracing::warn!(
-                            step = index,
-                            ?health,
-                            "chat_completion (worker): decode sample failed; logits unhealthy"
-                        );
-                        return Err(e);
-                    }
-                };
+            next_token = match sample_with_penalty(
+                &logits,
+                &generated,
+                &mut logits_processor,
+                &sampling,
+                governor.as_mut(),
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        step = index,
+                        ?health,
+                        "chat_completion (worker): decode sample failed; logits unhealthy"
+                    );
+                    return Err(e);
+                }
+            };
             if Some(next_token) == eos_id {
                 finish_reason = "stop";
                 break;
@@ -7494,6 +7651,9 @@ async fn stream_inference_via_worker(
     prefill_rate: &super::context_limit::PrefillRateEma,
     max_new: usize,
     sampling: super::sampling::SamplingParams,
+    // Bounds how long the model may think before it must answer (#223).
+    // `None` = unbounded, which is the default and the prior behaviour.
+    mut governor: Option<super::reasoning_budget::ReasoningGovernor>,
     eos_id: Option<u32>,
     reasoning_tokens: Option<ReasoningTokenPair>,
     tool_call_tokens: Option<ToolCallTokenPair>,
@@ -7596,18 +7756,23 @@ async fn stream_inference_via_worker(
     let prefill_elapsed = prefill_start.elapsed();
     prefill_rate.record(prefill_prompt_len, prefill_elapsed);
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token =
-        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    ?health,
-                    "chat_completion (stream/worker): prefill sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
+    let mut next_token = match sample_with_penalty(
+        &logits,
+        &all_tokens,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    ) {
+        Ok(t) => t,
+        Err(e) => {
+            let health = logits_health_slice(&logits_vec);
+            tracing::warn!(
+                ?health,
+                "chat_completion (stream/worker): prefill sample failed; logits unhealthy"
+            );
+            return Err(e);
+        }
+    };
     // Decode-phase timer for the Finish prefill/decode split (#85).
     let decode_start = std::time::Instant::now();
 
@@ -7721,19 +7886,24 @@ async fn stream_inference_via_worker(
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-        next_token =
-            match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
-                Ok(t) => t,
-                Err(e) => {
-                    let health = logits_health_slice(&logits_vec);
-                    tracing::warn!(
-                        step = index,
-                        ?health,
-                        "chat_completion (stream/worker): decode sample failed; logits unhealthy"
-                    );
-                    return Err(e);
-                }
-            };
+        next_token = match sample_with_penalty(
+            &logits,
+            &all_tokens,
+            &mut logits_processor,
+            &sampling,
+            governor.as_mut(),
+        ) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    step = index,
+                    ?health,
+                    "chat_completion (stream/worker): decode sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
             break;
@@ -7789,6 +7959,9 @@ fn run_inference(
     im_start_id: Option<u32>,
     max_new: usize,
     sampling: super::sampling::SamplingParams,
+    // Bounds how long the model may think before it must answer (#223).
+    // `None` = unbounded, which is the default and the prior behaviour.
+    mut governor: Option<super::reasoning_budget::ReasoningGovernor>,
     eos_id: Option<u32>,
 ) -> Result<(Vec<u32>, String)> {
     let mut logits_processor =
@@ -7812,8 +7985,13 @@ fn run_inference(
         }
         None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
     };
-    let mut next_token =
-        sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling)?;
+    let mut next_token = sample_with_penalty(
+        &logits,
+        &generated,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    )?;
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -7823,8 +8001,13 @@ fn run_inference(
         for index in 0..max_new.saturating_sub(1) {
             let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
             let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-            next_token =
-                sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling)?;
+            next_token = sample_with_penalty(
+                &logits,
+                &generated,
+                &mut logits_processor,
+                &sampling,
+                governor.as_mut(),
+            )?;
             if Some(next_token) == eos_id {
                 finish_reason = "stop";
                 break;
@@ -7851,6 +8034,9 @@ fn run_inference_streaming(
     prefix_cache: Option<&ModelPrefixCache>,
     max_new: usize,
     sampling: super::sampling::SamplingParams,
+    // Bounds how long the model may think before it must answer (#223).
+    // `None` = unbounded, which is the default and the prior behaviour.
+    mut governor: Option<super::reasoning_budget::ReasoningGovernor>,
     eos_id: Option<u32>,
     reasoning_tokens: Option<&ReasoningTokenPair>,
     tool_call_tokens: Option<&ToolCallTokenPair>,
@@ -7909,8 +8095,13 @@ fn run_inference_streaming(
         }
         None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
     };
-    let mut next_token =
-        sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling)?;
+    let mut next_token = sample_with_penalty(
+        &logits,
+        &all_tokens,
+        &mut logits_processor,
+        &sampling,
+        governor.as_mut(),
+    )?;
     let prefill_elapsed = prefill_start.elapsed();
     let decode_start = std::time::Instant::now();
 
@@ -8005,7 +8196,13 @@ fn run_inference_streaming(
     for index in 0..max_new.saturating_sub(1) {
         let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
         let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-        next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling)?;
+        next_token = sample_with_penalty(
+            &logits,
+            &all_tokens,
+            &mut logits_processor,
+            &sampling,
+            governor.as_mut(),
+        )?;
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
             break;
@@ -8076,6 +8273,68 @@ mod tests {
         }
     }
 
+    /// The three inlets converge on one field (#223): an explicit token
+    /// count, Anthropic's normalised `budget_tokens`, or an effort rung.
+    #[test]
+    fn the_reasoning_budget_resolves_from_every_inlet() {
+        use cortex_core::openai::{ChatCompletionRequest, MessageContent};
+        let ladder = crate::harness::reasoning_budget::ReasoningBudgetLadder::default();
+        let req = |extra: serde_json::Value| ChatCompletionRequest {
+            model: "m".into(),
+            messages: vec![],
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            seed: None,
+            repetition_penalty: None,
+            repeat_last_n: None,
+            max_tokens: None,
+            max_completion_tokens: None,
+            stream: None,
+            extra,
+        };
+        let _ = MessageContent::Null;
+
+        // Explicit count — also the shape Anthropic's `budget_tokens`
+        // is normalised into during translation.
+        assert_eq!(
+            requested_reasoning_budget(
+                &req(serde_json::json!({"reasoning": {"max_tokens": 5000}})),
+                &ladder
+            ),
+            Some(5000)
+        );
+        // Effort rung, resolved against the operator's configuration.
+        assert_eq!(
+            requested_reasoning_budget(
+                &req(serde_json::json!({"reasoning": {"effort": "medium"}})),
+                &ladder
+            ),
+            Some(12_288)
+        );
+        // An explicit count beats a rung — it is the more specific ask.
+        assert_eq!(
+            requested_reasoning_budget(
+                &req(serde_json::json!({"reasoning": {"effort": "low", "max_tokens": 999}})),
+                &ladder
+            ),
+            Some(999)
+        );
+        // No control at all stays unbounded, exactly as before #223.
+        assert_eq!(
+            requested_reasoning_budget(&req(serde_json::json!({})), &ladder),
+            None
+        );
+        // `none` disables thinking via the template; it is not a budget.
+        assert_eq!(
+            requested_reasoning_budget(
+                &req(serde_json::json!({"reasoning": {"effort": "none"}})),
+                &ladder
+            ),
+            None
+        );
+    }
+
     /// The regression: `repetition_penalty` was modelled on the wire and
     /// resolved into `SamplingParams`, then the sampler read a module
     /// constant instead — so the knob was accepted and discarded, which
@@ -8087,14 +8346,15 @@ mod tests {
         let mut lp = LogitsProcessor::from_sampling(0, Sampling::ArgMax);
 
         // 1.0 disables the penalty: the leading token still wins.
-        let plain =
-            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(1.0, 64)).expect("sample");
+        let plain = sample_with_penalty(&logits, &history, &mut lp, &greedy_with(1.0, 64), None)
+            .expect("sample");
         assert_eq!(plain, 0);
 
         // 2.0 halves the logit of the token already generated, which is
         // enough to hand the sample to its rival.
         let penalised =
-            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 64)).expect("sample");
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 64), None)
+                .expect("sample");
         assert_eq!(
             penalised, 1,
             "a penalty the caller set must change the sample"
@@ -8113,14 +8373,14 @@ mod tests {
 
         // Window of 1 sees only the most recent token (0), penalising it
         // to 1.5 and leaving token 1 at 2.0.
-        let narrow =
-            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 1)).expect("sample");
+        let narrow = sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 1), None)
+            .expect("sample");
         assert_eq!(narrow, 1);
 
         // Window of 2 reaches back far enough to penalise token 1 as
         // well (2.0 -> 1.0), so token 0 wins at 1.5.
-        let wide =
-            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 2)).expect("sample");
+        let wide = sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 2), None)
+            .expect("sample");
         assert_eq!(wide, 0, "the window must decide what is penalised");
     }
 
@@ -8131,8 +8391,8 @@ mod tests {
         let logits = Tensor::new(&[3.0f32, 2.0], &Device::Cpu).expect("logits");
         let history = [0u32];
         let mut lp = LogitsProcessor::from_sampling(0, Sampling::ArgMax);
-        let sampled =
-            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 0)).expect("sample");
+        let sampled = sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 0), None)
+            .expect("sample");
         assert_eq!(sampled, 0);
     }
 
