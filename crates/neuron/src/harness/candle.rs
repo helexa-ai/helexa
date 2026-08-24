@@ -2365,30 +2365,52 @@ impl CandleHarness {
         })
     }
 
-    /// Pull the model's `generation_config.json` into the snapshot
-    /// directory beside `tokenizer.json`, where
-    /// [`super::sampling::ModelGenerationDefaults::load_from_dir`] looks
-    /// for it at load time.
+    /// The files that describe **how to drive** a model, as opposed to
+    /// its weights: the sampling its authors published, and the prompt
+    /// format they wrote.
     ///
-    /// Best-effort by design: plenty of repos ship no such file, and a
+    /// Every one is optional in a HuggingFace repo, and each is read
+    /// from the snapshot directory beside `tokenizer.json` — so if the
+    /// fetch does not pull it, the reader silently finds nothing and
+    /// falls back to a built-in guess. That is the whole bug class this
+    /// list exists to close (#272, #280): the loader used to fetch
+    /// `config.json`, `tokenizer.json` and the weights, and nothing
+    /// else, so a model neuron downloaded itself was served with our
+    /// sampling defaults and our prompt format rather than its own.
+    pub(crate) const SIDECAR_FILES: [&'static str; 4] = [
+        // Sampling the model's authors published — read by
+        // `ModelGenerationDefaults::load_from_dir` (#272).
+        "generation_config.json",
+        // The prompt format, in the three places HF puts it. Checked in
+        // the same priority order `load_chat_template_alongside` reads
+        // them, though all present ones are fetched (#280).
+        "chat_template.jinja",
+        "chat_template.json",
+        "tokenizer_config.json",
+    ];
+
+    /// Pull the sidecars into the snapshot directory beside
+    /// `tokenizer.json`, where their readers look at load time.
+    ///
+    /// Best-effort by design: plenty of repos ship none of them, and a
     /// miss is a debug line rather than a load failure. But the fetch
-    /// has to happen or the file is never on disk to read — the loader
-    /// otherwise pulls only `config.json`, `tokenizer.json` and the
-    /// weights, so a model downloaded by neuron itself fell back to the
-    /// built-in sampling defaults no matter what its authors published
-    /// (#272).
-    async fn fetch_generation_config(repo: &hf_hub::api::tokio::ApiRepo, display_id: &str) {
-        match repo.get("generation_config.json").await {
-            Ok(path) => tracing::debug!(
-                model = %display_id,
-                path = ?path,
-                "fetched generation_config.json for sampling defaults"
-            ),
-            Err(e) => tracing::debug!(
-                model = %display_id,
-                error = %e,
-                "no generation_config.json in repo; built-in sampling defaults apply"
-            ),
+    /// has to happen, or the file is never on disk to be read.
+    async fn fetch_model_sidecars(repo: &hf_hub::api::tokio::ApiRepo, display_id: &str) {
+        for name in Self::SIDECAR_FILES {
+            match repo.get(name).await {
+                Ok(path) => tracing::debug!(
+                    model = %display_id,
+                    file = %name,
+                    path = ?path,
+                    "fetched model sidecar"
+                ),
+                Err(e) => tracing::debug!(
+                    model = %display_id,
+                    file = %name,
+                    error = %e,
+                    "model sidecar absent from repo; a built-in default applies"
+                ),
+            }
         }
     }
 
@@ -2417,9 +2439,10 @@ impl CandleHarness {
             .get("tokenizer.json")
             .await
             .with_context(|| format!("fetch tokenizer.json from {display_id}"))?;
-        // Beside the tokenizer, so the sampling defaults are readable
-        // from the snapshot dir at load (#272).
-        Self::fetch_generation_config(&repo, &display_id).await;
+        // Beside the tokenizer, so the sampling defaults and the
+        // model's own prompt format are readable from the snapshot dir
+        // at load (#272, #280).
+        Self::fetch_model_sidecars(&repo, &display_id).await;
 
         // Prefer the sharded layout (most HF dense models > 5B ship it).
         let safetensors_paths = match repo.get("model.safetensors.index.json").await {
@@ -2722,9 +2745,9 @@ impl CandleHarness {
             .get("tokenizer.json")
             .await
             .with_context(|| format!("fetch tokenizer.json from {tokenizer_repo_path}"))?;
-        // Same repo as the tokenizer — a GGUF-only repo carries
-        // neither, and the base repo carries both (#272).
-        Self::fetch_generation_config(&tokenizer_repo, &tokenizer_repo_path).await;
+        // Same repo as the tokenizer — a GGUF-only repo carries none of
+        // them, and the base repo carries them all (#272, #280).
+        Self::fetch_model_sidecars(&tokenizer_repo, &tokenizer_repo_path).await;
         Ok((gguf_path, tokenizer_path))
     }
 

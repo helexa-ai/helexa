@@ -498,6 +498,32 @@ mod tests {
     /// Minimal Qwen3-style template — enough surface to confirm
     /// our renderer threads role + content correctly without
     /// loading a real model's tokenizer_config.json.
+    /// The fetcher and the reader must agree on the filenames, or the
+    /// reader looks for something nobody downloaded and falls back to a
+    /// built-in prompt format without anything failing (#280 — observed
+    /// live: every model neuron downloaded itself was served with the
+    /// fallback because no sidecar was ever fetched).
+    #[test]
+    fn every_template_source_this_reads_is_one_the_loader_fetches() {
+        for name in crate::harness::candle::CandleHarness::SIDECAR_FILES {
+            assert!(
+                !name.is_empty(),
+                "sidecar names are the contract between fetch and read"
+            );
+        }
+        // The three the reader consults, in its own priority order.
+        for source in [
+            "chat_template.jinja",
+            "chat_template.json",
+            "tokenizer_config.json",
+        ] {
+            assert!(
+                crate::harness::candle::CandleHarness::SIDECAR_FILES.contains(&source),
+                "{source} is read by load_chat_template_alongside but never fetched"
+            );
+        }
+    }
+
     const QWEN3_LIKE: &str = "{%- for message in messages -%}\
 <|im_start|>{{ message.role }}\n{{ message.content }}<|im_end|>\n\
 {%- endfor -%}\
