@@ -3938,6 +3938,24 @@ impl Harness for CandleHarness {
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
                 servable: h.servability(&self.context_limit_cfg),
+                // What each effort level buys (#223). Only meaningful
+                // for a model that reasons — advertising rungs on a
+                // model that never opens a think block would describe a
+                // control that does nothing.
+                reasoning_budget: if h.has_reasoning() {
+                    self.reasoning_budget_cfg
+                        .advertised()
+                        .into_iter()
+                        .map(
+                            |(effort, tokens)| cortex_core::harness::ReasoningBudgetRung {
+                                effort,
+                                tokens,
+                            },
+                        )
+                        .collect()
+                } else {
+                    Vec::new()
+                },
             });
         }
         // Models mid-recovery whose registry slot is absent (the
@@ -3960,6 +3978,9 @@ impl Harness for CandleHarness {
                     // Mid-recovery: the handle is gone, so there is
                     // nothing to evaluate. No opinion, not "unservable".
                     servable: None,
+                    // A recovering model is a trigger-time snapshot; it
+                    // is not serving, so it advertises no controls.
+                    reasoning_budget: Vec::new(),
                 });
             }
         }

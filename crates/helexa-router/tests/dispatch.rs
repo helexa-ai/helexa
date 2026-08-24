@@ -44,6 +44,7 @@ fn model_entry(loaded: bool, feasible: bool) -> CortexModelEntry {
         max_output_tokens: None,
         context_window: None,
         context_length: None,
+        reasoning_budget: Vec::new(),
     }
 }
 

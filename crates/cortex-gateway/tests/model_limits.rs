@@ -69,6 +69,18 @@ capabilities = ["text"]
         let mut nodes = fleet.nodes.write().await;
         let node = nodes.get_mut("mock-node").expect("node exists");
         node.healthy = true;
+        // The ladder the neuron reported at poll time (#223) — host
+        // configuration, held once per node.
+        node.reasoning_budget = ["minimal", "low", "medium", "high"]
+            .into_iter()
+            .zip([1024usize, 4096, 12288, 32768])
+            .map(
+                |(effort, tokens)| cortex_core::harness::ReasoningBudgetRung {
+                    effort: effort.into(),
+                    tokens,
+                },
+            )
+            .collect();
         node.models.insert(
             "test-model".into(),
             ModelEntry {
@@ -155,6 +167,24 @@ capabilities = ["text"]
     // request; advertising the 8192 reserve told a reasoning model's
     // harness to stop below the cost of a single think block.
     assert_eq!(entry["max_output_tokens"], 32768);
+    // What each effort level buys (#223). A client can only send the
+    // rung names — it has no way to express a token count — so a ladder
+    // it cannot see is a ladder it has to guess at.
+    let rungs = entry["reasoning_budget"]
+        .as_array()
+        .expect("reasoning_budget advertised for a reasoning model");
+    let names: Vec<&str> = rungs
+        .iter()
+        .map(|r| r["effort"].as_str().expect("effort"))
+        .collect();
+    assert_eq!(names, ["minimal", "low", "medium", "high"]);
+    assert!(
+        rungs
+            .iter()
+            .all(|r| r["tokens"].as_u64().is_some_and(|t| t > 0)),
+        "every advertised rung must name a token count"
+    );
+
     // The window under the two names generic clients actually read.
     // pi-ai looks for `context_window` then `context_length` and gives
     // up if neither is present — `max_model_len` is invisible to it.

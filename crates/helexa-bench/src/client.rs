@@ -236,6 +236,7 @@ impl TargetClient {
                         // A generic OpenAI endpoint says nothing about
                         // serviceability, and absent means "no opinion".
                         servable: None,
+                        reasoning_budget: Vec::new(),
                     })
                     .collect())
             }
