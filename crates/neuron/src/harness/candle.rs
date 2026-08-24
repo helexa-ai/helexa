@@ -3028,6 +3028,7 @@ impl CandleHarness {
                                 *image_token_id,
                                 max_new,
                                 sampling.clone(),
+                                governor,
                                 eos_id,
                             )
                             .await
@@ -3041,6 +3042,7 @@ impl CandleHarness {
                                 loaded.tokenizer.token_to_id("<|im_start|>"),
                                 max_new,
                                 sampling.clone(),
+                                governor,
                                 eos_id,
                             )
                             .await
@@ -3599,6 +3601,7 @@ impl CandleHarness {
                             &loaded_for_task.prefill_rate,
                             max_new,
                             sampling.clone(),
+                            governor,
                             eos_id,
                             reasoning_tokens_inner,
                             tool_call_tokens_inner,
@@ -5313,6 +5316,12 @@ impl CandleHarness {
                     prompt_tokens,
                     max_new,
                     sampling: sampling.clone(),
+                    // The engine builds its own per-slot governor from
+                    // this, since slots in a batch differ (#223).
+                    reasoning_budget: requested_reasoning_budget(
+                        &request,
+                        &self.reasoning_budget_cfg,
+                    ),
                     eos_id,
                     tool_schemas,
                     tx,
