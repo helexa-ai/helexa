@@ -410,6 +410,10 @@ pub struct EngineRequest {
     /// → fallback (#272), rather than loose scalars each caller could
     /// default differently.
     pub sampling: crate::harness::sampling::SamplingParams,
+    /// Reasoning-token budget for this request (#223). `None` is
+    /// unbounded — the default, and the behaviour before it existed.
+    /// Per-request because slots in one batch can differ.
+    pub reasoning_budget: Option<usize>,
     pub eos_id: Option<u32>,
     pub tool_schemas: ToolSchemas,
     pub tx: mpsc::Sender<InferenceEvent>,
@@ -471,6 +475,8 @@ struct Slot {
     /// repetition penalty and its window are per-request knobs, and
     /// slots in one batch can carry different ones.
     sampling: crate::harness::sampling::SamplingParams,
+    /// Bounds this slot's think block (#223); `None` = unbounded.
+    governor: Option<crate::harness::reasoning_budget::ReasoningGovernor>,
     router: mpsc::Sender<RouterMsg>,
     /// Set by the router when the consumer hangs up; the engine stops
     /// feeding the slot and compacts it out.
@@ -578,23 +584,28 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
                     break;
                 }
             };
-            let nt =
-                match sample_with_penalty(&logits, &slot.generated, &mut slot.lp, &slot.sampling) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        let health = logits_health_slice(&logits_vec);
-                        tracing::warn!(
-                            ?health,
-                            error = %e,
-                            "batch engine: sample failed; logits unhealthy"
-                        );
-                        // Unhealthy logits are a device-level problem —
-                        // fail the whole engine, mirroring the B=1 path's
-                        // poison classification.
-                        fatal = Some(e);
-                        break;
-                    }
-                };
+            let nt = match sample_with_penalty(
+                &logits,
+                &slot.generated,
+                &mut slot.lp,
+                &slot.sampling,
+                slot.governor.as_mut(),
+            ) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        ?health,
+                        error = %e,
+                        "batch engine: sample failed; logits unhealthy"
+                    );
+                    // Unhealthy logits are a device-level problem —
+                    // fail the whole engine, mirroring the B=1 path's
+                    // poison classification.
+                    fatal = Some(e);
+                    break;
+                }
+            };
             if Some(nt) == slot.eos_id {
                 finish_slot(slot, FinishReason::Stop, active_rate(&cfg, sess)).await;
                 continue;
@@ -784,6 +795,7 @@ async fn prefill_join(
         prompt_tokens,
         max_new,
         sampling,
+        reasoning_budget,
         eos_id,
         tool_schemas,
         tx,
@@ -792,6 +804,15 @@ async fn prefill_join(
     } = req;
 
     let mut lp = LogitsProcessor::from_sampling(sampling.seed, sampling.to_sampling());
+    // Built before prefill's first sample so a prompt that opens the
+    // think block is governed from its very first token (#223).
+    let mut governor = crate::harness::reasoning_budget::ReasoningGovernor::new(
+        reasoning_budget,
+        cfg.reasoning_tokens
+            .as_ref()
+            .map(|p| (p.open_id, p.close_id)),
+        prompt_opens_reasoning(&prompt_tokens, cfg.reasoning_tokens.as_ref()),
+    );
 
     let prompt_len = prompt_tokens.len();
     let prefill_start = std::time::Instant::now();
@@ -801,17 +822,18 @@ async fn prefill_join(
     // First token from the prefill logits.
     let generated: Vec<u32> = Vec::new();
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let first = match sample_with_penalty(&logits, &generated, &mut lp, &sampling) {
-        Ok(t) => t,
-        Err(e) => {
-            let health = logits_health_slice(&logits_vec);
-            tracing::warn!(
-                ?health,
-                "batch engine: prefill sample failed; logits unhealthy"
-            );
-            return Err(e);
-        }
-    };
+    let first =
+        match sample_with_penalty(&logits, &generated, &mut lp, &sampling, governor.as_mut()) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    ?health,
+                    "batch engine: prefill sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
 
     // Router task for this slot.
     let hangup = Arc::new(AtomicBool::new(false));
@@ -841,6 +863,7 @@ async fn prefill_join(
         eos_id,
         lp,
         sampling,
+        governor,
         router: router_tx,
         hangup,
         finished: None,
@@ -1192,6 +1215,9 @@ mod tests {
                     &crate::harness::sampling::ModelGenerationDefaults::default(),
                     0,
                 ),
+                // Unbounded: this fixture asserts exact token sequences,
+                // so nothing may substitute a close marker (#223).
+                reasoning_budget: None,
                 eos_id: None,
                 tool_schemas: ToolSchemas::new(),
                 tx,

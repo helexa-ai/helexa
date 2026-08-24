@@ -86,6 +86,16 @@ pub struct CandleHarnessConfig {
     #[serde(default)]
     pub context_limit: ContextLimitConfig,
 
+    /// What each OpenAI effort level costs, in reasoning tokens (#223).
+    ///
+    /// OpenAI-shaped clients cannot send a token count — their whole
+    /// vocabulary is the `minimal|low|medium|high` ladder — so the
+    /// numbers live here and are advertised on `/models`. Operator
+    /// configurable because the right values depend on the model and the
+    /// hardware.
+    #[serde(default)]
+    pub reasoning_budget: crate::harness::reasoning_budget::ReasoningBudgetLadder,
+
     /// Admission control (#53): bounds the per-model wait queue so a busy
     /// model returns a fast, retryable `429`/`503` instead of stalling new
     /// requests until their client times out.
