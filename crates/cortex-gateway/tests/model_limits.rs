@@ -85,6 +85,9 @@ capabilities = ["text"]
                     context: 49152,
                     input: Some(40960),
                     output: 8192,
+                    // The ceiling a request may name, distinct from the
+                    // 8192-token reserve above (#278).
+                    output_ceiling: 32768,
                 }),
                 servable: None,
             },
@@ -147,7 +150,16 @@ capabilities = ["text"]
     // vLLM-convention probes (Hermes Agent) auto-detect the window.
     assert_eq!(entry["max_model_len"], 49152);
     assert_eq!(entry["max_input_tokens"], 40960);
-    assert_eq!(entry["max_output_tokens"], 8192);
+    // The ceiling, not the reserve (#278). pi-ai's discovery — and every
+    // client like it — turns this field into the cap it sends on each
+    // request; advertising the 8192 reserve told a reasoning model's
+    // harness to stop below the cost of a single think block.
+    assert_eq!(entry["max_output_tokens"], 32768);
+    // The window under the two names generic clients actually read.
+    // pi-ai looks for `context_window` then `context_length` and gives
+    // up if neither is present — `max_model_len` is invisible to it.
+    assert_eq!(entry["context_window"], 49152);
+    assert_eq!(entry["context_length"], 49152);
 
     // No limit → flat fields omitted entirely, never 0 or a guess.
     let unknown = body["data"]
@@ -157,7 +169,13 @@ capabilities = ["text"]
         .find(|m| m["id"] == "no-limit-model")
         .expect("no-limit-model present in /v1/models");
     assert!(unknown.get("limit").is_none());
-    for key in ["max_model_len", "max_input_tokens", "max_output_tokens"] {
+    for key in [
+        "max_model_len",
+        "max_input_tokens",
+        "max_output_tokens",
+        "context_window",
+        "context_length",
+    ] {
         assert!(
             unknown.get(key).is_none(),
             "{key} must be omitted when the window is unknown"

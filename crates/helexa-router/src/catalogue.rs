@@ -80,10 +80,18 @@ fn router_entry(cortex: &str, e: &CortexModelEntry) -> CortexModelEntry {
         cost: e.cost.clone(),
         tool_call: e.tool_call,
         reasoning: e.reasoning,
-        // Derived from `limit` by the final sync pass in aggregate_models.
-        max_model_len: None,
-        max_input_tokens: None,
-        max_output_tokens: None,
+        // Every flat ecosystem field is derived from `limit` by the
+        // final sync pass in aggregate_models, so they are cleared here
+        // rather than copied. Spread from `e` keeps a field added to the
+        // entry later from being silently dropped at this hop.
+        ..CortexModelEntry {
+            max_model_len: None,
+            max_input_tokens: None,
+            max_output_tokens: None,
+            context_window: None,
+            context_length: None,
+            ..e.clone()
+        }
     }
 }
 
@@ -164,6 +172,8 @@ mod tests {
             max_model_len: None,
             max_input_tokens: None,
             max_output_tokens: None,
+            context_window: None,
+            context_length: None,
         }
     }
 
@@ -224,6 +234,7 @@ mod tests {
             context: 32_768,
             input: None,
             output: 4096,
+            output_ceiling: 0,
         });
         a.cost = Some(ModelCost {
             input: 0.50,
@@ -236,6 +247,7 @@ mod tests {
             context: 16_384, // tighter
             input: None,
             output: 4096,
+            output_ceiling: 0,
         });
         b.cost = Some(ModelCost {
             input: 0.20, // cheaper

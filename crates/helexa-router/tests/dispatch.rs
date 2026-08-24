@@ -42,6 +42,8 @@ fn model_entry(loaded: bool, feasible: bool) -> CortexModelEntry {
         max_model_len: None,
         max_input_tokens: None,
         max_output_tokens: None,
+        context_window: None,
+        context_length: None,
     }
 }
 

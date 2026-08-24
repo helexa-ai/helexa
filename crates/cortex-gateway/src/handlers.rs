@@ -798,6 +798,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 max_model_len: None,
                 max_input_tokens: None,
                 max_output_tokens: None,
+                context_window: None,
+                context_length: None,
             },
         );
     }
@@ -858,6 +860,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     max_model_len: None,
                     max_input_tokens: None,
                     max_output_tokens: None,
+                    context_window: None,
+                    context_length: None,
                 });
         }
     }
@@ -919,6 +923,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     max_model_len: None,
                     max_input_tokens: None,
                     max_output_tokens: None,
+                    context_window: None,
+                    context_length: None,
                 });
         }
     }
@@ -956,6 +962,8 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 max_model_len: None,
                 max_input_tokens: None,
                 max_output_tokens: None,
+                context_window: None,
+                context_length: None,
             },
         );
     }
