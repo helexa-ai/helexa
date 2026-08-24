@@ -141,6 +141,15 @@ pub fn usage_sink(
 /// returns a guard the caller settles with actual usage; on refusal returns
 /// the #63 envelope (`rate_limit_exceeded` + `Retry-After` for a resetting
 /// window, `insufficient_quota` for a hard balance — never `402`).
+// The `Err` variant is the #63 envelope itself, which is a data-carrying
+// struct (status, type, code, message, param, retry hint, diagnostics) and
+// is passed by value everywhere it is built, matched and rendered. Boxing it
+// at this one boundary would push `Box` conversions through three handlers
+// and both HTTP adapters to save an allocation on a path taken once per
+// rejected request. clippy 1.98 lowered what it considers large enough to
+// flag; the shape is deliberate. Same call as the existing allows on the
+// figment-returning config loaders.
+#[allow(clippy::result_large_err)]
 pub async fn reserve_or_reject(
     provider: Arc<dyn EntitlementProvider>,
     principal: &Principal,
