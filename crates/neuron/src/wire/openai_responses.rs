@@ -227,6 +227,9 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         }
     }
 
+    // A caller that asked for no reasoning must get none (#223).
+    apply_reasoning_effort(&mut extra);
+
     Ok(ChatCompletionRequest {
         model: req.model,
         messages,
@@ -323,6 +326,53 @@ fn input_item_to_chat(item: ResponsesInputItem) -> Option<ChatMessage> {
         // belongs to the assistant turn that follows it, so the caller
         // holds it and attaches it there (#277).
         ResponsesInputItem::Reasoning { .. } => None,
+    }
+}
+
+/// Map the Responses reasoning control onto the template kwarg neuron
+/// already honours (#223).
+///
+/// `reasoning: {"effort": "none"}` is how a Responses client says "do
+/// not think" — it is what pi-ai emits for thinking-level *off*. The
+/// chat-completions path couples generation to surfacing via
+/// `default_enable_thinking`; this surface never did, so the switch had
+/// no route at all and a client asking for no reasoning got a full think
+/// block anyway. Observed live: a harness set thinking off and received
+/// 32,768 tokens of reasoning and no answer.
+///
+/// Only `none` and `off` map. `minimal` / `low` deliberately do not:
+/// they ask for *less* thinking, not none, and the template's switch is
+/// binary — silently turning "minimal" into "off" would be the same
+/// class of lie this whole area has been full of. They pass through and
+/// the model thinks as usual.
+///
+/// An explicit `chat_template_kwargs.enable_thinking` from the caller
+/// wins, matching `default_enable_thinking`'s precedence: the more
+/// specific control is the one the caller reached for.
+fn apply_reasoning_effort(extra: &mut serde_json::Map<String, Value>) {
+    if extra
+        .get("chat_template_kwargs")
+        .and_then(|k| k.get("enable_thinking"))
+        .is_some()
+    {
+        return;
+    }
+    let effort = extra
+        .get("reasoning")
+        .and_then(|r| r.get("effort"))
+        .and_then(|e| e.as_str())
+        .map(|e| e.trim().to_ascii_lowercase());
+    if !matches!(effort.as_deref(), Some("none") | Some("off")) {
+        return;
+    }
+    let kwargs = extra
+        .entry("chat_template_kwargs")
+        .or_insert_with(|| json!({}));
+    if !kwargs.is_object() {
+        *kwargs = json!({});
+    }
+    if let Some(kw) = kwargs.as_object_mut() {
+        kw.insert("enable_thinking".into(), Value::Bool(false));
     }
 }
 
@@ -1489,6 +1539,104 @@ mod tests {
         assert_eq!(
             chat.messages[0].extra.get("reasoning_content"),
             Some(&Value::String("first\n\nsecond".into()))
+        );
+    }
+
+    /// The control a Responses client actually reaches for (#223): pi-ai
+    /// emits `reasoning: {"effort": "none"}` for thinking-level *off*.
+    /// Before this it went nowhere, and a harness that asked for no
+    /// thinking got 32,768 tokens of it and no answer.
+    #[test]
+    fn reasoning_effort_none_turns_thinking_off() {
+        for effort in ["none", "off", "NONE", " off "] {
+            let raw =
+                format!(r#"{{"model":"m","input":"hi","reasoning":{{"effort":"{effort}"}}}}"#);
+            let req: ResponsesRequest = serde_json::from_str(&raw).expect("parse");
+            let chat = request_to_chat(req).expect("translate");
+            assert_eq!(
+                chat.extra
+                    .get("chat_template_kwargs")
+                    .and_then(|k| k.get("enable_thinking")),
+                Some(&Value::Bool(false)),
+                "effort {effort:?} must reach the template as enable_thinking=false"
+            );
+        }
+    }
+
+    /// `minimal` and `low` ask for *less* thinking, not none. The
+    /// template switch is binary, so mapping them to off would be a
+    /// silent substitution — they pass through untouched instead.
+    #[test]
+    fn a_reduced_effort_is_not_silently_treated_as_none() {
+        for effort in ["minimal", "low", "medium", "high"] {
+            let raw =
+                format!(r#"{{"model":"m","input":"hi","reasoning":{{"effort":"{effort}"}}}}"#);
+            let req: ResponsesRequest = serde_json::from_str(&raw).expect("parse");
+            let chat = request_to_chat(req).expect("translate");
+            assert!(
+                chat.extra
+                    .get("chat_template_kwargs")
+                    .and_then(|k| k.get("enable_thinking"))
+                    .is_none(),
+                "effort {effort:?} must not be rewritten to off"
+            );
+        }
+    }
+
+    /// The more specific control wins, matching `default_enable_thinking`.
+    #[test]
+    fn an_explicit_template_kwarg_beats_the_effort_mapping() {
+        let raw = r#"{"model":"m","input":"hi",
+                      "reasoning":{"effort":"none"},
+                      "chat_template_kwargs":{"enable_thinking":true}}"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(
+            chat.extra
+                .get("chat_template_kwargs")
+                .and_then(|k| k.get("enable_thinking")),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    /// A request with no reasoning control is untouched — the model
+    /// thinks by default, which is the Responses-native expectation.
+    #[test]
+    fn no_reasoning_control_leaves_thinking_alone() {
+        let raw = r#"{"model":"m","input":"hi"}"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert!(chat.extra.get("chat_template_kwargs").is_none());
+    }
+
+    /// End to end, on the rendered prompt: Qwen3's template emits an
+    /// empty think block when `enable_thinking` is false, and opens one
+    /// otherwise. This asserts the caller's control reaches that branch.
+    #[test]
+    fn reasoning_effort_none_reaches_the_template_branch() {
+        const QWEN_THINK_SWITCH: &str = "{%- if enable_thinking is defined and enable_thinking is false -%}\
+<think>\n\n</think>\n\n\
+{%- else -%}\
+<think>\n\
+{%- endif -%}";
+        let raw = r#"{"model":"m","input":"hi","reasoning":{"effort":"none"}}"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        let kwargs = chat
+            .extra
+            .get("chat_template_kwargs")
+            .cloned()
+            .unwrap_or(Value::Null);
+        let out = crate::harness::chat_template::render_chat_template(
+            QWEN_THINK_SWITCH,
+            &chat.messages,
+            &Value::Null,
+            &kwargs,
+        )
+        .expect("render");
+        assert!(
+            out.contains("<think>\n\n</think>"),
+            "the closed think block is what tells the model not to reason; got {out:?}"
         );
     }
 
