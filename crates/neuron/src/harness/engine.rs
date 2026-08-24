@@ -467,6 +467,10 @@ struct Slot {
     max_new: usize,
     eos_id: Option<u32>,
     lp: LogitsProcessor,
+    /// The slot's resolved sampling (#272). Held per-slot because the
+    /// repetition penalty and its window are per-request knobs, and
+    /// slots in one batch can carry different ones.
+    sampling: crate::harness::sampling::SamplingParams,
     router: mpsc::Sender<RouterMsg>,
     /// Set by the router when the consumer hangs up; the engine stops
     /// feeding the slot and compacts it out.
@@ -574,22 +578,23 @@ async fn run_engine(cfg: EngineConfig, mut rx: mpsc::Receiver<EngineRequest>) {
                     break;
                 }
             };
-            let nt = match sample_with_penalty(&logits, &slot.generated, &mut slot.lp) {
-                Ok(t) => t,
-                Err(e) => {
-                    let health = logits_health_slice(&logits_vec);
-                    tracing::warn!(
-                        ?health,
-                        error = %e,
-                        "batch engine: sample failed; logits unhealthy"
-                    );
-                    // Unhealthy logits are a device-level problem —
-                    // fail the whole engine, mirroring the B=1 path's
-                    // poison classification.
-                    fatal = Some(e);
-                    break;
-                }
-            };
+            let nt =
+                match sample_with_penalty(&logits, &slot.generated, &mut slot.lp, &slot.sampling) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let health = logits_health_slice(&logits_vec);
+                        tracing::warn!(
+                            ?health,
+                            error = %e,
+                            "batch engine: sample failed; logits unhealthy"
+                        );
+                        // Unhealthy logits are a device-level problem —
+                        // fail the whole engine, mirroring the B=1 path's
+                        // poison classification.
+                        fatal = Some(e);
+                        break;
+                    }
+                };
             if Some(nt) == slot.eos_id {
                 finish_slot(slot, FinishReason::Stop, active_rate(&cfg, sess)).await;
                 continue;
@@ -796,7 +801,7 @@ async fn prefill_join(
     // First token from the prefill logits.
     let generated: Vec<u32> = Vec::new();
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let first = match sample_with_penalty(&logits, &generated, &mut lp) {
+    let first = match sample_with_penalty(&logits, &generated, &mut lp, &sampling) {
         Ok(t) => t,
         Err(e) => {
             let health = logits_health_slice(&logits_vec);
@@ -835,6 +840,7 @@ async fn prefill_join(
         max_new,
         eos_id,
         lp,
+        sampling,
         router: router_tx,
         hangup,
         finished: None,

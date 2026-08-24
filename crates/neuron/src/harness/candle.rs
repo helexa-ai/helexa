@@ -1231,17 +1231,6 @@ impl LlamaDense {
     }
 }
 
-/// Repetition penalty applied to recently-generated tokens before
-/// sampling. 1.0 disables it; >1.0 makes recently-emitted tokens less
-/// likely. mistral.rs and llama.cpp default to 1.1, which is enough to
-/// stop small quantized models from degenerating into "Wait, no, no..."
-/// loops without distorting normal output.
-const REPEAT_PENALTY: f32 = 1.1;
-
-/// Number of recently-generated tokens to feed into the repetition
-/// penalty. Matches the candle quantized-qwen3 example default.
-const REPEAT_LAST_N: usize = 64;
-
 /// Architectures the dense safetensors path can construct. Keep
 /// alphabetical; one entry per supported `config.json#/model_type`
 /// value. New entries land alongside a new `ModelArch` variant + a
@@ -1990,16 +1979,29 @@ async fn acquire_pool_lock<'a>(
 /// Apply the repetition penalty (if any) to the prediction logits and
 /// then sample. Centralises the prefill / generation-loop call sites
 /// so they share identical sampling behaviour.
+///
+/// The penalty and its window come from the resolved [`SamplingParams`]
+/// rather than from constants: a caller that sets `repetition_penalty`
+/// or `repeat_last_n` must reach the sampler, or the request is
+/// accepted and discarded — the defect #271 exists to close.
 pub(crate) fn sample_with_penalty(
     logits: &Tensor,
     history: &[u32],
     logits_processor: &mut LogitsProcessor,
+    sampling: &super::sampling::SamplingParams,
 ) -> Result<u32> {
-    let penalised = if (REPEAT_PENALTY - 1.0).abs() < f32::EPSILON || history.is_empty() {
+    let penalised = if (sampling.repeat_penalty - 1.0).abs() < f32::EPSILON
+        || sampling.repeat_last_n == 0
+        || history.is_empty()
+    {
         logits.clone()
     } else {
-        let start = history.len().saturating_sub(REPEAT_LAST_N);
-        candle_transformers::utils::apply_repeat_penalty(logits, REPEAT_PENALTY, &history[start..])?
+        let start = history.len().saturating_sub(sampling.repeat_last_n);
+        candle_transformers::utils::apply_repeat_penalty(
+            logits,
+            sampling.repeat_penalty,
+            &history[start..],
+        )?
     };
     Ok(logits_processor.sample(&penalised)?)
 }
@@ -2354,6 +2356,33 @@ impl CandleHarness {
         })
     }
 
+    /// Pull the model's `generation_config.json` into the snapshot
+    /// directory beside `tokenizer.json`, where
+    /// [`super::sampling::ModelGenerationDefaults::load_from_dir`] looks
+    /// for it at load time.
+    ///
+    /// Best-effort by design: plenty of repos ship no such file, and a
+    /// miss is a debug line rather than a load failure. But the fetch
+    /// has to happen or the file is never on disk to read — the loader
+    /// otherwise pulls only `config.json`, `tokenizer.json` and the
+    /// weights, so a model downloaded by neuron itself fell back to the
+    /// built-in sampling defaults no matter what its authors published
+    /// (#272).
+    async fn fetch_generation_config(repo: &hf_hub::api::tokio::ApiRepo, display_id: &str) {
+        match repo.get("generation_config.json").await {
+            Ok(path) => tracing::debug!(
+                model = %display_id,
+                path = ?path,
+                "fetched generation_config.json for sampling defaults"
+            ),
+            Err(e) => tracing::debug!(
+                model = %display_id,
+                error = %e,
+                "no generation_config.json in repo; built-in sampling defaults apply"
+            ),
+        }
+    }
+
     /// Resolve a dense (bf16/fp16 safetensors) model to its local file
     /// paths.
     ///
@@ -2379,6 +2408,9 @@ impl CandleHarness {
             .get("tokenizer.json")
             .await
             .with_context(|| format!("fetch tokenizer.json from {display_id}"))?;
+        // Beside the tokenizer, so the sampling defaults are readable
+        // from the snapshot dir at load (#272).
+        Self::fetch_generation_config(&repo, &display_id).await;
 
         // Prefer the sharded layout (most HF dense models > 5B ship it).
         let safetensors_paths = match repo.get("model.safetensors.index.json").await {
@@ -2681,6 +2713,9 @@ impl CandleHarness {
             .get("tokenizer.json")
             .await
             .with_context(|| format!("fetch tokenizer.json from {tokenizer_repo_path}"))?;
+        // Same repo as the tokenizer — a GGUF-only repo carries
+        // neither, and the base repo carries both (#272).
+        Self::fetch_generation_config(&tokenizer_repo, &tokenizer_repo_path).await;
         Ok((gguf_path, tokenizer_path))
     }
 
@@ -5349,7 +5384,7 @@ impl CandleHarness {
                         }
                     };
                     let mut next_token =
-                        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
+                        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
                             Ok(t) => t,
                             Err(e) => {
                                 let health = logits_health_slice(&logits_vec);
@@ -5477,6 +5512,7 @@ impl CandleHarness {
                                 &logits,
                                 &all_tokens,
                                 &mut logits_processor,
+                                &sampling,
                             ) {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -5926,23 +5962,24 @@ async fn chat_completion_tp_inner(
     // from CPU memory only.
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)
         .map_err(|e| InferenceError::Other(anyhow::anyhow!("build cpu logits: {e:#}")))?;
-    let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-        Ok(t) => t,
-        Err(e) => {
-            // Logits health snapshot — the surrounding wrapper logs
-            // "failed, model marked poisoned" with the error chain;
-            // this WARN sits just above that and carries the actual
-            // numerical state so an operator can tell at a glance
-            // whether it was a NaN cascade, an Inf, or something else.
-            let health = logits_health_slice(&logits_vec);
-            tracing::warn!(
-                model = %model_id,
-                ?health,
-                "TP chat_completion: prefill sample failed; logits unhealthy"
-            );
-            return Err(InferenceError::Other(e));
-        }
-    };
+    let mut next_token =
+        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+            Ok(t) => t,
+            Err(e) => {
+                // Logits health snapshot — the surrounding wrapper logs
+                // "failed, model marked poisoned" with the error chain;
+                // this WARN sits just above that and carries the actual
+                // numerical state so an operator can tell at a glance
+                // whether it was a NaN cascade, an Inf, or something else.
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    model = %model_id,
+                    ?health,
+                    "TP chat_completion: prefill sample failed; logits unhealthy"
+                );
+                return Err(InferenceError::Other(e));
+            }
+        };
 
     if Some(next_token) == eos_id {
         finish_reason = "stop".into();
@@ -5963,19 +6000,20 @@ async fn chat_completion_tp_inner(
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu).map_err(|e| {
                 InferenceError::Other(anyhow::anyhow!("build cpu logits step {index}: {e:#}"))
             })?;
-            next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-                Ok(t) => t,
-                Err(e) => {
-                    let health = logits_health_slice(&logits_vec);
-                    tracing::warn!(
-                        model = %model_id,
-                        step = index,
-                        ?health,
-                        "TP chat_completion: decode sample failed; logits unhealthy"
-                    );
-                    return Err(InferenceError::Other(e));
-                }
-            };
+            next_token =
+                match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let health = logits_health_slice(&logits_vec);
+                        tracing::warn!(
+                            model = %model_id,
+                            step = index,
+                            ?health,
+                            "TP chat_completion: decode sample failed; logits unhealthy"
+                        );
+                        return Err(InferenceError::Other(e));
+                    }
+                };
             let step_vram_free_mb = tp.query_vram().await.0;
             tracing::trace!(
                 model = %model_id,
@@ -6935,17 +6973,18 @@ async fn run_inference_with_images_via_worker(
         .await
         .map_err(|e| anyhow::anyhow!("forward_logits_with_images: {e:#}"))?;
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-        Ok(t) => t,
-        Err(e) => {
-            let health = logits_health_slice(&logits_vec);
-            tracing::warn!(
-                ?health,
-                "chat_completion (worker, vision): prefill sample failed; logits unhealthy"
-            );
-            return Err(e);
-        }
-    };
+    let mut next_token =
+        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    ?health,
+                    "chat_completion (worker, vision): prefill sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
 
     if Some(next_token) == eos_id {
         return Ok((generated, "stop".into()));
@@ -6958,18 +6997,19 @@ async fn run_inference_with_images_via_worker(
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-        next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    step = index,
-                    ?health,
-                    "chat_completion (worker, vision): decode sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
+        next_token =
+            match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        step = index,
+                        ?health,
+                        "chat_completion (worker, vision): decode sample failed; logits unhealthy"
+                    );
+                    return Err(e);
+                }
+            };
         if Some(next_token) == eos_id {
             return Ok((generated, "stop".into()));
         }
@@ -7311,17 +7351,18 @@ async fn run_inference_via_worker(
         None => chunked_prefill_via_worker(worker, handle, prompt_tokens, reused).await?,
     };
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-        Ok(t) => t,
-        Err(e) => {
-            let health = logits_health_slice(&logits_vec);
-            tracing::warn!(
-                ?health,
-                "chat_completion (worker): prefill sample failed; logits unhealthy"
-            );
-            return Err(e);
-        }
-    };
+    let mut next_token =
+        match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    ?health,
+                    "chat_completion (worker): prefill sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -7334,18 +7375,19 @@ async fn run_inference_via_worker(
                 .await
                 .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
             let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-            next_token = match sample_with_penalty(&logits, &generated, &mut logits_processor) {
-                Ok(t) => t,
-                Err(e) => {
-                    let health = logits_health_slice(&logits_vec);
-                    tracing::warn!(
-                        step = index,
-                        ?health,
-                        "chat_completion (worker): decode sample failed; logits unhealthy"
-                    );
-                    return Err(e);
-                }
-            };
+            next_token =
+                match sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        let health = logits_health_slice(&logits_vec);
+                        tracing::warn!(
+                            step = index,
+                            ?health,
+                            "chat_completion (worker): decode sample failed; logits unhealthy"
+                        );
+                        return Err(e);
+                    }
+                };
             if Some(next_token) == eos_id {
                 finish_reason = "stop";
                 break;
@@ -7487,17 +7529,18 @@ async fn stream_inference_via_worker(
     let prefill_elapsed = prefill_start.elapsed();
     prefill_rate.record(prefill_prompt_len, prefill_elapsed);
     let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-    let mut next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
-        Ok(t) => t,
-        Err(e) => {
-            let health = logits_health_slice(&logits_vec);
-            tracing::warn!(
-                ?health,
-                "chat_completion (stream/worker): prefill sample failed; logits unhealthy"
-            );
-            return Err(e);
-        }
-    };
+    let mut next_token =
+        match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
+            Ok(t) => t,
+            Err(e) => {
+                let health = logits_health_slice(&logits_vec);
+                tracing::warn!(
+                    ?health,
+                    "chat_completion (stream/worker): prefill sample failed; logits unhealthy"
+                );
+                return Err(e);
+            }
+        };
     // Decode-phase timer for the Finish prefill/decode split (#85).
     let decode_start = std::time::Instant::now();
 
@@ -7611,18 +7654,19 @@ async fn stream_inference_via_worker(
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
-        next_token = match sample_with_penalty(&logits, &all_tokens, &mut logits_processor) {
-            Ok(t) => t,
-            Err(e) => {
-                let health = logits_health_slice(&logits_vec);
-                tracing::warn!(
-                    step = index,
-                    ?health,
-                    "chat_completion (stream/worker): decode sample failed; logits unhealthy"
-                );
-                return Err(e);
-            }
-        };
+        next_token =
+            match sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling) {
+                Ok(t) => t,
+                Err(e) => {
+                    let health = logits_health_slice(&logits_vec);
+                    tracing::warn!(
+                        step = index,
+                        ?health,
+                        "chat_completion (stream/worker): decode sample failed; logits unhealthy"
+                    );
+                    return Err(e);
+                }
+            };
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
             break;
@@ -7701,7 +7745,8 @@ fn run_inference(
         }
         None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
     };
-    let mut next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
+    let mut next_token =
+        sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling)?;
 
     let mut finish_reason = "length";
     if Some(next_token) == eos_id {
@@ -7711,7 +7756,8 @@ fn run_inference(
         for index in 0..max_new.saturating_sub(1) {
             let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
             let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-            next_token = sample_with_penalty(&logits, &generated, &mut logits_processor)?;
+            next_token =
+                sample_with_penalty(&logits, &generated, &mut logits_processor, &sampling)?;
             if Some(next_token) == eos_id {
                 finish_reason = "stop";
                 break;
@@ -7796,7 +7842,8 @@ fn run_inference_streaming(
         }
         None => chunked_prefill_local(arch, device, prompt_tokens, reused)?,
     };
-    let mut next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
+    let mut next_token =
+        sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling)?;
     let prefill_elapsed = prefill_start.elapsed();
     let decode_start = std::time::Instant::now();
 
@@ -7891,7 +7938,7 @@ fn run_inference_streaming(
     for index in 0..max_new.saturating_sub(1) {
         let input = Tensor::new(&[next_token], device)?.unsqueeze(0)?;
         let logits = arch.forward(&input, prompt_tokens.len() + index)?;
-        next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor)?;
+        next_token = sample_with_penalty(&logits, &all_tokens, &mut logits_processor, &sampling)?;
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
             break;
@@ -7943,6 +7990,84 @@ fn unix_subsec_nanos() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::super::context_limit::ContextProfile;
+    use super::super::sampling::SamplingParams;
+    use super::sample_with_penalty;
+    use candle_core::{Device, Tensor};
+    use candle_transformers::generation::{LogitsProcessor, Sampling};
+
+    /// A resolved `SamplingParams` with everything but the repetition
+    /// knobs pinned to a deterministic sampler, so the assertions below
+    /// are about the penalty and nothing else.
+    fn greedy_with(repeat_penalty: f32, repeat_last_n: usize) -> SamplingParams {
+        SamplingParams {
+            temperature: 0.0,
+            top_p: None,
+            top_k: None,
+            seed: 0,
+            repeat_penalty,
+            repeat_last_n,
+        }
+    }
+
+    /// The regression: `repetition_penalty` was modelled on the wire and
+    /// resolved into `SamplingParams`, then the sampler read a module
+    /// constant instead — so the knob was accepted and discarded, which
+    /// is the exact defect #271 exists to close.
+    #[test]
+    fn the_requested_repetition_penalty_reaches_the_sampler() {
+        let logits = Tensor::new(&[3.0f32, 2.0], &Device::Cpu).expect("logits");
+        let history = [0u32];
+        let mut lp = LogitsProcessor::from_sampling(0, Sampling::ArgMax);
+
+        // 1.0 disables the penalty: the leading token still wins.
+        let plain =
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(1.0, 64)).expect("sample");
+        assert_eq!(plain, 0);
+
+        // 2.0 halves the logit of the token already generated, which is
+        // enough to hand the sample to its rival.
+        let penalised =
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 64)).expect("sample");
+        assert_eq!(
+            penalised, 1,
+            "a penalty the caller set must change the sample"
+        );
+    }
+
+    /// `repeat_last_n` bounds how far back the penalty sees — the knob
+    /// that matters for a long reasoning block, where a derivation
+    /// repeated 500 tokens later sits well outside the 64-token default.
+    #[test]
+    fn the_penalty_window_bounds_the_history_it_sees() {
+        let logits = Tensor::new(&[3.0f32, 2.0], &Device::Cpu).expect("logits");
+        // Oldest first: token 1 was generated, then token 0.
+        let history = [1u32, 0u32];
+        let mut lp = LogitsProcessor::from_sampling(0, Sampling::ArgMax);
+
+        // Window of 1 sees only the most recent token (0), penalising it
+        // to 1.5 and leaving token 1 at 2.0.
+        let narrow =
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 1)).expect("sample");
+        assert_eq!(narrow, 1);
+
+        // Window of 2 reaches back far enough to penalise token 1 as
+        // well (2.0 -> 1.0), so token 0 wins at 1.5.
+        let wide =
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 2)).expect("sample");
+        assert_eq!(wide, 0, "the window must decide what is penalised");
+    }
+
+    /// A zero window is the other way to say "no penalty", and must not
+    /// slice the history backwards.
+    #[test]
+    fn a_zero_window_disables_the_penalty() {
+        let logits = Tensor::new(&[3.0f32, 2.0], &Device::Cpu).expect("logits");
+        let history = [0u32];
+        let mut lp = LogitsProcessor::from_sampling(0, Sampling::ArgMax);
+        let sampled =
+            sample_with_penalty(&logits, &history, &mut lp, &greedy_with(2.0, 0)).expect("sample");
+        assert_eq!(sampled, 0);
+    }
 
     /// Why the serviceability probe shares [`check_vram`] with the
     /// request path rather than re-implementing the floor.
