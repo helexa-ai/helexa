@@ -50,8 +50,30 @@ pub struct ModelLimit {
     /// back to `context − output`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input: Option<usize>,
-    /// Maximum number of generation tokens.
+    /// The generation budget a request gets when it names none, and the
+    /// figure `input = context − output` is derived from.
+    ///
+    /// A *reserve*, not a ceiling — a request may ask for more and be
+    /// served it. Named `output` for the shape's history; the number a
+    /// client should plan against is [`ModelLimit::output_ceiling`].
     pub output: usize,
+    /// The largest output a request may name and be served (#278).
+    ///
+    /// Distinct from `output`, which is the default and the KV-planning
+    /// reserve. Publishing the reserve as the ceiling meant a client
+    /// that trusted the advertisement asked for a fraction of what the
+    /// model would happily generate — on a reasoning model, often less
+    /// than its own think block costs.
+    ///
+    /// `#[serde(default)]` so a neuron predating this field still
+    /// deserializes; zero means "not advertised", and consumers fall
+    /// back to `output`.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub output_ceiling: usize,
+}
+
+fn is_zero(v: &usize) -> bool {
+    *v == 0
 }
 
 /// Operator-set pricing, **USD per 1,000,000 tokens, as JSON numbers**

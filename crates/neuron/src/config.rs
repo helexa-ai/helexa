@@ -333,8 +333,24 @@ pub struct ContextLimitConfig {
     /// Generation reserve (tokens) left below the context wall:
     /// `input = context − output_reserve_tokens`. Defaults to neuron's
     /// default `max_tokens`.
+    ///
+    /// This is the budget a request gets when it names none, and the
+    /// figure the input/output split is derived from. It is **not** the
+    /// most a request may ask for — see `max_output_tokens` (#278).
     #[serde(default = "default_output_reserve_tokens")]
     pub output_reserve_tokens: usize,
+
+    /// The largest output a request may name, advertised as
+    /// `max_output_tokens` on `/v1/models` (#278).
+    ///
+    /// `None` derives it as `min(max_position_embeddings,
+    /// DEFAULT_OUTPUT_CEILING)`. Separate from the reserve because the
+    /// two answer different questions and were previously the same
+    /// number: publishing the reserve told every client that read the
+    /// advertisement to cap itself at the default, which on a reasoning
+    /// model can be less than one think block.
+    #[serde(default)]
+    pub max_output_tokens: Option<usize>,
 }
 
 impl Default for ContextLimitConfig {
@@ -346,6 +362,7 @@ impl Default for ContextLimitConfig {
             activation_headroom_mb: default_activation_headroom_mb(),
             min_free_floor_mb: default_context_min_free_floor_mb(),
             output_reserve_tokens: default_output_reserve_tokens(),
+            max_output_tokens: None,
         }
     }
 }

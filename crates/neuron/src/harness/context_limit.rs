@@ -234,10 +234,23 @@ fn round_down(tokens: usize, granularity: usize) -> usize {
 
 const CONTEXT_GRANULARITY: usize = 1024;
 
+/// Default ceiling on what a request may name as its output budget.
+///
+/// Not derived from anything — a deliberate figure, and configurable
+/// per host (`[context_limit] max_output_tokens`). The evidence behind
+/// it: a reasoning model asked to build a small application front-loads
+/// one long think block before it acts, measured at 27,504 tokens for a
+/// frontier model on a task Qwen3.8-27B was cut off attempting at
+/// 24,433 (#271, #278). A ceiling below that turns a capable model into
+/// one that never reaches its first tool call, so the default sits
+/// above the observed cost of that class of turn.
+const DEFAULT_OUTPUT_CEILING: usize = 32_768;
+
 /// Derive `limit{context,input,output}` for a loaded model.
 ///
 /// ```text
-/// output  = output_reserve_tokens
+/// output         = output_reserve_tokens          (default + KV planning)
+/// output_ceiling = min(max_output_tokens, max_position_embeddings)
 /// vram_ceiling       = (free_tightest − activation_headroom − min_free_floor) / kv_bytes_per_token_per_card
 /// throughput_ceiling = target_prefill_latency_secs × prefill_tok_per_sec
 /// context = min(max_position_embeddings, vram_ceiling, throughput_ceiling) [clamped by `hard_ceiling` if set]
@@ -318,16 +331,108 @@ pub fn derive_limit(
     );
 
     let input = context.saturating_sub(output);
+    // The ceiling a request may name, distinct from the reserve above
+    // (#278). Bounded by the model's own position limit rather than by
+    // the live context, because the advertisement is read once and
+    // cached by clients: a ceiling that shrank with fleet VRAM would be
+    // stale in whichever direction hurt — either rejecting what we said
+    // we would serve, or leaving budget unclaimed. A request that will
+    // not actually fit is refused at request time, with the numbers,
+    // instead of being under-promised here.
+    let output_ceiling = round_down(
+        cfg.max_output_tokens
+            .unwrap_or(DEFAULT_OUTPUT_CEILING)
+            .min(profile.max_position_embeddings),
+        CONTEXT_GRANULARITY,
+    )
+    .max(output);
     ModelLimit {
         context,
         input: Some(input),
         output,
+        output_ceiling,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The ceiling a client is told to plan against must not be the
+    /// reserve. Advertising the reserve is what told a reasoning model's
+    /// harness to cap itself below the cost of one think block (#278).
+    #[test]
+    fn the_advertised_ceiling_is_not_the_reserve() {
+        let cfg = ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 2,
+        };
+        let limit = derive_limit(&profile, 0, 0.0, None, &cfg);
+        assert_eq!(limit.output, cfg.output_reserve_tokens, "reserve unchanged");
+        assert_eq!(limit.output_ceiling, DEFAULT_OUTPUT_CEILING);
+        assert!(limit.output_ceiling > limit.output);
+    }
+
+    /// A model whose own position limit is below the default ceiling
+    /// cannot generate past it, so the advertisement must not claim it.
+    #[test]
+    fn the_ceiling_never_exceeds_the_models_own_position_limit() {
+        let cfg = ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 16_384,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 1,
+        };
+        let limit = derive_limit(&profile, 0, 0.0, None, &cfg);
+        assert_eq!(limit.output_ceiling, 16_384);
+    }
+
+    /// The operator's number wins, which is what makes the default a
+    /// starting point rather than a guess baked into the binary.
+    #[test]
+    fn a_configured_ceiling_overrides_the_default() {
+        let cfg = ContextLimitConfig {
+            max_output_tokens: Some(65_536),
+            ..ContextLimitConfig::default()
+        };
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 2,
+        };
+        assert_eq!(
+            derive_limit(&profile, 0, 0.0, None, &cfg).output_ceiling,
+            65_536
+        );
+    }
+
+    /// The ceiling is deliberately *not* a function of live VRAM: it is
+    /// read once and cached by clients, so it has to mean the same thing
+    /// tomorrow. The live context still moves — that is what a request
+    /// is judged against — but the contract does not.
+    #[test]
+    fn the_ceiling_holds_still_while_the_context_moves() {
+        let cfg = ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 65_536,
+            world_size: 2,
+        };
+        let roomy = derive_limit(&profile, 60_000, 5_000.0, None, &cfg);
+        // Tight enough that the VRAM term binds — the same shape as the
+        // fleet advertising 109568 one hour and 131072 the next.
+        let tight = derive_limit(&profile, 6_000, 5_000.0, None, &cfg);
+        assert!(
+            tight.context < roomy.context,
+            "the live window should shrink under VRAM pressure"
+        );
+        assert_eq!(
+            tight.output_ceiling, roomy.output_ceiling,
+            "the advertised ceiling must not move with fleet load"
+        );
+    }
 
     /// beast Qwen3.6-27B: 16 full-attn layers, 4 kv heads, head_dim 256,
     /// f16 (2 B), TP=2 → 64 KiB/token total, 32 KiB/token/card.

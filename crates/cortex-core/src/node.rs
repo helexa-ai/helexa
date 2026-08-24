@@ -187,10 +187,20 @@ pub struct CortexModelEntry {
     /// Served max-seq-len in tokens — mirrors `limit.context`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_model_len: Option<usize>,
+    /// The same window under the two names generic OpenAI clients look
+    /// for (#278). pi-ai's provider discovery, for one, reads
+    /// `context_window` then `context_length` and nothing else — so a
+    /// client probing cortex found no window at all and fell back to a
+    /// number its operator had to invent by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_length: Option<usize>,
     /// Usable input budget — mirrors `limit.input` when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_input_tokens: Option<usize>,
-    /// Maximum generation tokens — mirrors `limit.output`.
+    /// The largest output a request may name — mirrors
+    /// `limit.output_ceiling`, falling back to `limit.output` (#278).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_output_tokens: Option<usize>,
 }
@@ -204,8 +214,22 @@ impl CortexModelEntry {
     /// dropped the limit.
     pub fn sync_flat_limit(&mut self) {
         self.max_model_len = self.limit.as_ref().map(|l| l.context);
+        self.context_window = self.limit.as_ref().map(|l| l.context);
+        self.context_length = self.limit.as_ref().map(|l| l.context);
         self.max_input_tokens = self.limit.as_ref().and_then(|l| l.input);
-        self.max_output_tokens = self.limit.as_ref().map(|l| l.output);
+        // The ceiling, not the reserve (#278): this field is what
+        // OpenAI-ecosystem clients read to decide what to ask for, and
+        // pi-ai/DSH turns it straight into a per-request cap. Advertising
+        // the reserve here handed a reasoning model less budget than its
+        // own think block needs. Falls back to the reserve for a neuron
+        // too old to publish a ceiling.
+        self.max_output_tokens = self.limit.as_ref().map(|l| {
+            if l.output_ceiling > 0 {
+                l.output_ceiling
+            } else {
+                l.output
+            }
+        });
     }
 }
 

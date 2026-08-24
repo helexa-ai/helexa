@@ -370,7 +370,7 @@ fn servability_from(
         });
     }
     {
-        match check_vram(0, free_mb, profile, cfg) {
+        match check_vram(0, None, free_mb, profile, cfg) {
             Ok(()) => Some(ModelServability {
                 ok: true,
                 reason: None,
@@ -1791,6 +1791,7 @@ fn check_vram_floor(vram_free_mb: u64) -> Result<(), InferenceError> {
 /// request, matching the fallback `derive_limit` takes.
 pub(crate) fn kv_reservation_mb(
     prompt_len: usize,
+    requested_output: Option<usize>,
     profile: Option<&super::context_limit::ContextProfile>,
     cfg: &crate::config::ContextLimitConfig,
 ) -> u64 {
@@ -1798,7 +1799,13 @@ pub(crate) fn kv_reservation_mb(
     if profile.kv_bytes_per_token_per_card == 0 {
         return 0;
     }
-    let tokens = (prompt_len as u64).saturating_add(cfg.output_reserve_tokens as u64);
+    // Price the budget the request actually declared (#278). This used
+    // to assume the reserve for every request, so a caller asking for
+    // 24k tokens was admitted against an 8k reservation and the KV it
+    // went on to occupy was never accounted for — the gate in #257 can
+    // only be as honest as the number it is given.
+    let output = requested_output.unwrap_or(cfg.output_reserve_tokens);
+    let tokens = (prompt_len as u64).saturating_add(output as u64);
     profile
         .kv_bytes_per_token_per_card
         .saturating_mul(tokens)
@@ -1847,6 +1854,7 @@ fn prefix_cache_reserved_mb(cfg: &crate::config::PrefixCacheConfig) -> u64 {
 /// copies of "can this serve" will always drift; one cannot.
 fn check_vram(
     prompt_len: usize,
+    requested_output: Option<usize>,
     vram_free_mb: u64,
     profile: Option<&super::context_limit::ContextProfile>,
     cfg: &crate::config::ContextLimitConfig,
@@ -1869,7 +1877,8 @@ fn check_vram(
     if let Some(profile) = profile
         && profile.kv_bytes_per_token_per_card > 0
     {
-        let tokens = (prompt_len as u64).saturating_add(cfg.output_reserve_tokens as u64);
+        let tokens = (prompt_len as u64)
+            .saturating_add(requested_output.unwrap_or(cfg.output_reserve_tokens) as u64);
         let kv_mb = profile.kv_bytes_per_token_per_card.saturating_mul(tokens) / (1024 * 1024);
         let required_mb = kv_mb
             .saturating_add(cfg.activation_headroom_mb)
@@ -2881,7 +2890,14 @@ impl CandleHarness {
                 &loaded.generation_defaults,
                 unix_subsec_nanos(),
             );
-            let max_new = request.max_tokens.unwrap_or(8192) as usize;
+            // The output budget the request declared, under either
+            // spelling (#254), and the fallback when it declares none.
+            // One value drives generation, KV pricing and admission — they
+            // disagreed before, and the gate priced a budget nobody asked
+            // for (#278).
+            let requested_output = request.effective_max_tokens().map(|t| t as usize);
+            let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
+            let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
             let eos_id = loaded
                 .tokenizer
@@ -3339,7 +3355,14 @@ impl CandleHarness {
             &loaded.generation_defaults,
             unix_subsec_nanos(),
         );
-        let max_new = request.max_tokens.unwrap_or(8192) as usize;
+        // The output budget the request declared, under either
+        // spelling (#254), and the fallback when it declares none.
+        // One value drives generation, KV pricing and admission — they
+        // disagreed before, and the gate priced a budget nobody asked
+        // for (#278).
+        let requested_output = request.effective_max_tokens().map(|t| t as usize);
+        let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
+        let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
         let eos_id = loaded
             .tokenizer
@@ -3438,6 +3461,7 @@ impl CandleHarness {
                 principal.as_deref(),
                 kv_reservation_mb(
                     prompt_len,
+                    requested_output,
                     loaded.context_profile.as_ref(),
                     &self.context_limit_cfg,
                 ),
@@ -5074,7 +5098,14 @@ impl CandleHarness {
             &tp.generation_defaults,
             unix_subsec_nanos(),
         );
-        let max_new = request.max_tokens.unwrap_or(8192) as usize;
+        // The output budget the request declared, under either
+        // spelling (#254), and the fallback when it declares none.
+        // One value drives generation, KV pricing and admission — they
+        // disagreed before, and the gate priced a budget nobody asked
+        // for (#278).
+        let requested_output = request.effective_max_tokens().map(|t| t as usize);
+        let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
+        let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
         let eos_id = tp
             .tokenizer
@@ -5156,6 +5187,7 @@ impl CandleHarness {
                 principal.as_deref(),
                 kv_reservation_mb(
                     prompt_len,
+                    requested_output,
                     tp.context_profile.as_ref(),
                     &self.context_limit_cfg,
                 ),
@@ -5812,7 +5844,14 @@ async fn chat_completion_tp_inner(
         &tp.generation_defaults,
         unix_subsec_nanos(),
     );
-    let max_new = request.max_tokens.unwrap_or(8192) as usize;
+    // The output budget the request declared, under either
+    // spelling (#254), and the fallback when it declares none.
+    // One value drives generation, KV pricing and admission — they
+    // disagreed before, and the gate priced a budget nobody asked
+    // for (#278).
+    let requested_output = request.effective_max_tokens().map(|t| t as usize);
+    let cfg_output_reserve = context_limit_cfg.output_reserve_tokens;
+    let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
     let eos_id = tp
         .tokenizer
@@ -5851,7 +5890,12 @@ async fn chat_completion_tp_inner(
         .admission
         .enter_with_kv(
             principal.as_deref(),
-            kv_reservation_mb(prompt_len, tp.context_profile.as_ref(), &context_limit_cfg),
+            kv_reservation_mb(
+                prompt_len,
+                requested_output,
+                tp.context_profile.as_ref(),
+                &context_limit_cfg,
+            ),
         )
         .await
         .map_err(InferenceError::from)?;
@@ -8093,7 +8137,7 @@ mod tests {
         // the reserve's KV plus activation headroom plus the floor
         // already exceeds what is free.
         assert!(
-            check_vram(0, free_mb, Some(&profile), &cfg).is_err(),
+            check_vram(0, None, free_mb, Some(&profile), &cfg).is_err(),
             "an empty prompt must still be rejected when the output \
              reserve cannot fit"
         );
@@ -8109,7 +8153,7 @@ mod tests {
             kv_bytes_per_token_per_card: 65_536,
             world_size: 2,
         };
-        assert!(check_vram(0, 60_000, Some(&profile), &cfg).is_ok());
+        assert!(check_vram(0, None, 60_000, Some(&profile), &cfg).is_ok());
     }
 
     /// CPU loads report free VRAM as the `0` sentinel and must not be
@@ -8117,7 +8161,7 @@ mod tests {
     #[test]
     fn the_cpu_sentinel_is_never_a_rejection() {
         let cfg = crate::config::ContextLimitConfig::default();
-        assert!(check_vram(0, 0, None, &cfg).is_ok());
+        assert!(check_vram(0, None, 0, None, &cfg).is_ok());
     }
 
     use super::*;
@@ -8721,7 +8765,7 @@ mod tests {
         let budget = kv_budget_mb(9_286, &cfg, 1_024);
         assert_eq!(budget, 4_714);
 
-        let per_seq = kv_reservation_mb(67_881, Some(&profile), &cfg);
+        let per_seq = kv_reservation_mb(67_881, None, Some(&profile), &cfg);
         // (67_881 + 8_192) * 32_768 / 1 MiB
         assert_eq!(per_seq, 2_377);
 
@@ -8754,13 +8798,33 @@ mod tests {
     #[test]
     fn unpriced_without_profile() {
         let cfg = crate::config::ContextLimitConfig::default();
-        assert_eq!(kv_reservation_mb(50_000, None, &cfg), 0);
+        assert_eq!(kv_reservation_mb(50_000, None, None, &cfg), 0);
+    }
+
+    /// The gate can only be as honest as the number it is given (#278).
+    /// A request declaring a large budget must reserve for it, or it is
+    /// admitted against KV it will go on to occupy unaccounted.
+    #[test]
+    fn the_reservation_follows_the_declared_output_budget() {
+        let cfg = crate::config::ContextLimitConfig::default();
+        let profile = backstop_profile();
+        let default_budget = kv_reservation_mb(1_000, None, Some(&profile), &cfg);
+        let declared_small = kv_reservation_mb(1_000, Some(1_024), Some(&profile), &cfg);
+        let declared_large = kv_reservation_mb(1_000, Some(32_768), Some(&profile), &cfg);
+        assert!(
+            declared_large > default_budget,
+            "a 32k-token request must reserve more than the 8k default"
+        );
+        assert!(
+            declared_small < default_budget,
+            "a request asking for less must not be charged the reserve"
+        );
         let degenerate = super::super::context_limit::ContextProfile {
             max_position_embeddings: 262_144,
             kv_bytes_per_token_per_card: 0,
             world_size: 1,
         };
-        assert_eq!(kv_reservation_mb(50_000, Some(&degenerate), &cfg), 0);
+        assert_eq!(kv_reservation_mb(50_000, None, Some(&degenerate), &cfg), 0);
     }
 
     /// A card with less free VRAM than the fixed reserves yields a zero
@@ -8843,7 +8907,7 @@ mod tests {
         assert_eq!(cap, 87_040);
 
         // (87_040 + 8_192) tokens × 32 KiB / 1 MiB
-        let footprint = kv_reservation_mb(cap, Some(&profile), &cfg);
+        let footprint = kv_reservation_mb(cap, None, Some(&profile), &cfg);
         assert_eq!(footprint, 2_976);
 
         // `validate_request` keeps the cap and the static floor. It no

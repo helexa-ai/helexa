@@ -96,6 +96,7 @@ async fn spawn_gateway(neuron: &str, context: usize) -> String {
                     context,
                     input: None,
                     output: 16,
+                    output_ceiling: 0,
                 }),
                 servable: None,
             },
