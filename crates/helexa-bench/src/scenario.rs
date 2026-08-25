@@ -458,9 +458,38 @@ impl Scenario for ConcurrencyScenario {
             total_s: burst_window,
             prompt_tokens: streams.iter().find_map(|m| m.prompt_tokens),
             completion_tokens: total_tokens,
-            prefill_ms: None,
-            decode_ms: None,
-            prefill_tokens: None,
+            // Median server-side phase timing across the burst. These
+            // were `None`, which left the prefill-tok/s panel blank for
+            // exactly the cells where queue behaviour matters most, and
+            // made `queue_wait_ms` (TTFT minus server prefill, #85)
+            // uncomputable for a burst — the one number that separates
+            // "the server is slow" from "you were queued".
+            //
+            // Median rather than sum: every stream prefills its own copy
+            // of the same prompt, so the representative per-stream cost
+            // is the meaningful figure and it composes with `ttft_s`,
+            // which is also a median.
+            prefill_ms: median(
+                &streams
+                    .iter()
+                    .filter_map(|m| m.prefill_ms.map(|v| v as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .map(|v| v as u64),
+            decode_ms: median(
+                &streams
+                    .iter()
+                    .filter_map(|m| m.decode_ms.map(|v| v as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .map(|v| v as u64),
+            prefill_tokens: median(
+                &streams
+                    .iter()
+                    .filter_map(|m| m.prefill_tokens.map(|v| v as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .map(|v| v as u64),
             // Summed across the burst, like `completion_tokens`: the cell
             // describes the whole burst, so a per-stream figure here
             // would not compose with it.
@@ -853,6 +882,52 @@ async fn stream_and_measure_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A burst must report server-side phase timing, or `queue_wait_ms`
+    /// (TTFT minus server prefill, #85) cannot be computed for the very
+    /// cells it was designed for, and the prefill-tok/s panel stays
+    /// blank under concurrency.
+    #[test]
+    fn a_burst_reports_median_phase_timing_not_none() {
+        let s = |prefill_ms, decode_ms, prefill_tokens| ScenarioMetrics {
+            ttft_s: 0.1,
+            decode_tps: Some(10.0),
+            total_s: 1.0,
+            prompt_tokens: Some(100),
+            completion_tokens: 10,
+            prefill_ms,
+            decode_ms,
+            prefill_tokens,
+            reasoning_tokens: None,
+            cached_tokens: None,
+            tpot_p95_ms: Some(5.0),
+            concurrency: None,
+            ttft_p95_s: None,
+            queue_wait_ms_median: None,
+            rejected: None,
+            artifact: None,
+            image_units: None,
+        };
+        let streams = [
+            s(Some(10), Some(100), Some(512)),
+            s(Some(20), Some(200), Some(512)),
+            s(Some(30), Some(300), Some(512)),
+        ];
+        let med = |f: fn(&ScenarioMetrics) -> Option<u64>| {
+            median(
+                &streams
+                    .iter()
+                    .filter_map(|m| f(m).map(|v| v as f64))
+                    .collect::<Vec<_>>(),
+            )
+            .map(|v| v as u64)
+        };
+        assert_eq!(med(|m| m.prefill_ms), Some(20));
+        assert_eq!(med(|m| m.decode_ms), Some(200));
+        // Every stream prefills the same prompt, so the median is the
+        // prompt size rather than a sum across the burst.
+        assert_eq!(med(|m| m.prefill_tokens), Some(512));
+    }
 
     /// #288/#54: a burst must present one identity *per stream*.
     ///
