@@ -127,7 +127,11 @@ jobs:
           ssh gitea_ci@hanzalova.internal 'bash -s' <<'DEPLOY'
           set -eu
           pkg=cortex
+          # Default to 0 if the sync step somehow produced no output:
+          # `set -u` plus `[ "" -eq 0 ]` would abort the deploy on an
+          # arithmetic error rather than on anything meaningful.
           config_changed="${{ steps.catalogue.outputs.changed }}"
+          config_changed="${config_changed:-0}"
           # `rpm -q` prints "package X is not installed" on STDOUT and exits
           # 1, so `|| echo not-installed` never fires — it captures the
           # message text instead. Test the exit code.
