@@ -27,8 +27,8 @@
 //! propagate without us writing any logic.
 
 use cortex_core::openai::{
-    ChatCompletionChunk, ChunkChoice, CompletionTokensDetails, HelexaTiming, PromptTokensDetails,
-    Usage,
+    ChatCompletionChoice, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChunkChoice,
+    CompletionTokensDetails, HelexaTiming, MessageContent, PromptTokensDetails, Usage,
 };
 use serde_json::json;
 use tokio::sync::mpsc;
@@ -450,9 +450,282 @@ fn usage_chunk(
     }
 }
 
+/// Drain an [`InferenceEvent`] stream into a single non-streaming
+/// [`ChatCompletionResponse`] (#285).
+///
+/// Non-streaming used to be a *separate inference path* that took the
+/// per-model `inference_lock` for the whole request. That made it
+/// invisible to the batch engine (#98), so concurrent non-streaming
+/// callers serialized completely — measured on beast at 1.00x aggregate
+/// throughput across 1/2/4/8 concurrency, against 3.98x for the same
+/// work streamed. `max_in_flight` bought those requests admission and
+/// nothing else.
+///
+/// Expressing non-streaming as "run the stream, buffer the result"
+/// collapses the two paths onto one producer, so batching, prefix-cache
+/// reuse, tool-call extraction, the reasoning governor and server-side
+/// timing all apply identically to both. It also removes a second place
+/// where the same wire object could be assembled differently — the
+/// shape of defect #252 and #272 both were.
+///
+/// Semantics deliberately preserved from the path this replaces:
+/// reasoning text is **dropped** from `content` (it is counted in
+/// `usage.completion_tokens_details.reasoning_tokens` but never
+/// rendered), and `finish_reason` becomes `"tool_calls"` whenever any
+/// tool call was parsed.
+///
+/// Two fields that the old path hardcoded to `None` now populate,
+/// because the events carry them and the struct already had the slots:
+/// `prompt_tokens_details.cached_tokens` and `helexa_timing`.
+///
+/// A stream that ends without a `Finish` is an error, not an empty
+/// reply: that is how a dropped engine slot or a fatal worker fault
+/// presents, and returning a 200 with partial text would hide it.
+pub async fn collect_chat_completion(
+    mut rx: mpsc::Receiver<InferenceEvent>,
+    id: String,
+    created: u64,
+    model_id: String,
+) -> Result<ChatCompletionResponse, String> {
+    let mut content = String::new();
+    let mut tool_calls: Vec<serde_json::Value> = Vec::new();
+    let mut finish: Option<(FinishReason, u32, u32, u32, u32, Option<FinishTiming>)> = None;
+
+    while let Some(event) = rx.recv().await {
+        match event {
+            InferenceEvent::Start => {}
+            InferenceEvent::TextDelta(t) => content.push_str(&t),
+            // Counted, never rendered — see the doc comment.
+            InferenceEvent::ReasoningDelta(_) => {}
+            InferenceEvent::ToolCall {
+                index,
+                id: call_id,
+                name,
+                arguments,
+            } => tool_calls.push(json!({
+                "index": index,
+                "id": call_id,
+                "type": "function",
+                "function": { "name": name, "arguments": arguments },
+            })),
+            InferenceEvent::Finish {
+                reason,
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cached_tokens,
+                timing,
+            } => {
+                finish = Some((
+                    reason,
+                    prompt_tokens,
+                    completion_tokens,
+                    reasoning_tokens,
+                    cached_tokens,
+                    timing,
+                ));
+                break;
+            }
+        }
+    }
+
+    let Some((reason, prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens, timing)) =
+        finish
+    else {
+        return Err(
+            "inference stream ended without a finish event (engine slot dropped?)".to_string(),
+        );
+    };
+
+    // A parsed tool call outranks whatever the sampler stopped on, so a
+    // model that emits a call and then hits EOS still reports
+    // `tool_calls` and the client dispatches instead of rendering.
+    let finish_reason = if tool_calls.is_empty() {
+        reason.as_openai_str().to_string()
+    } else {
+        "tool_calls".to_string()
+    };
+    let message_extra = if tool_calls.is_empty() {
+        serde_json::Value::Object(Default::default())
+    } else {
+        json!({ "tool_calls": tool_calls })
+    };
+
+    Ok(ChatCompletionResponse {
+        id,
+        object: "chat.completion".into(),
+        created,
+        model: model_id,
+        choices: vec![ChatCompletionChoice {
+            index: 0,
+            message: ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Text(content),
+                extra: message_extra,
+            },
+            finish_reason: Some(finish_reason),
+            extra: serde_json::Value::Object(Default::default()),
+        }],
+        usage: Some(Usage {
+            prompt_tokens: prompt_tokens as u64,
+            completion_tokens: completion_tokens as u64,
+            total_tokens: (prompt_tokens + completion_tokens) as u64,
+            completion_tokens_details: (reasoning_tokens > 0).then_some(CompletionTokensDetails {
+                reasoning_tokens: reasoning_tokens as u64,
+            }),
+            prompt_tokens_details: (cached_tokens > 0).then_some(PromptTokensDetails {
+                cached_tokens: cached_tokens as u64,
+            }),
+            helexa_timing: timing.map(|t| HelexaTiming {
+                prefill_ms: t.prefill_ms as u64,
+                decode_ms: t.decode_ms as u64,
+                prefill_tokens: t.prefill_tokens as u64,
+            }),
+        }),
+        extra: serde_json::Value::Object(Default::default()),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Non-streaming collector (#285) ────────────────────────────
+
+    async fn collect_from(events: Vec<InferenceEvent>) -> Result<ChatCompletionResponse, String> {
+        let (tx, rx) = mpsc::channel(64);
+        for e in events {
+            tx.send(e).await.expect("send");
+        }
+        drop(tx);
+        collect_chat_completion(rx, "chatcmpl-test".into(), 1_700_000_000, "m".into()).await
+    }
+
+    fn finish(reason: FinishReason) -> InferenceEvent {
+        InferenceEvent::Finish {
+            reason,
+            prompt_tokens: 10,
+            completion_tokens: 4,
+            reasoning_tokens: 0,
+            cached_tokens: 0,
+            timing: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn collector_concatenates_text_deltas() {
+        let r = collect_from(vec![
+            InferenceEvent::Start,
+            InferenceEvent::TextDelta("hel".into()),
+            InferenceEvent::TextDelta("lo".into()),
+            finish(FinishReason::Stop),
+        ])
+        .await
+        .expect("collected");
+        let c = &r.choices[0];
+        assert!(matches!(&c.message.content, MessageContent::Text(t) if t == "hello"));
+        assert_eq!(c.finish_reason.as_deref(), Some("stop"));
+        assert_eq!(r.object, "chat.completion");
+    }
+
+    /// Reasoning is counted but never rendered — the behaviour of the
+    /// path this replaced. A regression here would leak scratchpad into
+    /// `content` for every non-streaming caller.
+    #[tokio::test]
+    async fn collector_drops_reasoning_text_but_keeps_the_count() {
+        let (tx, rx) = mpsc::channel(64);
+        tx.send(InferenceEvent::ReasoningDelta("secret".into()))
+            .await
+            .expect("send");
+        tx.send(InferenceEvent::TextDelta("answer".into()))
+            .await
+            .expect("send");
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 10,
+            completion_tokens: 9,
+            reasoning_tokens: 5,
+            cached_tokens: 0,
+            timing: None,
+        })
+        .await
+        .expect("send");
+        drop(tx);
+        let r = collect_chat_completion(rx, "id".into(), 1, "m".into())
+            .await
+            .expect("collected");
+        let c = &r.choices[0];
+        assert!(matches!(&c.message.content, MessageContent::Text(t) if t == "answer"));
+        let u = r.usage.expect("usage");
+        assert_eq!(
+            u.completion_tokens_details
+                .expect("details")
+                .reasoning_tokens,
+            5
+        );
+    }
+
+    /// A parsed tool call outranks the sampler's stop reason, matching
+    /// the streaming projector.
+    #[tokio::test]
+    async fn collector_promotes_finish_reason_to_tool_calls() {
+        let r = collect_from(vec![
+            InferenceEvent::ToolCall {
+                index: 0,
+                id: "call_1".into(),
+                name: "read_file".into(),
+                arguments: r#"{"path":"a.txt"}"#.into(),
+            },
+            finish(FinishReason::Stop),
+        ])
+        .await
+        .expect("collected");
+        let c = &r.choices[0];
+        assert_eq!(c.finish_reason.as_deref(), Some("tool_calls"));
+        let calls = c.message.extra.get("tool_calls").expect("tool_calls");
+        assert_eq!(calls[0]["function"]["name"], "read_file");
+        assert_eq!(calls[0]["type"], "function");
+        assert_eq!(calls[0]["id"], "call_1");
+    }
+
+    /// cached_tokens and helexa_timing were hardcoded to `None` on the
+    /// old non-streaming path; the events carried them all along.
+    #[tokio::test]
+    async fn collector_surfaces_cached_tokens_and_timing() {
+        let (tx, rx) = mpsc::channel(8);
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 100,
+            completion_tokens: 5,
+            reasoning_tokens: 0,
+            cached_tokens: 64,
+            timing: Some(FinishTiming {
+                prefill_ms: 12,
+                decode_ms: 34,
+                prefill_tokens: 100,
+            }),
+        })
+        .await
+        .expect("send");
+        drop(tx);
+        let r = collect_chat_completion(rx, "id".into(), 1, "m".into())
+            .await
+            .expect("collected");
+        let u = r.usage.expect("usage");
+        assert_eq!(u.prompt_tokens_details.expect("details").cached_tokens, 64);
+        let t = u.helexa_timing.expect("timing");
+        assert_eq!((t.prefill_ms, t.decode_ms, t.prefill_tokens), (12, 34, 100));
+    }
+
+    /// A dropped engine slot ends the channel with no Finish. Returning
+    /// a 200 with partial text would hide a fatal worker fault.
+    #[tokio::test]
+    async fn collector_errors_when_the_stream_ends_without_finish() {
+        let err = collect_from(vec![InferenceEvent::TextDelta("partial".into())])
+            .await
+            .expect_err("must not succeed");
+        assert!(err.contains("without a finish"), "unexpected: {err}");
+    }
 
     /// Drain the projection's output into a Vec for assertion.
     async fn collect(mut rx: mpsc::Receiver<ChatCompletionChunk>) -> Vec<ChatCompletionChunk> {
