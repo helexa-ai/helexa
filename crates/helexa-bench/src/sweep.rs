@@ -172,6 +172,7 @@ impl Sweeper {
             model_id: model.id.clone(),
             max_tokens: self.cfg.scenarios.max_tokens,
             timeout: self.cfg.bench.request_timeout(),
+            principal_key_id: self.cfg.bench.principal.as_ref().map(|p| p.key_id.clone()),
         };
         let cold = crate::scenario::cold_probe(&ctx).await;
         let swap = SwapTiming { unload_ms, load_ms };
@@ -255,6 +256,7 @@ impl Sweeper {
                     model_id: model.id.clone(),
                     max_tokens: self.cfg.scenarios.max_tokens,
                     timeout: self.cfg.bench.request_timeout(),
+                    principal_key_id: self.cfg.bench.principal.as_ref().map(|p| p.key_id.clone()),
                 };
 
                 // One unmeasured warmup when the cell is empty (matches

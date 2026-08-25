@@ -9,6 +9,7 @@
 use crate::config::ScenarioConfig;
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
+use cortex_core::entitlements::HEADER_KEY_ID;
 use cortex_core::harness::ModelInfo;
 use cortex_core::openai::ChatCompletionChunk;
 use eventsource_stream::Eventsource;
@@ -46,6 +47,17 @@ pub struct RunCtx<'a> {
     pub model_id: String,
     pub max_tokens: u64,
     pub timeout: Duration,
+    /// Base `x-helexa-key-id` bench presents (#288), when configured.
+    ///
+    /// The client already sends this as a default header, so every
+    /// scenario is identified without having to remember. A concurrency
+    /// burst overrides it per stream — see
+    /// [`ConcurrencyScenario`] — because fair-share (#54) bounds one
+    /// principal to `max_per_principal` in-flight-or-queued requests,
+    /// which defaults to 2. Eight streams under one identity would be
+    /// capped at two and the rest rejected, measuring the fair-share cap
+    /// instead of the server.
+    pub principal_key_id: Option<String>,
 }
 
 /// Operator-felt metrics for a single measured request.
@@ -300,7 +312,7 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
 pub async fn cold_probe(ctx: &RunCtx<'_>) -> Result<ScenarioMetrics> {
     let prompt = build_prompt(128);
     let payload = chat_payload(ctx, &prompt);
-    tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload))
+    tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload, None))
         .await
         .map_err(|_| anyhow!("cold probe timed out after {:?}", ctx.timeout))?
 }
@@ -338,7 +350,7 @@ impl Scenario for ChatLatencyScenario {
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
         let prompt = build_prompt(self.approx_prompt_tokens);
         let payload = chat_payload(ctx, &prompt);
-        let fut = stream_and_measure(ctx, &payload);
+        let fut = stream_and_measure(ctx, &payload, None);
         tokio::time::timeout(ctx.timeout, fut)
             .await
             .map_err(|_| anyhow!("request timed out after {:?}", ctx.timeout))?
@@ -392,11 +404,13 @@ impl Scenario for ConcurrencyScenario {
         let burst_start = Instant::now();
         let streaming = self.streaming;
         let payload = &payload;
-        let futs = (0..self.concurrency).map(move |_| async move {
+        let futs = (0..self.concurrency).map(move |i| async move {
+            // Each stream presents its own identity — see
+            // `with_stream_identity`.
             if streaming {
-                tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, payload)).await
+                tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, payload, Some(i))).await
             } else {
-                tokio::time::timeout(ctx.timeout, request_and_measure(ctx, payload)).await
+                tokio::time::timeout(ctx.timeout, request_and_measure(ctx, payload, Some(i))).await
             }
         });
         let results = futures::future::join_all(futs).await;
@@ -481,6 +495,31 @@ fn sum_opt(
     (!vals.is_empty()).then(|| vals.iter().sum())
 }
 
+/// Per-stream identity for a concurrency burst (#288/#54).
+///
+/// Fair-share bounds *one principal* to `max_per_principal`
+/// in-flight-or-queued requests, defaulting to 2. A burst of 8 under a
+/// single identity would therefore have 6 rejected with `PrincipalCap`,
+/// and the scenario would measure the fair-share cap rather than the
+/// server.
+///
+/// Giving each stream its own key is also the more faithful model: a
+/// concurrency-8 burst is meant to stand in for eight simultaneous
+/// *callers*, not one caller issuing eight requests. Fair-share is still
+/// exercised — each identity is subject to it — just not self-inflicted.
+fn with_stream_identity(
+    rb: reqwest::RequestBuilder,
+    ctx: &RunCtx<'_>,
+    stream: Option<u32>,
+) -> reqwest::RequestBuilder {
+    match (ctx.principal_key_id.as_deref(), stream) {
+        (Some(base), Some(i)) => rb.header(HEADER_KEY_ID, format!("{base}-{i}")),
+        // No principal configured, or a single-request scenario: the
+        // client's default headers already carry the base identity.
+        _ => rb,
+    }
+}
+
 /// The non-streaming counterpart to [`chat_payload`] (#285).
 ///
 /// `stream_options` is deliberately absent: usage is part of the body on
@@ -510,11 +549,10 @@ fn nonstreaming_payload(ctx: &RunCtx, prompt: &str) -> serde_json::Value {
 async fn request_and_measure(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
+    stream: Option<u32>,
 ) -> Result<ScenarioMetrics> {
     let start = Instant::now();
-    let resp = ctx
-        .client
-        .post(&ctx.chat_url)
+    let resp = with_stream_identity(ctx.client.post(&ctx.chat_url), ctx, stream)
         .json(payload)
         .send()
         .await
@@ -617,7 +655,7 @@ impl Scenario for CapabilityScenario {
             "stream": true,
             "stream_options": {"include_usage": true},
         });
-        let fut = stream_and_measure_inner(ctx, &payload, true);
+        let fut = stream_and_measure_inner(ctx, &payload, true, None);
         tokio::time::timeout(ctx.timeout, fut)
             .await
             .map_err(|_| anyhow!("capability probe timed out after {:?}", ctx.timeout))?
@@ -660,8 +698,9 @@ fn percentile(values: &[f64], p: f64) -> Option<f64> {
 async fn stream_and_measure(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
+    stream: Option<u32>,
 ) -> Result<ScenarioMetrics> {
-    stream_and_measure_inner(ctx, payload, false).await
+    stream_and_measure_inner(ctx, payload, false, stream).await
 }
 
 /// As [`stream_and_measure`] but accumulates the full visible text when
@@ -671,11 +710,10 @@ async fn stream_and_measure_inner(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
     capture_text: bool,
+    stream_ix: Option<u32>,
 ) -> Result<ScenarioMetrics> {
     let start = Instant::now();
-    let resp = ctx
-        .client
-        .post(&ctx.chat_url)
+    let resp = with_stream_identity(ctx.client.post(&ctx.chat_url), ctx, stream_ix)
         .json(payload)
         .send()
         .await
@@ -815,6 +853,67 @@ async fn stream_and_measure_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #288/#54: a burst must present one identity *per stream*.
+    ///
+    /// Fair-share bounds a single principal to `max_per_principal`
+    /// in-flight-or-queued requests, which defaults to 2. Eight streams
+    /// under one key would have six rejected with `PrincipalCap`, and
+    /// `concurrency:8` would silently measure the fair-share cap instead
+    /// of the server — a worse failure than the anonymity it replaced,
+    /// because it looks like backpressure.
+    #[test]
+    fn a_burst_presents_one_identity_per_stream() {
+        let client = reqwest::Client::new();
+        let ctx = RunCtx {
+            client: &client,
+            chat_url: "http://x/v1/chat/completions".into(),
+            model_id: "m".into(),
+            max_tokens: 16,
+            timeout: Duration::from_secs(1),
+            principal_key_id: Some("fleet-benchmark".into()),
+        };
+        let key_of = |stream: Option<u32>| -> Option<String> {
+            with_stream_identity(client.post(&ctx.chat_url), &ctx, stream)
+                .build()
+                .expect("build")
+                .headers()
+                .get(HEADER_KEY_ID)
+                .map(|v| v.to_str().expect("utf8").to_string())
+        };
+        let keys: Vec<Option<String>> = (0..3).map(|i| key_of(Some(i))).collect();
+        assert_eq!(
+            keys,
+            vec![
+                Some("fleet-benchmark-0".to_string()),
+                Some("fleet-benchmark-1".to_string()),
+                Some("fleet-benchmark-2".to_string()),
+            ]
+        );
+        // Distinct, or the cap bites anyway.
+        let uniq: std::collections::HashSet<_> = keys.iter().collect();
+        assert_eq!(uniq.len(), 3);
+    }
+
+    /// A single-request scenario adds no override: the client's default
+    /// headers already carry the base identity, and a per-request copy
+    /// would be a second place for it to drift.
+    #[test]
+    fn a_single_request_scenario_keeps_the_client_identity() {
+        let client = reqwest::Client::new();
+        let ctx = RunCtx {
+            client: &client,
+            chat_url: "http://x/v1/chat/completions".into(),
+            model_id: "m".into(),
+            max_tokens: 16,
+            timeout: Duration::from_secs(1),
+            principal_key_id: Some("fleet-benchmark".into()),
+        };
+        let req = with_stream_identity(client.post(&ctx.chat_url), &ctx, None)
+            .build()
+            .expect("build");
+        assert!(req.headers().get(HEADER_KEY_ID).is_none());
+    }
 
     #[test]
     fn prompt_grows_with_token_target() {
