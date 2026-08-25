@@ -380,7 +380,23 @@ impl GatedDeltaNet {
             self.head_v_dim,
         )?;
         // Stash the updated recurrent state for the next call.
-        self.state.recurrent_state = Some(new_state.to_dtype(dtype)?);
+        //
+        // The delta rule ran in f32 and `state_init` upcasts back to f32
+        // on entry, so storing at the model dtype is a round trip that
+        // buys only memory (#284). Decode takes it once per token.
+        //
+        // Storing f32 keeps `new_state` as-is, which on the CUDA decode
+        // path is the same buffer the kernel updated in place — so the
+        // stored state aliases it, where the `to_dtype` branch always
+        // allocated afresh. That is sound: the pre-update value is dead
+        // by this point, and prefix snapshots deep-copy
+        // (`snapshot_state`) precisely so they never share storage with
+        // a buffer a later forward will overwrite.
+        self.state.recurrent_state = Some(if gdn_state_f32() {
+            new_state
+        } else {
+            new_state.to_dtype(dtype)?
+        });
 
         // core_attn_out: (B, H, L, D_v) → (B, L, H, D_v) → (B*L*H, D_v).
         let core_attn_out = core_attn_out.transpose(1, 2)?.contiguous()?; // (B, L, H, D_v)
@@ -461,6 +477,33 @@ fn chunked_prefill_enabled() -> bool {
         std::env::var("NEURON_GDN_CHUNKED")
             .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
             .unwrap_or(true)
+    })
+}
+
+/// `NEURON_GDN_STATE_F32=1` keeps the recurrent state in f32 between
+/// forwards instead of storing it at the model's activation dtype (#284).
+///
+/// The delta rule computes in f32 throughout, so storing the result at
+/// BF16 and upcasting it again next call is a pure round-trip loss.
+/// Measured on the chunked path: bit-exact carrying f32 at every chunk
+/// size, against 1.3e-3 relative error after 16 prefill chunks and
+/// **1.0e-2 after 4096 decode steps** — decode round-trips once per
+/// token, across 48 of this arch's 64 layers.
+///
+/// Off by default on purpose. Every #283 measurement was taken against
+/// the bf16 baseline, and flipping this silently would move the ground
+/// underneath the sampling A/B and the decode-rate work (#282, #285)
+/// at the same time. Turn it on deliberately, measure, then decide the
+/// default.
+///
+/// Costs ~2× the recurrent slab: +37.7 MB per GPU per sequence on the
+/// deployed 27B under TP=2, so +302 MB/GPU at `max_in_flight = 8`.
+fn gdn_state_f32() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| {
+        std::env::var("NEURON_GDN_STATE_F32")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
     })
 }
 
@@ -1095,6 +1138,94 @@ mod tests {
         let d_state = max_abs_diff(&state_rec, &state_chk);
         assert!(d_out < 2e-4, "output diverged: {d_out}");
         assert!(d_state < 2e-4, "final state diverged: {d_state}");
+    }
+
+    /// #284: the state carried *between* forwards must not lose
+    /// precision. Every other parity test here is single-call and
+    /// all-f32, so none of them crosses the boundary where
+    /// `GatedDeltaNet::forward` stores the state at the model's
+    /// activation dtype — which is why the defect lived.
+    ///
+    /// Two properties, one test:
+    ///
+    /// 1. carrying f32, an N-chunk run equals a single call **exactly**,
+    ///    so the chunk-boundary math itself is sound (this kills the
+    ///    "chunked prefill corrupts state" hypothesis, #283 H1);
+    /// 2. carrying the model dtype loses a measurable, chunk-count-
+    ///    dependent amount — the defect the `NEURON_GDN_STATE_F32` flag
+    ///    exists to switch off.
+    ///
+    /// Asserting (2) is deliberate: if a future change makes the bf16
+    /// carry lossless this test fails loudly and the flag can go, rather
+    /// than the flag quietly outliving its reason.
+    #[test]
+    fn state_carried_across_chunks_is_exact_in_f32_and_lossy_in_bf16() {
+        let (b, h, dk, dv) = (1, 2, 32, 32);
+        let dev = Device::Cpu;
+        let l = 1024;
+        // Long-memory decay: g near zero keeps the state alive across
+        // every boundary, which is both the realistic regime for
+        // long-context retrieval and the one that accumulates most.
+        let scale = 1.0 / (dk as f64).sqrt();
+        let q = Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap();
+        let q = (l2norm(&q, 1e-6).unwrap() * scale).unwrap();
+        let k = Tensor::randn(0f32, 1.0, (b, h, l, dk), &dev).unwrap();
+        let k = l2norm(&k, 1e-6).unwrap();
+        let v = (Tensor::randn(0f32, 1.0, (b, h, l, dv), &dev).unwrap() * 0.5).unwrap();
+        let g = (Tensor::rand(0f32, 1f32, (b, h, l), &dev).unwrap() * -0.02).unwrap();
+        let beta = Tensor::rand(0.05f32, 0.95f32, (b, h, l), &dev).unwrap();
+        let zeros = || Tensor::zeros((b, h, dk, dv), DType::F32, &dev).unwrap();
+
+        // Ground truth: the whole sequence in one call, f32 throughout.
+        let (out_ref, _) = run_chunk_gated_delta_rule(&q, &k, &v, &g, &beta, zeros()).unwrap();
+
+        // Replay it in `chunk`-sized pieces, carrying the state the way
+        // `forward` does.
+        let replay = |chunk: usize, carry: Option<DType>| {
+            let mut state = zeros();
+            let mut outs = Vec::new();
+            let mut pos = 0;
+            while pos < l {
+                let n = chunk.min(l - pos);
+                let take = |t: &Tensor| t.narrow(2, pos, n).unwrap().contiguous().unwrap();
+                let (o, s) = run_chunk_gated_delta_rule(
+                    &take(&q),
+                    &take(&k),
+                    &take(&v),
+                    &take(&g),
+                    &take(&beta),
+                    state,
+                )
+                .unwrap();
+                state = match carry {
+                    Some(dt) => s.to_dtype(dt).unwrap().to_dtype(DType::F32).unwrap(),
+                    None => s,
+                };
+                outs.push(o);
+                pos += n;
+            }
+            Tensor::cat(&outs, 2).unwrap()
+        };
+
+        for chunk in [128usize, 256, 512] {
+            let exact = max_abs_diff(&out_ref, &replay(chunk, None));
+            assert_eq!(
+                exact, 0.0,
+                "chunk={chunk}: an f32 state carry must reproduce the \
+                 single-call result bit for bit, got {exact:e}"
+            );
+        }
+
+        // And the dtype round trip is what costs us. Compared on the
+        // final chunk, where the accumulated state has done the most work.
+        let tail = |t: &Tensor| t.narrow(2, l - 128, 128).unwrap().contiguous().unwrap();
+        let lossy = max_abs_diff(&tail(&out_ref), &tail(&replay(128, Some(DType::BF16))));
+        assert!(
+            lossy > 1e-5,
+            "storing the state at BF16 between chunks is expected to lose \
+             precision (#284); if this now passes losslessly the flag can \
+             be retired, got {lossy:e}"
+        );
     }
 
     /// Adversarially correlated inputs: near-identical keys with
