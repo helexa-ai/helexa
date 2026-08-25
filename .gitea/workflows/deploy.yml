@@ -37,7 +37,31 @@ env:
     ${{ secrets.RSYNC_SSH_KEY }}
 
 jobs:
+  # Gate the whole rollout on the two config files agreeing about every
+  # model they both describe. models.toml (cortex, cold loads) and
+  # asset/neuron/<host>.toml (resident models) each say how a model is
+  # served — quant, and since #283 the sampling override. When they
+  # disagree the model is served one way cold and another way resident,
+  # which is #252.
+  #
+  # Deliberately a *gate*, not a step inside deploy-cortex: an
+  # inconsistent pair must stop the neuron rollout too, and stopping it
+  # before anything restarts is much cheaper than after (a beast restart
+  # costs ~5-6 min of 27B cold-load).
+  config-check:
+    name: Config consistency
+    runs-on: fedora-43
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch'
+        || github.event.workflow_run.conclusion == 'success'
+      }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 script/check-config-consistency.py
+
   deploy-cortex:
+    needs: [config-check]
     runs-on: fedora-43
     # Two trigger paths: manual dispatch always runs; workflow_run
     # only runs if the upstream `build-prerelease` actually succeeded.
@@ -47,6 +71,7 @@ jobs:
         || github.event.workflow_run.conclusion == 'success'
       }}
     steps:
+      - uses: actions/checkout@v4
       - name: SSH init
         run: |
           mkdir -p ~/.ssh
@@ -65,6 +90,33 @@ jobs:
           echo "inv=$(ssh gitea_ci@hanzalova.internal \
             'systemctl show -P InvocationID cortex.service' || true)" >> "$GITHUB_OUTPUT"
 
+      # The catalogue is tracked (#283) precisely so it can be rolled out
+      # here rather than hand-copied. Sync it *before* the package step,
+      # so the restart that step performs is the one that picks it up —
+      # and report whether it changed, because a catalogue edit with no
+      # new RPM must still restart cortex or the change never takes
+      # effect.
+      #
+      # Compared by digest rather than rsync's own change detection so the
+      # answer is available to the shell that decides on the restart.
+      - name: Sync gateway catalogue (models.toml)
+        id: catalogue
+        run: |
+          local_sum=$(sha256sum models.toml | cut -d' ' -f1)
+          remote_sum=$(ssh gitea_ci@hanzalova.internal \
+            'sha256sum /etc/cortex/models.toml 2>/dev/null | cut -d" " -f1' || true)
+          if [ "${local_sum}" = "${remote_sum}" ]; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "models.toml unchanged (${local_sum})"
+          else
+            rsync --archive --compress \
+              --chown root:root --chmod 0644 \
+              --rsync-path 'sudo rsync' \
+              models.toml gitea_ci@hanzalova.internal:/etc/cortex/models.toml
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+            echo "models.toml updated: ${remote_sum:-<absent>} -> ${local_sum}"
+          fi
+
       # Gating compares `rpm -q` against the packages.json manifest the
       # publish job maintains — NOT unprivileged `dnf check-update`,
       # which proved unreliable as the gitea_ci user (hung on metadata
@@ -75,6 +127,7 @@ jobs:
           ssh gitea_ci@hanzalova.internal 'bash -s' <<'DEPLOY'
           set -eu
           pkg=cortex
+          config_changed="${{ steps.catalogue.outputs.changed }}"
           # `rpm -q` prints "package X is not installed" on STDOUT and exits
           # 1, so `|| echo not-installed` never fires — it captures the
           # message text instead. Test the exit code.
@@ -90,18 +143,31 @@ jobs:
               p = max(cands, key=lambda p: p.get("buildTime", 0))
               print(p["version"] + "-" + p["release"])
           ' "${pkg}" 2>/dev/null || true)
-          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
-            echo "${pkg}-${installed} already current — leaving service untouched"
+          # Skip only when BOTH the package and the catalogue are
+          # unchanged — a models.toml edit (a new sampling override, a
+          # corrected quant) must restart cortex even with no new RPM,
+          # exactly as the neuron drop-in does below.
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ] \
+             && [ "${config_changed}" -eq 0 ]; then
+            echo "${pkg}-${installed} already current; models.toml unchanged — leaving service untouched"
             exit 0
           fi
-          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          pkg_changed=1
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+            pkg_changed=0
+          fi
+          echo "installed=${installed} published=${latest:-unknown} pkg_changed=${pkg_changed} config_changed=${config_changed} — deploying"
           if systemctl is-active --quiet cortex.service; then
             sudo /usr/bin/systemctl stop cortex.service
           fi
-          if rpm -q "${pkg}" >/dev/null 2>&1; then
-            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y cortex
-          else
-            sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
+          # A catalogue-only change still restarts, but must not spend a
+          # dnf metadata refresh proving the package is already current.
+          if [ "${pkg_changed}" -eq 1 ]; then
+            if rpm -q "${pkg}" >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y cortex
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y cortex
+            fi
           fi
           sudo /usr/bin/systemctl daemon-reload
           # enable --now: start the service AND enable it for boot so the
@@ -142,7 +208,7 @@ jobs:
           CAPTURE
 
   deploy-neurons:
-    needs: [deploy-cortex]
+    needs: [config-check, deploy-cortex]
     runs-on: fedora-43
     strategy:
       # One neuron failing must not cancel the others. Cortex is up
@@ -177,6 +243,7 @@ jobs:
             load_timeout: 300
             max_prompt_tokens: 16384
     steps:
+      - uses: actions/checkout@v4
       - name: SSH init
         run: |
           mkdir -p ~/.ssh
@@ -192,6 +259,42 @@ jobs:
           echo "inv=$(ssh gitea_ci@${{ matrix.host }} \
             'systemctl show -P InvocationID neuron.service' || true)" >> "$GITHUB_OUTPUT"
 
+      # asset/neuron/<short>.toml is this host's neuron.toml. It carries
+      # the resident-model specs — including the #283 sampling override,
+      # which is inert until the daemon reloads the model, so a change
+      # here has to restart the neuron the same way the context-cap
+      # drop-in does.
+      #
+      # Synced before the package step so the restart that step performs
+      # is the one that picks it up. Digest-compared rather than trusting
+      # rsync's own change detection, because the restart decision needs
+      # the answer and a needless neuron restart costs ~5-6 min of 27B
+      # cold-load (#1).
+      - name: Sync neuron config (${{ matrix.host }})
+        id: neuronconf
+        run: |
+          short="${{ matrix.host }}"; short="${short%%.*}"
+          src="asset/neuron/${short}.toml"
+          if [ ! -f "${src}" ]; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "no ${src} in the repo — leaving this host's config alone"
+            exit 0
+          fi
+          local_sum=$(sha256sum "${src}" | cut -d' ' -f1)
+          remote_sum=$(ssh gitea_ci@${{ matrix.host }} \
+            'sha256sum /etc/neuron/neuron.toml 2>/dev/null | cut -d" " -f1' || true)
+          if [ "${local_sum}" = "${remote_sum}" ]; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "${src} unchanged (${local_sum})"
+          else
+            rsync --archive --compress \
+              --chown root:root --chmod 0644 \
+              --rsync-path 'sudo rsync' \
+              "${src}" gitea_ci@${{ matrix.host }}:/etc/neuron/neuron.toml
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+            echo "${src} updated: ${remote_sum:-<absent>} -> ${local_sum}"
+          fi
+
       # See deploy-cortex for why gating uses the publish manifest and
       # not unprivileged `dnf check-update`.
       - name: Deploy helexa-neuron-${{ matrix.flavour }} (skips when already current)
@@ -200,6 +303,9 @@ jobs:
           set -eu
           pkg=helexa-neuron-${{ matrix.flavour }}
           max_prompt_tokens="${{ matrix.max_prompt_tokens }}"
+          # A neuron.toml change counts as a config change for the
+          # restart decision below, exactly like the drop-in.
+          neuron_toml_changed="${{ steps.neuronconf.outputs.changed }}"
 
           # ── Desired per-model systemd drop-in ─────────────────────────
           # model.conf carries NEURON_MAX_PROMPT_TOKENS so the context cap
@@ -208,7 +314,7 @@ jobs:
           # deploy-managed value wins over any manual local override of the
           # same variable. See doc/context-limits.md.
           conf=/etc/systemd/system/neuron.service.d/model.conf
-          config_changed=0
+          config_changed=${neuron_toml_changed:-0}
           if [ -n "${max_prompt_tokens}" ]; then
             desired=$(printf '%s\n%s\n%s\n%s' \
               "# Managed by .gitea/workflows/deploy.yml - do not edit by hand." \
@@ -242,13 +348,17 @@ jobs:
           # Skip only when BOTH the package and the drop-in are unchanged —
           # a context-cap change must restart the neuron even with no new RPM.
           if [ "${pkg_changed}" -eq 0 ] && [ "${config_changed}" -eq 0 ]; then
-            echo "${pkg}-${installed} current; NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens:-<unset>} unchanged — leaving service untouched"
+            echo "${pkg}-${installed} current; NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens:-<unset>} and neuron.toml unchanged — leaving service untouched"
             exit 0
           fi
           echo "installed=${installed} published=${latest:-unknown} pkg_changed=${pkg_changed} config_changed=${config_changed} — deploying"
 
           # Write the drop-in (staged in gitea_ci's dir, installed root-owned).
-          if [ "${config_changed}" -eq 1 ]; then
+          # Guarded on max_prompt_tokens as well as config_changed: since
+          # a neuron.toml change also sets config_changed, an entry with
+          # no max_prompt_tokens would otherwise reach this with `desired`
+          # unset.
+          if [ "${config_changed}" -eq 1 ] && [ -n "${max_prompt_tokens}" ]; then
             printf '%s\n' "${desired}" > /var/lib/gitea_ci/model.conf
             sudo /usr/bin/install -o root -g root -m 0644 -D /var/lib/gitea_ci/model.conf "${conf}"
             rm -f /var/lib/gitea_ci/model.conf

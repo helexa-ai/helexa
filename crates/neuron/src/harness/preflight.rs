@@ -401,6 +401,7 @@ mod tests {
             quant: quant.map(String::from),
             tensor_parallel: tp,
             devices: None,
+            sampling: None,
         }
     }
 

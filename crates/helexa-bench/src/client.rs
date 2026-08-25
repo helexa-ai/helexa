@@ -169,6 +169,14 @@ impl TargetClient {
             quant: None,
             tensor_parallel: (info.devices.len() > 1).then_some(info.devices.len() as u32),
             devices: Some(info.devices.clone()),
+            // `GET /models` does not report the operator sampling
+            // override (#283), so a spec reconstructed here cannot carry
+            // it — same limitation as `quant` directly above. Benign
+            // while this is only used to re-load a model the host
+            // already has a `[[default_models]]` entry for, since that
+            // entry supplies the override; it would matter if this were
+            // ever used to load a model the host has no config for.
+            sampling: None,
         })
     }
 

@@ -26,7 +26,50 @@ pub struct HarnessHealth {
     pub uptime_secs: Option<u64>,
 }
 
+/// Operator-set sampling defaults for one model (#283).
+///
+/// A model's `generation_config.json` is the model authors' statement of
+/// intent, and honouring it (#272) is right by default. It is not always
+/// right for the workload the operator serves: `Qwen/Qwen3.8-27B`
+/// publishes `temperature = 1.0`, which measured a 20% structural-defect
+/// rate on ~2k-token code generation against 0/60 at `<= 0.6`
+/// (#283, p = 0.0031).
+///
+/// This is the operator's explicit, visible correction to that default —
+/// deliberately *not* a heuristic that inspects the model and guesses.
+/// A temperature guesser is a footgun; a number in a config file the
+/// operator wrote is not.
+///
+/// Precedence is **request > operator > model > built-in fallback**: the
+/// override replaces what the model published, but a caller that names a
+/// value still wins, because an explicit API parameter that is silently
+/// ignored is a contract break.
+///
+/// Every field is optional and overlays independently — setting
+/// `temperature` alone leaves the model's `top_p`/`top_k` in force.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SamplingOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+}
+
+impl SamplingOverride {
+    /// True when the operator set nothing — an empty `[sampling]` table
+    /// must behave exactly as no table at all.
+    pub fn is_empty(&self) -> bool {
+        self.temperature.is_none() && self.top_p.is_none() && self.top_k.is_none()
+    }
+}
+
 /// Specification for loading a model through a harness.
+///
+/// Doubles as the `[[default_models]]` entry shape in `neuron.toml`, so
+/// a field added here is available to both the load API and the
+/// operator's per-host config without a second type to keep in step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelSpec {
     pub model_id: String,
@@ -34,6 +77,15 @@ pub struct ModelSpec {
     pub quant: Option<String>,
     pub tensor_parallel: Option<u32>,
     pub devices: Option<Vec<u32>>,
+    /// Operator sampling override (#283). Travels with the *model*, not
+    /// the request: neuron is the only place sampling is resolved, so
+    /// the override has to reach it whether the load came from cortex's
+    /// catalogue or from this host's own `[[default_models]]`.
+    ///
+    /// `#[serde(default)]` so a cortex or neuron predating this field
+    /// still round-trips the spec.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<SamplingOverride>,
 }
 
 /// Per-model token budget advertised by the catalogue or neuron.

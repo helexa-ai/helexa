@@ -1,10 +1,29 @@
-//! Sampling parameter resolution (#272).
+//! Sampling parameter resolution (#272, #283).
 //!
-//! Three sources, in priority order:
+//! Four sources, in priority order:
 //!
 //! 1. what the **request** asked for,
-//! 2. what the **model** published in `generation_config.json`,
-//! 3. a built-in fallback.
+//! 2. what the **operator** set for this model (#283),
+//! 3. what the **model** published in `generation_config.json`,
+//! 4. a built-in fallback.
+//!
+//! Tier (2) exists because honouring the model's own file is right by
+//! default and still wrong sometimes: `Qwen/Qwen3.8-27B` publishes
+//! `temperature = 1.0`, which measured a 20% structural-defect rate on
+//! ~2k-token code generation against 0/60 at `<= 0.6` (#283,
+//! p = 0.0031). The operator's correction is explicit and lives in a
+//! config file — never a heuristic that inspects the model and guesses,
+//! which would be a footgun.
+//!
+//! The operator sits *below* the request on purpose. An explicit API
+//! parameter that is silently ignored is a contract break; the observed
+//! failure came from callers that named nothing, so a default-tier
+//! override is sufficient to fix it.
+//!
+//! Mechanically, tier (2) is folded into tier (3) once at load time by
+//! [`ModelGenerationDefaults::with_operator_override`], so the
+//! per-request resolve path stays a two-tier lookup and every call site
+//! gets the override for free — there is no site that can forget it.
 //!
 //! Before this, (2) did not exist and (3) was a hardcoded
 //! `temperature = 0.7` with `top_p = None` — and `None` selects
@@ -98,6 +117,56 @@ impl ModelGenerationDefaults {
             }
         }
     }
+
+    /// Overlay the operator's per-model override (#283) onto what the
+    /// model published, field by field.
+    ///
+    /// Applied **once at load**, not per request, so the override cannot
+    /// be forgotten at one of the resolve sites — the same reasoning
+    /// that made #272 resolve sampling once rather than at eight
+    /// `LogitsProcessor` construction sites.
+    ///
+    /// Each field overlays independently: setting only `temperature`
+    /// leaves the model's `top_p`/`top_k` in force, because an operator
+    /// correcting one number should not silently blank the other two
+    /// back to "no truncation".
+    ///
+    /// Logged at `info` whenever it changes something — an operator
+    /// override that is in force but invisible is how a fleet ends up
+    /// with two configs that disagree and nobody noticing (#252).
+    pub fn with_operator_override(
+        mut self,
+        model_id: &str,
+        operator: Option<&cortex_core::harness::SamplingOverride>,
+    ) -> Self {
+        let Some(op) = operator else {
+            return self;
+        };
+        if op.is_empty() {
+            return self;
+        }
+        let before = self.clone();
+        if let Some(t) = op.temperature {
+            self.temperature = Some(t);
+        }
+        if let Some(p) = op.top_p {
+            self.top_p = Some(p);
+        }
+        if let Some(k) = op.top_k {
+            self.top_k = Some(k);
+        }
+        tracing::info!(
+            model = %model_id,
+            model_temperature = ?before.temperature,
+            model_top_p = ?before.top_p,
+            model_top_k = ?before.top_k,
+            temperature = ?self.temperature,
+            top_p = ?self.top_p,
+            top_k = ?self.top_k,
+            "sampling: operator override applied over the model's published defaults (#283)"
+        );
+        self
+    }
 }
 
 /// What the caller asked for. All optional — absent means "no opinion",
@@ -176,6 +245,7 @@ impl SamplingParams {
 mod tests {
     use super::*;
     use candle_transformers::generation::Sampling;
+    use cortex_core::harness::SamplingOverride;
 
     fn qwen3_defaults() -> ModelGenerationDefaults {
         ModelGenerationDefaults {
@@ -219,6 +289,106 @@ mod tests {
         assert_eq!(p.top_k, Some(5));
         // Untouched fields still fall through to the model.
         assert_eq!(p.top_p, Some(0.95));
+    }
+
+    // ── Operator override (#283) ──────────────────────────────
+
+    fn op(temperature: Option<f64>, top_p: Option<f64>, top_k: Option<usize>) -> SamplingOverride {
+        SamplingOverride {
+            temperature,
+            top_p,
+            top_k,
+        }
+    }
+
+    fn with_op(o: SamplingOverride) -> ModelGenerationDefaults {
+        qwen3_defaults().with_operator_override("Qwen/Qwen3.8-27B", Some(&o))
+    }
+
+    /// The #283 case: the model publishes `temperature = 1.0`, which
+    /// measured a 20% structural-defect rate on code generation. The
+    /// operator sets 0.6 and a silent caller must get 0.6.
+    #[test]
+    fn the_operator_override_replaces_what_the_model_published() {
+        let p = SamplingParams::resolve(
+            &RequestedSampling::default(),
+            &with_op(op(Some(0.6), None, None)),
+            42,
+        );
+        assert_eq!(p.temperature, 0.6);
+    }
+
+    /// Precedence is request > operator > model. An explicit API
+    /// parameter that is silently ignored is a contract break, so a
+    /// caller naming a temperature still wins over the operator.
+    #[test]
+    fn an_explicit_request_still_beats_the_operator() {
+        let requested = RequestedSampling {
+            temperature: Some(0.9),
+            ..Default::default()
+        };
+        let p = SamplingParams::resolve(&requested, &with_op(op(Some(0.6), None, None)), 42);
+        assert_eq!(p.temperature, 0.9);
+    }
+
+    /// Overriding one field must not blank the others back to "no
+    /// truncation" — that was the #271 failure mode, reintroduced by a
+    /// wholesale replace instead of a field-by-field overlay.
+    #[test]
+    fn overriding_temperature_alone_leaves_top_p_and_top_k_intact() {
+        let d = with_op(op(Some(0.6), None, None));
+        assert_eq!(d.temperature, Some(0.6));
+        assert_eq!(d.top_p, Some(0.95), "the model's top_p must survive");
+        assert_eq!(d.top_k, Some(20), "the model's top_k must survive");
+    }
+
+    /// Each field overlays independently.
+    #[test]
+    fn every_field_can_be_overridden_independently() {
+        let d = with_op(op(None, Some(0.8), Some(40)));
+        assert_eq!(d.temperature, Some(1.0), "untouched, so the model's");
+        assert_eq!(d.top_p, Some(0.8));
+        assert_eq!(d.top_k, Some(40));
+    }
+
+    /// No override, and an override that sets nothing, must both be
+    /// indistinguishable from the pre-#283 behaviour.
+    #[test]
+    fn absent_or_empty_override_changes_nothing() {
+        let base = qwen3_defaults();
+        let none = qwen3_defaults().with_operator_override("m", None);
+        let empty =
+            qwen3_defaults().with_operator_override("m", Some(&SamplingOverride::default()));
+        for d in [none, empty] {
+            assert_eq!(d.temperature, base.temperature);
+            assert_eq!(d.top_p, base.top_p);
+            assert_eq!(d.top_k, base.top_k);
+        }
+    }
+
+    /// An operator override on a model that ships no
+    /// `generation_config.json` must still take effect, rather than
+    /// falling through to the built-in 0.7.
+    #[test]
+    fn the_override_applies_even_without_a_generation_config() {
+        let d = ModelGenerationDefaults::default()
+            .with_operator_override("m", Some(&op(Some(0.6), None, None)));
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &d, 42);
+        assert_eq!(p.temperature, 0.6);
+        assert_ne!(p.temperature, FALLBACK_TEMPERATURE);
+    }
+
+    /// `temperature = 0` from an operator must select greedy decoding,
+    /// not be treated as "unset" by an `unwrap_or`-shaped bug.
+    #[test]
+    fn an_operator_temperature_of_zero_is_greedy_not_unset() {
+        let p = SamplingParams::resolve(
+            &RequestedSampling::default(),
+            &with_op(op(Some(0.0), None, None)),
+            42,
+        );
+        assert_eq!(p.temperature, 0.0);
+        assert_eq!(p.to_sampling(), Sampling::ArgMax);
     }
 
     /// A model with no `generation_config.json` must behave exactly as

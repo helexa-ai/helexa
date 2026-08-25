@@ -9,7 +9,6 @@ helexa.ai/.env.local
 .idea/
 .vscode/
 cortex.toml
-models.toml
 doc/plan/*
 /target-cuda/
 .claude/
