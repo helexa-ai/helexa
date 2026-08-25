@@ -648,6 +648,7 @@ jobs:
           CAPTURE
 
   deploy-bench:
+    needs: [config-check]
     runs-on: fedora-43
     if: >-
       ${{
@@ -655,6 +656,7 @@ jobs:
         || github.event.workflow_run.conclusion == 'success'
       }}
     steps:
+      - uses: actions/checkout@v4
       - name: SSH init
         run: |
           mkdir -p ~/.ssh
@@ -670,6 +672,28 @@ jobs:
           echo "inv=$(ssh gitea_ci@bob.hanzalova.internal \
             'systemctl show -P InvocationID helexa-bench.service' || true)" >> "$GITHUB_OUTPUT"
 
+      # Same contract as the gateway and neuron configs: the repo is the
+      # only writer, so a config edit must reach the host and restart the
+      # service even when no new RPM landed.
+      - name: Sync bench config
+        id: benchconf
+        run: |
+          src="asset/helexa-bench/bob.toml"
+          local_sum=$(sha256sum "${src}" | cut -d' ' -f1)
+          remote_sum=$(ssh gitea_ci@bob.hanzalova.internal \
+            'sha256sum /etc/helexa-bench/helexa-bench.toml 2>/dev/null | cut -d" " -f1' || true)
+          if [ "${local_sum}" = "${remote_sum}" ]; then
+            echo "changed=0" >> "$GITHUB_OUTPUT"
+            echo "${src} unchanged (${local_sum})"
+          else
+            rsync --archive --compress \
+              --chown root:root --chmod 0644 \
+              --rsync-path 'sudo rsync' \
+              "${src}" gitea_ci@bob.hanzalova.internal:/etc/helexa-bench/helexa-bench.toml
+            echo "changed=1" >> "$GITHUB_OUTPUT"
+            echo "${src} updated: ${remote_sum:-<absent>} -> ${local_sum}"
+          fi
+
       # See deploy-cortex for why gating uses the publish manifest and
       # not unprivileged `dnf check-update`.
       - name: Deploy helexa-bench (skips when already current)
@@ -677,6 +701,8 @@ jobs:
           ssh gitea_ci@bob.hanzalova.internal 'bash -s' <<'DEPLOY'
           set -eu
           pkg=helexa-bench
+          config_changed="${{ steps.benchconf.outputs.changed }}"
+          config_changed="${config_changed:-0}"
           # `rpm -q` prints "package X is not installed" on STDOUT and exits
           # 1, so `|| echo not-installed` never fires — it captures the
           # message text instead. Test the exit code.
@@ -692,18 +718,25 @@ jobs:
               p = max(cands, key=lambda p: p.get("buildTime", 0))
               print(p["version"] + "-" + p["release"])
           ' "${pkg}" 2>/dev/null || true)
-          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
-            echo "${pkg}-${installed} already current — leaving service untouched"
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ] \
+             && [ "${config_changed}" -eq 0 ]; then
+            echo "${pkg}-${installed} already current; config unchanged — leaving service untouched"
             exit 0
           fi
-          echo "installed=${installed} published=${latest:-unknown} — deploying"
+          pkg_changed=1
+          if [ -n "${latest}" ] && [ "${latest}" = "${installed}" ]; then
+            pkg_changed=0
+          fi
+          echo "installed=${installed} published=${latest:-unknown} pkg_changed=${pkg_changed} config_changed=${config_changed} — deploying"
           if systemctl is-active --quiet helexa-bench.service; then
             sudo /usr/bin/systemctl stop helexa-bench.service
           fi
-          if rpm -q "${pkg}" >/dev/null 2>&1; then
-            sudo /usr/bin/dnf upgrade --refresh --allowerasing -y helexa-bench
-          else
-            sudo /usr/bin/dnf install --refresh --allowerasing -y helexa-bench
+          if [ "${pkg_changed}" -eq 1 ]; then
+            if rpm -q "${pkg}" >/dev/null 2>&1; then
+              sudo /usr/bin/dnf upgrade --refresh --allowerasing -y helexa-bench
+            else
+              sudo /usr/bin/dnf install --refresh --allowerasing -y helexa-bench
+            fi
           fi
           sudo /usr/bin/systemctl daemon-reload
           # enable --now: start the service AND enable it for boot so the

@@ -138,14 +138,28 @@ if ! ssh "${bench_host}" '
     echo "  failed to prepare ${bench_host} for helexa-bench"
 fi
 
-# Push application config to the fleet. The deploy workflow is
-# scoped to package install + service restart; config changes ride
-# along with this script instead, since:
-#   - cortex.toml and models.toml are gitignored (operator-owned, may
-#     include secrets), so CI never sees them
-#   - asset/neuron/<short>.toml is tracked but iterating locally is
-#     faster than pushing a commit and waiting for build-prerelease
-#     to roll over
+# Push the one config CI cannot own.
+#
+# Operator decision 2026-08-25 (#283): the automated deployment path is
+# the ONLY path. `.gitea/workflows/deploy.yml` now ships models.toml to
+# the gateway, asset/neuron/<short>.toml to each neuron, and
+# asset/helexa-bench/<host>.toml to the bench host — digest-compared,
+# restarting the service when the file changes.
+#
+# Those three syncs USED to live here, and that is exactly how the fleet
+# drifted: benjy and quadbrat were still running pre-#197 configs months
+# after the tracked assets had moved on, because deploying them meant
+# remembering to re-run this script. A hand-sync that exists "for local
+# iteration" is a footgun that silently overwrites, or silently fails to
+# overwrite, whatever CI just placed. Do not add one back.
+#
+# What remains is cortex.toml, which carries the inference API keys
+# ([[entitlements.keys]]) and therefore cannot be tracked in git for CI
+# to read. It is the last hand-synced config on the fleet and the last
+# place this drift can still happen; closing it needs the secrets to
+# come from Gitea secrets at deploy time rather than from a working
+# copy.
+#
 # Missing source files are skipped silently — re-run after editing.
 # Optional 4th/5th args set the destination group and mode. Configs that
 # carry secrets (API keys, JWT signing keys, SMTP/DB passwords) must land
@@ -174,23 +188,15 @@ sync_config() {
     fi
 }
 
-echo "==> ${cortex_host}: syncing gateway configs"
-# cortex.toml holds the inference API keys ([[entitlements.keys]]).
+echo "==> ${cortex_host}: syncing gateway secrets config"
+# cortex.toml holds the inference API keys ([[entitlements.keys]]), so it
+# is gitignored and CI cannot see it. The only config still synced by
+# hand — everything else is deploy.yml's.
 sync_config "${cortex_host}" "${repo_path}/cortex.toml" /etc/cortex/cortex.toml cortex 0640
-sync_config "${cortex_host}" "${repo_path}/models.toml" /etc/cortex/models.toml
 
-for neuron_host in "${neuron_hosts[@]}"; do
-    short="${neuron_host%%.*}"
-    echo "==> ${neuron_host}: syncing per-host neuron config"
-    sync_config "${neuron_host}" \
-        "${repo_path}/asset/neuron/${short}.toml" \
-        /etc/neuron/neuron.toml
-done
-
-echo "==> ${bench_host}: syncing bench config"
-sync_config "${bench_host}" \
-    "${repo_path}/asset/helexa-bench/${bench_host%%.*}.toml" \
-    /etc/helexa-bench/helexa-bench.toml
+# models.toml, asset/neuron/<short>.toml and asset/helexa-bench/<host>.toml
+# are deliberately NOT synced here. deploy.yml owns them; see the note
+# above sync_config().
 
 # ── bench UI: public nginx vhost on the gateway (bench.helexa.ai) ──────
 # The built SPA is rsynced to the webroot by deploy.yml; nginx serves it
@@ -600,6 +606,24 @@ if ! ssh "${svc_host}" '
     echo "  failed to prepare ${svc_host}"
 fi
 
+# ── STILL HAND-SYNCED, and tracked as such ────────────────────────────
+# Everything below this line is a config CI does not yet own, which by
+# the 2026-08-25 decision (#283) makes it a footgun still loaded. Two
+# distinct reasons, needing two distinct fixes:
+#
+#   * helexa-router.toml / helexa-upstream.toml / helexa-angels.toml are
+#     gitignored because they carry JWT secrets, SMTP passwords and
+#     database URLs. Same class as cortex.toml: CI cannot read them until
+#     the secrets come from Gitea secrets and the file is rendered at
+#     deploy time.
+#   * asset/searxng/{settings.yml,searxng.container,helexa-searxng.xml}
+#     ARE tracked and could move to deploy.yml today but for one thing:
+#     asset/sudoers.d/gallumbits-host.conf grants gitea_ci no rsync at
+#     all, so the deploy would fail until the grants land on the host.
+#     Grants first, deploy step second — wiring it the other way round
+#     breaks every deploy in between.
+#
+# See the tracking issue; do not close the gap by adding syncs here.
 echo "==> ${svc_host}: syncing service configs"
 sync_config "${svc_host}" "${repo_path}/helexa-router.toml" /etc/helexa-router/helexa-router.toml
 # helexa-upstream.toml holds the session JWT secret, the SMTP submission

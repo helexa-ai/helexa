@@ -6,8 +6,11 @@
 # nothing forced them to agree until `script/check-config-consistency.py`
 # began gating on it. That gap is what #252 was.
 #
-# Deployed to the gateway by `.gitea/workflows/deploy.yml`; also pushed
-# by `script/infra-setup.sh` for local iteration.
+# Deployed to the gateway by `.gitea/workflows/deploy.yml`, which is the
+# ONLY writer (operator decision 2026-08-25). Editing
+# /etc/cortex/models.toml on the host by hand is pointless — the next
+# deploy overwrites it from this file — and dangerous, because until it
+# does, the fleet is running something no commit describes.
 #
 # Fleet shape (sourced from asset/manifest.yml):
 #   beast      = 2x RTX 5090 (32 GB each)  → tp-2 capable

@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────────────
+# MANAGED BY CI — .gitea/workflows/deploy.yml is the only writer.
+#
+# Edits made directly to the deployed copy on the host are reverted by
+# the next deploy, and until then the fleet runs something no commit
+# describes. Change it here, commit, let the pipeline ship it.
+# ─────────────────────────────────────────────────────────────────────
 # neuron.toml for beast.hanzalova.internal
 #
 # 2x RTX 5090 (32 GB each) — TP-2 capable. Pre-warms Qwen3.6-27B with
