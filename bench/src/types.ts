@@ -41,6 +41,17 @@ export interface SeriesPoint {
   ttft_s_median: number | null;
   decode_tps_median: number | null;
   total_s_median: number | null;
+  ttft_p95_s_median: number | null;
+  queue_wait_ms_median: number | null;
+  rejected_median: number | null;
+  prefill_tps_median: number | null;
+  reasoning_tokens_median: number | null;
+  cached_tokens_median: number | null;
+  completion_tokens_median: number | null;
+  tpot_p95_ms_median: number | null;
+  /** Identity the samples were taken under, or null if anonymous.
+   *  Anonymous and identified points are not comparable (#288). */
+  principal: string | null;
   samples: number;
 }
 

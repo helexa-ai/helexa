@@ -9,6 +9,7 @@
 use crate::config::ScenarioConfig;
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
+use cortex_core::entitlements::HEADER_KEY_ID;
 use cortex_core::harness::ModelInfo;
 use cortex_core::openai::ChatCompletionChunk;
 use eventsource_stream::Eventsource;
@@ -46,6 +47,17 @@ pub struct RunCtx<'a> {
     pub model_id: String,
     pub max_tokens: u64,
     pub timeout: Duration,
+    /// Base `x-helexa-key-id` bench presents (#288), when configured.
+    ///
+    /// The client already sends this as a default header, so every
+    /// scenario is identified without having to remember. A concurrency
+    /// burst overrides it per stream — see
+    /// [`ConcurrencyScenario`] — because fair-share (#54) bounds one
+    /// principal to `max_per_principal` in-flight-or-queued requests,
+    /// which defaults to 2. Eight streams under one identity would be
+    /// capped at two and the rest rejected, measuring the fair-share cap
+    /// instead of the server.
+    pub principal_key_id: Option<String>,
 }
 
 /// Operator-felt metrics for a single measured request.
@@ -72,6 +84,34 @@ pub struct ScenarioMetrics {
     pub decode_ms: Option<u64>,
     /// Tokens submitted to prefill — the denominator for prefill tok/s.
     pub prefill_tokens: Option<u64>,
+    /// Tokens spent inside the reasoning span, from
+    /// `usage.completion_tokens_details.reasoning_tokens` (#223). A
+    /// sub-count of `completion_tokens`.
+    ///
+    /// Worth a trend of its own: on a reasoning model this is the
+    /// dominant cost driver and it moves independently of speed. A
+    /// template change, a sampling change (#283) or a reasoning-budget
+    /// change can double what the model thinks before answering while
+    /// every tok/s number stays flat — the bill doubles and no chart
+    /// moves.
+    pub reasoning_tokens: Option<u64>,
+    /// p95 inter-token arrival gap in milliseconds — the tail of the
+    /// stream's smoothness, client-observed.
+    ///
+    /// `decode_tps` is a mean over the whole decode window, so a stream
+    /// that stalls for a second and then catches up is indistinguishable
+    /// from one that never stalled. This is the number a user actually
+    /// feels, and the one a batching stall or a mid-stream rebatch shows
+    /// up in. `None` for non-streaming, which has no inter-token gaps by
+    /// construction, and for streams too short to have a tail.
+    pub tpot_p95_ms: Option<f64>,
+    /// Prompt tokens served from neuron's prefix KV cache (#269), from
+    /// `usage.prompt_tokens_details.cached_tokens`.
+    ///
+    /// The reason prefill timing varies between otherwise identical
+    /// samples. #269 exists because the saving was invisible and every
+    /// client reported a 0% hit rate; bench then threw the number away.
+    pub cached_tokens: Option<u64>,
     // ── Concurrency / agentic-load fields (#89) ──────────────────────────
     // Set only by the concurrency scenario, which fans out N simultaneous
     // streams to characterize the real a0/hermes/opencode workload that
@@ -203,6 +243,9 @@ impl Scenario for ImageLatencyScenario {
                 .as_u64()
                 .map(|d| d + timing["decode_ms"].as_u64().unwrap_or(0)),
             prefill_tokens: None,
+            reasoning_tokens: None,
+            cached_tokens: None,
+            tpot_p95_ms: None,
             concurrency: None,
             ttft_p95_s: None,
             queue_wait_ms_median: None,
@@ -233,6 +276,18 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
             id: format!("concurrency:{n}"),
             concurrency: n,
             approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+            streaming: true,
+        }) as Box<dyn Scenario>);
+    }
+    // Non-streaming bursts (#285). A separate cell id so the two shapes
+    // never average together — they measured 1.00x against 3.98x before
+    // #285, and a combined number would have hidden both.
+    for &n in &cfg.concurrency_nonstreaming_levels {
+        scenarios.push(Box::new(ConcurrencyScenario {
+            id: format!("concurrency:{n}:nostream"),
+            concurrency: n,
+            approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+            streaming: false,
         }) as Box<dyn Scenario>);
     }
     for &side in &cfg.image_sizes {
@@ -257,7 +312,7 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
 pub async fn cold_probe(ctx: &RunCtx<'_>) -> Result<ScenarioMetrics> {
     let prompt = build_prompt(128);
     let payload = chat_payload(ctx, &prompt);
-    tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload))
+    tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload, None))
         .await
         .map_err(|_| anyhow!("cold probe timed out after {:?}", ctx.timeout))?
 }
@@ -295,7 +350,7 @@ impl Scenario for ChatLatencyScenario {
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
         let prompt = build_prompt(self.approx_prompt_tokens);
         let payload = chat_payload(ctx, &prompt);
-        let fut = stream_and_measure(ctx, &payload);
+        let fut = stream_and_measure(ctx, &payload, None);
         tokio::time::timeout(ctx.timeout, fut)
             .await
             .map_err(|_| anyhow!("request timed out after {:?}", ctx.timeout))?
@@ -313,6 +368,16 @@ pub struct ConcurrencyScenario {
     id: String,
     concurrency: u32,
     approx_prompt_tokens: u32,
+    /// Whether the burst streams (#285).
+    ///
+    /// Both shapes matter and they are not interchangeable. Streaming
+    /// multiplexes through the batch engine; non-streaming did not until
+    /// #285, and serialized completely — 1.00x aggregate throughput at
+    /// every concurrency level against 3.98x streamed. A bench that only
+    /// streams cannot see that, which is why it went unmeasured: the
+    /// neuron reports `in_flight: 8`, admission accepts, `/health` looks
+    /// healthy, and throughput is single-stream.
+    streaming: bool,
 }
 
 #[async_trait]
@@ -327,13 +392,26 @@ impl Scenario for ConcurrencyScenario {
 
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
         let prompt = build_prompt(self.approx_prompt_tokens);
-        let payload = chat_payload(ctx, &prompt);
+        let payload = if self.streaming {
+            chat_payload(ctx, &prompt)
+        } else {
+            nonstreaming_payload(ctx, &prompt)
+        };
 
-        // Fire all streams at once; each is independently timed and capped by
-        // the per-request timeout so one hung stream can't stall the burst.
+        // Fire all requests at once; each is independently timed and capped
+        // by the per-request timeout so one hung request can't stall the
+        // burst.
         let burst_start = Instant::now();
-        let futs = (0..self.concurrency).map(|_| async {
-            tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload)).await
+        let streaming = self.streaming;
+        let payload = &payload;
+        let futs = (0..self.concurrency).map(move |i| async move {
+            // Each stream presents its own identity — see
+            // `with_stream_identity`.
+            if streaming {
+                tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, payload, Some(i))).await
+            } else {
+                tokio::time::timeout(ctx.timeout, request_and_measure(ctx, payload, Some(i))).await
+            }
         });
         let results = futures::future::join_all(futs).await;
         let burst_window = burst_start.elapsed().as_secs_f64();
@@ -351,7 +429,7 @@ impl Scenario for ConcurrencyScenario {
         }
         if streams.is_empty() {
             return Err(anyhow!(
-                "all {} concurrent streams failed ({rejected} shed by admission)",
+                "all {} concurrent requests failed ({rejected} shed by admission)",
                 self.concurrency
             ));
         }
@@ -383,6 +461,18 @@ impl Scenario for ConcurrencyScenario {
             prefill_ms: None,
             decode_ms: None,
             prefill_tokens: None,
+            // Summed across the burst, like `completion_tokens`: the cell
+            // describes the whole burst, so a per-stream figure here
+            // would not compose with it.
+            reasoning_tokens: sum_opt(&streams, |m| m.reasoning_tokens),
+            cached_tokens: sum_opt(&streams, |m| m.cached_tokens),
+            // The worst stream in the burst, not a median of medians:
+            // under load the question is how bad it got for somebody,
+            // and averaging tails is how a stall stays invisible.
+            tpot_p95_ms: streams
+                .iter()
+                .filter_map(|m| m.tpot_p95_ms)
+                .max_by(|a, b| a.total_cmp(b)),
             concurrency: Some(self.concurrency),
             ttft_p95_s: percentile(&ttfts, 95.0),
             queue_wait_ms_median: median(&queue_waits),
@@ -391,6 +481,146 @@ impl Scenario for ConcurrencyScenario {
             image_units: None,
         })
     }
+}
+
+/// Sum an optional per-stream count across a burst, `None` when no
+/// stream reported it — so "nobody measured it" stays distinguishable
+/// from "measured as zero", the same distinction #269 exists to
+/// preserve.
+fn sum_opt(
+    streams: &[ScenarioMetrics],
+    f: impl Fn(&ScenarioMetrics) -> Option<u64>,
+) -> Option<u64> {
+    let vals: Vec<u64> = streams.iter().filter_map(f).collect();
+    (!vals.is_empty()).then(|| vals.iter().sum())
+}
+
+/// Per-stream identity for a concurrency burst (#288/#54).
+///
+/// Fair-share bounds *one principal* to `max_per_principal`
+/// in-flight-or-queued requests, defaulting to 2. A burst of 8 under a
+/// single identity would therefore have 6 rejected with `PrincipalCap`,
+/// and the scenario would measure the fair-share cap rather than the
+/// server.
+///
+/// Giving each stream its own key is also the more faithful model: a
+/// concurrency-8 burst is meant to stand in for eight simultaneous
+/// *callers*, not one caller issuing eight requests. Fair-share is still
+/// exercised — each identity is subject to it — just not self-inflicted.
+fn with_stream_identity(
+    rb: reqwest::RequestBuilder,
+    ctx: &RunCtx<'_>,
+    stream: Option<u32>,
+) -> reqwest::RequestBuilder {
+    match (ctx.principal_key_id.as_deref(), stream) {
+        (Some(base), Some(i)) => rb.header(HEADER_KEY_ID, format!("{base}-{i}")),
+        // No principal configured, or a single-request scenario: the
+        // client's default headers already carry the base identity.
+        _ => rb,
+    }
+}
+
+/// The non-streaming counterpart to [`chat_payload`] (#285).
+///
+/// `stream_options` is deliberately absent: usage is part of the body on
+/// this shape, and sending the streaming-only option to a strict server
+/// is a needless compatibility risk.
+fn nonstreaming_payload(ctx: &RunCtx, prompt: &str) -> serde_json::Value {
+    json!({
+        "model": ctx.model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": ctx.max_tokens,
+        "temperature": 0,
+        "stream": false,
+    })
+}
+
+/// Time one non-streaming chat completion (#285).
+///
+/// There is no first-chunk moment on this shape — the whole body arrives
+/// at once — so `ttft_s` is the full request wall-clock rather than a
+/// separate measurement. That is the honest reading: for a non-streaming
+/// caller, time-to-first-token *is* time-to-everything, and it is exactly
+/// what makes the serialization this scenario exists to detect so
+/// expensive.
+///
+/// `decode_tps` is per-request; the burst aggregate is computed by the
+/// caller over the whole window, the same way the streaming path does it.
+async fn request_and_measure(
+    ctx: &RunCtx<'_>,
+    payload: &serde_json::Value,
+    stream: Option<u32>,
+) -> Result<ScenarioMetrics> {
+    let start = Instant::now();
+    let resp = with_stream_identity(ctx.client.post(&ctx.chat_url), ctx, stream)
+        .json(payload)
+        .send()
+        .await
+        .context("sending non-streaming chat request")?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("upstream returned {status}: {}", body.trim()));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .context("non-streaming chat response was not JSON")?;
+    let total_s = start.elapsed().as_secs_f64();
+
+    let usage = v.get("usage");
+    let completion_tokens = usage
+        .and_then(|u| u.get("completion_tokens"))
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let prompt_tokens = usage
+        .and_then(|u| u.get("prompt_tokens"))
+        .and_then(|t| t.as_u64());
+    let reasoning_tokens = usage
+        .and_then(|u| u.get("completion_tokens_details"))
+        .and_then(|d| d.get("reasoning_tokens"))
+        .and_then(|t| t.as_u64());
+    let cached_tokens = usage
+        .and_then(|u| u.get("prompt_tokens_details"))
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|t| t.as_u64());
+    let timing = usage.and_then(|u| u.get("helexa_timing"));
+    let field = |name: &str| timing.and_then(|t| t.get(name)).and_then(|x| x.as_u64());
+    let (prefill_ms, decode_ms, prefill_tokens) = (
+        field("prefill_ms"),
+        field("decode_ms"),
+        field("prefill_tokens"),
+    );
+
+    // Prefer the server's own decode window when it reports one (#85);
+    // it excludes prefill, so it is comparable with the streaming path's
+    // decode-window rate rather than being diluted by it.
+    let decode_tps = match decode_ms {
+        Some(ms) if ms > 200 => Some(completion_tokens as f64 / (ms as f64 / 1000.0)),
+        _ if total_s > 0.2 => Some(completion_tokens as f64 / total_s),
+        _ => None,
+    };
+
+    Ok(ScenarioMetrics {
+        ttft_s: total_s,
+        decode_tps,
+        total_s,
+        prompt_tokens,
+        completion_tokens,
+        prefill_ms,
+        decode_ms,
+        prefill_tokens,
+        reasoning_tokens,
+        cached_tokens,
+        // Non-streaming has no inter-token gaps: the body arrives whole.
+        tpot_p95_ms: None,
+        concurrency: None,
+        ttft_p95_s: None,
+        queue_wait_ms_median: None,
+        rejected: None,
+        artifact: None,
+        image_units: None,
+    })
 }
 
 /// Quality probe (#91): runs a fixed prompt and stores the full generated
@@ -425,7 +655,7 @@ impl Scenario for CapabilityScenario {
             "stream": true,
             "stream_options": {"include_usage": true},
         });
-        let fut = stream_and_measure_inner(ctx, &payload, true);
+        let fut = stream_and_measure_inner(ctx, &payload, true, None);
         tokio::time::timeout(ctx.timeout, fut)
             .await
             .map_err(|_| anyhow!("capability probe timed out after {:?}", ctx.timeout))?
@@ -468,8 +698,9 @@ fn percentile(values: &[f64], p: f64) -> Option<f64> {
 async fn stream_and_measure(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
+    stream: Option<u32>,
 ) -> Result<ScenarioMetrics> {
-    stream_and_measure_inner(ctx, payload, false).await
+    stream_and_measure_inner(ctx, payload, false, stream).await
 }
 
 /// As [`stream_and_measure`] but accumulates the full visible text when
@@ -479,11 +710,10 @@ async fn stream_and_measure_inner(
     ctx: &RunCtx<'_>,
     payload: &serde_json::Value,
     capture_text: bool,
+    stream_ix: Option<u32>,
 ) -> Result<ScenarioMetrics> {
     let start = Instant::now();
-    let resp = ctx
-        .client
-        .post(&ctx.chat_url)
+    let resp = with_stream_identity(ctx.client.post(&ctx.chat_url), ctx, stream_ix)
         .json(payload)
         .send()
         .await
@@ -503,6 +733,10 @@ async fn stream_and_measure_inner(
     let mut prefill_ms: Option<u64> = None;
     let mut decode_ms: Option<u64> = None;
     let mut prefill_tokens: Option<u64> = None;
+    let mut reasoning_tokens: Option<u64> = None;
+    let mut cached_tokens: Option<u64> = None;
+    // Inter-token arrival gaps, for the p95 tail.
+    let mut gaps_ms: Vec<f64> = Vec::new();
     let mut captured = String::new();
 
     while let Some(event) = stream.next().await {
@@ -540,6 +774,11 @@ async fn stream_and_measure_inner(
             if content.is_some() || reasoning.is_some() {
                 if first.is_none() {
                     first = Some(now);
+                } else if let Some(prev) = last {
+                    // Gaps only *between* generated deltas: the wait for
+                    // the first one is TTFT and belongs to prefill, not
+                    // to stream smoothness.
+                    gaps_ms.push(now.duration_since(prev).as_secs_f64() * 1000.0);
                 }
                 last = Some(now);
                 chunk_count += 1;
@@ -551,6 +790,14 @@ async fn stream_and_measure_inner(
         if let Some(usage) = chunk.usage {
             prompt_tokens = Some(usage.prompt_tokens);
             completion_tokens = Some(usage.completion_tokens);
+            reasoning_tokens = usage
+                .completion_tokens_details
+                .as_ref()
+                .map(|d| d.reasoning_tokens);
+            cached_tokens = usage
+                .prompt_tokens_details
+                .as_ref()
+                .map(|d| d.cached_tokens);
             if let Some(t) = usage.helexa_timing {
                 prefill_ms = Some(t.prefill_ms);
                 decode_ms = Some(t.decode_ms);
@@ -589,6 +836,9 @@ async fn stream_and_measure_inner(
         prefill_ms,
         decode_ms,
         prefill_tokens,
+        reasoning_tokens,
+        cached_tokens,
+        tpot_p95_ms: percentile(&gaps_ms, 95.0),
         // Concurrency fields unset on the single-request path; the
         // concurrency scenario builds its own aggregate (#89).
         concurrency: None,
@@ -603,6 +853,67 @@ async fn stream_and_measure_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #288/#54: a burst must present one identity *per stream*.
+    ///
+    /// Fair-share bounds a single principal to `max_per_principal`
+    /// in-flight-or-queued requests, which defaults to 2. Eight streams
+    /// under one key would have six rejected with `PrincipalCap`, and
+    /// `concurrency:8` would silently measure the fair-share cap instead
+    /// of the server — a worse failure than the anonymity it replaced,
+    /// because it looks like backpressure.
+    #[test]
+    fn a_burst_presents_one_identity_per_stream() {
+        let client = reqwest::Client::new();
+        let ctx = RunCtx {
+            client: &client,
+            chat_url: "http://x/v1/chat/completions".into(),
+            model_id: "m".into(),
+            max_tokens: 16,
+            timeout: Duration::from_secs(1),
+            principal_key_id: Some("fleet-benchmark".into()),
+        };
+        let key_of = |stream: Option<u32>| -> Option<String> {
+            with_stream_identity(client.post(&ctx.chat_url), &ctx, stream)
+                .build()
+                .expect("build")
+                .headers()
+                .get(HEADER_KEY_ID)
+                .map(|v| v.to_str().expect("utf8").to_string())
+        };
+        let keys: Vec<Option<String>> = (0..3).map(|i| key_of(Some(i))).collect();
+        assert_eq!(
+            keys,
+            vec![
+                Some("fleet-benchmark-0".to_string()),
+                Some("fleet-benchmark-1".to_string()),
+                Some("fleet-benchmark-2".to_string()),
+            ]
+        );
+        // Distinct, or the cap bites anyway.
+        let uniq: std::collections::HashSet<_> = keys.iter().collect();
+        assert_eq!(uniq.len(), 3);
+    }
+
+    /// A single-request scenario adds no override: the client's default
+    /// headers already carry the base identity, and a per-request copy
+    /// would be a second place for it to drift.
+    #[test]
+    fn a_single_request_scenario_keeps_the_client_identity() {
+        let client = reqwest::Client::new();
+        let ctx = RunCtx {
+            client: &client,
+            chat_url: "http://x/v1/chat/completions".into(),
+            model_id: "m".into(),
+            max_tokens: 16,
+            timeout: Duration::from_secs(1),
+            principal_key_id: Some("fleet-benchmark".into()),
+        };
+        let req = with_stream_identity(client.post(&ctx.chat_url), &ctx, None)
+            .build()
+            .expect("build");
+        assert!(req.headers().get(HEADER_KEY_ID).is_none());
+    }
 
     #[test]
     fn prompt_grows_with_token_target() {
@@ -646,6 +957,7 @@ mod tests {
             prompt_sizes: vec![128],
             max_tokens: 64,
             concurrency_levels: vec![2, 8],
+            concurrency_nonstreaming_levels: vec![8],
             concurrency_prompt_tokens: 512,
             capability_probes: vec![CapabilityProbe {
                 name: "plan".into(),

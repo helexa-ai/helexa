@@ -15,6 +15,10 @@ fn rec(
     ok: bool,
 ) -> RunRecord {
     RunRecord {
+        principal: None,
+        reasoning_tokens: None,
+        cached_tokens: None,
+        tpot_p95_ms: None,
         ts: "2026-06-13T00:00:00Z".into(),
         target_name: host.into(),
         target_kind: "neuron".into(),

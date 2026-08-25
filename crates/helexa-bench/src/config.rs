@@ -67,6 +67,44 @@ pub struct BenchSettings {
     /// SQLite system-of-record path.
     #[serde(default = "default_db_path")]
     pub db_path: String,
+    /// Identity bench presents to a neuron (#288).
+    ///
+    /// Without this bench is *anonymous*, and since #262 anonymous
+    /// callers are served only from capacity left over once identified
+    /// traffic is satisfied — they are capped below `max_in_flight` and
+    /// park at the class gate ahead of every other gate. Measured on
+    /// beast, that moved `concurrency:8` from 168.9 tok/s / 0.53 s
+    /// ttft_p95 to 104.6 / 11.77 s the day #262 landed, and held there.
+    ///
+    /// So an unauthenticated bench does not measure serving capacity; it
+    /// measures the yield policy. Real traffic arrives through cortex
+    /// with a principal and is subject to none of it.
+    ///
+    /// Deliberately not an admission *exemption*: bench should be
+    /// subject to the same rules as any caller, or it measures something
+    /// no user experiences — the same class of error in the other
+    /// direction. Give it a principal and let it queue like everyone
+    /// else.
+    #[serde(default)]
+    pub principal: Option<PrincipalSettings>,
+}
+
+/// The account/key pair bench stamps on inference requests (#288).
+///
+/// These are the headers cortex asserts after a bearer resolves (#49).
+/// Bench talks to neurons **directly** over the WireGuard mesh, so it
+/// stamps them itself — the same trust model the link already relies on,
+/// since a neuron accepts them from cortex on exactly that basis.
+///
+/// Give bench its *own* pair rather than borrowing a real caller's: it
+/// then holds its own fair-share allocation (#54) and cannot starve
+/// interactive traffic, which is the failure #262 was fixing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrincipalSettings {
+    /// Stamped as `x-helexa-account-id`.
+    pub account_id: String,
+    /// Stamped as `x-helexa-key-id`.
+    pub key_id: String,
 }
 
 impl Default for BenchSettings {
@@ -77,6 +115,7 @@ impl Default for BenchSettings {
             iteration_pause_secs: default_iter_pause(),
             request_timeout_secs: default_timeout(),
             db_path: default_db_path(),
+            principal: None,
         }
     }
 }
@@ -110,6 +149,18 @@ pub struct ScenarioConfig {
     /// deliberately, e.g. `concurrency_levels = [2, 4, 8]`.
     #[serde(default)]
     pub concurrency_levels: Vec<u32>,
+    /// Concurrency levels to run **non-streaming** (#285). Separate from
+    /// `concurrency_levels` because the two shapes are not
+    /// interchangeable: streaming multiplexes through the batch engine,
+    /// non-streaming did not until #285 and serialized completely — a
+    /// measured 1.00x aggregate throughput at every level against 3.98x
+    /// streamed.
+    ///
+    /// Defaults to the top level only. The signal is starkest there and
+    /// each extra level costs a full burst per sample per build; an
+    /// operator who wants the whole curve can list it.
+    #[serde(default = "default_concurrency_nonstreaming_levels")]
+    pub concurrency_nonstreaming_levels: Vec<u32>,
     /// Square image sizes (px per side) — one `image:<px>` scenario per
     /// entry (#203), run only against models advertising the `image`
     /// capability. Defaults to `[1024]`.
@@ -148,6 +199,7 @@ impl Default for ScenarioConfig {
             prompt_sizes: default_prompt_sizes(),
             max_tokens: default_max_tokens(),
             concurrency_levels: Vec::new(),
+            concurrency_nonstreaming_levels: Vec::new(),
             concurrency_prompt_tokens: default_concurrency_prompt_tokens(),
             image_sizes: default_image_sizes(),
             capability_probes: Vec::new(),
@@ -215,6 +267,10 @@ fn default_timeout() -> u64 {
 fn default_db_path() -> String {
     "/var/lib/helexa-bench/bench.sqlite".to_string()
 }
+fn default_concurrency_nonstreaming_levels() -> Vec<u32> {
+    vec![8]
+}
+
 fn default_api_enabled() -> bool {
     true
 }
@@ -243,6 +299,44 @@ fn default_capability_max_tokens() -> u64 {
 // figment's, not ours, so suppress the lint here.
 #[allow(clippy::result_large_err)]
 mod tests {
+
+    /// #288: a config with no `[bench.principal]` must still parse — the
+    /// anonymous behaviour is the historical one and correct for
+    /// `openai` targets — but a configured one must round-trip, because
+    /// a silently-dropped principal reverts the measurement to the
+    /// anonymous-yield path without changing a visible number.
+    #[test]
+    fn principal_is_optional_and_round_trips() {
+        let parse = |t: &str| -> BenchConfig {
+            figment::Figment::new()
+                .merge(figment::providers::Toml::string(t))
+                .extract()
+                .expect("parse")
+        };
+        let none = parse("[bench]\nsamples_per_version = 3\n");
+        assert!(none.bench.principal.is_none());
+
+        let some = parse(
+            "[bench]\nsamples_per_version = 3\n\n\
+             [bench.principal]\naccount_id = \"acct\"\nkey_id = \"k1\"\n",
+        );
+        let p = some.bench.principal.expect("principal");
+        assert_eq!((p.account_id.as_str(), p.key_id.as_str()), ("acct", "k1"));
+    }
+
+    /// The non-streaming burst defaults on (#285). If it defaulted off,
+    /// the path that serialized completely would stay unmeasured on every
+    /// fleet that had not opted in — which is how it went unnoticed.
+    #[test]
+    fn nonstreaming_concurrency_defaults_to_the_top_level() {
+        let cfg: BenchConfig = figment::Figment::new()
+            .merge(figment::providers::Toml::string(
+                "[scenarios]\nprompt_sizes = [128]\n",
+            ))
+            .extract()
+            .expect("parse");
+        assert_eq!(cfg.scenarios.concurrency_nonstreaming_levels, vec![8]);
+    }
     use super::*;
     use figment::Jail;
 

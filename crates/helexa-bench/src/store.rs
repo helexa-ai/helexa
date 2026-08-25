@@ -14,6 +14,22 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct RunRecord {
     pub ts: String, // RFC3339
+    /// Identity this sample was taken under (#288), `account/key`, or
+    /// `None` for an anonymous run. Anonymous samples measure the
+    /// admission yield policy rather than serving capacity once #262 is
+    /// in the build, so this is the column that says whether two rows
+    /// are comparable at all.
+    pub principal: Option<String>,
+    /// Tokens spent reasoning (#223) — the dominant cost driver on a
+    /// reasoning model, and one that moves independently of every tok/s
+    /// number on the dashboard.
+    pub reasoning_tokens: Option<u64>,
+    /// Prompt tokens served from the prefix cache (#269) — the reason
+    /// prefill timing varies between otherwise identical samples.
+    pub cached_tokens: Option<u64>,
+    /// p95 inter-token arrival gap (ms) — stream smoothness, which a
+    /// mean tok/s cannot express.
+    pub tpot_p95_ms: Option<f64>,
     // target
     pub target_name: String,
     pub target_kind: String,
@@ -204,6 +220,18 @@ impl Store {
                 ("artifact", "TEXT"),
                 ("quality_score", "REAL"),
                 ("scorer", "TEXT"),
+                // #288: which identity the sample was taken under. Rows
+                // predating this are NULL, which is honest — they were
+                // anonymous, and since #262 that measures a different
+                // thing. Without the column the 2026-08-18 discontinuity
+                // is folklore rather than data.
+                ("principal", "TEXT"),
+                // #223 / #269: both are on the wire and were being discarded.
+                ("reasoning_tokens", "INTEGER"),
+                ("cached_tokens", "INTEGER"),
+                // #285: inter-token tail. `decode_tps` is a mean and hides
+                // a stall that later catches up.
+                ("tpot_p95_ms", "REAL"),
             ],
         )?;
         Ok(())
@@ -264,6 +292,7 @@ impl Store {
                 swap_unload_ms, swap_load_ms,
                 artifact, quality_score, scorer,
                 image_units,
+                principal, reasoning_tokens, cached_tokens, tpot_p95_ms,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -280,7 +309,8 @@ impl Store {
                 ?42, ?43,
                 ?44, ?45, ?46,
                 ?47,
-                ?48, ?49
+                ?48, ?49, ?50, ?51,
+                ?52, ?53
             )",
             params![
                 r.ts,
@@ -330,6 +360,10 @@ impl Store {
                 r.quality_score,
                 r.scorer,
                 r.image_units,
+                r.principal,
+                r.reasoning_tokens,
+                r.cached_tokens,
+                r.tpot_p95_ms,
                 r.ok as i64,
                 r.error,
             ],
@@ -703,7 +737,15 @@ impl Store {
             }
         };
         let mut stmt = self.conn.prepare(
-            "SELECT git_sha, build_timestamp, package_version, ttft_s, decode_tps, total_s, ts
+            "SELECT git_sha, build_timestamp, package_version, ttft_s, decode_tps, total_s,
+                    ttft_p95_s, queue_wait_ms, rejected,
+                    -- Prefill rate derived here rather than stored: the
+                    -- inputs are already recorded and a stored rate
+                    -- would be a third thing to keep consistent.
+                    CASE WHEN prefill_ms > 0 AND prefill_tokens IS NOT NULL
+                         THEN (prefill_tokens * 1000.0) / prefill_ms END AS prefill_tps,
+                    reasoning_tokens, cached_tokens, completion_tokens,
+                    tpot_p95_ms, principal, ts
              FROM runs
              WHERE ok=1 AND target_name=?1 AND model_id=?2 AND scenario_id=?3
              ORDER BY id",
@@ -717,7 +759,16 @@ impl Store {
                     ttft_s: r.get(3)?,
                     decode_tps: r.get(4)?,
                     total_s: r.get(5)?,
-                    ts: r.get(6)?,
+                    ttft_p95_s: r.get(6)?,
+                    queue_wait_ms: r.get(7)?,
+                    rejected: r.get(8)?,
+                    prefill_tps: r.get(9)?,
+                    reasoning_tokens: r.get(10)?,
+                    cached_tokens: r.get(11)?,
+                    completion_tokens: r.get(12)?,
+                    tpot_p95_ms: r.get(13)?,
+                    principal: r.get(14)?,
+                    ts: r.get(15)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;
@@ -838,6 +889,33 @@ pub struct SeriesPoint {
     pub ttft_s_median: Option<f64>,
     pub decode_tps_median: Option<f64>,
     pub total_s_median: Option<f64>,
+    // ── Added because the two above cannot show what changed ──────
+    /// Tail TTFT. The median above stayed flat at ~0.3 s across the
+    /// build where p95 went 0.53 s → 11.77 s (#288); charting only the
+    /// median is why that went unnoticed for a week.
+    pub ttft_p95_s_median: Option<f64>,
+    /// Admission queue wait — separates "the server is slow" from
+    /// "you were queued behind someone".
+    pub queue_wait_ms_median: Option<f64>,
+    /// Requests shed by admission during the burst.
+    pub rejected_median: Option<f64>,
+    /// Prefill throughput, derived from `prefill_tokens / prefill_ms`.
+    /// The other half of serving speed; only decode was ever charted.
+    pub prefill_tps_median: Option<f64>,
+    /// Tokens spent reasoning (#223) — the dominant cost driver on a
+    /// reasoning model, and independent of every speed metric here.
+    pub reasoning_tokens_median: Option<f64>,
+    /// Prompt tokens served from the prefix cache (#269).
+    pub cached_tokens_median: Option<f64>,
+    /// Total generated tokens — catches a model that starts truncating
+    /// or rambling, which no rate metric shows.
+    pub completion_tokens_median: Option<f64>,
+    /// p95 inter-token gap (ms) — stream smoothness.
+    pub tpot_p95_ms_median: Option<f64>,
+    /// Identity the samples were taken under (#288), or `None` if
+    /// anonymous. Anonymous and identified points are **not
+    /// comparable** once #262 is in the build.
+    pub principal: Option<String>,
     pub samples: usize,
 }
 
@@ -848,6 +926,15 @@ struct SeriesRaw {
     ttft_s: Option<f64>,
     decode_tps: Option<f64>,
     total_s: Option<f64>,
+    ttft_p95_s: Option<f64>,
+    queue_wait_ms: Option<f64>,
+    rejected: Option<f64>,
+    prefill_tps: Option<f64>,
+    reasoning_tokens: Option<f64>,
+    cached_tokens: Option<f64>,
+    completion_tokens: Option<f64>,
+    tpot_p95_ms: Option<f64>,
+    principal: Option<String>,
     ts: String,
 }
 
@@ -880,6 +967,19 @@ fn aggregate_series(raws: Vec<SeriesRaw>) -> Vec<SeriesPoint> {
                 ttft_s_median: median(rows.iter().filter_map(|r| r.ttft_s)),
                 decode_tps_median: median(rows.iter().filter_map(|r| r.decode_tps)),
                 total_s_median: median(rows.iter().filter_map(|r| r.total_s)),
+                ttft_p95_s_median: median(rows.iter().filter_map(|r| r.ttft_p95_s)),
+                queue_wait_ms_median: median(rows.iter().filter_map(|r| r.queue_wait_ms)),
+                rejected_median: median(rows.iter().filter_map(|r| r.rejected)),
+                prefill_tps_median: median(rows.iter().filter_map(|r| r.prefill_tps)),
+                reasoning_tokens_median: median(rows.iter().filter_map(|r| r.reasoning_tokens)),
+                cached_tokens_median: median(rows.iter().filter_map(|r| r.cached_tokens)),
+                completion_tokens_median: median(rows.iter().filter_map(|r| r.completion_tokens)),
+                tpot_p95_ms_median: median(rows.iter().filter_map(|r| r.tpot_p95_ms)),
+                // Any row's principal: a build's samples are all taken
+                // under one identity, and a mixture would mean the
+                // config changed mid-build, which the chart should show
+                // as a discontinuity rather than average away.
+                principal: rows.iter().find_map(|r| r.principal.clone()),
                 samples: rows.len(),
             };
             (sort_key, point)
@@ -1281,6 +1381,10 @@ mod tests {
     fn rec(target: &str, sha: &str, model: &str, scenario: &str, ok: bool) -> RunRecord {
         RunRecord {
             ts: "2026-06-13T00:00:00Z".into(),
+            principal: None,
+            reasoning_tokens: None,
+            cached_tokens: None,
+            tpot_p95_ms: None,
             target_name: target.into(),
             target_kind: "neuron".into(),
             endpoint: "http://x:13131".into(),

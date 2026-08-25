@@ -78,7 +78,10 @@ pub struct Sweeper {
 
 impl Sweeper {
     pub fn new(cfg: BenchConfig) -> Result<Self> {
-        let client = TargetClient::new(cfg.bench.request_timeout())?;
+        let client = TargetClient::with_principal(
+            cfg.bench.request_timeout(),
+            cfg.bench.principal.as_ref(),
+        )?;
         let store = Store::open(&cfg.bench.db_path)?;
         Ok(Sweeper { cfg, client, store })
     }
@@ -169,6 +172,7 @@ impl Sweeper {
             model_id: model.id.clone(),
             max_tokens: self.cfg.scenarios.max_tokens,
             timeout: self.cfg.bench.request_timeout(),
+            principal_key_id: self.cfg.bench.principal.as_ref().map(|p| p.key_id.clone()),
         };
         let cold = crate::scenario::cold_probe(&ctx).await;
         let swap = SwapTiming { unload_ms, load_ms };
@@ -252,6 +256,7 @@ impl Sweeper {
                     model_id: model.id.clone(),
                     max_tokens: self.cfg.scenarios.max_tokens,
                     timeout: self.cfg.bench.request_timeout(),
+                    principal_key_id: self.cfg.bench.principal.as_ref().map(|p| p.key_id.clone()),
                 };
 
                 // One unmeasured warmup when the cell is empty (matches
@@ -346,6 +351,15 @@ impl Sweeper {
 
         RunRecord {
             ts: chrono::Utc::now().to_rfc3339(),
+            // #288: stamp the identity this sample was taken under, so a
+            // later reader can tell an anonymous row from an identified
+            // one instead of inferring it from the date.
+            principal: self
+                .cfg
+                .bench
+                .principal
+                .as_ref()
+                .map(|p| format!("{}/{}", p.account_id, p.key_id)),
             target_name: target.name.clone(),
             target_kind: kind_str(target.kind).to_string(),
             endpoint: target.endpoint.clone(),
@@ -383,6 +397,9 @@ impl Sweeper {
             prefill_ms: m.and_then(|m| m.prefill_ms),
             decode_ms: m.and_then(|m| m.decode_ms),
             prefill_tokens: m.and_then(|m| m.prefill_tokens),
+            reasoning_tokens: m.and_then(|x| x.reasoning_tokens),
+            cached_tokens: m.and_then(|x| x.cached_tokens),
+            tpot_p95_ms: m.and_then(|x| x.tpot_p95_ms),
             vram_used_mb: health.map(|h| h.vram_used_mb),
             gpu_util_pct: health.map(|h| h.gpu_util_pct),
             gpu_temp_c: health.map(|h| h.gpu_temp_c),

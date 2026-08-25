@@ -6,6 +6,7 @@ use crate::config::{TargetConfig, TargetKind};
 use anyhow::{Context, Result, anyhow};
 use cortex_core::build_info::BuildInfo;
 use cortex_core::discovery::{DiscoveryResponse, HealthResponse};
+use cortex_core::entitlements::{HEADER_ACCOUNT_ID, HEADER_KEY_ID};
 use cortex_core::harness::{ModelInfo, ModelSpec};
 use cortex_core::openai::ModelsResponse;
 use std::time::Duration;
@@ -19,10 +20,49 @@ pub struct TargetClient {
 
 impl TargetClient {
     pub fn new(request_timeout: Duration) -> Result<Self> {
-        let http = reqwest::Client::builder()
-            .timeout(request_timeout)
-            .build()
-            .context("building HTTP client")?;
+        Self::with_principal(request_timeout, None)
+    }
+
+    /// Build a client that stamps `principal`'s identity headers on every
+    /// request (#288).
+    ///
+    /// Set on the client rather than at each call site so no scenario can
+    /// be added later that silently measures as anonymous — which is the
+    /// failure this fixes, and it was invisible for a week.
+    ///
+    /// `None` keeps the historical anonymous behaviour, which is correct
+    /// for `openai` targets (the headers mean nothing to a foreign
+    /// engine) and for a fresh install with no principal configured.
+    pub fn with_principal(
+        request_timeout: Duration,
+        principal: Option<&crate::config::PrincipalSettings>,
+    ) -> Result<Self> {
+        let mut builder = reqwest::Client::builder().timeout(request_timeout);
+        if let Some(p) = principal {
+            let mut headers = reqwest::header::HeaderMap::new();
+            headers.insert(
+                HEADER_ACCOUNT_ID,
+                reqwest::header::HeaderValue::from_str(&p.account_id)
+                    .context("principal.account_id is not a valid header value")?,
+            );
+            headers.insert(
+                HEADER_KEY_ID,
+                reqwest::header::HeaderValue::from_str(&p.key_id)
+                    .context("principal.key_id is not a valid header value")?,
+            );
+            tracing::info!(
+                account_id = %p.account_id,
+                key_id = %p.key_id,
+                "bench authenticates: measurements reflect identified-caller capacity (#288)"
+            );
+            builder = builder.default_headers(headers);
+        } else {
+            tracing::warn!(
+                "bench has no [bench.principal]: requests are anonymous, so since #262 \
+                 they measure the anonymous-yield policy rather than serving capacity (#288)"
+            );
+        }
+        let http = builder.build().context("building HTTP client")?;
         Ok(TargetClient { http })
     }
 
