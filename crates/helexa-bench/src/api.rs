@@ -34,6 +34,7 @@ pub fn api_routes(state: ApiState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/dimensions", get(dimensions))
+        .route("/api/regimes", get(regimes))
         .route("/api/summary", get(summary))
         .route("/api/scaling", get(scaling))
         .route("/api/concurrency", get(concurrency))
@@ -63,6 +64,14 @@ async fn health(State(s): State<ApiState>) -> Result<Json<serde_json::Value>, Ap
     let store = s.lock().await;
     let count = store.run_count().map_err(err500)?;
     Ok(Json(json!({ "status": "ok", "run_count": count })))
+}
+
+/// Declared measurement-regime boundaries (#288).
+///
+/// Static — no store access — but served from the API rather than
+/// hardcoded in the frontend so `report` and the UI cite one list.
+async fn regimes() -> Json<&'static [crate::regime::MeasurementRegime]> {
+    Json(crate::regime::REGIMES)
 }
 
 async fn dimensions(State(s): State<ApiState>) -> Result<Json<crate::store::Dimensions>, ApiError> {

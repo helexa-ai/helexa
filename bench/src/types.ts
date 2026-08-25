@@ -78,3 +78,13 @@ export interface RunRow {
   ok: boolean;
   error: string | null;
 }
+
+/** A build at which a metric changed meaning rather than value (#288).
+ *  Served from the API so the UI and `report` cite one list. */
+export interface MeasurementRegime {
+  first_sha: string;
+  label: string;
+  detail: string;
+  /** Series keys this affects, as Trends.tsx names them. */
+  affects: string[];
+}

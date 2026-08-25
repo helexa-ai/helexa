@@ -1,4 +1,10 @@
-import type { Dimensions, ReportRow, RunRow, SeriesPoint } from "./types";
+import type {
+  Dimensions,
+  MeasurementRegime,
+  ReportRow,
+  RunRow,
+  SeriesPoint,
+} from "./types";
 
 // Empty default → `fetch('/api/...')` hits the dev proxy (vite.config.ts)
 // or the same origin. For a separately-hosted build, set VITE_API_BASE to
@@ -15,6 +21,7 @@ async function getJson<T>(path: string): Promise<T> {
 
 export const getDimensions = () => getJson<Dimensions>("/api/dimensions");
 export const getSummary = () => getJson<ReportRow[]>("/api/summary");
+export const getRegimes = () => getJson<MeasurementRegime[]>("/api/regimes");
 
 // host is resolved server-side (each model maps to one host today), so the
 // public UI selects by model + scenario alone.
