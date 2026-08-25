@@ -2445,7 +2445,7 @@ mod tests {
     }
 
     #[cfg(not(feature = "cuda"))]
-    fn vb_over(path: &std::path::Path) -> ShardedVarBuilder {
+    fn vb_over(path: &std::path::Path) -> ShardedVarBuilder<'_> {
         // SAFETY: mmap of a file the test just wrote; nothing mutates it.
         unsafe {
             candle_nn::var_builder::ShardedSafeTensors::var_builder(

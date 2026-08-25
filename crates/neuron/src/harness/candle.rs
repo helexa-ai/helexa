@@ -8916,9 +8916,6 @@ mod tests {
         }
     }
 
-    /// A prompt under the cap with ample free VRAM passes; the same
-    /// prompt over the cap is `PromptTooLong` before any VRAM math.
-    #[test]
     /// Regression, observed live 2026-08-15. With the KV gate enabled,
     /// free VRAM is *supposed* to sit near zero while long sequences are
     /// resident — that is admission working, not the node dying. The
@@ -9037,6 +9034,7 @@ mod tests {
     /// queues a request that is still served. Making the cache evict
     /// snapshots to admit a sequence — rather than the two silently
     /// competing — is the natural follow-up.
+    #[test]
     fn kv_budget_prices_a_long_context_session() {
         let cfg = crate::config::ContextLimitConfig::default();
         let profile = super::super::context_limit::ContextProfile {
@@ -9118,6 +9116,9 @@ mod tests {
         assert_eq!(kv_budget_mb(100, &cfg, 1_024), 0);
     }
 
+    /// A prompt under the cap with ample free VRAM passes; the same
+    /// prompt over the cap is `PromptTooLong` before any VRAM math.
+    #[test]
     fn validate_request_cap_and_fit() {
         let cfg = crate::config::ContextLimitConfig::default();
         let profile = backstop_profile();

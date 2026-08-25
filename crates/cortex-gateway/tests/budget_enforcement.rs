@@ -1,9 +1,9 @@
 //! Integration tests for budget enforcement (#52) — the A0 seatbelt.
 //!
 //! A reservation over the key's hard cap is refused *before* neuron is hit,
-//! with the #63 code matching the cap-window semantics (rate_limit_exceeded
-//! + Retry-After for a resetting window, insufficient_quota for a hard
-//! balance). Spend never exceeds the cap. No 402, ever.
+//! with the #63 code matching the cap-window semantics: `rate_limit_exceeded`
+//! plus `Retry-After` for a resetting window, `insufficient_quota` for a hard
+//! balance. Spend never exceeds the cap. No 402, ever.
 
 use axum::Json;
 use axum::extract::Path;

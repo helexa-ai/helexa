@@ -288,7 +288,7 @@ mod tests {
         // Requested output dominates; prompt estimate is small for a tiny body.
         let body = br#"{"model":"m","max_tokens":1000}"#;
         let est = reservation_estimate(body, Some(8192));
-        assert!(est >= 1000 && est < 1100, "est was {est}");
+        assert!((1000..1100).contains(&est), "est was {est}");
     }
 
     #[test]

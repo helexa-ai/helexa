@@ -60,7 +60,9 @@ fn read_f32(path: &Path) -> Vec<f32> {
     let bytes = std::fs::read(path).unwrap_or_else(|e| panic!("read {path:?}: {e}"));
     assert!(bytes.len().is_multiple_of(4), "truncated f32 file {path:?}");
     bytes
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
         .collect()
 }
