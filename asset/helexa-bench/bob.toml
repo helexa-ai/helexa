@@ -15,6 +15,20 @@ iteration_pause_secs = 2
 request_timeout_secs = 600
 db_path = "/var/lib/helexa-bench/bench.sqlite"
 
+# Identity bench presents to neurons (#288). Without it bench is
+# anonymous, and since #262 anonymous callers are served only from
+# leftover capacity — capped below max_in_flight and parked at the class
+# gate. That moved beast's concurrency:8 from 168.9 tok/s / 0.53s
+# ttft_p95 to 104.6 / 11.77s the day #262 landed and held there, so every
+# number since measured the yield policy, not serving capacity.
+#
+# A dedicated pair, not a borrowed one: bench then holds its own
+# fair-share allocation (#54) and cannot starve interactive traffic —
+# the failure #262 existed to fix.
+[bench.principal]
+account_id = "helexa-bench"
+key_id = "fleet-benchmark"
+
 [scenarios]
 prompt_sizes = [128, 4096]
 max_tokens = 256
@@ -22,6 +36,10 @@ max_tokens = 256
 # carries p95-under-concurrency data before the F3 A/B gate (#94) needs
 # it for comparison. Levels mirror the real a0/hermes/opencode fan-out.
 concurrency_levels = [2, 4, 8]
+# Non-streaming bursts (#285/#288). Kept to the top level: it is where
+# serialization shows most starkly and each level costs a full burst per
+# sample per build.
+concurrency_nonstreaming_levels = [8]
 concurrency_prompt_tokens = 512
 
 # Capability probes (#91) — the reasoning/planning axis the speed

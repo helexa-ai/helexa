@@ -72,6 +72,24 @@ pub struct ScenarioMetrics {
     pub decode_ms: Option<u64>,
     /// Tokens submitted to prefill — the denominator for prefill tok/s.
     pub prefill_tokens: Option<u64>,
+    /// Tokens spent inside the reasoning span, from
+    /// `usage.completion_tokens_details.reasoning_tokens` (#223). A
+    /// sub-count of `completion_tokens`.
+    ///
+    /// Worth a trend of its own: on a reasoning model this is the
+    /// dominant cost driver and it moves independently of speed. A
+    /// template change, a sampling change (#283) or a reasoning-budget
+    /// change can double what the model thinks before answering while
+    /// every tok/s number stays flat — the bill doubles and no chart
+    /// moves.
+    pub reasoning_tokens: Option<u64>,
+    /// Prompt tokens served from neuron's prefix KV cache (#269), from
+    /// `usage.prompt_tokens_details.cached_tokens`.
+    ///
+    /// The reason prefill timing varies between otherwise identical
+    /// samples. #269 exists because the saving was invisible and every
+    /// client reported a 0% hit rate; bench then threw the number away.
+    pub cached_tokens: Option<u64>,
     // ── Concurrency / agentic-load fields (#89) ──────────────────────────
     // Set only by the concurrency scenario, which fans out N simultaneous
     // streams to characterize the real a0/hermes/opencode workload that
@@ -203,6 +221,8 @@ impl Scenario for ImageLatencyScenario {
                 .as_u64()
                 .map(|d| d + timing["decode_ms"].as_u64().unwrap_or(0)),
             prefill_tokens: None,
+            reasoning_tokens: None,
+            cached_tokens: None,
             concurrency: None,
             ttft_p95_s: None,
             queue_wait_ms_median: None,
@@ -233,6 +253,18 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
             id: format!("concurrency:{n}"),
             concurrency: n,
             approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+            streaming: true,
+        }) as Box<dyn Scenario>);
+    }
+    // Non-streaming bursts (#285). A separate cell id so the two shapes
+    // never average together — they measured 1.00x against 3.98x before
+    // #285, and a combined number would have hidden both.
+    for &n in &cfg.concurrency_nonstreaming_levels {
+        scenarios.push(Box::new(ConcurrencyScenario {
+            id: format!("concurrency:{n}:nostream"),
+            concurrency: n,
+            approx_prompt_tokens: cfg.concurrency_prompt_tokens,
+            streaming: false,
         }) as Box<dyn Scenario>);
     }
     for &side in &cfg.image_sizes {
@@ -313,6 +345,16 @@ pub struct ConcurrencyScenario {
     id: String,
     concurrency: u32,
     approx_prompt_tokens: u32,
+    /// Whether the burst streams (#285).
+    ///
+    /// Both shapes matter and they are not interchangeable. Streaming
+    /// multiplexes through the batch engine; non-streaming did not until
+    /// #285, and serialized completely — 1.00x aggregate throughput at
+    /// every concurrency level against 3.98x streamed. A bench that only
+    /// streams cannot see that, which is why it went unmeasured: the
+    /// neuron reports `in_flight: 8`, admission accepts, `/health` looks
+    /// healthy, and throughput is single-stream.
+    streaming: bool,
 }
 
 #[async_trait]
@@ -327,13 +369,24 @@ impl Scenario for ConcurrencyScenario {
 
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
         let prompt = build_prompt(self.approx_prompt_tokens);
-        let payload = chat_payload(ctx, &prompt);
+        let payload = if self.streaming {
+            chat_payload(ctx, &prompt)
+        } else {
+            nonstreaming_payload(ctx, &prompt)
+        };
 
-        // Fire all streams at once; each is independently timed and capped by
-        // the per-request timeout so one hung stream can't stall the burst.
+        // Fire all requests at once; each is independently timed and capped
+        // by the per-request timeout so one hung request can't stall the
+        // burst.
         let burst_start = Instant::now();
-        let futs = (0..self.concurrency).map(|_| async {
-            tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, &payload)).await
+        let streaming = self.streaming;
+        let payload = &payload;
+        let futs = (0..self.concurrency).map(move |_| async move {
+            if streaming {
+                tokio::time::timeout(ctx.timeout, stream_and_measure(ctx, payload)).await
+            } else {
+                tokio::time::timeout(ctx.timeout, request_and_measure(ctx, payload)).await
+            }
         });
         let results = futures::future::join_all(futs).await;
         let burst_window = burst_start.elapsed().as_secs_f64();
@@ -351,7 +404,7 @@ impl Scenario for ConcurrencyScenario {
         }
         if streams.is_empty() {
             return Err(anyhow!(
-                "all {} concurrent streams failed ({rejected} shed by admission)",
+                "all {} concurrent requests failed ({rejected} shed by admission)",
                 self.concurrency
             ));
         }
@@ -383,6 +436,11 @@ impl Scenario for ConcurrencyScenario {
             prefill_ms: None,
             decode_ms: None,
             prefill_tokens: None,
+            // Summed across the burst, like `completion_tokens`: the cell
+            // describes the whole burst, so a per-stream figure here
+            // would not compose with it.
+            reasoning_tokens: sum_opt(&streams, |m| m.reasoning_tokens),
+            cached_tokens: sum_opt(&streams, |m| m.cached_tokens),
             concurrency: Some(self.concurrency),
             ttft_p95_s: percentile(&ttfts, 95.0),
             queue_wait_ms_median: median(&queue_waits),
@@ -391,6 +449,120 @@ impl Scenario for ConcurrencyScenario {
             image_units: None,
         })
     }
+}
+
+/// Sum an optional per-stream count across a burst, `None` when no
+/// stream reported it — so "nobody measured it" stays distinguishable
+/// from "measured as zero", the same distinction #269 exists to
+/// preserve.
+fn sum_opt(
+    streams: &[ScenarioMetrics],
+    f: impl Fn(&ScenarioMetrics) -> Option<u64>,
+) -> Option<u64> {
+    let vals: Vec<u64> = streams.iter().filter_map(f).collect();
+    (!vals.is_empty()).then(|| vals.iter().sum())
+}
+
+/// The non-streaming counterpart to [`chat_payload`] (#285).
+///
+/// `stream_options` is deliberately absent: usage is part of the body on
+/// this shape, and sending the streaming-only option to a strict server
+/// is a needless compatibility risk.
+fn nonstreaming_payload(ctx: &RunCtx, prompt: &str) -> serde_json::Value {
+    json!({
+        "model": ctx.model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": ctx.max_tokens,
+        "temperature": 0,
+        "stream": false,
+    })
+}
+
+/// Time one non-streaming chat completion (#285).
+///
+/// There is no first-chunk moment on this shape — the whole body arrives
+/// at once — so `ttft_s` is the full request wall-clock rather than a
+/// separate measurement. That is the honest reading: for a non-streaming
+/// caller, time-to-first-token *is* time-to-everything, and it is exactly
+/// what makes the serialization this scenario exists to detect so
+/// expensive.
+///
+/// `decode_tps` is per-request; the burst aggregate is computed by the
+/// caller over the whole window, the same way the streaming path does it.
+async fn request_and_measure(
+    ctx: &RunCtx<'_>,
+    payload: &serde_json::Value,
+) -> Result<ScenarioMetrics> {
+    let start = Instant::now();
+    let resp = ctx
+        .client
+        .post(&ctx.chat_url)
+        .json(payload)
+        .send()
+        .await
+        .context("sending non-streaming chat request")?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("upstream returned {status}: {}", body.trim()));
+    }
+    let v: serde_json::Value = resp
+        .json()
+        .await
+        .context("non-streaming chat response was not JSON")?;
+    let total_s = start.elapsed().as_secs_f64();
+
+    let usage = v.get("usage");
+    let completion_tokens = usage
+        .and_then(|u| u.get("completion_tokens"))
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let prompt_tokens = usage
+        .and_then(|u| u.get("prompt_tokens"))
+        .and_then(|t| t.as_u64());
+    let reasoning_tokens = usage
+        .and_then(|u| u.get("completion_tokens_details"))
+        .and_then(|d| d.get("reasoning_tokens"))
+        .and_then(|t| t.as_u64());
+    let cached_tokens = usage
+        .and_then(|u| u.get("prompt_tokens_details"))
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|t| t.as_u64());
+    let timing = usage.and_then(|u| u.get("helexa_timing"));
+    let field = |name: &str| timing.and_then(|t| t.get(name)).and_then(|x| x.as_u64());
+    let (prefill_ms, decode_ms, prefill_tokens) = (
+        field("prefill_ms"),
+        field("decode_ms"),
+        field("prefill_tokens"),
+    );
+
+    // Prefer the server's own decode window when it reports one (#85);
+    // it excludes prefill, so it is comparable with the streaming path's
+    // decode-window rate rather than being diluted by it.
+    let decode_tps = match decode_ms {
+        Some(ms) if ms > 200 => Some(completion_tokens as f64 / (ms as f64 / 1000.0)),
+        _ if total_s > 0.2 => Some(completion_tokens as f64 / total_s),
+        _ => None,
+    };
+
+    Ok(ScenarioMetrics {
+        ttft_s: total_s,
+        decode_tps,
+        total_s,
+        prompt_tokens,
+        completion_tokens,
+        prefill_ms,
+        decode_ms,
+        prefill_tokens,
+        reasoning_tokens,
+        cached_tokens,
+        concurrency: None,
+        ttft_p95_s: None,
+        queue_wait_ms_median: None,
+        rejected: None,
+        artifact: None,
+        image_units: None,
+    })
 }
 
 /// Quality probe (#91): runs a fixed prompt and stores the full generated
@@ -503,6 +675,8 @@ async fn stream_and_measure_inner(
     let mut prefill_ms: Option<u64> = None;
     let mut decode_ms: Option<u64> = None;
     let mut prefill_tokens: Option<u64> = None;
+    let mut reasoning_tokens: Option<u64> = None;
+    let mut cached_tokens: Option<u64> = None;
     let mut captured = String::new();
 
     while let Some(event) = stream.next().await {
@@ -551,6 +725,14 @@ async fn stream_and_measure_inner(
         if let Some(usage) = chunk.usage {
             prompt_tokens = Some(usage.prompt_tokens);
             completion_tokens = Some(usage.completion_tokens);
+            reasoning_tokens = usage
+                .completion_tokens_details
+                .as_ref()
+                .map(|d| d.reasoning_tokens);
+            cached_tokens = usage
+                .prompt_tokens_details
+                .as_ref()
+                .map(|d| d.cached_tokens);
             if let Some(t) = usage.helexa_timing {
                 prefill_ms = Some(t.prefill_ms);
                 decode_ms = Some(t.decode_ms);
@@ -589,6 +771,8 @@ async fn stream_and_measure_inner(
         prefill_ms,
         decode_ms,
         prefill_tokens,
+        reasoning_tokens,
+        cached_tokens,
         // Concurrency fields unset on the single-request path; the
         // concurrency scenario builds its own aggregate (#89).
         concurrency: None,
@@ -646,6 +830,7 @@ mod tests {
             prompt_sizes: vec![128],
             max_tokens: 64,
             concurrency_levels: vec![2, 8],
+            concurrency_nonstreaming_levels: vec![8],
             concurrency_prompt_tokens: 512,
             capability_probes: vec![CapabilityProbe {
                 name: "plan".into(),

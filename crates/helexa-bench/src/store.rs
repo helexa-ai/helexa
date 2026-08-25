@@ -14,6 +14,19 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct RunRecord {
     pub ts: String, // RFC3339
+    /// Identity this sample was taken under (#288), `account/key`, or
+    /// `None` for an anonymous run. Anonymous samples measure the
+    /// admission yield policy rather than serving capacity once #262 is
+    /// in the build, so this is the column that says whether two rows
+    /// are comparable at all.
+    pub principal: Option<String>,
+    /// Tokens spent reasoning (#223) — the dominant cost driver on a
+    /// reasoning model, and one that moves independently of every tok/s
+    /// number on the dashboard.
+    pub reasoning_tokens: Option<u64>,
+    /// Prompt tokens served from the prefix cache (#269) — the reason
+    /// prefill timing varies between otherwise identical samples.
+    pub cached_tokens: Option<u64>,
     // target
     pub target_name: String,
     pub target_kind: String,
@@ -204,6 +217,15 @@ impl Store {
                 ("artifact", "TEXT"),
                 ("quality_score", "REAL"),
                 ("scorer", "TEXT"),
+                // #288: which identity the sample was taken under. Rows
+                // predating this are NULL, which is honest — they were
+                // anonymous, and since #262 that measures a different
+                // thing. Without the column the 2026-08-18 discontinuity
+                // is folklore rather than data.
+                ("principal", "TEXT"),
+                // #223 / #269: both are on the wire and were being discarded.
+                ("reasoning_tokens", "INTEGER"),
+                ("cached_tokens", "INTEGER"),
             ],
         )?;
         Ok(())
@@ -264,6 +286,7 @@ impl Store {
                 swap_unload_ms, swap_load_ms,
                 artifact, quality_score, scorer,
                 image_units,
+                principal, reasoning_tokens, cached_tokens,
                 ok, error
             ) VALUES (
                 ?1, ?2, ?3, ?4,
@@ -280,7 +303,8 @@ impl Store {
                 ?42, ?43,
                 ?44, ?45, ?46,
                 ?47,
-                ?48, ?49
+                ?48, ?49, ?50,
+                ?51, ?52
             )",
             params![
                 r.ts,
@@ -330,6 +354,9 @@ impl Store {
                 r.quality_score,
                 r.scorer,
                 r.image_units,
+                r.principal,
+                r.reasoning_tokens,
+                r.cached_tokens,
                 r.ok as i64,
                 r.error,
             ],
@@ -1281,6 +1308,9 @@ mod tests {
     fn rec(target: &str, sha: &str, model: &str, scenario: &str, ok: bool) -> RunRecord {
         RunRecord {
             ts: "2026-06-13T00:00:00Z".into(),
+            principal: None,
+            reasoning_tokens: None,
+            cached_tokens: None,
             target_name: target.into(),
             target_kind: "neuron".into(),
             endpoint: "http://x:13131".into(),

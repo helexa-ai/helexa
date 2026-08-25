@@ -80,6 +80,7 @@ async fn spawn_mock(sha: &str) -> (String, Arc<Mutex<String>>) {
 fn config_for(endpoint: String, db_path: String) -> BenchConfig {
     BenchConfig {
         bench: BenchSettings {
+            principal: None,
             sweep_interval_secs: 1,
             samples_per_version: 2,
             iteration_pause_secs: 0,
@@ -91,6 +92,7 @@ fn config_for(endpoint: String, db_path: String) -> BenchConfig {
             prompt_sizes: vec![128], // single scenario keeps assertions simple
             max_tokens: 16,
             concurrency_levels: Vec::new(),
+            concurrency_nonstreaming_levels: vec![],
             concurrency_prompt_tokens: 512,
             capability_probes: Vec::new(),
         },
