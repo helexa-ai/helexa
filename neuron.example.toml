@@ -110,6 +110,33 @@ name = "candle"
 # harness = "candle"
 # quant = "Q4_K_M"
 # devices = [0]
+#
+# Operator sampling override (#283) — optional, per model.
+#
+# By default neuron honours what the model published in its
+# `generation_config.json`; that is the model authors' stated intent and
+# is right most of the time. It is not always right for the workload you
+# serve: Qwen3.8-27B publishes `temperature = 1.0`, which measured a 20%
+# structural-defect rate on ~2k-token code generation against 0/60 at
+# <= 0.6 (Fisher exact one-sided p = 0.0031).
+#
+# Precedence is request > operator > model > built-in fallback, so a
+# caller that names a temperature still gets what it asked for; this only
+# changes what a caller who names nothing receives. Each field overlays
+# independently — setting `temperature` alone leaves the model's `top_p`
+# and `top_k` in force.
+#
+# Deliberately explicit. neuron will never inspect a model and guess a
+# "better" temperature: a guesser is a footgun, a number you wrote is not.
+#
+# If cortex can also cold-load this model, the same values must appear in
+# its `models.toml` entry — `script/check-config-consistency.py` gates on
+# that, because two files describing one model is how #252 happened.
+#
+# [default_models.sampling]
+# temperature = 0.6
+# top_p = 0.95
+# top_k = 20
 
 # Text-to-image serving (#198). Applies to diffusers-format image
 # models (Z-Image family). All fields optional.

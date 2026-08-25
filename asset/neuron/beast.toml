@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────────────
+# MANAGED BY CI — .gitea/workflows/deploy.yml is the only writer.
+#
+# Edits made directly to the deployed copy on the host are reverted by
+# the next deploy, and until then the fleet runs something no commit
+# describes. Change it here, commit, let the pipeline ship it.
+# ─────────────────────────────────────────────────────────────────────
 # neuron.toml for beast.hanzalova.internal
 #
 # 2x RTX 5090 (32 GB each) — TP-2 capable. Pre-warms Qwen3.6-27B with
@@ -35,3 +42,16 @@ harness = "candle"
 quant = "q6k"
 tensor_parallel = 2
 devices = [0, 1]
+
+# Sampling override (#283) — MUST match the `[models.sampling]` block on
+# this model in models.toml. Two files describe one model; only
+# script/check-config-consistency.py forces them to agree, and #252 is
+# what happens when nothing does.
+#
+# The model's own generation_config.json says temperature = 1.0, which
+# measured a 20% structural-defect rate on ~2k-token code generation
+# against 0/60 at <= 0.6 (Fisher exact one-sided p = 0.0031). Precedence
+# is request > operator > model, so a caller naming a temperature still
+# gets what it asked for.
+[default_models.sampling]
+temperature = 0.6

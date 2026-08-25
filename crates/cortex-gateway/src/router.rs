@@ -535,6 +535,10 @@ async fn profile_to_spec(
         quant: profile.quant.clone(),
         tensor_parallel,
         devices: Some(devices),
+        // The catalogue's operator override rides along with the load
+        // (#283), so a cold-loaded model samples the same way as one
+        // this host was configured to hold resident.
+        sampling: profile.sampling.clone(),
     }
 }
 
@@ -642,6 +646,7 @@ mod tests {
             pinned_on: vec![],
             residency_priority: None,
             source: source.map(String::from),
+            sampling: None,
             limit: None,
             cost: None,
             capabilities: vec![],

@@ -53,6 +53,7 @@ async fn test_candle_qwen3_load_unload_lifecycle() {
         quant: Some(quant),
         tensor_parallel: None,
         devices: Some(vec![0]),
+        sampling: None,
     };
 
     registry

@@ -1,7 +1,7 @@
 //! Model catalogue — profiles describing how to serve each model.
 
 use crate::discovery::DeviceInfo;
-use crate::harness::{ModelCost, ModelLimit};
+use crate::harness::{ModelCost, ModelLimit, SamplingOverride};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
@@ -57,6 +57,16 @@ pub struct ModelProfile {
     /// on this being explicit per model rather than implicit.
     #[serde(default)]
     pub source: Option<String>,
+    /// Operator sampling override forwarded to neuron on cold load
+    /// (#283). The counterpart to the same field in a host's
+    /// `[[default_models]]` — a model that can be both cold-loaded by
+    /// cortex and resident on a host must carry the same value in both,
+    /// which `script/check-config-consistency.py` enforces in CI.
+    ///
+    /// This is the #252 shape of hazard: two config files describing one
+    /// model, with nothing forcing them to agree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<SamplingOverride>,
 
     // ── Enrichment (issue #62) ────────────────────────────────
     /// Per-model token budget. When present, advertised in `/v1/models`
@@ -240,6 +250,7 @@ mod tests {
             pinned_on: vec![],
             residency_priority: None,
             source: None,
+            sampling: None,
             limit: None,
             cost: None,
             capabilities: vec![],

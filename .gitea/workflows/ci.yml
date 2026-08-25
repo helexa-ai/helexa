@@ -137,6 +137,27 @@ jobs:
       - uses: actions/checkout@v4
       - run: cargo fmt --check --all
 
+  # models.toml and asset/neuron/<host>.toml both describe how a model is
+  # served, and until #283 nothing forced them to agree. #252 is the bill
+  # for that: models.toml omitted `quant`, so a cortex cold-load served
+  # bf16 and could not prefill, while the same model was fine when the
+  # host loaded it from its own config. The sampling override (#283) is a
+  # second field with the same hazard, so the gate lands with it.
+  #
+  # Deliberately ungated by the `changes` classifier: it is a
+  # sub-second Python run with no build, and the whole point is that it
+  # cannot be skipped on the push that introduces the drift. A config
+  # change is neither `rust` nor `web`, so gating it on either would let
+  # a pure-TOML push through unchecked — precisely the push that breaks
+  # this.
+  config:
+    name: Config consistency
+    timeout-minutes: 5
+    runs-on: fedora-43
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 script/check-config-consistency.py
+
   web:
     name: Web (lint + typecheck + i18n + build)
     timeout-minutes: 20

@@ -4244,13 +4244,16 @@ impl Harness for CandleHarness {
             _ => None,
         };
         // The model's published sampling, read from the snapshot dir
-        // beside the tokenizer (#272). Absent is fine — it falls back to
-        // the built-in defaults, which is what every model did before.
+        // beside the tokenizer (#272), with the operator's per-model
+        // override overlaid on top (#283). Absent is fine — it falls
+        // back to the built-in defaults, which is what every model did
+        // before.
         let generation_defaults = super::sampling::ModelGenerationDefaults::load_from_dir(
             tokenizer_path
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new(".")),
-        );
+        )
+        .with_operator_override(&spec.model_id, spec.sampling.as_ref());
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,
@@ -4885,13 +4888,15 @@ impl CandleHarness {
             );
         }
 
-        // Same source as the single-GPU path (#272): the model's own
-        // generation_config.json, read from the snapshot dir.
+        // Same source as the single-GPU path (#272/#283): the model's own
+        // generation_config.json, read from the snapshot dir, with the
+        // operator override overlaid.
         let generation_defaults = super::sampling::ModelGenerationDefaults::load_from_dir(
             tokenizer_path
                 .parent()
                 .unwrap_or_else(|| std::path::Path::new(".")),
-        );
+        )
+        .with_operator_override(&spec.model_id, spec.sampling.as_ref());
         let tp_loaded = StdArc::new(TpLoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,

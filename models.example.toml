@@ -29,6 +29,27 @@
 #
 #                        Omit only when full precision is genuinely what
 #                        you want served.
+#   sampling           - operator sampling override (#283). Optional
+#                        sub-table `[models.sampling]` with any of
+#                        `temperature`, `top_p`, `top_k`.
+#
+#                        Precedence is request > operator > model's
+#                        generation_config.json > built-in fallback: this
+#                        replaces what the model published, but a caller
+#                        that names a value still wins.
+#
+#                        Use when a model's own published sampling is
+#                        wrong for the workload you serve. Qwen3.8-27B
+#                        publishes temperature = 1.0, which measured a
+#                        20% structural-defect rate on ~2k-token code
+#                        generation against 0/60 at <= 0.6 (Fisher exact
+#                        one-sided p = 0.0031, #283).
+#
+#                        Like `quant`, this must MATCH the same model's
+#                        `[default_models.sampling]` in the host's
+#                        neuron.toml — the same two-paths-to-one-model
+#                        hazard that made #252 possible.
+#                        `script/check-config-consistency.py` gates it.
 #   vram_mb            - rough estimate; advisory only, not enforced.
 #   min_devices        - GPU count this profile needs. TP profiles use
 #                        the same value as the tensor-parallel size.
