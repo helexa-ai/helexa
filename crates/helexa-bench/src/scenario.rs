@@ -83,6 +83,16 @@ pub struct ScenarioMetrics {
     /// every tok/s number stays flat — the bill doubles and no chart
     /// moves.
     pub reasoning_tokens: Option<u64>,
+    /// p95 inter-token arrival gap in milliseconds — the tail of the
+    /// stream's smoothness, client-observed.
+    ///
+    /// `decode_tps` is a mean over the whole decode window, so a stream
+    /// that stalls for a second and then catches up is indistinguishable
+    /// from one that never stalled. This is the number a user actually
+    /// feels, and the one a batching stall or a mid-stream rebatch shows
+    /// up in. `None` for non-streaming, which has no inter-token gaps by
+    /// construction, and for streams too short to have a tail.
+    pub tpot_p95_ms: Option<f64>,
     /// Prompt tokens served from neuron's prefix KV cache (#269), from
     /// `usage.prompt_tokens_details.cached_tokens`.
     ///
@@ -223,6 +233,7 @@ impl Scenario for ImageLatencyScenario {
             prefill_tokens: None,
             reasoning_tokens: None,
             cached_tokens: None,
+            tpot_p95_ms: None,
             concurrency: None,
             ttft_p95_s: None,
             queue_wait_ms_median: None,
@@ -441,6 +452,13 @@ impl Scenario for ConcurrencyScenario {
             // would not compose with it.
             reasoning_tokens: sum_opt(&streams, |m| m.reasoning_tokens),
             cached_tokens: sum_opt(&streams, |m| m.cached_tokens),
+            // The worst stream in the burst, not a median of medians:
+            // under load the question is how bad it got for somebody,
+            // and averaging tails is how a stall stays invisible.
+            tpot_p95_ms: streams
+                .iter()
+                .filter_map(|m| m.tpot_p95_ms)
+                .max_by(|a, b| a.total_cmp(b)),
             concurrency: Some(self.concurrency),
             ttft_p95_s: percentile(&ttfts, 95.0),
             queue_wait_ms_median: median(&queue_waits),
@@ -556,6 +574,8 @@ async fn request_and_measure(
         prefill_tokens,
         reasoning_tokens,
         cached_tokens,
+        // Non-streaming has no inter-token gaps: the body arrives whole.
+        tpot_p95_ms: None,
         concurrency: None,
         ttft_p95_s: None,
         queue_wait_ms_median: None,
@@ -677,6 +697,8 @@ async fn stream_and_measure_inner(
     let mut prefill_tokens: Option<u64> = None;
     let mut reasoning_tokens: Option<u64> = None;
     let mut cached_tokens: Option<u64> = None;
+    // Inter-token arrival gaps, for the p95 tail.
+    let mut gaps_ms: Vec<f64> = Vec::new();
     let mut captured = String::new();
 
     while let Some(event) = stream.next().await {
@@ -714,6 +736,11 @@ async fn stream_and_measure_inner(
             if content.is_some() || reasoning.is_some() {
                 if first.is_none() {
                     first = Some(now);
+                } else if let Some(prev) = last {
+                    // Gaps only *between* generated deltas: the wait for
+                    // the first one is TTFT and belongs to prefill, not
+                    // to stream smoothness.
+                    gaps_ms.push(now.duration_since(prev).as_secs_f64() * 1000.0);
                 }
                 last = Some(now);
                 chunk_count += 1;
@@ -773,6 +800,7 @@ async fn stream_and_measure_inner(
         prefill_tokens,
         reasoning_tokens,
         cached_tokens,
+        tpot_p95_ms: percentile(&gaps_ms, 95.0),
         // Concurrency fields unset on the single-request path; the
         // concurrency scenario builds its own aggregate (#89).
         concurrency: None,

@@ -397,6 +397,7 @@ impl Sweeper {
             prefill_tokens: m.and_then(|m| m.prefill_tokens),
             reasoning_tokens: m.and_then(|x| x.reasoning_tokens),
             cached_tokens: m.and_then(|x| x.cached_tokens),
+            tpot_p95_ms: m.and_then(|x| x.tpot_p95_ms),
             vram_used_mb: health.map(|h| h.vram_used_mb),
             gpu_util_pct: health.map(|h| h.gpu_util_pct),
             gpu_temp_c: health.map(|h| h.gpu_temp_c),
