@@ -7,6 +7,7 @@
 pub mod api;
 pub mod client;
 pub mod config;
+pub mod regime;
 pub mod report;
 pub mod scenario;
 pub mod store;

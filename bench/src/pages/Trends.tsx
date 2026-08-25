@@ -11,8 +11,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { getDimensions, getSeries } from "../api";
-import type { Dimensions, SeriesPoint } from "../types";
+import { getDimensions, getRegimes, getSeries } from "../api";
+import type { Dimensions, MeasurementRegime, SeriesPoint } from "../types";
 import { BASELINE_SOURCE, baselineFor } from "../baseline";
 
 function Picker({
@@ -52,19 +52,22 @@ type SeriesDef = {
  * Every panel draws the same x-axis and the same regime divider, so a
  * reader can line a change up across metrics — which is the whole point
  * of having more than two of them. */
+/** A vertical rule at a build where the metric changed meaning. */
+type Rule = { at: string; label: string; detail?: string };
+
 function MetricChart({
   title,
   hint,
   data,
   lines,
-  divider,
+  rules,
   unit,
 }: {
   title: string;
   hint?: string;
   data: Record<string, unknown>[];
   lines: SeriesDef[];
-  divider?: string;
+  rules?: Rule[];
   unit?: string;
 }) {
   const hasAny = data.some((d) => lines.some((l) => d[l.key] != null));
@@ -83,19 +86,25 @@ function MetricChart({
           <YAxis />
           <Tooltip />
           <Legend />
-          {divider && (
-            <ReferenceLine
-              x={divider}
-              stroke="#bbb"
-              strokeDasharray="3 3"
-              label={{
-                value: "bench.py → helexa-bench",
-                position: "top",
-                fill: "#999",
-                fontSize: 11,
-              }}
-            />
-          )}
+          {(rules ?? [])
+            // Only draw a rule whose build is actually on this x-axis;
+            // recharts would otherwise place it at the origin and imply
+            // the boundary sits before all the data.
+            .filter((r) => data.some((d) => d.label === r.at))
+            .map((r) => (
+              <ReferenceLine
+                key={`${r.at}-${r.label}`}
+                x={r.at}
+                stroke="#bbb"
+                strokeDasharray="3 3"
+                label={{
+                  value: r.label,
+                  position: "top",
+                  fill: "#999",
+                  fontSize: 11,
+                }}
+              />
+            ))}
           {lines.map((l) => (
             <Line
               key={l.key}
@@ -119,6 +128,7 @@ export default function Trends() {
   const [model, setModel] = useState("");
   const [scenario, setScenario] = useState("");
   const [series, setSeries] = useState<SeriesPoint[]>([]);
+  const [regimes, setRegimes] = useState<MeasurementRegime[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -129,6 +139,10 @@ export default function Trends() {
         if (d.scenarios[0]) setScenario(d.scenarios[0]);
       })
       .catch((e) => setErr(String(e)));
+    // A missing/older API just means no rules — not a page failure.
+    getRegimes()
+      .then(setRegimes)
+      .catch(() => setRegimes([]));
   }, []);
 
   useEffect(() => {
@@ -173,7 +187,43 @@ export default function Trends() {
   // first live build, with baseline points to its left).
   const firstLive = series[0]?.git_sha;
   const showDivider = base.length > 0 && series.length > 0;
-  const divider = showDivider ? firstLive : undefined;
+
+  // The build where the measuring identity changed, derived from the
+  // data rather than declared — a constant would go stale the moment
+  // the principal is reconfigured (#288).
+  const identityShift = useMemo(() => {
+    for (let i = 1; i < series.length; i++) {
+      const prev = series[i - 1].principal ?? "anonymous";
+      const cur = series[i].principal ?? "anonymous";
+      if (prev !== cur) {
+        return {
+          at: series[i].git_sha,
+          label: `measured as ${cur === "anonymous" ? "anonymous" : "identified"}`,
+          detail:
+            "The identity bench measured under changed here. Anonymous " +
+            "samples are subject to the #262 yield policy and understate " +
+            "capacity, so points either side are not comparable (#288).",
+        } as Rule;
+      }
+    }
+    return null;
+  }, [series]);
+
+  /** Declared boundaries touching `metric`, plus the regime-independent
+   *  ones that apply to every panel. */
+  const rulesFor = (metric: string): Rule[] => {
+    const out: Rule[] = [];
+    if (showDivider && firstLive) {
+      out.push({ at: firstLive, label: "bench.py → helexa-bench" });
+    }
+    for (const r of regimes) {
+      if (r.affects.includes(metric)) {
+        out.push({ at: r.first_sha, label: r.label, detail: r.detail });
+      }
+    }
+    if (identityShift) out.push(identityShift);
+    return out;
+  };
 
   // Anonymous and identified samples are not comparable once #262 is in
   // the build: an anonymous caller is capped below max_in_flight and
@@ -249,7 +299,7 @@ export default function Trends() {
             title="decode tok/s"
             unit="higher is better"
             data={data}
-            divider={divider}
+            rules={rulesFor("decode")}
             lines={[
               { key: "decode", name: "decode tok/s", stroke: "#0d6efd" },
               ...(base.length > 0
@@ -270,7 +320,7 @@ export default function Trends() {
             unit="higher is better"
             hint="The other half of serving speed, derived from prefill_tokens / prefill_ms. A prefix-cache hit shortens prefill_ms while the token count stays whole, so a high rate here is itself the cache-hit signal."
             data={data}
-            divider={divider}
+            rules={rulesFor("prefillTps")}
             lines={[
               { key: "prefillTps", name: "prefill tok/s", stroke: "#20c997" },
             ]}
@@ -281,7 +331,7 @@ export default function Trends() {
             unit="seconds, lower is better"
             hint="Median and p95 together on purpose. Under concurrency the median is dominated by whichever streams were admitted immediately; the p95 is the one that moves when a caller is made to wait. Charting only the median is how a 0.53 s → 11.77 s tail went unnoticed for a week."
             data={data}
-            divider={divider}
+            rules={rulesFor("ttft")}
             lines={[
               { key: "ttft", name: "TTFT median (s)", stroke: "#dc3545" },
               { key: "ttftP95", name: "TTFT p95 (s)", stroke: "#fd7e14" },
@@ -303,7 +353,7 @@ export default function Trends() {
             unit="ms, lower is better"
             hint="Stream smoothness. decode tok/s is a mean over the whole window, so a stream that stalls and then catches up is indistinguishable from one that never stalled — this is the number a user feels."
             data={data}
-            divider={divider}
+            rules={rulesFor("tpot")}
             lines={[
               { key: "tpot", name: "inter-token p95 (ms)", stroke: "#6f42c1" },
             ]}
@@ -314,7 +364,7 @@ export default function Trends() {
             unit="queue wait ms · requests shed"
             hint="Separates “the server is slow” from “you were queued behind someone”. Queue wait is TTFT minus server-measured prefill; rejected counts honest backpressure rather than silent failures."
             data={data}
-            divider={divider}
+            rules={rulesFor("queueWait")}
             lines={[
               { key: "queueWait", name: "queue wait (ms)", stroke: "#d63384" },
               { key: "rejected", name: "rejected (count)", stroke: "#adb5bd" },
@@ -326,13 +376,46 @@ export default function Trends() {
             unit="counts"
             hint="Cost, not speed. Reasoning tokens are the dominant driver on a reasoning model and move independently of every rate above — a template or sampling change can double what the model thinks before answering while the speed charts stay flat. Cached tokens are why prefill timing varies between otherwise identical samples."
             data={data}
-            divider={divider}
+            rules={rulesFor("completion")}
             lines={[
               { key: "completion", name: "completion tokens", stroke: "#0dcaf0" },
               { key: "reasoning", name: "reasoning tokens", stroke: "#ffc107" },
               { key: "cached", name: "cached prompt tokens", stroke: "#198754" },
             ]}
           />
+
+          {(() => {
+            // Explain every rule actually drawn for this selection. The
+            // chart label is a name; without the reason, a reader still
+            // has to go and rediscover what it meant — which is the cost
+            // this whole feature exists to remove.
+            const shown = [
+              ...regimes
+                .filter((r) => series.some((p) => p.git_sha === r.first_sha))
+                .map((r) => ({ at: r.first_sha, label: r.label, detail: r.detail })),
+              ...(identityShift ? [identityShift] : []),
+            ];
+            if (shown.length === 0) return null;
+            return (
+              <div className="mt-4 pt-3 border-top">
+                <p className="text-muted small mb-2">
+                  <strong>Dashed rules mark measurement-regime changes</strong> —
+                  builds where a number changed meaning rather than value. A step
+                  across one is the instrument, not the engine.
+                </p>
+                <dl className="row small text-muted mb-0">
+                  {shown.map((r) => (
+                    <div key={`${r.at}-${r.label}`} className="mb-2">
+                      <dt className="fw-semibold">
+                        <code>{r.at}</code> — {r.label}
+                      </dt>
+                      <dd className="mb-0">{r.detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            );
+          })()}
         </>
       )}
     </>
