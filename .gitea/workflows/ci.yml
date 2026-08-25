@@ -179,8 +179,13 @@ jobs:
       # in sync with build-prerelease.yml): a signal death (rustc SIGSEGV
       # / OOM-kill) keeps the cache and fails fast instead of an uncached
       # rebuild; only a real sccache fault drops the cache.
+      # --all-targets so `#[cfg(test)]` modules, tests/, benches/ and
+      # examples/ are linted too (#286). Without it clippy sees only lib
+      # and bin targets, so `-D warnings` never gated a single line of
+      # test code — which is how two tests lost their `#[test]` attribute
+      # and stopped running unnoticed.
       - name: Clippy (sccache escalation)
-        run: script/ci-cargo-escalate.sh cargo clippy --workspace -- -D warnings
+        run: script/ci-cargo-escalate.sh cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test

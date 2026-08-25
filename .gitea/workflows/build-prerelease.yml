@@ -262,7 +262,7 @@ jobs:
       # fast instead of triggering a slower uncached rebuild; only a real
       # sccache fault drops the cache. See script/ci-cargo-escalate.sh.
       - name: Clippy (sccache escalation)
-        run: script/ci-cargo-escalate.sh cargo clippy --workspace -- -D warnings
+        run: script/ci-cargo-escalate.sh cargo clippy --workspace --all-targets -- -D warnings
 
   test:
     name: Test

@@ -167,7 +167,7 @@ doc-comment; touch points (the `Job` enum, the dispatch handlers, the
 cargo build --release           # build all crates
 cargo run -p cortex-cli -- serve    # run the gateway
 cargo test                      # run all tests
-cargo clippy --workspace        # lint
+cargo clippy --workspace --all-targets   # lint (test code included)
 ```
 
 ## CI
@@ -177,7 +177,7 @@ pass before merging:
 
 ```sh
 cargo fmt --check --all                    # formatting
-cargo clippy --workspace -- -D warnings   # lint (warnings are errors)
+cargo clippy --workspace --all-targets -- -D warnings   # lint (warnings are errors)
 cargo test --workspace                     # tests
 ```
 
@@ -191,7 +191,8 @@ Work each change on its own branch; `main` stays releasable.
 
 1. Implement on a feature branch (`fix/<issue>-…`, `feat/<issue>-…`).
 2. Run the CI triad locally (`cargo fmt --check --all`,
-   `cargo clippy --workspace -- -D warnings`, `cargo test --workspace`).
+   `cargo clippy --workspace --all-targets -- -D warnings`,
+   `cargo test --workspace`).
    Local builds are **CPU-only** — the `#[cfg(feature = "cuda")]` neuron/TP
    paths do NOT compile locally. The branch CI's **CUDA type-check** job is
    the only thing that validates them, so for any neuron change the push to

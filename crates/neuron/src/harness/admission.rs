@@ -1051,7 +1051,7 @@ mod tests {
 
         // Fill the single queue slot with a waiter that parks on the semaphore.
         let ctrl2 = Arc::clone(&ctrl);
-        let waiter = tokio::spawn(async move { ctrl2.enter(None).await.map(|p| drop(p)) });
+        let waiter = tokio::spawn(async move { ctrl2.enter(None).await.map(drop) });
         // Give the waiter a moment to occupy the queue slot.
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert_eq!(ctrl.queue_depth(), 1);

@@ -58,6 +58,11 @@ mod tests {
         assert!(cfg.max_redirects > 0);
     }
 
+    // The closure's error type is `figment::Error`, which is 208 bytes and
+    // not ours to shrink; `Jail::expect_with` dictates the signature. The
+    // usual remedy (box the Err) is not available through a third-party
+    // callback contract, and this is a test closure run once.
+    #[allow(clippy::result_large_err)]
     #[test]
     fn loads_toml_with_env_override() {
         figment::Jail::expect_with(|jail| {

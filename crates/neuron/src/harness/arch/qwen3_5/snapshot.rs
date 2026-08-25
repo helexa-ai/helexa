@@ -562,9 +562,9 @@ mod tests {
                 .forward_batch_decode(&input, &positions, mask.as_ref())
                 .expect("batched step");
             assert_eq!(h.dims()[0], 3);
-            for row in 0..3 {
+            for (row, exp) in expected.iter().enumerate() {
                 let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
-                let diff = max_abs_diff(&expected[row][t], &got);
+                let diff = max_abs_diff(&exp[t], &got);
                 assert!(diff < 1e-4, "row {row} step {t} diverged: {diff}");
             }
         }
@@ -610,9 +610,9 @@ mod tests {
         let h = model
             .forward_batch_decode(&input, &[3, 3], None)
             .expect("step");
-        for row in 0..2 {
+        for (row, exp) in expected.iter().enumerate() {
             let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
-            let diff = max_abs_diff(&expected[row], &got);
+            let diff = max_abs_diff(exp, &got);
             assert!(diff < 1e-4, "row {row} diverged: {diff}");
         }
     }
@@ -674,9 +674,9 @@ mod tests {
             let h = model
                 .forward_batch_decode(&input, &positions, mask.as_ref())
                 .expect("batched step");
-            for row in 0..2 {
+            for (row, exp) in expected.iter().enumerate() {
                 let got: Vec<f32> = h.i((row, 0, ..)).unwrap().to_vec1().unwrap();
-                let diff = max_abs_diff(&expected[row][t], &got);
+                let diff = max_abs_diff(&exp[t], &got);
                 assert!(diff < 1e-4, "batched row {row} step {t}: {diff}");
             }
         }
