@@ -194,10 +194,19 @@ pub struct CortexModelEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_model_len: Option<usize>,
     /// The same window under the two names generic OpenAI clients look
-    /// for (#278). pi-ai's provider discovery, for one, reads
-    /// `context_window` then `context_length` and nothing else — so a
-    /// client probing cortex found no window at all and fell back to a
-    /// number its operator had to invent by hand.
+    /// for (#278) — a client that probes for one of these rather than
+    /// `max_model_len` would otherwise find no window at all and fall
+    /// back to a number its operator had to invent by hand.
+    ///
+    /// Publishing them is cheap and harmless; do not assume any
+    /// *specific* client consumes them. An earlier version of this
+    /// comment credited pi-ai's provider discovery, which was wrong:
+    /// pi requires `contextWindow` as a static field on its model type
+    /// and reads none of these keys at runtime (checked against 0.82.1
+    /// and 0.84.3). The misattribution mattered — it made an operator's
+    /// hand-set 80k window look like our advertisement failing to land,
+    /// when in fact nothing was reading it and the number had to be
+    /// maintained by hand regardless.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context_window: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -227,12 +236,16 @@ impl CortexModelEntry {
         self.context_window = self.limit.as_ref().map(|l| l.context);
         self.context_length = self.limit.as_ref().map(|l| l.context);
         self.max_input_tokens = self.limit.as_ref().and_then(|l| l.input);
-        // The ceiling, not the reserve (#278): this field is what
-        // OpenAI-ecosystem clients read to decide what to ask for, and
-        // pi-ai/DSH turns it straight into a per-request cap. Advertising
-        // the reserve here handed a reasoning model less budget than its
-        // own think block needs. Falls back to the reserve for a neuron
-        // too old to publish a ceiling.
+        // The ceiling, not the reserve (#278): a client that reads this
+        // field turns it into the cap it sends on each request, so
+        // advertising the reserve handed a reasoning model less budget
+        // than its own think block needs. Falls back to the reserve for
+        // a neuron too old to publish a ceiling.
+        //
+        // Observed with dsh. pi is *not* an example: its `maxTokens` is
+        // a required static field in models.json and it reads nothing
+        // from here — an operator has to copy this number across by
+        // hand, and gets no error if they copy it wrong.
         self.max_output_tokens = self.limit.as_ref().map(|l| {
             if l.output_ceiling > 0 {
                 l.output_ceiling

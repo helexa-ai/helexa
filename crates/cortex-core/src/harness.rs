@@ -149,9 +149,11 @@ pub struct ReasoningBudgetRung {
     /// advertised `minimal`/`low`/`medium`/`high`, two of which the
     /// template rejects and which omitted the model's own default.
     ///
-    /// Clients read this to decide what they may ask for — pi-ai offers
-    /// a level only when the model declares it — so an invented rung
-    /// here makes a real one unreachable.
+    /// Advertise only rungs the template accepts: an invented name is a
+    /// name a caller can send and the model will reject. Note that a
+    /// client need not read this at all — pi-ai takes its levels from a
+    /// static `thinkingLevelMap` in the operator's config — so this is
+    /// a statement of truth, not a control surface we can rely on.
     pub effort: String,
     /// Backstop reasoning-token cap for this rung, when the deployment
     /// sets one.

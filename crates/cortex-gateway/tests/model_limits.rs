@@ -165,15 +165,16 @@ capabilities = ["text"]
     // vLLM-convention probes (Hermes Agent) auto-detect the window.
     assert_eq!(entry["max_model_len"], 49152);
     assert_eq!(entry["max_input_tokens"], 40960);
-    // The ceiling, not the reserve (#278). pi-ai's discovery — and every
-    // client like it — turns this field into the cap it sends on each
-    // request; advertising the 8192 reserve told a reasoning model's
-    // harness to stop below the cost of a single think block.
+    // The ceiling, not the reserve (#278). A client that reads this
+    // field turns it into the cap it sends on each request; advertising
+    // the 8192 reserve told a reasoning model's harness to stop below
+    // the cost of a single think block. Observed with dsh — pi takes
+    // `maxTokens` from static config and reads nothing here.
     assert_eq!(entry["max_output_tokens"], 32768);
-    // The rungs the model itself accepts (#290). A client can only send
-    // the rung names, and it picks from what we publish — pi-ai offers a
-    // level only when the model declares it — so a name we invent makes
-    // a real one unreachable.
+    // The rungs the model itself accepts (#290). A caller can only send
+    // a rung name, so a name we invent is one the template will reject.
+    // Publishing the true set is correct regardless of who reads it —
+    // pi-ai, for one, takes its levels from static config instead.
     let rungs = entry["reasoning_budget"]
         .as_array()
         .expect("reasoning_budget advertised for a reasoning model");
@@ -203,9 +204,12 @@ capabilities = ["text"]
         "a named rung must not masquerade as a token budget"
     );
 
-    // The window under the two names generic clients actually read.
-    // pi-ai looks for `context_window` then `context_length` and gives
-    // up if neither is present — `max_model_len` is invisible to it.
+    // The window under the two names a generic client may read, for one
+    // that probes these rather than `max_model_len`. Publish all three;
+    // do not assume a particular client consumes any of them. pi, in
+    // particular, reads none — `contextWindow` is a required static
+    // field on its model type (checked against 0.82.1 and 0.84.3), so
+    // its window is hand-maintained whatever we advertise.
     assert_eq!(entry["context_window"], 49152);
     assert_eq!(entry["context_length"], 49152);
 

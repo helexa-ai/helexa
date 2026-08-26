@@ -3500,11 +3500,12 @@ impl Harness for CandleHarness {
                 reasoning: h.has_reasoning(),
                 servable: h.servability(&self.context_limit_cfg),
                 // The rungs this model's own template accepts (#290),
-                // discovered at load rather than invented. Clients pick
-                // from what we publish — pi-ai offers a level only when
-                // the model declares it — so advertising a rung the
-                // template rejects makes a real one unreachable, and
-                // omitting the model's default makes it unselectable.
+                // discovered at load rather than invented. Advertising a
+                // rung the template rejects hands callers a name that
+                // errors, and omitting the model's default hides its
+                // strongest setting. (Whether a given client reads this
+                // is another matter — pi-ai does not; see
+                // `reasoning_effort`'s module doc.)
                 reasoning_budget: h
                     .reasoning_efforts()
                     .levels
