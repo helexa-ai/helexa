@@ -429,6 +429,17 @@ impl LoadedHandle {
         }
     }
 
+    /// The operator's `preserve_thinking` for this model, advertised so
+    /// an A/B run can be stamped with the value it ran under.
+    pub fn preserve_thinking(&self) -> Option<bool> {
+        match self {
+            LoadedHandle::Single(m) => m.preserve_thinking,
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.preserve_thinking,
+            LoadedHandle::Image(_) => None,
+        }
+    }
+
     /// Effort rungs the model's template accepts (#290).
     pub fn reasoning_efforts(&self) -> super::reasoning_effort::SupportedEfforts {
         match self {
@@ -3524,6 +3535,7 @@ impl Harness for CandleHarness {
                 cost: None,
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
+                preserve_thinking: h.preserve_thinking(),
                 servable: h.servability(&self.context_limit_cfg),
                 // The rungs this model's own template accepts (#290),
                 // discovered at load rather than invented. Advertising a
@@ -3563,6 +3575,7 @@ impl Harness for CandleHarness {
                     capabilities: snap.capabilities.clone(),
                     limit: None,
                     cost: None,
+                    preserve_thinking: None,
                     tool_call: false, // snapshot doesn't carry these; safe default
                     reasoning: false,
                     // Mid-recovery: the handle is gone, so there is
@@ -3853,6 +3866,14 @@ impl Harness for CandleHarness {
             .transpose()
             .unwrap_or_default()
             .unwrap_or_default();
+        // Stamp the A/B arm in the journal at load, so a session
+        // reviewed later can be attributed to the value it ran under
+        // without reconstructing deploy history.
+        tracing::info!(
+            model = %spec.model_id,
+            preserve_thinking = ?spec.preserve_thinking,
+            "reasoning replay: preserve_thinking for this load (None = the template's own default)"
+        );
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,
@@ -4507,6 +4528,14 @@ impl CandleHarness {
             .transpose()
             .unwrap_or_default()
             .unwrap_or_default();
+        // Stamp the A/B arm in the journal at load, so a session
+        // reviewed later can be attributed to the value it ran under
+        // without reconstructing deploy history.
+        tracing::info!(
+            model = %spec.model_id,
+            preserve_thinking = ?spec.preserve_thinking,
+            "reasoning replay: preserve_thinking for this load (None = the template's own default)"
+        );
         let tp_loaded = StdArc::new(TpLoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,
