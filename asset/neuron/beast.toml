@@ -48,6 +48,29 @@ name = "candle"
 # refused.
 max_in_flight = 2
 
+# Snapshot budget for the cross-request prefix cache (#292).
+#
+# 3 GiB, not the 1 GiB default. At the measured 32 KiB/token/card, a
+# 1 GiB budget cannot hold a snapshot beyond ~32k tokens of K/V alone —
+# less once the GatedDeltaNet conv/recurrent state is deep-copied on top,
+# which on this arch is 48 of 64 layers in f32. Agentic sessions here run
+# well past that: `cached_tokens` was observed pinned at 2,016 for ten
+# consecutive turns while the prompt grew to 52,869, so every turn
+# re-prefilled ~50k tokens — 37 s each, against ~20 s of actual decode.
+# The cache was not missing; the snapshot would not fit.
+#
+# Sized from this deployment's numbers rather than rounded: free at load
+# 9,285 MB, less the 4,713 MB KV budget, leaves 4,572 MB that snapshots
+# share with everything else. A 52,869-token snapshot is ~1,652 MB of
+# K/V, so 3 GiB holds a full deep session with slack. 4 GiB would take
+# 90% of the headroom, which is not a trade worth making on a host that
+# also cold-swaps image models.
+#
+# max_entries stays at the default 8: the byte budget binds first here,
+# so the count cap is not what is forcing snapshots to be small.
+[harness.candle.prefix_cache]
+budget_mb = 3072
+
 [[default_models]]
 # Qwen3.8-27B is the resident flagship (#251). Architecturally identical
 # to the 3.6-27B it replaced — same model_type, layer counts and vision
