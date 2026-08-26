@@ -429,6 +429,16 @@ impl LoadedHandle {
         }
     }
 
+    /// Effort rungs the model's template accepts (#290).
+    pub fn reasoning_efforts(&self) -> super::reasoning_effort::SupportedEfforts {
+        match self {
+            LoadedHandle::Single(m) => m.reasoning_efforts.clone(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.reasoning_efforts.clone(),
+            LoadedHandle::Image(_) => Default::default(),
+        }
+    }
+
     /// Self-derived `limit{context,input,output}` (#67) from this model's
     /// captured physics + live tightest-card free VRAM + its self-measured
     /// prefill rate (the configured bootstrap estimate until the first
@@ -590,22 +600,34 @@ impl LoadedImageModel {
 /// token count wins over a ladder rung — it is the more specific thing
 /// the caller reached for.
 ///
+/// **Only** an explicit `reasoning.max_tokens` produces a budget (#290).
+///
+/// Effort levels used to be mapped onto a token ladder here and enforced
+/// by force-injecting `</think>` at the limit. That made effort mean two
+/// incompatible things at once: a prompt instruction to the model, and a
+/// guillotine applied to it. On `Qwen/Qwen3.8-27B` the model was told to
+/// reason at `xhigh` (the template default, because the caller's effort
+/// never reached the template) and cut off at `medium`'s 12,288 tokens —
+/// twice, to the token, in one agentic session — leaving it to answer
+/// from an unfinished plan.
+///
+/// Effort now reaches the model through its own template, where it is a
+/// trained control. The governor stays as a backstop for a caller that
+/// asks for a hard cap, which is what #223's runaway-think-block concern
+/// actually needs.
+///
 /// `None` means unbounded, which is the default and exactly how the
-/// model behaved before this existed.
+/// model behaved before any of this existed.
 fn requested_reasoning_budget(
     request: &ChatCompletionRequest,
-    ladder: &super::reasoning_budget::ReasoningBudgetLadder,
+    _ladder: &super::reasoning_budget::ReasoningBudgetLadder,
 ) -> Option<usize> {
     let reasoning = request.extra.get("reasoning")?;
-    if let Some(n) = reasoning
+    reasoning
         .get("max_tokens")
         .and_then(|v| v.as_u64())
         .filter(|n| *n > 0)
-    {
-        return Some(n as usize);
-    }
-    let effort = reasoning.get("effort").and_then(|v| v.as_str())?;
-    ladder.for_effort(effort)
+        .map(|n| n as usize)
 }
 
 fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::RequestedSampling {
@@ -684,6 +706,11 @@ pub struct LoadedModel {
     /// [`InferenceEvent::ReasoningDelta`] at the token boundary;
     /// when `None` everything is `TextDelta`.
     pub reasoning_tokens: Option<ReasoningTokenPair>,
+    /// Effort rungs this model's own chat template accepts (#290),
+    /// discovered at load by rendering it. Empty when the template has
+    /// no effort control. Drives both what `/models` advertises and
+    /// which value we forward on a request.
+    pub reasoning_efforts: super::reasoning_effort::SupportedEfforts,
     /// Open/close token IDs for the model's tool-call marker
     /// pair (`<tool_call>` / `</tool_call>` on Qwen3-Coder / Hermes
     /// / DeepSeek / gpt-oss). `None` for models that don't emit
@@ -837,6 +864,11 @@ pub struct TpLoadedModel {
     /// load time. `None` when the model declares no reasoning
     /// markers.
     pub reasoning_tokens: Option<ReasoningTokenPair>,
+    /// Effort rungs this model's own chat template accepts (#290),
+    /// discovered at load by rendering it. Empty when the template has
+    /// no effort control. Drives both what `/models` advertises and
+    /// which value we forward on a request.
+    pub reasoning_efforts: super::reasoning_effort::SupportedEfforts,
     /// Same shape as [`LoadedModel::tool_call_tokens`].
     pub tool_call_tokens: Option<ToolCallTokenPair>,
     /// Same shape as [`LoadedModel::chat_template`].
@@ -2893,7 +2925,11 @@ impl CandleHarness {
             }
         };
 
-        let prompt = build_prompt_for_request(loaded.chat_template.as_deref(), &request)?;
+        let prompt = build_prompt_for_request(
+            loaded.chat_template.as_deref(),
+            &request,
+            &loaded.reasoning_efforts,
+        )?;
         let encoding = loaded
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -3463,24 +3499,26 @@ impl Harness for CandleHarness {
                 tool_call: h.has_tool_call(),
                 reasoning: h.has_reasoning(),
                 servable: h.servability(&self.context_limit_cfg),
-                // What each effort level buys (#223). Only meaningful
-                // for a model that reasons — advertising rungs on a
-                // model that never opens a think block would describe a
-                // control that does nothing.
-                reasoning_budget: if h.has_reasoning() {
-                    self.reasoning_budget_cfg
-                        .advertised()
-                        .into_iter()
-                        .map(
-                            |(effort, tokens)| cortex_core::harness::ReasoningBudgetRung {
-                                effort,
-                                tokens,
-                            },
-                        )
-                        .collect()
-                } else {
-                    Vec::new()
-                },
+                // The rungs this model's own template accepts (#290),
+                // discovered at load rather than invented. Clients pick
+                // from what we publish — pi-ai offers a level only when
+                // the model declares it — so advertising a rung the
+                // template rejects makes a real one unreachable, and
+                // omitting the model's default makes it unselectable.
+                reasoning_budget: h
+                    .reasoning_efforts()
+                    .levels
+                    .iter()
+                    .map(|effort| cortex_core::harness::ReasoningBudgetRung {
+                        default: h.reasoning_efforts().default.as_deref() == Some(effort.as_str()),
+                        effort: effort.clone(),
+                        // No cap: effort reaches the model through its
+                        // template, and how many tokens it then spends
+                        // is the model's business. Enforcing effort by
+                        // truncation is the defect #290 fixed.
+                        tokens: None,
+                    })
+                    .collect(),
             });
         }
         // Models mid-recovery whose registry slot is absent (the
@@ -3779,9 +3817,19 @@ impl Harness for CandleHarness {
                 .unwrap_or_else(|| std::path::Path::new(".")),
         )
         .with_operator_override(&spec.model_id, spec.sampling.as_ref());
+        // Which effort rungs this model actually accepts (#290), asked
+        // of the template rather than assumed. Empty when it has no
+        // effort control, which is the pre-#290 behaviour.
+        let reasoning_efforts = chat_template
+            .as_deref()
+            .map(|t| super::reasoning_effort::probe(t, &spec.model_id))
+            .transpose()
+            .unwrap_or_default()
+            .unwrap_or_default();
         let loaded = Arc::new(LoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,
+            reasoning_efforts,
             arch: arch_local,
             tokenizer,
             device,
@@ -4422,9 +4470,19 @@ impl CandleHarness {
                 .unwrap_or_else(|| std::path::Path::new(".")),
         )
         .with_operator_override(&spec.model_id, spec.sampling.as_ref());
+        // Which effort rungs this model actually accepts (#290), asked
+        // of the template rather than assumed. Empty when it has no
+        // effort control, which is the pre-#290 behaviour.
+        let reasoning_efforts = chat_template
+            .as_deref()
+            .map(|t| super::reasoning_effort::probe(t, &spec.model_id))
+            .transpose()
+            .unwrap_or_default()
+            .unwrap_or_default();
         let tp_loaded = StdArc::new(TpLoadedModel {
             model_id: spec.model_id.clone(),
             generation_defaults,
+            reasoning_efforts,
             tokenizer,
             devices: devices.clone(),
             pool: StdArc::new(TMutex::new(pool)),
@@ -4561,7 +4619,8 @@ impl CandleHarness {
             });
         }
 
-        let prompt = build_prompt_for_request(tp.chat_template.as_deref(), &request)?;
+        let prompt =
+            build_prompt_for_request(tp.chat_template.as_deref(), &request, &tp.reasoning_efforts)?;
         let encoding = tp
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -5748,9 +5807,80 @@ impl From<super::admission::AdmissionRejection> for InferenceError {
 ///
 /// Failures are logged at `warn` so an operator running with
 /// `RUST_LOG=neuron=debug` sees which path each request took.
+/// Resolve the request's reasoning effort onto a rung the model accepts
+/// and set it as a `chat_template_kwargs.reasoning_effort` (#290).
+///
+/// Precedence, most specific first:
+///
+/// 1. an explicit `chat_template_kwargs.reasoning_effort` from the
+///    caller — they reached for the model-native control, so it passes
+///    through untouched even if we would have mapped it elsewhere;
+/// 2. `reasoning.effort`, mapped through
+///    [`SupportedEfforts::nearest`](super::reasoning_effort::SupportedEfforts::nearest);
+/// 3. nothing, leaving the template to apply its own default.
+///
+/// `none`/`off` are deliberately not handled here: they are not an
+/// effort but a request to disable thinking entirely, which
+/// `apply_reasoning_effort` already turns into
+/// `enable_thinking = false` before this runs.
+fn apply_effort_kwarg(
+    kwargs: serde_json::Value,
+    request: &ChatCompletionRequest,
+    efforts: &super::reasoning_effort::SupportedEfforts,
+) -> serde_json::Value {
+    if efforts.is_empty() {
+        return kwargs;
+    }
+    if kwargs.get("reasoning_effort").is_some() {
+        return kwargs;
+    }
+    let Some(requested) = request
+        .extra
+        .get("reasoning")
+        .and_then(|r| r.get("effort"))
+        .and_then(|e| e.as_str())
+        .map(|e| e.trim().to_ascii_lowercase())
+    else {
+        return kwargs;
+    };
+    if matches!(requested.as_str(), "none" | "off") {
+        return kwargs;
+    }
+    let Some(resolved) = efforts.nearest(&requested) else {
+        // An effort name this model has no rung for and no neighbour to
+        // fall back to. Passing it through would make the template
+        // raise; dropping it lets the model use its own default, which
+        // is the conservative choice.
+        tracing::debug!(
+            requested = %requested,
+            available = %efforts.levels.join(","),
+            "reasoning effort: no comparable rung; leaving the template default"
+        );
+        return kwargs;
+    };
+    if resolved != requested {
+        tracing::info!(
+            requested = %requested,
+            resolved = %resolved,
+            available = %efforts.levels.join(","),
+            "reasoning effort: mapped to the nearest rung this model accepts (#290)"
+        );
+    }
+    let mut obj = match kwargs {
+        serde_json::Value::Object(o) => o,
+        _ => serde_json::Map::new(),
+    };
+    obj.insert(
+        "reasoning_effort".into(),
+        serde_json::Value::String(resolved.to_string()),
+    );
+    serde_json::Value::Object(obj)
+}
+
 fn build_prompt_for_request(
     chat_template: Option<&str>,
     request: &ChatCompletionRequest,
+    efforts: &super::reasoning_effort::SupportedEfforts,
 ) -> Result<String, InferenceError> {
     if !super::chat_template::chat_templates_enabled() {
         return Ok(format_qwen3_prompt(&request.messages));
@@ -5768,6 +5898,13 @@ fn build_prompt_for_request(
         .get("chat_template_kwargs")
         .cloned()
         .unwrap_or(serde_json::Value::Null);
+    // Tell the model which rung it is on (#290). Until this existed the
+    // caller's effort was consumed for our token governor and never
+    // reached the template, so the template always took its own
+    // `|default(...)` — on Qwen3.8 that is `xhigh`, meaning every
+    // request was instructed to think maximally and then truncated at
+    // whatever budget the caller had actually asked for.
+    let kwargs = apply_effort_kwarg(kwargs, request, efforts);
     let tools = request
         .extra
         .get("tools")
@@ -7125,6 +7262,133 @@ fn unix_subsec_nanos() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::super::context_limit::ContextProfile;
+    use super::{
+        ChatCompletionRequest, ChatMessage, MessageContent, apply_effort_kwarg,
+        requested_reasoning_budget,
+    };
+
+    // ── Reasoning-effort forwarding (#290) ────────────────────────
+
+    fn qwen38_efforts() -> super::super::reasoning_effort::SupportedEfforts {
+        super::super::reasoning_effort::SupportedEfforts {
+            levels: vec!["low".into(), "medium".into(), "xhigh".into()],
+            default: Some("xhigh".into()),
+        }
+    }
+
+    fn req_with_effort(effort: Option<&str>) -> ChatCompletionRequest {
+        let mut extra = serde_json::Map::new();
+        if let Some(e) = effort {
+            extra.insert("reasoning".into(), serde_json::json!({ "effort": e }));
+        }
+        ChatCompletionRequest {
+            model: "m".into(),
+            messages: vec![ChatMessage {
+                role: "user".into(),
+                content: MessageContent::Text("hi".into()),
+                extra: serde_json::Value::Null,
+            }],
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            seed: None,
+            repetition_penalty: None,
+            repeat_last_n: None,
+            max_tokens: None,
+            max_completion_tokens: None,
+            stream: None,
+            extra: serde_json::Value::Object(extra),
+        }
+    }
+
+    fn effort_in(kwargs: &serde_json::Value) -> Option<String> {
+        kwargs
+            .get("reasoning_effort")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    }
+
+    /// The core of #290: a caller's effort must reach the template. It
+    /// never did, so the template always took its own default (`xhigh`)
+    /// while the governor truncated at the caller's rung.
+    #[test]
+    fn a_requested_effort_reaches_the_template() {
+        let out = apply_effort_kwarg(
+            serde_json::Value::Null,
+            &req_with_effort(Some("medium")),
+            &qwen38_efforts(),
+        );
+        assert_eq!(effort_in(&out).as_deref(), Some("medium"));
+    }
+
+    /// `high` is not a rung on this model; the template raises on it, so
+    /// it must be mapped down rather than passed through.
+    #[test]
+    fn an_unsupported_effort_is_mapped_to_a_rung_the_template_accepts() {
+        let out = apply_effort_kwarg(
+            serde_json::Value::Null,
+            &req_with_effort(Some("high")),
+            &qwen38_efforts(),
+        );
+        assert_eq!(effort_in(&out).as_deref(), Some("medium"));
+    }
+
+    /// Saying nothing must leave the template's own default alone rather
+    /// than us choosing one on the model's behalf.
+    #[test]
+    fn no_requested_effort_leaves_the_template_default_untouched() {
+        let out = apply_effort_kwarg(
+            serde_json::Value::Null,
+            &req_with_effort(None),
+            &qwen38_efforts(),
+        );
+        assert_eq!(effort_in(&out), None);
+    }
+
+    /// `none`/`off` is not an effort — it disables thinking upstream.
+    /// Forwarding it would make the template raise.
+    #[test]
+    fn none_is_not_forwarded_as_an_effort() {
+        let out = apply_effort_kwarg(
+            serde_json::Value::Null,
+            &req_with_effort(Some("none")),
+            &qwen38_efforts(),
+        );
+        assert_eq!(effort_in(&out), None);
+    }
+
+    /// A model whose template has no effort control must be left alone.
+    #[test]
+    fn a_model_without_rungs_gets_no_effort_kwarg() {
+        let out = apply_effort_kwarg(
+            serde_json::Value::Null,
+            &req_with_effort(Some("medium")),
+            &Default::default(),
+        );
+        assert_eq!(effort_in(&out), None);
+    }
+
+    /// Effort must no longer produce a token budget: that was the
+    /// guillotine. Only an explicit `max_tokens` caps thinking now.
+    #[test]
+    fn effort_no_longer_yields_a_token_budget() {
+        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
+        assert_eq!(
+            requested_reasoning_budget(&req_with_effort(Some("medium")), &ladder),
+            None,
+            "medium must not silently become a 12288-token guillotine"
+        );
+        let mut req = req_with_effort(None);
+        if let serde_json::Value::Object(o) = &mut req.extra {
+            o.insert("reasoning".into(), serde_json::json!({ "max_tokens": 500 }));
+        }
+        assert_eq!(
+            requested_reasoning_budget(&req, &ladder),
+            Some(500),
+            "an explicit cap is still honoured"
+        );
+    }
+
     use super::super::sampling::SamplingParams;
     use super::sample_with_penalty;
     use candle_core::{Device, Tensor};
@@ -7144,8 +7408,16 @@ mod tests {
         }
     }
 
-    /// The three inlets converge on one field (#223): an explicit token
-    /// count, Anthropic's normalised `budget_tokens`, or an effort rung.
+    /// Two inlets converge on one field: an explicit token count, or
+    /// Anthropic's normalised `budget_tokens`, which translation folds
+    /// into the same shape.
+    ///
+    /// An effort rung deliberately no longer produces a budget (#290).
+    /// It used to, and that made effort mean two incompatible things at
+    /// once — a prompt instruction to the model, and a guillotine
+    /// applied to it. Effort now reaches the model through its own chat
+    /// template, where it is a trained control; the governor remains as
+    /// a backstop for a caller that asks for a hard cap.
     #[test]
     fn the_reasoning_budget_resolves_from_every_inlet() {
         use cortex_core::openai::{ChatCompletionRequest, MessageContent};
@@ -7175,15 +7447,18 @@ mod tests {
             ),
             Some(5000)
         );
-        // Effort rung, resolved against the operator's configuration.
+        // An effort rung is NOT a budget (#290). `medium` used to resolve
+        // to 12,288 here and force-close the think block at that count —
+        // observed twice, to the token, in one agentic session, leaving
+        // the model to answer from an unfinished plan.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "medium"}})),
                 &ladder
             ),
-            Some(12_288)
+            None
         );
-        // An explicit count beats a rung — it is the more specific ask.
+        // An explicit count still caps, whatever rung was named.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "low", "max_tokens": 999}})),
@@ -8152,7 +8427,8 @@ mod tests {
             "tools": [{"type": "function", "function": {"name": "x"}}]
         }))
         .unwrap();
-        let err = build_prompt_for_request(Some(bad), &with_tools).unwrap_err();
+        let err =
+            build_prompt_for_request(Some(bad), &with_tools, &Default::default()).unwrap_err();
         assert!(matches!(err, InferenceError::TemplateRenderFailed { .. }));
 
         // No tools → falling back is harmless, so it stays Ok.
@@ -8161,6 +8437,6 @@ mod tests {
             "messages": [{"role": "user", "content": "hi"}]
         }))
         .unwrap();
-        assert!(build_prompt_for_request(Some(bad), &no_tools).is_ok());
+        assert!(build_prompt_for_request(Some(bad), &no_tools, &Default::default()).is_ok());
     }
 }

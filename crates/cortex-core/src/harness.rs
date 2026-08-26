@@ -141,9 +141,36 @@ fn is_zero(v: &usize) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReasoningBudgetRung {
     /// The effort level as the caller spells it on the wire.
+    ///
+    /// Since #290 these are the rungs the **model's own chat template**
+    /// accepts, discovered by rendering it, rather than a ladder the
+    /// operator invented. `Qwen/Qwen3.8-27B` accepts exactly `low`,
+    /// `medium` and `xhigh` and raises on anything else; we previously
+    /// advertised `minimal`/`low`/`medium`/`high`, two of which the
+    /// template rejects and which omitted the model's own default.
+    ///
+    /// Clients read this to decide what they may ask for — pi-ai offers
+    /// a level only when the model declares it — so an invented rung
+    /// here makes a real one unreachable.
     pub effort: String,
-    /// Reasoning tokens that level is allowed to spend.
-    pub tokens: usize,
+    /// Backstop reasoning-token cap for this rung, when the deployment
+    /// sets one.
+    ///
+    /// `None` is the normal case and means "named rung, no cap": effort
+    /// is expressed to the model through its template, and the number of
+    /// tokens it then spends is the model's business. A cap is a safety
+    /// net against a runaway think block (#223), not the mechanism by
+    /// which effort is selected — enforcing effort by truncation is what
+    /// #290 fixed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<usize>,
+    /// Whether the model applies this rung when the caller names none.
+    ///
+    /// Taken from the template's own `|default(...)`. Without it a
+    /// caller that says nothing cannot tell what it is getting — on
+    /// Qwen3.8 that silently means `xhigh`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub default: bool,
 }
 
 /// Operator-set pricing, **USD per 1,000,000 tokens, as JSON numbers**
