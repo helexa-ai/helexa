@@ -42,6 +42,31 @@ pub struct ReasoningBudgetLadder {
     pub xhigh: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max: Option<usize>,
+    /// Tokens of the caller's **own** output budget held back for the
+    /// answer, when the caller names no explicit `reasoning.max_tokens`.
+    ///
+    /// This is what an OpenAI-shaped client gets instead of the rungs
+    /// above, and it is deliberately not derived from effort. Effort is
+    /// a prompt instruction the model is trained to follow (#290);
+    /// making it *also* set a guillotine is what told Qwen3.8-27B to
+    /// reason at `xhigh` and then cut it off at `medium`'s 12,288.
+    ///
+    /// A reserve has no such double meaning. The model thinks as long
+    /// as it likes within the budget the caller declared, minus enough
+    /// to answer — so the caller always gets an answer, and the size of
+    /// the think block stays the model's decision rather than ours.
+    ///
+    /// Set to `0` to disable, restoring fully unbounded reasoning.
+    #[serde(default = "default_answer_reserve")]
+    pub answer_reserve_tokens: usize,
+}
+
+/// Enough for a substantive answer with tool calls, not so much that it
+/// meaningfully shortens a think block: at the 32,768 budget pi sends,
+/// this leaves ~28.7 k for reasoning — above the ~27.2 k a full agentic
+/// design turn was measured to use.
+fn default_answer_reserve() -> usize {
+    4_096
 }
 
 impl Default for ReasoningBudgetLadder {
@@ -58,6 +83,7 @@ impl Default for ReasoningBudgetLadder {
             high: 32_768,
             xhigh: None,
             max: None,
+            answer_reserve_tokens: default_answer_reserve(),
         }
     }
 }
