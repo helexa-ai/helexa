@@ -75,6 +75,12 @@ pub struct ModelGenerationDefaults {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub top_k: Option<usize>,
+    /// Not published in `generation_config.json` — this struct is the
+    /// resolved per-model default layer, and the operator override
+    /// (#283) lands here so the repetition knobs sit in the same
+    /// precedence chain as the rest.
+    pub repeat_penalty: Option<f32>,
+    pub repeat_last_n: Option<usize>,
 }
 
 impl ModelGenerationDefaults {
@@ -155,6 +161,12 @@ impl ModelGenerationDefaults {
         if let Some(k) = op.top_k {
             self.top_k = Some(k);
         }
+        if let Some(r) = op.repeat_penalty {
+            self.repeat_penalty = Some(r);
+        }
+        if let Some(n) = op.repeat_last_n {
+            self.repeat_last_n = Some(n);
+        }
         tracing::info!(
             model = %model_id,
             model_temperature = ?before.temperature,
@@ -163,6 +175,8 @@ impl ModelGenerationDefaults {
             temperature = ?self.temperature,
             top_p = ?self.top_p,
             top_k = ?self.top_k,
+            repeat_penalty = ?self.repeat_penalty,
+            repeat_last_n = ?self.repeat_last_n,
             "sampling: operator override applied over the model's published defaults (#283)"
         );
         self
@@ -216,8 +230,14 @@ impl SamplingParams {
             top_p: requested.top_p.or(model.top_p),
             top_k: requested.top_k.or(model.top_k),
             seed: requested.seed.unwrap_or(random_seed),
-            repeat_penalty: requested.repeat_penalty.unwrap_or(DEFAULT_REPEAT_PENALTY),
-            repeat_last_n: requested.repeat_last_n.unwrap_or(DEFAULT_REPEAT_LAST_N),
+            repeat_penalty: requested
+                .repeat_penalty
+                .or(model.repeat_penalty)
+                .unwrap_or(DEFAULT_REPEAT_PENALTY),
+            repeat_last_n: requested
+                .repeat_last_n
+                .or(model.repeat_last_n)
+                .unwrap_or(DEFAULT_REPEAT_LAST_N),
         }
     }
 
@@ -252,6 +272,7 @@ mod tests {
             temperature: Some(1.0),
             top_p: Some(0.95),
             top_k: Some(20),
+            ..Default::default()
         }
     }
 
@@ -298,6 +319,7 @@ mod tests {
             temperature,
             top_p,
             top_k,
+            ..Default::default()
         }
     }
 
@@ -394,6 +416,55 @@ mod tests {
     /// A model with no `generation_config.json` must behave exactly as
     /// it did before this landed, so nothing regresses on the models
     /// that do not ship one.
+    /// The gap this closes: `repeat_last_n` defaults to 64 — candle's
+    /// chat example value — while a reasoning model's think block runs
+    /// to tens of thousands of tokens. Anything restated more than 64
+    /// tokens later is invisible to the penalty, and before this there
+    /// was no operator route to the knob at all: `SamplingOverride`
+    /// carried only temperature/top_p/top_k, and OpenAI-shaped clients
+    /// do not send repetition parameters. The 64 was effectively
+    /// hardcoded in production.
+    #[test]
+    fn an_operator_can_widen_the_repetition_window() {
+        let op = cortex_core::harness::SamplingOverride {
+            repeat_penalty: Some(1.05),
+            repeat_last_n: Some(2048),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &defaults, 7);
+        assert_eq!(p.repeat_last_n, 2048);
+        assert!((p.repeat_penalty - 1.05).abs() < f32::EPSILON);
+    }
+
+    /// Precedence is request > operator > built-in, same as every other
+    /// sampling field — a caller that named a window keeps it.
+    #[test]
+    fn a_requested_repetition_window_outranks_the_operator() {
+        let op = cortex_core::harness::SamplingOverride {
+            repeat_last_n: Some(2048),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let req = RequestedSampling {
+            repeat_last_n: Some(128),
+            ..Default::default()
+        };
+        assert_eq!(
+            SamplingParams::resolve(&req, &defaults, 7).repeat_last_n,
+            128
+        );
+    }
+
+    /// An operator who sets nothing must not change the constants.
+    #[test]
+    fn no_operator_setting_leaves_the_repetition_defaults_alone() {
+        let d = ModelGenerationDefaults::default().with_operator_override("m", None);
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &d, 7);
+        assert_eq!(p.repeat_last_n, DEFAULT_REPEAT_LAST_N);
+        assert!((p.repeat_penalty - DEFAULT_REPEAT_PENALTY).abs() < f32::EPSILON);
+    }
+
     #[test]
     fn without_model_defaults_the_old_behaviour_is_preserved() {
         let p = SamplingParams::resolve(

@@ -55,13 +55,41 @@ pub struct SamplingOverride {
     pub top_p: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_k: Option<usize>,
+    /// Multiplier applied to recently-generated tokens before sampling.
+    /// `1.0` disables it; above that, recently-emitted tokens get less
+    /// likely.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    /// How many recently-generated tokens the penalty considers.
+    ///
+    /// The reason this is operator-settable at all: the built-in default
+    /// is 64, inherited from candle's chat example, and a reasoning
+    /// model's think block runs to tens of thousands of tokens. Anything
+    /// restated more than 64 tokens later is invisible to the penalty,
+    /// which is how a 28,672-token think block can contain the same
+    /// derivation five times over.
+    ///
+    /// Raising it is a real trade, not a free win: the penalty is
+    /// token-level, and source code legitimately repeats tokens
+    /// constantly (`const`, `function`, brace runs). A wide window at a
+    /// meaningful penalty distorts exactly the output this fleet is for.
+    /// Sequence-level repetition wants a sequence-level instrument
+    /// (frequency/presence penalties, or a DRY-style sampler); this knob
+    /// exists so the trade can be *measured* per model rather than
+    /// guessed once and frozen into a constant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_last_n: Option<usize>,
 }
 
 impl SamplingOverride {
     /// True when the operator set nothing — an empty `[sampling]` table
     /// must behave exactly as no table at all.
     pub fn is_empty(&self) -> bool {
-        self.temperature.is_none() && self.top_p.is_none() && self.top_k.is_none()
+        self.temperature.is_none()
+            && self.top_p.is_none()
+            && self.top_k.is_none()
+            && self.repeat_penalty.is_none()
+            && self.repeat_last_n.is_none()
     }
 }
 
