@@ -83,6 +83,7 @@ pub struct ModelGenerationDefaults {
     pub repeat_last_n: Option<usize>,
     pub presence_penalty: Option<f32>,
     pub frequency_penalty: Option<f32>,
+    pub seed: Option<u64>,
 }
 
 impl ModelGenerationDefaults {
@@ -175,6 +176,9 @@ impl ModelGenerationDefaults {
         if let Some(v) = op.frequency_penalty {
             self.frequency_penalty = Some(v);
         }
+        if let Some(v) = op.seed {
+            self.seed = Some(v);
+        }
         tracing::info!(
             model = %model_id,
             model_temperature = ?before.temperature,
@@ -187,6 +191,7 @@ impl ModelGenerationDefaults {
             repeat_last_n = ?self.repeat_last_n,
             presence_penalty = ?self.presence_penalty,
             frequency_penalty = ?self.frequency_penalty,
+            seed = ?self.seed,
             "sampling: operator override applied over the model's published defaults (#283)"
         );
         self
@@ -244,7 +249,7 @@ impl SamplingParams {
             // whenever the caller stayed quiet.
             top_p: requested.top_p.or(model.top_p),
             top_k: requested.top_k.or(model.top_k),
-            seed: requested.seed.unwrap_or(random_seed),
+            seed: requested.seed.or(model.seed).unwrap_or(random_seed),
             repeat_penalty: requested
                 .repeat_penalty
                 .or(model.repeat_penalty)
@@ -439,6 +444,48 @@ mod tests {
     /// A model with no `generation_config.json` must behave exactly as
     /// it did before this landed, so nothing regresses on the models
     /// that do not ship one.
+    /// An operator can pin the seed, because the client that needs it
+    /// pinned cannot send one: pi's request builder emits no `seed`, so
+    /// without this a parameter search runs unseeded and sampling
+    /// variance is indistinguishable from the effect being measured.
+    #[test]
+    fn an_operator_can_pin_the_seed() {
+        let op = cortex_core::harness::SamplingOverride {
+            seed: Some(424_242),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        // The random seed argument must be ignored once an operator pinned one.
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &defaults, 999);
+        assert_eq!(p.seed, 424_242);
+    }
+
+    /// Precedence holds: a caller that names its own seed keeps it.
+    #[test]
+    fn a_requested_seed_outranks_the_operator() {
+        let op = cortex_core::harness::SamplingOverride {
+            seed: Some(424_242),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let req = RequestedSampling {
+            seed: Some(7),
+            ..Default::default()
+        };
+        assert_eq!(SamplingParams::resolve(&req, &defaults, 999).seed, 7);
+    }
+
+    /// With neither, the per-request random seed still applies — an
+    /// unset override must not accidentally freeze the fleet's RNG.
+    #[test]
+    fn no_pinned_seed_leaves_generation_random() {
+        let d = ModelGenerationDefaults::default().with_operator_override("m", None);
+        assert_eq!(
+            SamplingParams::resolve(&RequestedSampling::default(), &d, 999).seed,
+            999
+        );
+    }
+
     /// The gap this closes: `repeat_last_n` defaults to 64 — candle's
     /// chat example value — while a reasoning model's think block runs
     /// to tens of thousands of tokens. Anything restated more than 64

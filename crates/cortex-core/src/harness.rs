@@ -91,6 +91,28 @@ pub struct SamplingOverride {
     /// Sequence-wide penalty proportional to a token's existing count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
+    /// Pin the sampler's RNG for every request to this model.
+    ///
+    /// Exists because parameter search needs a control: comparing two
+    /// `presence_penalty` values across unseeded runs cannot separate
+    /// the parameter's effect from sampling variance, and the clients
+    /// that would otherwise pin it cannot — pi's request builder sends
+    /// no `seed` at all, so a caller-side seed is not available on the
+    /// path that matters.
+    ///
+    /// Note what this does and does not give. It removes sampling noise
+    /// as a confounder; it does not make two runs comparable
+    /// token-by-token, because changing a penalty changes the logits
+    /// and the sequences diverge at the first step where a token choice
+    /// flips.
+    ///
+    /// Leaving this set is a product decision, not just a testing one:
+    /// every identical prompt then yields an identical answer for every
+    /// caller. That is defensible — predictable and cacheable — but it
+    /// removes the variation a user may expect from retrying. A request
+    /// that names its own seed still wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
 }
 
 impl SamplingOverride {
@@ -104,6 +126,7 @@ impl SamplingOverride {
             && self.repeat_last_n.is_none()
             && self.presence_penalty.is_none()
             && self.frequency_penalty.is_none()
+            && self.seed.is_none()
     }
 }
 
