@@ -59,17 +59,28 @@ max_in_flight = 2
 # re-prefilled ~50k tokens — 37 s each, against ~20 s of actual decode.
 # The cache was not missing; the snapshot would not fit.
 #
-# Sized from this deployment's numbers rather than rounded: free at load
-# 9,285 MB, less the 4,713 MB KV budget, leaves 4,572 MB that snapshots
-# share with everything else. A 52,869-token snapshot is ~1,652 MB of
-# K/V, so 3 GiB holds a full deep session with slack. 4 GiB would take
-# 90% of the headroom, which is not a trade worth making on a host that
-# also cold-swaps image models.
+# The snapshot budget is reserved BEFORE the KV budget, not from what is
+# left over: measured on this host, kv_budget_mb = 5737 - budget_mb,
+# exactly 1:1. So this number is a direct trade against how long a
+# single session can get, and both sides have a floor:
+#
+#   budget_mb   kv_budget   tokens/slot (2 slots)   holds a 52.9k snapshot
+#   1024        4713        75,400                  no  ← the #292 symptom
+#   3072        2665        42,600                  yes, but sessions
+#                                                   cannot reach 52.9k
+#   2048        3689        59,000                  yes
+#
+# 2 GiB is the value that satisfies both: a 52,869-token snapshot is
+# ~1,652 MB of K/V plus the GatedDeltaNet state (~1.73 GB total), and
+# per-slot KV still covers sessions comfortably past the deepest
+# observed. 3 GiB was tried first and starved KV — a session could no
+# longer reach the size whose snapshot the cache was being enlarged to
+# hold, which is self-defeating.
 #
 # max_entries stays at the default 8: the byte budget binds first here,
 # so the count cap is not what is forcing snapshots to be small.
 [harness.candle.prefix_cache]
-budget_mb = 3072
+budget_mb = 2048
 
 [[default_models]]
 # Qwen3.8-27B is the resident flagship (#251). Architecturally identical
