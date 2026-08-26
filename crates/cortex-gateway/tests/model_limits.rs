@@ -69,17 +69,20 @@ capabilities = ["text"]
         let mut nodes = fleet.nodes.write().await;
         let node = nodes.get_mut("mock-node").expect("node exists");
         node.healthy = true;
-        // The ladder the neuron reported at poll time (#223) — host
-        // configuration, held once per node.
-        node.reasoning_budget = ["minimal", "low", "medium", "high"]
+        // The rungs the neuron reported at poll time. Since #290 these
+        // come from the model's own chat template rather than operator
+        // configuration, so the fixture uses the shape a real reasoning
+        // model ships: Qwen3.8-27B accepts exactly low/medium/xhigh and
+        // defaults to xhigh.
+        node.reasoning_budget = ["low", "medium", "xhigh"]
             .into_iter()
-            .zip([1024usize, 4096, 12288, 32768])
-            .map(
-                |(effort, tokens)| cortex_core::harness::ReasoningBudgetRung {
-                    effort: effort.into(),
-                    tokens,
-                },
-            )
+            .map(|effort| cortex_core::harness::ReasoningBudgetRung {
+                default: effort == "xhigh",
+                effort: effort.into(),
+                // No cap: effort is expressed to the model through its
+                // template, not enforced by truncating its thinking.
+                tokens: None,
+            })
             .collect();
         node.models.insert(
             "test-model".into(),
@@ -167,9 +170,10 @@ capabilities = ["text"]
     // request; advertising the 8192 reserve told a reasoning model's
     // harness to stop below the cost of a single think block.
     assert_eq!(entry["max_output_tokens"], 32768);
-    // What each effort level buys (#223). A client can only send the
-    // rung names — it has no way to express a token count — so a ladder
-    // it cannot see is a ladder it has to guess at.
+    // The rungs the model itself accepts (#290). A client can only send
+    // the rung names, and it picks from what we publish — pi-ai offers a
+    // level only when the model declares it — so a name we invent makes
+    // a real one unreachable.
     let rungs = entry["reasoning_budget"]
         .as_array()
         .expect("reasoning_budget advertised for a reasoning model");
@@ -177,12 +181,26 @@ capabilities = ["text"]
         .iter()
         .map(|r| r["effort"].as_str().expect("effort"))
         .collect();
-    assert_eq!(names, ["minimal", "low", "medium", "high"]);
+    assert_eq!(names, ["low", "medium", "xhigh"]);
+    // Which rung applies when the caller names none. Without this a
+    // silent caller cannot tell what it is getting — on Qwen3.8 that is
+    // xhigh, the most expensive rung on the ladder.
+    let default_rung: Vec<&str> = rungs
+        .iter()
+        .filter(|r| r["default"].as_bool().unwrap_or(false))
+        .map(|r| r["effort"].as_str().expect("effort"))
+        .collect();
+    assert_eq!(
+        default_rung,
+        ["xhigh"],
+        "the model's own default must be visible"
+    );
+    // A named rung carries no token count: effort reaches the model
+    // through its template, and enforcing it by truncation is the defect
+    // #290 fixed.
     assert!(
-        rungs
-            .iter()
-            .all(|r| r["tokens"].as_u64().is_some_and(|t| t > 0)),
-        "every advertised rung must name a token count"
+        rungs.iter().all(|r| r.get("tokens").is_none()),
+        "a named rung must not masquerade as a token budget"
     );
 
     // The window under the two names generic clients actually read.

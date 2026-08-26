@@ -13,6 +13,7 @@ pub mod prefix_cache;
 pub mod preflight;
 pub mod preprocess;
 pub mod reasoning_budget;
+pub mod reasoning_effort;
 pub mod sampling;
 pub mod speculative;
 pub mod tp;
