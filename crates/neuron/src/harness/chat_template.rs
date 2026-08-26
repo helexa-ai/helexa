@@ -438,6 +438,75 @@ mod tests {
         assert!(out.contains("<|vision_start|>") && out.contains("<|vision_end|>"));
     }
 
+    /// Blank lines inside a replayed tool-call argument must survive
+    /// rendering intact.
+    ///
+    /// A model that writes a source file and then re-reads it from its
+    /// own replayed tool call is comparing what it remembers writing
+    /// against what the prompt now shows. Any whitespace the pipeline
+    /// eats makes those disagree, and the model has no way to tell a
+    /// rendering artifact from a mistake of its own — which is a
+    /// plausible route into the announce-then-stop stall (#296).
+    ///
+    /// The JSON string→object normalisation above is the step that
+    /// could plausibly lose them, since it round-trips the arguments
+    /// through a parser.
+    #[test]
+    fn a_replayed_tool_call_keeps_the_blank_lines_in_its_arguments() {
+        let template = include_str!("../../tests/data/qwen3.8-27b.chat_template.jinja");
+        // Blank lines between sections, exactly as a written source file
+        // carries them.
+        let file_body = "'use strict';\n\n// ---- constants ----\nconst A = 1;\n\n\nfunction f() {\n  return A;\n}\n";
+        let args = json!({ "path": "/tmp/game.js", "content": file_body });
+        let mut assistant_extras = serde_json::Map::new();
+        assistant_extras.insert(
+            "tool_calls".into(),
+            json!([{
+                "id": "call_0", "type": "function",
+                "function": {
+                    "name": "write",
+                    // The OpenAI wire form: arguments as a JSON *string*.
+                    "arguments": serde_json::to_string(&args).unwrap()
+                }
+            }]),
+        );
+        let mut tool_extras = serde_json::Map::new();
+        tool_extras.insert("tool_call_id".into(), json!("call_0"));
+
+        let messages = vec![
+            user_msg("write the file"),
+            ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Null,
+                extra: Value::Object(assistant_extras),
+            },
+            ChatMessage {
+                role: "tool".into(),
+                content: MessageContent::Text("Successfully wrote 84 bytes".into()),
+                extra: Value::Object(tool_extras),
+            },
+            user_msg("now check it parses"),
+        ];
+        let out =
+            render_chat_template(template, &messages, &Value::Null, &Value::Null).expect("render");
+
+        assert!(
+            out.contains(file_body),
+            "the file body must appear verbatim in the rendered prompt"
+        );
+        let blanks_in = file_body.lines().filter(|l| l.is_empty()).count();
+        assert_eq!(blanks_in, 3, "fixture sanity");
+        // And specifically the double newline the model would notice.
+        assert!(
+            out.contains("'use strict';\n\n// ---- constants ----"),
+            "blank line after the prologue was eaten"
+        );
+        assert!(
+            out.contains("const A = 1;\n\n\nfunction f()"),
+            "consecutive blank lines were collapsed"
+        );
+    }
+
     /// The second turn of an OpenAI-native agentic loop: the client
     /// replays its own assistant turn, which carries `tool_calls` and
     /// `"content": null`. That must render as the tool-call block —
