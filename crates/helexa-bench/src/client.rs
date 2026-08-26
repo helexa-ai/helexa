@@ -282,6 +282,7 @@ impl TargetClient {
                         cost: None,
                         tool_call: false,
                         reasoning: false,
+                        preserve_thinking: None,
                         // A generic OpenAI endpoint says nothing about
                         // serviceability, and absent means "no opinion".
                         servable: None,

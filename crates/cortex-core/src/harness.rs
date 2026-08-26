@@ -268,6 +268,16 @@ pub struct ModelInfo {
     /// marker tokens (`<think>` / `<\/think>` or similar).
     #[serde(default)]
     pub reasoning: bool,
+    /// The operator's `preserve_thinking` for this loaded model, or
+    /// `None` when unset and the template's own default applies.
+    ///
+    /// Advertised so a run can be *stamped* with the value it ran
+    /// under. This is an A/B knob whose whole purpose is comparison
+    /// between runs, and a comparison whose arms cannot be told apart
+    /// afterwards is not a comparison. Recovering it from deploy
+    /// history is guesswork — a config sync can land mid-session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preserve_thinking: Option<bool>,
 
     /// Whether this node can actually serve a request for this model
     /// right now (#245).
