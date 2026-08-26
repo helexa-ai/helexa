@@ -215,9 +215,44 @@ pub struct ResponsesResponse {
     pub status: String,
     pub model: String,
     pub output: Vec<ResponsesOutputItem>,
+    /// Why a `status: "incomplete"` response stopped short. Required in
+    /// practice, not optional decoration: a client cannot tell an
+    /// honest truncation from a protocol fault without it, and at least
+    /// one treats the difference as fatal.
+    ///
+    /// pi-ai's `mapStopReason` maps
+    /// `incomplete` + `reason == "max_output_tokens"` to
+    /// `stopReason: "length"`, and `incomplete` with no reason to
+    /// `stopReason: "error"` ("Response incomplete without a provider
+    /// reason"). Its agent loop then either continues — failing any
+    /// truncated tool calls safely and letting the model recover on the
+    /// next turn — or halts outright. Omitting this field cost a live
+    /// agentic session its whole run.
+    ///
+    /// `None` for `completed` and `in_progress`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub incomplete_details: Option<IncompleteDetails>,
     /// Populated on completion; `None` while streaming.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<ResponsesUsage>,
+}
+
+/// Why a response is `incomplete`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IncompleteDetails {
+    /// OpenAI spells the output-cap case `"max_output_tokens"`; that is
+    /// the only reason we produce today. `content_filter` is the other
+    /// value the upstream API defines.
+    pub reason: String,
+}
+
+impl IncompleteDetails {
+    /// The response ran into the caller's output budget.
+    pub fn max_output_tokens() -> Self {
+        Self {
+            reason: "max_output_tokens".into(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -327,6 +362,15 @@ pub mod events {
     pub const FUNCTION_CALL_ARGUMENTS_DELTA: &str = "response.function_call_arguments.delta";
     pub const FUNCTION_CALL_ARGUMENTS_DONE: &str = "response.function_call_arguments.done";
     pub const COMPLETED: &str = "response.completed";
+    /// Terminal frame for a response that stopped short. Carries the
+    /// same `response` payload as [`COMPLETED`], with
+    /// `status: "incomplete"` and `incomplete_details.reason`.
+    ///
+    /// A client keyed on the event name — rather than on
+    /// `response.status` — sees no terminal event at all if a truncated
+    /// response is announced as `response.completed`, and waits out its
+    /// idle timeout.
+    pub const INCOMPLETE: &str = "response.incomplete";
 }
 
 #[cfg(test)]
@@ -531,6 +575,7 @@ mod tests {
                 }],
                 status: "completed".into(),
             }],
+            incomplete_details: None,
             usage: Some(ResponsesUsage {
                 input_tokens: 5,
                 output_tokens: 3,
@@ -543,5 +588,36 @@ mod tests {
         let parsed: ResponsesResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.id, "resp_1");
         assert_eq!(parsed.output.len(), 1);
+        assert!(
+            !json.contains("incomplete_details"),
+            "a completed response must not carry an incomplete reason"
+        );
+    }
+
+    /// The field pi-ai's `mapStopReason` keys on. Absent, it maps
+    /// `incomplete` to `stopReason: "error"` and its agent loop halts;
+    /// present with `max_output_tokens`, it maps to `"length"` and the
+    /// loop continues.
+    #[test]
+    fn an_incomplete_response_serialises_its_reason() {
+        let r = ResponsesResponse {
+            id: "resp_2".into(),
+            object: "response".into(),
+            created_at: 1700,
+            status: "incomplete".into(),
+            model: "m".into(),
+            output: vec![],
+            incomplete_details: Some(IncompleteDetails::max_output_tokens()),
+            usage: None,
+        };
+        let v: serde_json::Value = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["status"], "incomplete");
+        assert_eq!(v["incomplete_details"]["reason"], "max_output_tokens");
+
+        let parsed: ResponsesResponse = serde_json::from_value(v).unwrap();
+        assert_eq!(
+            parsed.incomplete_details,
+            Some(IncompleteDetails::max_output_tokens())
+        );
     }
 }

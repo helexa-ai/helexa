@@ -1043,7 +1043,14 @@ async fn emit_finish_frames(
             }),
         },
         ResponseStreamFrame {
-            event_name: events::COMPLETED,
+            // `response.incomplete` when we stopped short, so a client
+            // keyed on the event name rather than on `response.status`
+            // still sees a terminal frame instead of timing out.
+            event_name: if status == "incomplete" {
+                events::INCOMPLETE
+            } else {
+                events::COMPLETED
+            },
             data: json!({
                 "response": response_shell(meta, status, &output_items, usage)
             }),
@@ -1068,6 +1075,15 @@ fn response_shell(
     obj.insert("object".into(), Value::String("response".into()));
     obj.insert("created_at".into(), json!(meta.created_at));
     obj.insert("status".into(), Value::String(status.into()));
+    // Why we stopped short. A client cannot distinguish an honest
+    // truncation from a protocol fault without this, and pi-ai treats
+    // the difference as continue-vs-halt.
+    if status == "incomplete" {
+        obj.insert(
+            "incomplete_details".into(),
+            json!({ "reason": "max_output_tokens" }),
+        );
+    }
     obj.insert("model".into(), Value::String(meta.model_id.clone()));
     obj.insert("output".into(), Value::Array(output.to_vec()));
     if let Some(u) = usage {
@@ -1138,6 +1154,10 @@ pub fn build_response(
             }],
             status,
         }],
+        // Same contract as the streaming shell: a truncated response
+        // says so, or the caller cannot tell it from a fault.
+        incomplete_details: matches!(reason, FinishReason::Length)
+            .then(cortex_core::responses::IncompleteDetails::max_output_tokens),
         usage,
     }
 }
@@ -2003,9 +2023,19 @@ mod tests {
             names.contains(&events::CONTENT_PART_ADDED),
             "message item must still be opened so the finish frames refer to something"
         );
-        assert_eq!(names.last(), Some(&events::COMPLETED));
+        // This is the live failure in miniature: the model spent its
+        // whole budget thinking and produced almost no visible text.
+        // The stream must still close, and must say *why* it stopped —
+        // this frame used to be named `response.completed` while
+        // carrying `status: "incomplete"`, an inconsistency that cost a
+        // real agentic session its run.
+        assert_eq!(names.last(), Some(&events::INCOMPLETE));
         let last = frames.last().unwrap();
         assert_eq!(last.data["response"]["status"], "incomplete");
+        assert_eq!(
+            last.data["response"]["incomplete_details"]["reason"],
+            "max_output_tokens"
+        );
     }
 
     /// Tool calls sit after the message, which sits after any reasoning
@@ -2299,11 +2329,58 @@ mod tests {
         .unwrap();
         drop(tx);
         let frames = collect(out).await;
+        // The terminal frame is `response.incomplete`, not
+        // `response.completed` — a client keyed on the event name must
+        // still see an end to the stream.
+        assert!(
+            !frames.iter().any(|f| f.event_name == events::COMPLETED),
+            "a truncated response must not announce itself as completed"
+        );
+        let terminal = frames
+            .iter()
+            .find(|f| f.event_name == events::INCOMPLETE)
+            .expect("a terminal frame is required");
+        assert_eq!(terminal.data["response"]["status"], "incomplete");
+        // The field that decides whether a client recovers or halts.
+        assert_eq!(
+            terminal.data["response"]["incomplete_details"]["reason"], "max_output_tokens",
+            "pi-ai maps `incomplete` with no reason to stopReason:error \
+             and ends the agent loop; with max_output_tokens it maps to \
+             stopReason:length, fails truncated tool calls safely, and \
+             takes another turn"
+        );
+    }
+
+    /// The converse: a normal finish must stay `response.completed`
+    /// and carry no reason, or every client sees phantom truncation.
+    #[tokio::test]
+    async fn a_normal_finish_carries_no_incomplete_reason() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        let out = project_responses_stream(rx, meta());
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            reasoning_tokens: 0,
+            cached_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let frames = collect(out).await;
         let completed = frames
             .iter()
             .find(|f| f.event_name == events::COMPLETED)
-            .unwrap();
-        assert_eq!(completed.data["response"]["status"], "incomplete");
+            .expect("a normal finish stays `response.completed`");
+        assert_eq!(completed.data["response"]["status"], "completed");
+        assert!(
+            completed.data["response"]
+                .get("incomplete_details")
+                .is_none(),
+            "a completed response must not carry an incomplete reason"
+        );
     }
 
     #[tokio::test]
