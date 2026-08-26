@@ -600,7 +600,10 @@ impl LoadedImageModel {
 /// token count wins over a ladder rung — it is the more specific thing
 /// the caller reached for.
 ///
-/// **Only** an explicit `reasoning.max_tokens` produces a budget (#290).
+/// An explicit `reasoning.max_tokens` wins. Failing that, the budget is
+/// the caller's own output budget less `answer_reserve_tokens`, so an
+/// OpenAI-shaped client — which has no way to send a token count — still
+/// gets an answer rather than a think block that eats the lot.
 ///
 /// Effort levels used to be mapped onto a token ladder here and enforced
 /// by force-injecting `</think>` at the limit. That made effort mean two
@@ -616,18 +619,30 @@ impl LoadedImageModel {
 /// asks for a hard cap, which is what #223's runaway-think-block concern
 /// actually needs.
 ///
-/// `None` means unbounded, which is the default and exactly how the
-/// model behaved before any of this existed.
+/// `None` means unbounded — reachable by configuring
+/// `answer_reserve_tokens = 0`, or when the reserve is not smaller than
+/// the whole output budget (a budget so small that reserving from it
+/// would leave no room to think at all; better to think freely and let
+/// the output cap bite than to emit a stub).
 fn requested_reasoning_budget(
     request: &ChatCompletionRequest,
-    _ladder: &super::reasoning_budget::ReasoningBudgetLadder,
+    ladder: &super::reasoning_budget::ReasoningBudgetLadder,
+    max_new: usize,
 ) -> Option<usize> {
-    let reasoning = request.extra.get("reasoning")?;
-    reasoning
-        .get("max_tokens")
+    if let Some(explicit) = request
+        .extra
+        .get("reasoning")
+        .and_then(|r| r.get("max_tokens"))
         .and_then(|v| v.as_u64())
         .filter(|n| *n > 0)
-        .map(|n| n as usize)
+    {
+        return Some(explicit as usize);
+    }
+    let reserve = ladder.answer_reserve_tokens;
+    if reserve == 0 || reserve >= max_new {
+        return None;
+    }
+    Some(max_new - reserve)
 }
 
 fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::RequestedSampling {
@@ -2991,23 +3006,30 @@ impl CandleHarness {
             &loaded.generation_defaults,
             unix_subsec_nanos(),
         );
-        // Bound the think block if the caller asked for it (#223).
+        // The output budget the request declared, under either
+        // spelling (#254), and the fallback when it declares none.
+        // One value drives generation, KV pricing and admission — they
+        // disagreed before, and the gate priced a budget nobody asked
+        // for (#278).
+        //
+        // Resolved before the governor because the governor's budget is
+        // now carved out of it.
+        let requested_output = request.effective_max_tokens().map(|t| t as usize);
+        let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
+        let max_new = requested_output.unwrap_or(cfg_output_reserve);
+
+        // Bound the think block so some of the caller's budget survives
+        // for the answer (#223).
+        let reasoning_budget =
+            requested_reasoning_budget(&request, &self.reasoning_budget_cfg, max_new);
         let governor = super::reasoning_budget::ReasoningGovernor::new(
-            requested_reasoning_budget(&request, &self.reasoning_budget_cfg),
+            reasoning_budget,
             loaded
                 .reasoning_tokens
                 .as_ref()
                 .map(|p| (p.open_id, p.close_id)),
             prompt_opens_reasoning(&prompt_tokens, loaded.reasoning_tokens.as_ref()),
         );
-        // The output budget the request declared, under either
-        // spelling (#254), and the fallback when it declares none.
-        // One value drives generation, KV pricing and admission — they
-        // disagreed before, and the gate priced a budget nobody asked
-        // for (#278).
-        let requested_output = request.effective_max_tokens().map(|t| t as usize);
-        let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
-        let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
         let eos_id = loaded
             .tokenizer
@@ -3129,10 +3151,7 @@ impl CandleHarness {
                     sampling: sampling.clone(),
                     // The engine builds its own per-slot governor from
                     // this, since slots in a batch differ (#223).
-                    reasoning_budget: requested_reasoning_budget(
-                        &request,
-                        &self.reasoning_budget_cfg,
-                    ),
+                    reasoning_budget,
                     eos_id,
                     tool_schemas,
                     tx,
@@ -3500,11 +3519,12 @@ impl Harness for CandleHarness {
                 reasoning: h.has_reasoning(),
                 servable: h.servability(&self.context_limit_cfg),
                 // The rungs this model's own template accepts (#290),
-                // discovered at load rather than invented. Clients pick
-                // from what we publish — pi-ai offers a level only when
-                // the model declares it — so advertising a rung the
-                // template rejects makes a real one unreachable, and
-                // omitting the model's default makes it unselectable.
+                // discovered at load rather than invented. Advertising a
+                // rung the template rejects hands callers a name that
+                // errors, and omitting the model's default hides its
+                // strongest setting. (Whether a given client reads this
+                // is another matter — pi-ai does not; see
+                // `reasoning_effort`'s module doc.)
                 reasoning_budget: h
                     .reasoning_efforts()
                     .levels
@@ -4686,22 +4706,32 @@ impl CandleHarness {
             &tp.generation_defaults,
             unix_subsec_nanos(),
         );
-        // Bound the think block if the caller asked for it (#223).
-        let mut governor = super::reasoning_budget::ReasoningGovernor::new(
-            requested_reasoning_budget(&request, &self.reasoning_budget_cfg),
-            tp.reasoning_tokens
-                .as_ref()
-                .map(|p| (p.open_id, p.close_id)),
-            prompt_opens_reasoning(&prompt_tokens, tp.reasoning_tokens.as_ref()),
-        );
         // The output budget the request declared, under either
         // spelling (#254), and the fallback when it declares none.
         // One value drives generation, KV pricing and admission — they
         // disagreed before, and the gate priced a budget nobody asked
         // for (#278).
+        //
+        // Resolved before the governor because the governor's budget is
+        // now carved out of it.
         let requested_output = request.effective_max_tokens().map(|t| t as usize);
         let cfg_output_reserve = self.context_limit_cfg.output_reserve_tokens;
         let max_new = requested_output.unwrap_or(cfg_output_reserve);
+
+        // Bound the think block so some of the caller's budget survives
+        // for the answer (#223). Resolved into a local because the
+        // batched-engine path below needs the same value — the two must
+        // not diverge, or a request bounds differently depending on
+        // whether it was batched.
+        let reasoning_budget =
+            requested_reasoning_budget(&request, &self.reasoning_budget_cfg, max_new);
+        let mut governor = super::reasoning_budget::ReasoningGovernor::new(
+            reasoning_budget,
+            tp.reasoning_tokens
+                .as_ref()
+                .map(|p| (p.open_id, p.close_id)),
+            prompt_opens_reasoning(&prompt_tokens, tp.reasoning_tokens.as_ref()),
+        );
 
         let eos_id = tp
             .tokenizer
@@ -4807,10 +4837,7 @@ impl CandleHarness {
                     sampling: sampling.clone(),
                     // The engine builds its own per-slot governor from
                     // this, since slots in a batch differ (#223).
-                    reasoning_budget: requested_reasoning_budget(
-                        &request,
-                        &self.reasoning_budget_cfg,
-                    ),
+                    reasoning_budget,
                     eos_id,
                     tool_schemas,
                     tx,
@@ -7368,24 +7395,99 @@ mod tests {
         assert_eq!(effort_in(&out), None);
     }
 
-    /// Effort must no longer produce a token budget: that was the
-    /// guillotine. Only an explicit `max_tokens` caps thinking now.
+    /// Effort must not select a *rung's* budget — that was the
+    /// guillotine (#290): the model was told to reason at `xhigh` and
+    /// cut off at `medium`'s 12,288. The reserve below is not that; it
+    /// does not vary with effort.
     #[test]
-    fn effort_no_longer_yields_a_token_budget() {
+    fn effort_no_longer_selects_a_rungs_token_budget() {
         let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
-        assert_eq!(
-            requested_reasoning_budget(&req_with_effort(Some("medium")), &ladder),
-            None,
-            "medium must not silently become a 12288-token guillotine"
+        let medium = requested_reasoning_budget(&req_with_effort(Some("medium")), &ladder, 32_768);
+        let xhigh = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768);
+        assert_eq!(medium, xhigh, "the bound must not depend on effort");
+        assert_ne!(
+            medium,
+            Some(ladder.medium),
+            "medium must not become a {}-token guillotine",
+            ladder.medium
         );
+    }
+
+    /// The regression this reserve exists to prevent (#223, reopened by
+    /// #290): an OpenAI-shaped client cannot send `reasoning.max_tokens`,
+    /// so removing the effort→ladder mapping left it with no bound at
+    /// all. Qwen3.8-27B then spent the entire 32,768-token budget
+    /// thinking and returned no answer — twice, on real sessions.
+    #[test]
+    fn a_caller_that_names_no_budget_still_keeps_room_to_answer() {
+        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
+        let budget = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768)
+            .expect("an unbounded think block is what broke");
+        assert_eq!(budget, 32_768 - ladder.answer_reserve_tokens);
+        assert!(
+            budget < 32_768,
+            "some of the caller's own budget must survive for the answer"
+        );
+    }
+
+    /// An explicit count is the more specific thing the caller reached
+    /// for, so it wins over the reserve in both directions.
+    #[test]
+    fn an_explicit_max_tokens_still_wins() {
+        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
         let mut req = req_with_effort(None);
         if let serde_json::Value::Object(o) = &mut req.extra {
             o.insert("reasoning".into(), serde_json::json!({ "max_tokens": 500 }));
         }
+        assert_eq!(requested_reasoning_budget(&req, &ladder, 32_768), Some(500));
+
+        // Above the reserve-derived value, too — not clamped to it.
+        if let serde_json::Value::Object(o) = &mut req.extra {
+            o.insert(
+                "reasoning".into(),
+                serde_json::json!({ "max_tokens": 31_000 }),
+            );
+        }
         assert_eq!(
-            requested_reasoning_budget(&req, &ladder),
-            Some(500),
-            "an explicit cap is still honoured"
+            requested_reasoning_budget(&req, &ladder, 32_768),
+            Some(31_000)
+        );
+    }
+
+    /// Reserving from a budget too small to think in would emit a stub.
+    /// Better to think freely and let the output cap bite.
+    #[test]
+    fn a_budget_smaller_than_the_reserve_stays_unbounded() {
+        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
+        for max_new in [0, 1, ladder.answer_reserve_tokens] {
+            assert_eq!(
+                requested_reasoning_budget(&req_with_effort(None), &ladder, max_new),
+                None,
+                "max_new={max_new} must not produce a bound"
+            );
+        }
+        assert_eq!(
+            requested_reasoning_budget(
+                &req_with_effort(None),
+                &ladder,
+                ladder.answer_reserve_tokens + 1
+            ),
+            Some(1),
+            "one token above the reserve is the first bounded case"
+        );
+    }
+
+    /// The operator's escape hatch, and proof the reserve is the only
+    /// thing creating a bound.
+    #[test]
+    fn a_zero_reserve_restores_unbounded_reasoning() {
+        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder {
+            answer_reserve_tokens: 0,
+            ..Default::default()
+        };
+        assert_eq!(
+            requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768),
+            None
         );
     }
 
@@ -7438,46 +7540,59 @@ mod tests {
         };
         let _ = MessageContent::Null;
 
+        // Every case below shares one output budget, so the only thing
+        // that varies is the caller's reasoning control.
+        const OUT: usize = 32_768;
+        let reserved = OUT - ladder.answer_reserve_tokens;
+
         // Explicit count — also the shape Anthropic's `budget_tokens`
         // is normalised into during translation.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"max_tokens": 5000}})),
-                &ladder
+                &ladder,
+                OUT
             ),
             Some(5000)
         );
         // An effort rung is NOT a budget (#290). `medium` used to resolve
         // to 12,288 here and force-close the think block at that count —
         // observed twice, to the token, in one agentic session, leaving
-        // the model to answer from an unfinished plan.
+        // the model to answer from an unfinished plan. It now falls back
+        // to the reserve, like every other caller that names no count.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "medium"}})),
-                &ladder
+                &ladder,
+                OUT
             ),
-            None
+            Some(reserved)
         );
         // An explicit count still caps, whatever rung was named.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "low", "max_tokens": 999}})),
-                &ladder
+                &ladder,
+                OUT
             ),
             Some(999)
         );
-        // No control at all stays unbounded, exactly as before #223.
+        // No control at all: bounded by the reserve, not unbounded. This
+        // is the case pi sends, and the one that returned no answer at
+        // all while it was unbounded.
         assert_eq!(
-            requested_reasoning_budget(&req(serde_json::json!({})), &ladder),
-            None
+            requested_reasoning_budget(&req(serde_json::json!({})), &ladder, OUT),
+            Some(reserved)
         );
-        // `none` disables thinking via the template; it is not a budget.
+        // `none` disables thinking via the template, so the governor
+        // never fires; the reserve it reports is harmless either way.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "none"}})),
-                &ladder
+                &ladder,
+                OUT
             ),
-            None
+            Some(reserved)
         );
     }
 

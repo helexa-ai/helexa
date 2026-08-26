@@ -15,9 +15,23 @@
 //! We previously advertised an invented ladder — `minimal`, `low`,
 //! `medium`, `high` — of which two values the template rejects outright
 //! and which omits `xhigh`, the model's own default and strongest rung.
-//! Clients read that advertisement: pi-ai's `getSupportedThinkingLevels`
-//! offers a level only when the model declares it, so publishing a
-//! ladder that does not exist made the model's default *unreachable*.
+//!
+//! A caution about *why* that mattered, because the obvious story is
+//! wrong. It is tempting to say clients read our advertisement and were
+//! misled by it. pi-ai does not: its `getSupportedThinkingLevels` reads
+//! `model.thinkingLevelMap`, a static field in the operator's
+//! `models.json`, and treats `xhigh`/`max` as unavailable unless that
+//! map names them explicitly. So a pi user saw exactly
+//! `minimal, low, medium, high` — the invented ladder, to the value —
+//! for a reason that had nothing to do with what we published.
+//!
+//! The coincidence is the trap: our wrong advertisement and pi's
+//! default produced the same symptom, which made the advertisement look
+//! causal. Publishing rungs the model actually accepts is still correct
+//! — it is the truth, other clients may read it, and it is what makes
+//! `apply_effort_kwarg` right — but do not assume a given client
+//! consumes it. For pi the operator must also set `thinkingLevelMap`,
+//! by hand, and nothing validates that they match.
 //!
 //! A hardcoded per-model table would drift the moment a model ships a
 //! new template, which is exactly the class of defect #280 fixed by
