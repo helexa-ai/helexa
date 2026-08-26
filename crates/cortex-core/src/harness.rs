@@ -55,13 +55,78 @@ pub struct SamplingOverride {
     pub top_p: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_k: Option<usize>,
+    /// Multiplier applied to recently-generated tokens before sampling.
+    /// `1.0` disables it; above that, recently-emitted tokens get less
+    /// likely.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    /// How many recently-generated tokens the penalty considers.
+    ///
+    /// The reason this is operator-settable at all: the built-in default
+    /// is 64, inherited from candle's chat example, and a reasoning
+    /// model's think block runs to tens of thousands of tokens. Anything
+    /// restated more than 64 tokens later is invisible to the penalty,
+    /// which is how a 28,672-token think block can contain the same
+    /// derivation five times over.
+    ///
+    /// Raising it is a real trade, not a free win: the penalty is
+    /// token-level, and source code legitimately repeats tokens
+    /// constantly (`const`, `function`, brace runs). A wide window at a
+    /// meaningful penalty distorts exactly the output this fleet is for.
+    /// Sequence-level repetition wants a sequence-level instrument
+    /// (frequency/presence penalties, or a DRY-style sampler); this knob
+    /// exists so the trade can be *measured* per model rather than
+    /// guessed once and frozen into a constant.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repeat_last_n: Option<usize>,
+    /// Sequence-wide one-time penalty for already-seen tokens.
+    ///
+    /// This, not `repeat_last_n`, is the remedy Qwen prescribe for the
+    /// endless repetition their models fall into during long reasoning
+    /// (0..2, 1.5 when severe). It is scored over everything generated
+    /// so far, so a passage restated 5,000 tokens later is still
+    /// penalised — the case a trailing window cannot see.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// Sequence-wide penalty proportional to a token's existing count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    /// Pin the sampler's RNG for every request to this model.
+    ///
+    /// Exists because parameter search needs a control: comparing two
+    /// `presence_penalty` values across unseeded runs cannot separate
+    /// the parameter's effect from sampling variance, and the clients
+    /// that would otherwise pin it cannot — pi's request builder sends
+    /// no `seed` at all, so a caller-side seed is not available on the
+    /// path that matters.
+    ///
+    /// Note what this does and does not give. It removes sampling noise
+    /// as a confounder; it does not make two runs comparable
+    /// token-by-token, because changing a penalty changes the logits
+    /// and the sequences diverge at the first step where a token choice
+    /// flips.
+    ///
+    /// Leaving this set is a product decision, not just a testing one:
+    /// every identical prompt then yields an identical answer for every
+    /// caller. That is defensible — predictable and cacheable — but it
+    /// removes the variation a user may expect from retrying. A request
+    /// that names its own seed still wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
 }
 
 impl SamplingOverride {
     /// True when the operator set nothing — an empty `[sampling]` table
     /// must behave exactly as no table at all.
     pub fn is_empty(&self) -> bool {
-        self.temperature.is_none() && self.top_p.is_none() && self.top_k.is_none()
+        self.temperature.is_none()
+            && self.top_p.is_none()
+            && self.top_k.is_none()
+            && self.repeat_penalty.is_none()
+            && self.repeat_last_n.is_none()
+            && self.presence_penalty.is_none()
+            && self.frequency_penalty.is_none()
+            && self.seed.is_none()
     }
 }
 

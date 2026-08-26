@@ -75,6 +75,15 @@ pub struct ModelGenerationDefaults {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub top_k: Option<usize>,
+    /// Not published in `generation_config.json` — this struct is the
+    /// resolved per-model default layer, and the operator override
+    /// (#283) lands here so the repetition knobs sit in the same
+    /// precedence chain as the rest.
+    pub repeat_penalty: Option<f32>,
+    pub repeat_last_n: Option<usize>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
+    pub seed: Option<u64>,
 }
 
 impl ModelGenerationDefaults {
@@ -155,6 +164,21 @@ impl ModelGenerationDefaults {
         if let Some(k) = op.top_k {
             self.top_k = Some(k);
         }
+        if let Some(r) = op.repeat_penalty {
+            self.repeat_penalty = Some(r);
+        }
+        if let Some(n) = op.repeat_last_n {
+            self.repeat_last_n = Some(n);
+        }
+        if let Some(v) = op.presence_penalty {
+            self.presence_penalty = Some(v);
+        }
+        if let Some(v) = op.frequency_penalty {
+            self.frequency_penalty = Some(v);
+        }
+        if let Some(v) = op.seed {
+            self.seed = Some(v);
+        }
         tracing::info!(
             model = %model_id,
             model_temperature = ?before.temperature,
@@ -163,6 +187,11 @@ impl ModelGenerationDefaults {
             temperature = ?self.temperature,
             top_p = ?self.top_p,
             top_k = ?self.top_k,
+            repeat_penalty = ?self.repeat_penalty,
+            repeat_last_n = ?self.repeat_last_n,
+            presence_penalty = ?self.presence_penalty,
+            frequency_penalty = ?self.frequency_penalty,
+            seed = ?self.seed,
             "sampling: operator override applied over the model's published defaults (#283)"
         );
         self
@@ -179,6 +208,8 @@ pub struct RequestedSampling {
     pub seed: Option<u64>,
     pub repeat_penalty: Option<f32>,
     pub repeat_last_n: Option<usize>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
 }
 
 /// Fully-resolved sampling for one request.
@@ -190,6 +221,9 @@ pub struct SamplingParams {
     pub seed: u64,
     pub repeat_penalty: f32,
     pub repeat_last_n: usize,
+    /// Sequence-wide penalties, OpenAI semantics. `0.0` disables.
+    pub presence_penalty: f32,
+    pub frequency_penalty: f32,
 }
 
 impl SamplingParams {
@@ -215,9 +249,23 @@ impl SamplingParams {
             // whenever the caller stayed quiet.
             top_p: requested.top_p.or(model.top_p),
             top_k: requested.top_k.or(model.top_k),
-            seed: requested.seed.unwrap_or(random_seed),
-            repeat_penalty: requested.repeat_penalty.unwrap_or(DEFAULT_REPEAT_PENALTY),
-            repeat_last_n: requested.repeat_last_n.unwrap_or(DEFAULT_REPEAT_LAST_N),
+            seed: requested.seed.or(model.seed).unwrap_or(random_seed),
+            repeat_penalty: requested
+                .repeat_penalty
+                .or(model.repeat_penalty)
+                .unwrap_or(DEFAULT_REPEAT_PENALTY),
+            repeat_last_n: requested
+                .repeat_last_n
+                .or(model.repeat_last_n)
+                .unwrap_or(DEFAULT_REPEAT_LAST_N),
+            presence_penalty: requested
+                .presence_penalty
+                .or(model.presence_penalty)
+                .unwrap_or(0.0),
+            frequency_penalty: requested
+                .frequency_penalty
+                .or(model.frequency_penalty)
+                .unwrap_or(0.0),
         }
     }
 
@@ -252,6 +300,7 @@ mod tests {
             temperature: Some(1.0),
             top_p: Some(0.95),
             top_k: Some(20),
+            ..Default::default()
         }
     }
 
@@ -298,6 +347,7 @@ mod tests {
             temperature,
             top_p,
             top_k,
+            ..Default::default()
         }
     }
 
@@ -394,6 +444,103 @@ mod tests {
     /// A model with no `generation_config.json` must behave exactly as
     /// it did before this landed, so nothing regresses on the models
     /// that do not ship one.
+    /// An operator can pin the seed, because the client that needs it
+    /// pinned cannot send one: pi's request builder emits no `seed`, so
+    /// without this a parameter search runs unseeded and sampling
+    /// variance is indistinguishable from the effect being measured.
+    #[test]
+    fn an_operator_can_pin_the_seed() {
+        let op = cortex_core::harness::SamplingOverride {
+            seed: Some(424_242),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        // The random seed argument must be ignored once an operator pinned one.
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &defaults, 999);
+        assert_eq!(p.seed, 424_242);
+    }
+
+    /// Precedence holds: a caller that names its own seed keeps it.
+    #[test]
+    fn a_requested_seed_outranks_the_operator() {
+        let op = cortex_core::harness::SamplingOverride {
+            seed: Some(424_242),
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let req = RequestedSampling {
+            seed: Some(7),
+            ..Default::default()
+        };
+        assert_eq!(SamplingParams::resolve(&req, &defaults, 999).seed, 7);
+    }
+
+    /// With neither, the per-request random seed still applies — an
+    /// unset override must not accidentally freeze the fleet's RNG.
+    #[test]
+    fn no_pinned_seed_leaves_generation_random() {
+        let d = ModelGenerationDefaults::default().with_operator_override("m", None);
+        assert_eq!(
+            SamplingParams::resolve(&RequestedSampling::default(), &d, 999).seed,
+            999
+        );
+    }
+
+    /// The gap this closes: `repeat_last_n` defaults to 64 — candle's
+    /// chat example value — while a reasoning model's think block runs
+    /// to tens of thousands of tokens. Anything restated more than 64
+    /// tokens later is invisible to the penalty, and before this there
+    /// was no operator route to the knob at all: `SamplingOverride`
+    /// carried only temperature/top_p/top_k, and OpenAI-shaped clients
+    /// do not send repetition parameters. The 64 was effectively
+    /// hardcoded in production.
+    #[test]
+    fn an_operator_can_widen_the_repetition_window() {
+        let op = cortex_core::harness::SamplingOverride {
+            repeat_penalty: Some(1.05),
+            repeat_last_n: Some(2048),
+            presence_penalty: None,
+            frequency_penalty: None,
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &defaults, 7);
+        assert_eq!(p.repeat_last_n, 2048);
+        assert!((p.repeat_penalty - 1.05).abs() < f32::EPSILON);
+    }
+
+    /// Precedence is request > operator > built-in, same as every other
+    /// sampling field — a caller that named a window keeps it.
+    #[test]
+    fn a_requested_repetition_window_outranks_the_operator() {
+        let op = cortex_core::harness::SamplingOverride {
+            repeat_last_n: Some(2048),
+            presence_penalty: None,
+            frequency_penalty: None,
+            ..Default::default()
+        };
+        let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
+        let req = RequestedSampling {
+            repeat_last_n: Some(128),
+            presence_penalty: None,
+            frequency_penalty: None,
+            ..Default::default()
+        };
+        assert_eq!(
+            SamplingParams::resolve(&req, &defaults, 7).repeat_last_n,
+            128
+        );
+    }
+
+    /// An operator who sets nothing must not change the constants.
+    #[test]
+    fn no_operator_setting_leaves_the_repetition_defaults_alone() {
+        let d = ModelGenerationDefaults::default().with_operator_override("m", None);
+        let p = SamplingParams::resolve(&RequestedSampling::default(), &d, 7);
+        assert_eq!(p.repeat_last_n, DEFAULT_REPEAT_LAST_N);
+        assert!((p.repeat_penalty - DEFAULT_REPEAT_PENALTY).abs() < f32::EPSILON);
+    }
+
     #[test]
     fn without_model_defaults_the_old_behaviour_is_preserved() {
         let p = SamplingParams::resolve(
@@ -495,6 +642,8 @@ mod tests {
             &RequestedSampling {
                 repeat_penalty: Some(1.05),
                 repeat_last_n: Some(512),
+                presence_penalty: None,
+                frequency_penalty: None,
                 ..Default::default()
             },
             &ModelGenerationDefaults::default(),

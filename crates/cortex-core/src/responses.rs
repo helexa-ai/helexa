@@ -70,6 +70,11 @@ pub struct ResponsesRequest {
     /// Window `repetition_penalty` considers (#272).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_last_n: Option<usize>,
+    /// OpenAI core; forwarded to the chat path unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
     /// Chained-conversation identifier. We don't store responses
     /// server-side yet; if this is `Some`, the handler returns 400.
     #[serde(default, skip_serializing_if = "Option::is_none")]
