@@ -371,6 +371,15 @@ pub mod events {
     /// response is announced as `response.completed`, and waits out its
     /// idle timeout.
     pub const INCOMPLETE: &str = "response.incomplete";
+    /// Terminal frame for a response that did not finish because the
+    /// server failed — a poisoned device, an OOM, a producer that died
+    /// mid-stream. Carries `status: "failed"` and an `error` object.
+    ///
+    /// The alternative is worse than it looks: defaulting a missing
+    /// finish to a clean stop reports a crash as a complete answer, and
+    /// the caller believes a truncated or empty reply was the model's
+    /// considered response.
+    pub const FAILED: &str = "response.failed";
 }
 
 #[cfg(test)]

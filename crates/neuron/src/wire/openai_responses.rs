@@ -747,6 +747,31 @@ async fn run_projection(
         return;
     }
 
+    // No `Finish` means the producer died rather than finished — the
+    // poisoned-model path named above, an OOM, a dropped worker. This
+    // used to default to `FinishReason::Stop`, which told the caller a
+    // crash was a complete answer: pi-ai maps `status: "completed"` to
+    // `stopReason: "stop"` and treats whatever partial text arrived as
+    // the model's considered reply.
+    //
+    // Decided here, before the message item is opened, so a failed
+    // stream does not leave an item open that nothing will ever close.
+    let Some(reason) = finish else {
+        let _ = tx
+            .send(ResponseStreamFrame {
+                event_name: events::FAILED,
+                data: json!({
+                    "response": failed_response_shell(
+                        &meta,
+                        "server_error",
+                        "inference ended before the model finished",
+                    )
+                }),
+            })
+            .await;
+        return;
+    };
+
     // A stream can end while still thinking — a reasoning model that
     // exhausts max_output_tokens mid-block never emits visible text.
     // Close the item so the client sees a finished response rather than
@@ -761,7 +786,6 @@ async fn run_projection(
         return;
     }
 
-    let reason = finish.unwrap_or(FinishReason::Stop);
     let _ = emit_finish_frames(
         &tx,
         &meta,
@@ -775,6 +799,23 @@ async fn run_projection(
         },
     )
     .await;
+}
+
+/// The `response` payload for a [`events::FAILED`] frame.
+///
+/// pi-ai renders this as `` `${error.code}: ${error.message}` `` and
+/// throws, which is the correct outcome — the request genuinely failed
+/// — and is strictly better than a silent success.
+fn failed_response_shell(meta: &ResponseMeta, code: &str, message: &str) -> Value {
+    json!({
+        "id": meta.response_id,
+        "object": "response",
+        "created_at": meta.created_at,
+        "status": "failed",
+        "model": meta.model_id,
+        "output": [],
+        "error": { "code": code, "message": message },
+    })
 }
 
 /// Streaming state for a reasoning model's think block (#267).
@@ -2383,22 +2424,39 @@ mod tests {
         );
     }
 
+    /// A producer that drops without ever sending `Finish` did not
+    /// finish — it died (poisoned model, OOM, dropped worker). The
+    /// stream must still terminate, and must terminate as a *failure*.
+    ///
+    /// This previously asserted `COMPLETED`, encoding the defect: a
+    /// crashed inference was announced as a complete response, so a
+    /// client took whatever partial text had arrived to be the model's
+    /// considered answer instead of retrying.
     #[tokio::test]
-    async fn synthesises_start_frames_when_producer_skips_start() {
-        // A producer that drops without sending Start (poisoned
-        // model, immediate disconnect, …) should still produce a
-        // coherent stream — the projector synthesises the
-        // mandatory header frames before COMPLETED so the
-        // consumer never sees an output_text.done without a
-        // matching content_part.added.
+    async fn a_producer_that_dies_terminates_the_stream_as_failed() {
         let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
         let out = project_responses_stream(rx, meta());
         drop(tx);
         let frames = collect(out).await;
         let names: Vec<&str> = frames.iter().map(|f| f.event_name).collect();
+        // The shell still opens, so the failure refers to a response.
         assert!(names.contains(&events::CREATED));
-        assert!(names.contains(&events::COMPLETED));
-        assert!(names.contains(&events::OUTPUT_TEXT_DONE));
+        assert!(
+            !names.contains(&events::COMPLETED),
+            "a crash must never be announced as a completed response"
+        );
+        let failed = frames
+            .iter()
+            .find(|f| f.event_name == events::FAILED)
+            .expect("the stream must terminate, or the client waits out its idle timeout");
+        assert_eq!(failed.data["response"]["status"], "failed");
+        assert_eq!(failed.data["response"]["error"]["code"], "server_error");
+        assert!(
+            failed.data["response"]["error"]["message"]
+                .as_str()
+                .is_some_and(|m| !m.is_empty()),
+            "pi-ai renders `code: message`, so an empty message helps nobody"
+        );
     }
 
     #[tokio::test]
