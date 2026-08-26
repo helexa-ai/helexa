@@ -29,7 +29,24 @@ name = "candle"
 # count. NEURON_BATCHING=0 (systemd drop-in) is the kill switch;
 # removing this section reverts to batch-1 serialization.
 [harness.candle.admission]
-max_in_flight = 8
+# 2, not 8 (#291). max_in_flight is both the admission bound and the
+# batch engine's slot count, and the KV budget is divided by it at load.
+# At 8 that gave each slot 18,852 tokens out of 150,816 — against a
+# 131,072-token advertised context, which needs 4 GB of KV per card on
+# its own and 32 GB across eight slots, on a 31 GB card already holding
+# ~21 GB of weights. The advertised context and the slot count were
+# incompatible by roughly 7x, and an agentic session ran in a ~19k
+# window while seven idle slots held reservations.
+#
+# Seven days of paired request spans on this host: 89.6% of busy time
+# was ONE request in flight, 93.6% was two or fewer, and utilisation was
+# 4.9%. Most of what little concurrency exists is helexa-bench's own
+# synthetic bursts. Two slots cover 93.6% of observed load and give each
+# ~75k tokens; the batch engine is still worth 1.79x there (5.24x at
+# eight is throughput nobody is asking this host for). Anything above
+# two queues on admission (#53) with Retry-After rather than being
+# refused.
+max_in_flight = 2
 
 [[default_models]]
 # Qwen3.8-27B is the resident flagship (#251). Architecturally identical

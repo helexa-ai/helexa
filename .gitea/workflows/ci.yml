@@ -101,14 +101,34 @@ jobs:
           echo "changed files:"
           printf '%s\n' "${files}" | sed 's/^/  /'
 
-          # Inert for Rust: the SPA, and documentation. Markdown is
-          # matched only at the repo root and under doc/ — a .md inside
-          # crates/ is left to fall through, since `include_str!` could
-          # make one load-bearing without this file knowing.
+          # Inert for Rust: the SPA, documentation, and fleet config.
+          # Markdown is matched only at the repo root and under doc/ — a
+          # .md inside crates/ is left to fall through, since
+          # `include_str!` could make one load-bearing without this file
+          # knowing.
+          #
+          # Fleet config (models.toml, asset/neuron/<host>.toml,
+          # asset/helexa-bench/<host>.toml) is read by a *running*
+          # daemon, never by a build script or an `include_str!`, so it
+          # cannot change a Rust result. Deploying one is a config rsync
+          # plus a service restart — neuron re-reads it and reloads the
+          # model — so spending ~25 minutes on fmt, clippy, test and a
+          # CUDA type-check to prove a one-line TOML edit compiles is
+          # pure latency (#291).
+          #
+          # The `config` job below stays ungated and still validates
+          # these files, so narrowing here removes the meritless work
+          # without removing the check that matters. build-prerelease
+          # already reaches the same conclusion on main: none of its
+          # per-package path regexes match these files, so a config-only
+          # push builds no binaries.
           rust_relevant="$(printf '%s\n' "${files}" \
             | grep -v '^helexa\.ai/' \
             | grep -v '^doc/' \
             | grep -vE '^[^/]+\.md$' \
+            | grep -vE '^asset/neuron/[^/]+\.toml$' \
+            | grep -vE '^asset/helexa-bench/[^/]+\.toml$' \
+            | grep -vE '^models\.toml$' \
             || true)"
           if [ -n "${rust_relevant}" ]; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
