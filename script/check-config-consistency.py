@@ -15,6 +15,9 @@ Checked, per model id present in both files:
 
   * ``quant``      — the #252 field
   * ``sampling``   — the #283 field, compared field-by-field
+  * ``preserve_thinking`` — the H7 A/B gate: a model that replays
+    prior reasoning when resident and not when cold-loaded would
+    make the A/B unreadable, which is #252's shape again
 
 A model in only one file is not an error: plenty of catalogue entries are
 never resident anywhere, and a host may hold a model the catalogue does
@@ -46,7 +49,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Fields that must agree wherever both files mention the same model.
 # Extend this list whenever a serving-critical field lands in both.
-SCALAR_FIELDS = ["quant"]
+SCALAR_FIELDS = ["quant", "preserve_thinking"]
 TABLE_FIELDS = ["sampling"]
 
 

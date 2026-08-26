@@ -176,6 +176,29 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
                     {
                         attach_reasoning(&mut msg, text);
                     }
+                    // A `function_call` item belongs to the assistant
+                    // turn that precedes it, not to a turn of its own.
+                    //
+                    // Responses splits one turn across several items —
+                    // `reasoning`, then `message`, then `function_call`
+                    // — while chat carries all three on a single
+                    // assistant message. Pushing each item separately
+                    // produced *consecutive assistant turns*: one that
+                    // deliberates and then ends without acting, and one
+                    // that acts with an empty `<think></think>`.
+                    //
+                    // Neither shape exists in training, and the model
+                    // imitates what it is shown: after four such
+                    // examples in its own replayed context it produced
+                    // a think block and a preamble, then ended the turn
+                    // without the tool call it had just announced
+                    // (#296). Observed on a real session; the model was
+                    // copying our transcript, not misbehaving.
+                    if let Some(prev) = messages.last_mut()
+                        && merge_tool_call_into(prev, &mut msg)
+                    {
+                        continue;
+                    }
                     messages.push(msg);
                 }
             }
@@ -374,6 +397,57 @@ fn apply_reasoning_effort(extra: &mut serde_json::Map<String, Value>) {
     if let Some(kw) = kwargs.as_object_mut() {
         kw.insert("enable_thinking".into(), Value::Bool(false));
     }
+}
+
+/// Fold a `function_call`-derived assistant message into the assistant
+/// turn it belongs to.
+///
+/// Returns `true` when the call was merged and the caller should drop
+/// its message. Only ever merges a *pure* tool-call message (empty
+/// content, no reasoning of its own) into a preceding assistant turn,
+/// so a genuine two-turn sequence is never collapsed and a reasoning
+/// item that arrived with the call keeps its own turn.
+///
+/// Consecutive calls accumulate, which is what parallel tool calling
+/// looks like on the wire: one assistant turn, several `tool_calls`.
+fn merge_tool_call_into(prev: &mut ChatMessage, msg: &mut ChatMessage) -> bool {
+    if prev.role != "assistant" || msg.role != "assistant" {
+        return false;
+    }
+    // Only a bare tool-call carrier folds in.
+    if !matches!(&msg.content, MessageContent::Text(t) if t.is_empty()) {
+        return false;
+    }
+    if msg.extra.get("reasoning_content").is_some() {
+        return false;
+    }
+    let Some(incoming) = msg
+        .extra
+        .get_mut("tool_calls")
+        .and_then(|v| v.as_array_mut())
+        .map(std::mem::take)
+    else {
+        return false;
+    };
+    // Everything else the item carried must survive the fold, or this
+    // trades one silent drop for another.
+    if msg
+        .extra
+        .as_object()
+        .is_some_and(|o| o.keys().any(|k| k != "tool_calls"))
+    {
+        return false;
+    }
+    let Some(obj) = prev.extra.as_object_mut() else {
+        return false;
+    };
+    match obj.get_mut("tool_calls").and_then(|v| v.as_array_mut()) {
+        Some(existing) => existing.extend(incoming),
+        None => {
+            obj.insert("tool_calls".into(), Value::Array(incoming));
+        }
+    }
+    true
 }
 
 /// The text of a replayed reasoning item, under either spelling.
@@ -1207,6 +1281,80 @@ pub fn build_response(
 mod tests {
     use super::*;
     use cortex_core::openai::MessageContent;
+
+    /// One agentic step must render as ONE assistant turn.
+    ///
+    /// Responses splits a turn into `reasoning` + `message` +
+    /// `function_call` items. Emitting a message per item produced
+    /// *consecutive assistant turns* — one that deliberates and then
+    /// ends without acting, one that acts with an empty think block.
+    /// Shown four of those in its own replayed context, the model
+    /// copied the pattern: it produced a think block and a preamble,
+    /// then ended the turn without the tool call it had just announced
+    /// (#296).
+    #[test]
+    fn one_agentic_step_becomes_one_assistant_turn() {
+        let req: ResponsesRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "input": [
+                {"type": "message", "role": "user",
+                 "content": [{"type": "input_text", "text": "build it"}]},
+                {"type": "reasoning",
+                 "content": [{"type": "reasoning_text", "text": "planning the file"}]},
+                {"type": "message", "role": "assistant",
+                 "content": [{"type": "output_text", "text": "Writing index.html:"}]},
+                {"type": "function_call", "call_id": "c1",
+                 "name": "write", "arguments": "{\"path\":\"a.html\"}"},
+                {"type": "function_call_output", "call_id": "c1", "output": "wrote 10 bytes"},
+                {"type": "message", "role": "user",
+                 "content": [{"type": "input_text", "text": "now check it"}]}
+            ]
+        }))
+        .unwrap();
+        let chat = request_to_chat(req).expect("translate");
+        let roles: Vec<&str> = chat.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(
+            roles,
+            vec!["user", "assistant", "tool", "user"],
+            "no two assistant turns may be adjacent: got {roles:?}"
+        );
+
+        let a = &chat.messages[1];
+        assert!(
+            a.extra.get("reasoning_content").is_some(),
+            "reasoning must ride the turn it describes"
+        );
+        assert!(
+            matches!(&a.content, MessageContent::Text(t) if t.contains("Writing index.html")),
+            "the assistant's own text must survive the fold"
+        );
+        let calls = a.extra["tool_calls"].as_array().expect("tool_calls");
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0]["function"]["name"], "write");
+    }
+
+    /// Parallel tool calls are several calls on one turn, not several
+    /// turns.
+    #[test]
+    fn consecutive_function_calls_accumulate_on_one_turn() {
+        let req: ResponsesRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "input": [
+                {"type": "message", "role": "user",
+                 "content": [{"type": "input_text", "text": "go"}]},
+                {"type": "message", "role": "assistant",
+                 "content": [{"type": "output_text", "text": "doing both:"}]},
+                {"type": "function_call", "call_id": "c1", "name": "a", "arguments": "{}"},
+                {"type": "function_call", "call_id": "c2", "name": "b", "arguments": "{}"}
+            ]
+        }))
+        .unwrap();
+        let chat = request_to_chat(req).expect("translate");
+        let roles: Vec<&str> = chat.messages.iter().map(|m| m.role.as_str()).collect();
+        assert_eq!(roles, vec!["user", "assistant"]);
+        let calls = chat.messages[1].extra["tool_calls"].as_array().unwrap();
+        assert_eq!(calls.len(), 2, "both calls belong to the same turn");
+    }
 
     /// Wrap typed items as `input` elements. Most translator tests
     /// exercise the typed path; the bare easy-message and unknown-item

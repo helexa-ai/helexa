@@ -54,6 +54,7 @@ async fn test_candle_qwen3_load_unload_lifecycle() {
         tensor_parallel: None,
         devices: Some(vec![0]),
         sampling: None,
+        preserve_thinking: None,
     };
 
     registry

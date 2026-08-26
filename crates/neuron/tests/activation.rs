@@ -30,6 +30,7 @@ async fn test_load_default_models_skips_unknown_harness() {
             tensor_parallel: None,
             devices: None,
             sampling: None,
+            preserve_thinking: None,
         },
         ModelSpec {
             model_id: "model-b".into(),
@@ -38,6 +39,7 @@ async fn test_load_default_models_skips_unknown_harness() {
             tensor_parallel: None,
             devices: None,
             sampling: None,
+            preserve_thinking: None,
         },
     ];
 
@@ -98,6 +100,7 @@ async fn test_load_default_models_skipped_on_driver_mismatch() {
         tensor_parallel: Some(2),
         devices: None,
         sampling: None,
+        preserve_thinking: None,
     }];
     let activation = ActivationTracker::new(&specs);
     let reason = "host NVIDIA driver/library mismatch (userspace NVML 580.159 vs loaded \
@@ -200,6 +203,7 @@ fn qwen_spec() -> ModelSpec {
         tensor_parallel: None,
         devices: None,
         sampling: None,
+        preserve_thinking: None,
     }
 }
 

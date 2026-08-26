@@ -86,6 +86,27 @@ pub struct ModelSpec {
     /// still round-trips the spec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampling: Option<SamplingOverride>,
+    /// Whether prior assistant turns keep their reasoning when the chat
+    /// template re-renders the conversation.
+    ///
+    /// This is the model's own `preserve_thinking` template control, not
+    /// an invention of ours. `Qwen/Qwen3.8-27B` defaults it to *true* —
+    /// the whole transcript's think blocks are replayed — and `false`
+    /// keeps reasoning only for turns after the last user query, i.e.
+    /// the turn in progress.
+    ///
+    /// `None` leaves the kwarg unset so the template's own default
+    /// applies, which is the only safe default: the model's authors
+    /// chose it, and overriding that fleet-wide on a hunch is how you
+    /// ship a regression you cannot see.
+    ///
+    /// Exposed as operator config so the premise can be A/B'd on a real
+    /// workload — full replay is the larger prompt and pushes against
+    /// the prefix-cache budget and the throughput-derived context
+    /// ceiling, but whether it *helps* the model is a measurement, not
+    /// a belief. A request's own `chat_template_kwargs` still wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preserve_thinking: Option<bool>,
 }
 
 /// Per-model token budget advertised by the catalogue or neuron.

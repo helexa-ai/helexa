@@ -402,6 +402,7 @@ mod tests {
             tensor_parallel: tp,
             devices: None,
             sampling: None,
+            preserve_thinking: None,
         }
     }
 

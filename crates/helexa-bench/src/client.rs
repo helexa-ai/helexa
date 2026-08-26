@@ -217,6 +217,7 @@ impl TargetClient {
             // entry supplies the override; it would matter if this were
             // ever used to load a model the host has no config for.
             sampling: None,
+            preserve_thinking: None,
         })
     }
 
