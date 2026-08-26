@@ -4719,9 +4719,14 @@ impl CandleHarness {
         let max_new = requested_output.unwrap_or(cfg_output_reserve);
 
         // Bound the think block so some of the caller's budget survives
-        // for the answer (#223).
+        // for the answer (#223). Resolved into a local because the
+        // batched-engine path below needs the same value — the two must
+        // not diverge, or a request bounds differently depending on
+        // whether it was batched.
+        let reasoning_budget =
+            requested_reasoning_budget(&request, &self.reasoning_budget_cfg, max_new);
         let mut governor = super::reasoning_budget::ReasoningGovernor::new(
-            requested_reasoning_budget(&request, &self.reasoning_budget_cfg, max_new),
+            reasoning_budget,
             tp.reasoning_tokens
                 .as_ref()
                 .map(|p| (p.open_id, p.close_id)),
