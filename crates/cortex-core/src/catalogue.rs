@@ -67,6 +67,13 @@ pub struct ModelProfile {
     /// model, with nothing forcing them to agree.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sampling: Option<SamplingOverride>,
+    /// The model's own `preserve_thinking` template control, forwarded
+    /// on cold load so a model this gateway loads behaves the same as
+    /// one the host was configured to hold resident. Two config files
+    /// describing one model is how #252 happened; this rides along for
+    /// the same reason `sampling` does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preserve_thinking: Option<bool>,
 
     // ── Enrichment (issue #62) ────────────────────────────────
     /// Per-model token budget. When present, advertised in `/v1/models`
@@ -251,6 +258,7 @@ mod tests {
             residency_priority: None,
             source: None,
             sampling: None,
+            preserve_thinking: None,
             limit: None,
             cost: None,
             capabilities: vec![],

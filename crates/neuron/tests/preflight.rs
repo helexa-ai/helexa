@@ -107,6 +107,7 @@ fn spec(model_id: &str, tp: Option<u32>, quant: Option<&str>) -> ModelSpec {
         tensor_parallel: tp,
         devices: None,
         sampling: None,
+        preserve_thinking: None,
     }
 }
 

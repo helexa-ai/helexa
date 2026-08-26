@@ -539,6 +539,7 @@ async fn profile_to_spec(
         // (#283), so a cold-loaded model samples the same way as one
         // this host was configured to hold resident.
         sampling: profile.sampling.clone(),
+        preserve_thinking: profile.preserve_thinking,
     }
 }
 
@@ -647,6 +648,7 @@ mod tests {
             residency_priority: None,
             source: source.map(String::from),
             sampling: None,
+            preserve_thinking: None,
             limit: None,
             cost: None,
             capabilities: vec![],

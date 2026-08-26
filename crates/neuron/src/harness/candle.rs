@@ -726,6 +726,9 @@ pub struct LoadedModel {
     /// no effort control. Drives both what `/models` advertises and
     /// which value we forward on a request.
     pub reasoning_efforts: super::reasoning_effort::SupportedEfforts,
+    /// Operator's `preserve_thinking` for this model, or `None` to let
+    /// the template decide (#H7 A/B). See `ModelSpec::preserve_thinking`.
+    pub preserve_thinking: Option<bool>,
     /// Open/close token IDs for the model's tool-call marker
     /// pair (`<tool_call>` / `</tool_call>` on Qwen3-Coder / Hermes
     /// / DeepSeek / gpt-oss). `None` for models that don't emit
@@ -884,6 +887,9 @@ pub struct TpLoadedModel {
     /// no effort control. Drives both what `/models` advertises and
     /// which value we forward on a request.
     pub reasoning_efforts: super::reasoning_effort::SupportedEfforts,
+    /// Operator's `preserve_thinking` for this model, or `None` to let
+    /// the template decide (#H7 A/B). See `ModelSpec::preserve_thinking`.
+    pub preserve_thinking: Option<bool>,
     /// Same shape as [`LoadedModel::tool_call_tokens`].
     pub tool_call_tokens: Option<ToolCallTokenPair>,
     /// Same shape as [`LoadedModel::chat_template`].
@@ -2944,6 +2950,7 @@ impl CandleHarness {
             loaded.chat_template.as_deref(),
             &request,
             &loaded.reasoning_efforts,
+            loaded.preserve_thinking,
         )?;
         let encoding = loaded
             .tokenizer
@@ -3850,6 +3857,7 @@ impl Harness for CandleHarness {
             model_id: spec.model_id.clone(),
             generation_defaults,
             reasoning_efforts,
+            preserve_thinking: spec.preserve_thinking,
             arch: arch_local,
             tokenizer,
             device,
@@ -4503,6 +4511,7 @@ impl CandleHarness {
             model_id: spec.model_id.clone(),
             generation_defaults,
             reasoning_efforts,
+            preserve_thinking: spec.preserve_thinking,
             tokenizer,
             devices: devices.clone(),
             pool: StdArc::new(TMutex::new(pool)),
@@ -4639,8 +4648,12 @@ impl CandleHarness {
             });
         }
 
-        let prompt =
-            build_prompt_for_request(tp.chat_template.as_deref(), &request, &tp.reasoning_efforts)?;
+        let prompt = build_prompt_for_request(
+            tp.chat_template.as_deref(),
+            &request,
+            &tp.reasoning_efforts,
+            tp.preserve_thinking,
+        )?;
         let encoding = tp
             .tokenizer
             .encode(prompt.as_str(), true)
@@ -5904,10 +5917,44 @@ fn apply_effort_kwarg(
     serde_json::Value::Object(obj)
 }
 
+/// Apply the operator's `preserve_thinking`, if they set one.
+///
+/// Precedence is request > operator > the model's own template default.
+/// A caller that sends `chat_template_kwargs.preserve_thinking` has
+/// said something specific and keeps it; an operator who sets nothing
+/// changes nothing, so the template's `|default` still governs.
+///
+/// Deliberately *not* defaulted by us. On `Qwen/Qwen3.8-27B` the
+/// template preserves every turn's reasoning unless told otherwise —
+/// its authors' choice — and `false` narrows replay to the turn in
+/// progress. Both are defensible and the difference is measurable, so
+/// this exists to run that measurement rather than to encode a guess.
+fn apply_preserve_thinking_kwarg(
+    kwargs: serde_json::Value,
+    configured: Option<bool>,
+) -> serde_json::Value {
+    let Some(configured) = configured else {
+        return kwargs;
+    };
+    if kwargs.get("preserve_thinking").is_some() {
+        return kwargs;
+    }
+    let mut obj = match kwargs {
+        serde_json::Value::Object(o) => o,
+        _ => serde_json::Map::new(),
+    };
+    obj.insert(
+        "preserve_thinking".into(),
+        serde_json::Value::Bool(configured),
+    );
+    serde_json::Value::Object(obj)
+}
+
 fn build_prompt_for_request(
     chat_template: Option<&str>,
     request: &ChatCompletionRequest,
     efforts: &super::reasoning_effort::SupportedEfforts,
+    preserve_thinking: Option<bool>,
 ) -> Result<String, InferenceError> {
     if !super::chat_template::chat_templates_enabled() {
         return Ok(format_qwen3_prompt(&request.messages));
@@ -5932,6 +5979,9 @@ fn build_prompt_for_request(
     // request was instructed to think maximally and then truncated at
     // whatever budget the caller had actually asked for.
     let kwargs = apply_effort_kwarg(kwargs, request, efforts);
+    // Whether prior turns keep their think blocks. Unset unless the
+    // operator chose, so the template's own default stands.
+    let kwargs = apply_preserve_thinking_kwarg(kwargs, preserve_thinking);
     let tools = request
         .extra
         .get("tools")
@@ -7384,6 +7434,49 @@ mod tests {
         assert_eq!(effort_in(&out), None);
     }
 
+    /// Unset by default: the model's authors chose the template's
+    /// default and we do not override it fleet-wide on a hunch.
+    #[test]
+    fn no_operator_setting_leaves_preserve_thinking_alone() {
+        let out = apply_preserve_thinking_kwarg(serde_json::Value::Null, None);
+        assert!(out.get("preserve_thinking").is_none());
+        assert!(out.is_null(), "an untouched Null must stay Null");
+    }
+
+    /// The A/B knob: an operator can narrow replay to the turn in
+    /// progress, or pin full replay, without a rebuild.
+    #[test]
+    fn an_operator_setting_reaches_the_template() {
+        for configured in [true, false] {
+            let out = apply_preserve_thinking_kwarg(serde_json::Value::Null, Some(configured));
+            assert_eq!(out["preserve_thinking"], serde_json::json!(configured));
+        }
+    }
+
+    /// A caller that named it has said something specific; the
+    /// operator's default must not overwrite it.
+    #[test]
+    fn a_requested_preserve_thinking_outranks_the_operator() {
+        let out = apply_preserve_thinking_kwarg(
+            serde_json::json!({ "preserve_thinking": true }),
+            Some(false),
+        );
+        assert_eq!(out["preserve_thinking"], serde_json::json!(true));
+    }
+
+    /// It must not clobber the effort kwarg sharing the same object —
+    /// both are applied to one `chat_template_kwargs`.
+    #[test]
+    fn it_preserves_kwargs_already_present() {
+        let out = apply_preserve_thinking_kwarg(
+            serde_json::json!({ "reasoning_effort": "medium", "custom": 1 }),
+            Some(false),
+        );
+        assert_eq!(out["reasoning_effort"], "medium");
+        assert_eq!(out["custom"], 1);
+        assert_eq!(out["preserve_thinking"], serde_json::json!(false));
+    }
+
     /// A model whose template has no effort control must be left alone.
     #[test]
     fn a_model_without_rungs_gets_no_effort_kwarg() {
@@ -8542,8 +8635,8 @@ mod tests {
             "tools": [{"type": "function", "function": {"name": "x"}}]
         }))
         .unwrap();
-        let err =
-            build_prompt_for_request(Some(bad), &with_tools, &Default::default()).unwrap_err();
+        let err = build_prompt_for_request(Some(bad), &with_tools, &Default::default(), None)
+            .unwrap_err();
         assert!(matches!(err, InferenceError::TemplateRenderFailed { .. }));
 
         // No tools → falling back is harmless, so it stays Ok.
@@ -8552,6 +8645,6 @@ mod tests {
             "messages": [{"role": "user", "content": "hi"}]
         }))
         .unwrap();
-        assert!(build_prompt_for_request(Some(bad), &no_tools, &Default::default()).is_ok());
+        assert!(build_prompt_for_request(Some(bad), &no_tools, &Default::default(), None).is_ok());
     }
 }
