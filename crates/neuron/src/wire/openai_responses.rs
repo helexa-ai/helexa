@@ -262,6 +262,8 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         seed: req.seed,
         repetition_penalty: req.repetition_penalty,
         repeat_last_n: req.repeat_last_n,
+        presence_penalty: req.presence_penalty,
+        frequency_penalty: req.frequency_penalty,
         max_tokens: req.max_output_tokens,
         // Responses spells the cap `max_output_tokens`, already
         // resolved onto the legacy field above.
@@ -1393,6 +1395,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1419,6 +1423,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1446,6 +1452,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: Some("resp_prev".into()),
             extra: Value::Object(Default::default()),
         };
@@ -1482,6 +1490,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1516,6 +1526,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1565,6 +1577,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1606,6 +1620,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };
@@ -1642,6 +1658,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             previous_response_id: None,
             extra: Value::Object(Default::default()),
         };

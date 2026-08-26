@@ -130,6 +130,8 @@ pub fn anthropic_to_openai(req: MessagesRequest) -> ChatCompletionRequest {
         seed: None,
         repetition_penalty: None,
         repeat_last_n: None,
+        presence_penalty: None,
+        frequency_penalty: None,
         max_tokens: Some(req.max_tokens),
         // Anthropic has one spelling; it maps onto the legacy field.
         max_completion_tokens: None,

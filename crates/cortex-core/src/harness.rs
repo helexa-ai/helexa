@@ -79,6 +79,18 @@ pub struct SamplingOverride {
     /// guessed once and frozen into a constant.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_last_n: Option<usize>,
+    /// Sequence-wide one-time penalty for already-seen tokens.
+    ///
+    /// This, not `repeat_last_n`, is the remedy Qwen prescribe for the
+    /// endless repetition their models fall into during long reasoning
+    /// (0..2, 1.5 when severe). It is scored over everything generated
+    /// so far, so a passage restated 5,000 tokens later is still
+    /// penalised — the case a trailing window cannot see.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// Sequence-wide penalty proportional to a token's existing count.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
 }
 
 impl SamplingOverride {
@@ -90,6 +102,8 @@ impl SamplingOverride {
             && self.top_k.is_none()
             && self.repeat_penalty.is_none()
             && self.repeat_last_n.is_none()
+            && self.presence_penalty.is_none()
+            && self.frequency_penalty.is_none()
     }
 }
 

@@ -664,6 +664,8 @@ fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::Reque
         seed: request.seed,
         repeat_penalty: request.repetition_penalty,
         repeat_last_n: request.repeat_last_n,
+        presence_penalty: request.presence_penalty,
+        frequency_penalty: request.frequency_penalty,
     }
 }
 
@@ -2029,6 +2031,45 @@ async fn acquire_pool_lock<'a>(
     }
 }
 
+/// Subtract OpenAI-semantics presence/frequency penalties from `logits`.
+///
+/// `logit -= frequency * count + presence * (count > 0)`, scored over
+/// the whole generated sequence. Both default to `0.0`, which is
+/// exactly a no-op — an operator or caller who sets neither sees the
+/// previous behaviour, and the tensor is returned untouched rather than
+/// round-tripped through the CPU.
+///
+/// Deliberately additive on logits, not multiplicative like
+/// `repeat_penalty`: that is what the OpenAI parameters mean, and a
+/// client that sends `presence_penalty: 1.5` expecting OpenAI behaviour
+/// must get it.
+fn apply_sequence_penalties(
+    logits: &Tensor,
+    history: &[u32],
+    presence: f32,
+    frequency: f32,
+) -> Result<Tensor> {
+    if (presence == 0.0 && frequency == 0.0) || history.is_empty() {
+        return Ok(logits.clone());
+    }
+    let device = logits.device().clone();
+    let mut values = logits.to_dtype(candle_core::DType::F32)?.to_vec1::<f32>()?;
+    let mut counts: std::collections::HashMap<u32, f32> = std::collections::HashMap::new();
+    for t in history {
+        *counts.entry(*t).or_insert(0.0) += 1.0;
+    }
+    for (token, count) in counts {
+        let Some(slot) = values.get_mut(token as usize) else {
+            // A history token outside the vocabulary would be a bug
+            // elsewhere; skip it rather than panicking mid-generation.
+            continue;
+        };
+        *slot -= frequency * count + presence;
+    }
+    let len = values.len();
+    Ok(Tensor::from_vec(values, len, &device)?)
+}
+
 /// Apply the repetition penalty (if any) to the prediction logits and
 /// then sample. Centralises the prefill / generation-loop call sites
 /// so they share identical sampling behaviour.
@@ -2057,6 +2098,19 @@ pub(crate) fn sample_with_penalty(
             &history[start..],
         )?
     };
+    // Sequence-wide penalties, over everything generated so far rather
+    // than a trailing window. This is what a reasoning model needs: at
+    // `repeat_last_n = 64` inside a 28,672-token think block, a passage
+    // restated 5,000 tokens later is invisible to the windowed penalty,
+    // and Qwen's own guidance for the endless-repetition failure their
+    // models show during long thinking is presence_penalty (0..2, 1.5
+    // when severe) — not a wider window.
+    let penalised = apply_sequence_penalties(
+        &penalised,
+        history,
+        sampling.presence_penalty,
+        sampling.frequency_penalty,
+    )?;
     let sampled = logits_processor.sample(&penalised)?;
     // The reasoning budget governs which token is *emitted*, not which
     // is sampled: over budget inside a think block, the model gets its
@@ -7400,6 +7454,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             max_tokens: None,
             max_completion_tokens: None,
             stream: None,
@@ -7629,7 +7685,82 @@ mod tests {
             seed: 0,
             repeat_penalty,
             repeat_last_n,
+            presence_penalty: 0.0,
+            frequency_penalty: 0.0,
         }
+    }
+
+    /// Presence is a *one-time* subtraction for any token already seen,
+    /// however often. Frequency scales with the count. These are the
+    /// OpenAI semantics, and a client sending `presence_penalty: 1.5`
+    /// expecting them must get them.
+    #[test]
+    fn sequence_penalties_follow_openai_semantics() {
+        use candle_core::{Device, Tensor};
+        let logits = Tensor::from_vec(vec![0.0f32; 6], 6, &Device::Cpu).unwrap();
+        // token 1 appears three times, token 2 once.
+        let history = [1u32, 1, 1, 2];
+
+        let p = apply_sequence_penalties(&logits, &history, 1.0, 0.0)
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        assert_eq!(p[1], -1.0, "presence subtracts once regardless of count");
+        assert_eq!(p[2], -1.0);
+        assert_eq!(p[0], 0.0, "unseen tokens untouched");
+
+        let f = apply_sequence_penalties(&logits, &history, 0.0, 1.0)
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        assert_eq!(f[1], -3.0, "frequency scales with the count");
+        assert_eq!(f[2], -1.0);
+        assert_eq!(f[0], 0.0);
+
+        // Both together compose additively.
+        let b = apply_sequence_penalties(&logits, &history, 0.5, 1.0)
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        assert_eq!(b[1], -3.5);
+    }
+
+    /// The whole point: a passage restated far outside `repeat_last_n`
+    /// is invisible to the windowed penalty but not to this one. At the
+    /// built-in 64-token window inside a 28,672-token think block, that
+    /// is every repetition worth catching (#299).
+    #[test]
+    fn a_repeat_far_outside_the_window_is_still_penalised() {
+        use candle_core::{Device, Tensor};
+        let logits = Tensor::from_vec(vec![0.0f32; 4], 4, &Device::Cpu).unwrap();
+        // token 3 was emitted 5,000 tokens ago and never since.
+        let mut history = vec![3u32];
+        history.extend(std::iter::repeat_n(0u32, 5_000));
+
+        let windowed = &history[history.len().saturating_sub(64)..];
+        assert!(
+            !windowed.contains(&3),
+            "fixture: the token must be outside the 64-token window"
+        );
+
+        let out = apply_sequence_penalties(&logits, &history, 1.5, 0.0)
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        assert_eq!(out[3], -1.5, "sequence-wide penalty still sees it");
+    }
+
+    /// Zero on both is exactly a no-op — an operator who sets neither
+    /// must get byte-identical behaviour to before this existed.
+    #[test]
+    fn zero_sequence_penalties_change_nothing() {
+        use candle_core::{Device, Tensor};
+        let logits = Tensor::from_vec(vec![1.5f32, -2.0, 0.25], 3, &Device::Cpu).unwrap();
+        let out = apply_sequence_penalties(&logits, &[0u32, 1, 1], 0.0, 0.0)
+            .unwrap()
+            .to_vec1::<f32>()
+            .unwrap();
+        assert_eq!(out, vec![1.5, -2.0, 0.25]);
     }
 
     /// Two inlets converge on one field: an explicit token count, or
@@ -7655,6 +7786,8 @@ mod tests {
             seed: None,
             repetition_penalty: None,
             repeat_last_n: None,
+            presence_penalty: None,
+            frequency_penalty: None,
             max_tokens: None,
             max_completion_tokens: None,
             stream: None,

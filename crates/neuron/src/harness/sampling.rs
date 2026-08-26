@@ -81,6 +81,8 @@ pub struct ModelGenerationDefaults {
     /// precedence chain as the rest.
     pub repeat_penalty: Option<f32>,
     pub repeat_last_n: Option<usize>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
 }
 
 impl ModelGenerationDefaults {
@@ -167,6 +169,12 @@ impl ModelGenerationDefaults {
         if let Some(n) = op.repeat_last_n {
             self.repeat_last_n = Some(n);
         }
+        if let Some(v) = op.presence_penalty {
+            self.presence_penalty = Some(v);
+        }
+        if let Some(v) = op.frequency_penalty {
+            self.frequency_penalty = Some(v);
+        }
         tracing::info!(
             model = %model_id,
             model_temperature = ?before.temperature,
@@ -177,6 +185,8 @@ impl ModelGenerationDefaults {
             top_k = ?self.top_k,
             repeat_penalty = ?self.repeat_penalty,
             repeat_last_n = ?self.repeat_last_n,
+            presence_penalty = ?self.presence_penalty,
+            frequency_penalty = ?self.frequency_penalty,
             "sampling: operator override applied over the model's published defaults (#283)"
         );
         self
@@ -193,6 +203,8 @@ pub struct RequestedSampling {
     pub seed: Option<u64>,
     pub repeat_penalty: Option<f32>,
     pub repeat_last_n: Option<usize>,
+    pub presence_penalty: Option<f32>,
+    pub frequency_penalty: Option<f32>,
 }
 
 /// Fully-resolved sampling for one request.
@@ -204,6 +216,9 @@ pub struct SamplingParams {
     pub seed: u64,
     pub repeat_penalty: f32,
     pub repeat_last_n: usize,
+    /// Sequence-wide penalties, OpenAI semantics. `0.0` disables.
+    pub presence_penalty: f32,
+    pub frequency_penalty: f32,
 }
 
 impl SamplingParams {
@@ -238,6 +253,14 @@ impl SamplingParams {
                 .repeat_last_n
                 .or(model.repeat_last_n)
                 .unwrap_or(DEFAULT_REPEAT_LAST_N),
+            presence_penalty: requested
+                .presence_penalty
+                .or(model.presence_penalty)
+                .unwrap_or(0.0),
+            frequency_penalty: requested
+                .frequency_penalty
+                .or(model.frequency_penalty)
+                .unwrap_or(0.0),
         }
     }
 
@@ -429,6 +452,8 @@ mod tests {
         let op = cortex_core::harness::SamplingOverride {
             repeat_penalty: Some(1.05),
             repeat_last_n: Some(2048),
+            presence_penalty: None,
+            frequency_penalty: None,
             ..Default::default()
         };
         let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
@@ -443,11 +468,15 @@ mod tests {
     fn a_requested_repetition_window_outranks_the_operator() {
         let op = cortex_core::harness::SamplingOverride {
             repeat_last_n: Some(2048),
+            presence_penalty: None,
+            frequency_penalty: None,
             ..Default::default()
         };
         let defaults = ModelGenerationDefaults::default().with_operator_override("m", Some(&op));
         let req = RequestedSampling {
             repeat_last_n: Some(128),
+            presence_penalty: None,
+            frequency_penalty: None,
             ..Default::default()
         };
         assert_eq!(
@@ -566,6 +595,8 @@ mod tests {
             &RequestedSampling {
                 repeat_penalty: Some(1.05),
                 repeat_last_n: Some(512),
+                presence_penalty: None,
+                frequency_penalty: None,
                 ..Default::default()
             },
             &ModelGenerationDefaults::default(),

@@ -43,6 +43,20 @@ pub struct ChatCompletionRequest {
     /// why it is a knob rather than a constant (#272).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repeat_last_n: Option<usize>,
+    /// OpenAI core, `-2.0..=2.0`. Subtracted once from any token that
+    /// has already appeared, regardless of how often.
+    ///
+    /// Unlike `repetition_penalty` this is scored over the **whole**
+    /// generated sequence, not a trailing window — which is what a
+    /// reasoning model needs, and what Qwen recommend (0..2, 1.5 for
+    /// severe cases) for the endless-repetition failure their own
+    /// models exhibit during long thinking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// OpenAI core, `-2.0..=2.0`. Subtracted in proportion to how many
+    /// times a token has already appeared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
     /// The deprecated spelling of the output cap. Still what most
     /// clients send; see [`ChatCompletionRequest::effective_max_tokens`].
     #[serde(skip_serializing_if = "Option::is_none")]
