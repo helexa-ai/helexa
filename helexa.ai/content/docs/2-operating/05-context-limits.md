@@ -32,6 +32,40 @@ daemon now does automatically.
 | `limit.input` | same | compaction trigger — opencode compacts to keep the prompt at/under this |
 | `limit.output` | same | generation reserve opencode leaves below the wall |
 
+### Tuning the derived limit
+
+Since #67 the neuron computes `limit` itself (see below), and three
+`[harness.candle.context_limit]` settings shape that computation:
+
+```toml
+[harness.candle.context_limit]
+target_prefill_latency_secs = 120     # longest acceptable prefill per turn
+bootstrap_prefill_tok_per_sec = 800   # cold-start estimate until measured
+output_reserve_tokens = 8192          # what a request gets when it names no cap
+max_output_tokens = 32768             # the largest output a request may name
+```
+
+**`target_prefill_latency_secs`** is the one that usually binds. The
+throughput ceiling is `target_prefill_latency_secs × measured
+prefill tok/s`, so on a host measuring ~1,400 tok/s a 120-second target
+advertises about 168k — above most hard ceilings, in which case it stops
+mattering. On a slower host, or one whose recent traffic has been small
+prompts, it is what caps the window.
+
+**`bootstrap_prefill_tok_per_sec`** applies only until the model has
+measured its own rate. It exists to stop the advertised window
+collapsing on a freshly-restarted host — but note it applies only when
+the EMA has *no* sample at all, and a single tiny request supplies one.
+If you see a host advertising a small window shortly after a restart,
+send it a few thousand-token requests before trusting `/v1/models`.
+
+**`output_reserve_tokens`** is what a request that names no cap
+receives. **`max_output_tokens`** is the ceiling advertised to clients
+as `max_output_tokens`, and it is the *ceiling*, not the reserve —
+publishing the reserve tells every client that reads the advertisement
+to cap itself there, which on a reasoning model can be less than a
+single think block.
+
 ## How they must relate
 
 For a single model on a single neuron, all of these must hold:
