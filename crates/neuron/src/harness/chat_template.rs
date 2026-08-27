@@ -438,6 +438,70 @@ mod tests {
         assert!(out.contains("<|vision_start|>") && out.contains("<|vision_end|>"));
     }
 
+    /// A file read back through a tool result must reach the model
+    /// byte-for-byte.
+    ///
+    /// The reported symptom: the model writes a file correctly, reads it
+    /// back, and sees errors that are not in the file — consistently,
+    /// after every write. Anything that mangles `<`, `&`, `"` or
+    /// newlines on this path would produce exactly that, and would make
+    /// the model burn its budget reconciling a file against a corrupted
+    /// view of itself.
+    #[test]
+    fn a_file_read_back_through_a_tool_result_is_byte_exact() {
+        let template = include_str!("../../tests/data/qwen3.8-27b.chat_template.jinja");
+        // The characters most likely to be mangled, in the shapes a real
+        // web project contains them.
+        let file = "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n</head>\n<body>\n  <script>\n    if (a && b || c < d) { g.fillStyle = '#b8905a'; }\n    const s = `rgba(${r},${g},0.5)`;\n\n    // a comment & an ampersand\n  </script>\n</body>\n</html>\n";
+
+        let mut tool_extras = serde_json::Map::new();
+        tool_extras.insert("tool_call_id".into(), json!("call_0"));
+        let mut assistant_extras = serde_json::Map::new();
+        assistant_extras.insert(
+            "tool_calls".into(),
+            json!([{"id":"call_0","type":"function",
+                    "function":{"name":"read","arguments":"{\"path\":\"/tmp/index.html\"}"}}]),
+        );
+
+        let messages = vec![
+            user_msg("read the file back"),
+            ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Null,
+                extra: Value::Object(assistant_extras),
+            },
+            ChatMessage {
+                role: "tool".into(),
+                content: MessageContent::Text(file.to_string()),
+                extra: Value::Object(tool_extras),
+            },
+            user_msg("is it correct?"),
+        ];
+        let out =
+            render_chat_template(template, &messages, &Value::Null, &Value::Null).expect("render");
+
+        for probe in [
+            "<!DOCTYPE html>",
+            "<html lang=\"en\">",
+            "if (a && b || c < d)",
+            "g.fillStyle = '#b8905a';",
+            "`rgba(${r},${g},0.5)`",
+            "// a comment & an ampersand",
+        ] {
+            assert!(
+                out.contains(probe),
+                "the model would not see {probe:?} verbatim — rendered prompt mangles it"
+            );
+        }
+        // And nothing HTML-escaped anywhere.
+        for bad in ["&lt;", "&gt;", "&amp;", "&quot;", "&#x27;", "&#39;"] {
+            assert!(
+                !out.contains(bad),
+                "found {bad:?} in the rendered prompt: content is being HTML-escaped"
+            );
+        }
+    }
+
     /// Blank lines inside a replayed tool-call argument must survive
     /// rendering intact.
     ///

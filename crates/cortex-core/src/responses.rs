@@ -276,6 +276,15 @@ pub enum ResponsesOutputItem {
         #[serde(default = "default_item_status")]
         status: String,
     },
+    /// A think block, as its own output item ahead of the message —
+    /// the same shape the streaming projector emits, so a client sees
+    /// one contract whether or not it streams (#300).
+    Reasoning {
+        id: String,
+        summary: Vec<ResponsesSummaryPart>,
+        #[serde(default = "default_item_status")]
+        status: String,
+    },
     /// Reserved for the day tool-call extraction lands. The wire
     /// shape mirrors `ResponsesInputItem::FunctionCall`.
     FunctionCall {
@@ -286,6 +295,24 @@ pub enum ResponsesOutputItem {
         #[serde(default = "default_item_status")]
         status: String,
     },
+}
+
+/// One `summary_text` part of a reasoning output item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResponsesSummaryPart {
+    /// Always `"summary_text"`.
+    #[serde(rename = "type")]
+    pub part_type: String,
+    pub text: String,
+}
+
+impl ResponsesSummaryPart {
+    pub fn summary_text(text: impl Into<String>) -> Self {
+        Self {
+            part_type: "summary_text".into(),
+            text: text.into(),
+        }
+    }
 }
 
 fn default_item_status() -> String {

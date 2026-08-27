@@ -415,17 +415,26 @@ fn anthropic_content_to_text(content: AnthropicContent) -> String {
 pub fn openai_to_anthropic(resp: ChatCompletionResponse) -> MessagesResponse {
     let choice = resp.choices.into_iter().next();
 
-    let (content_text, stop_reason) = match choice {
+    let (content_text, reasoning_text, stop_reason) = match choice {
         Some(c) => {
             let text = match c.message.content {
                 MessageContent::Text(t) => t,
                 MessageContent::Parts(parts) => serde_json::to_string(&parts).unwrap_or_default(),
                 MessageContent::Null => String::new(),
             };
+            // The model's think block, which the harness returns on
+            // `message.reasoning_content` (#300).
+            let reasoning = c
+                .message
+                .extra
+                .get("reasoning_content")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .filter(|t| !t.is_empty());
             let stop = c.finish_reason.map(|r| map_stop_reason(&r));
-            (text, stop)
+            (text, reasoning, stop)
         }
-        None => (String::new(), None),
+        None => (String::new(), None, None),
     };
 
     let usage = resp.usage.unwrap_or(Usage {
@@ -441,10 +450,32 @@ pub fn openai_to_anthropic(resp: ChatCompletionResponse) -> MessagesResponse {
         id: resp.id,
         response_type: "message".into(),
         role: "assistant".into(),
-        content: vec![ContentBlock {
-            block_type: "text".into(),
-            data: json!({ "text": content_text }),
-        }],
+        // A `thinking` block ahead of the text, which is Anthropic's
+        // own ordering. This path accepted `thinking.budget_tokens` on
+        // the way in (see `anthropic_to_openai`) and returned nothing on
+        // the way out: the caller spent the tokens, could not see them,
+        // and could not replay the model's reasoning next turn (#300).
+        //
+        // Emitted without a `signature`. Anthropic signs its thinking
+        // blocks and a client that round-trips one may expect the field;
+        // we cannot mint a valid signature and inventing one would be
+        // worse than omitting it. If a real client rejects an unsigned
+        // block, the fix is to gate this behind a flag — not to go back
+        // to silently deleting the model's work.
+        content: {
+            let mut blocks = Vec::with_capacity(2);
+            if let Some(thinking) = reasoning_text {
+                blocks.push(ContentBlock {
+                    block_type: "thinking".into(),
+                    data: json!({ "thinking": thinking }),
+                });
+            }
+            blocks.push(ContentBlock {
+                block_type: "text".into(),
+                data: json!({ "text": content_text }),
+            });
+            blocks
+        },
         model: resp.model,
         stop_reason,
         usage: AnthropicUsage {
@@ -1062,4 +1093,67 @@ mod request_tests {
         let tools = openai.extra.get("tools").and_then(Value::as_array).unwrap();
         assert_eq!(tools[0]["function"]["name"], "x");
     }
+}
+
+/// The Anthropic path must return the model's thinking (#300).
+///
+/// It accepted `thinking.budget_tokens` on the way in and returned
+/// a bare text block on the way out: the caller spent the tokens,
+/// never saw them, and could not replay the model's reasoning on
+/// the next turn. Taking a parameter and silently discarding what
+/// it buys is the defect, not the missing field.
+#[test]
+fn anthropic_response_carries_a_thinking_block() {
+    let mut extra = serde_json::Map::new();
+    extra.insert("reasoning_content".into(), json!("weighing the options"));
+    let resp = ChatCompletionResponse {
+        id: "id".into(),
+        object: "chat.completion".into(),
+        created: 0,
+        model: "m".into(),
+        choices: vec![crate::openai::ChatCompletionChoice {
+            index: 0,
+            message: ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Text("the answer".into()),
+                extra: Value::Object(extra),
+            },
+            finish_reason: Some("stop".into()),
+            extra: Value::Null,
+        }],
+        usage: None,
+        extra: Value::Null,
+    };
+    let a = openai_to_anthropic(resp);
+    assert_eq!(a.content.len(), 2, "expected thinking + text");
+    assert_eq!(a.content[0].block_type, "thinking", "thinking comes first");
+    assert_eq!(a.content[0].data["thinking"], "weighing the options");
+    assert_eq!(a.content[1].block_type, "text");
+    assert_eq!(a.content[1].data["text"], "the answer");
+}
+
+/// No thinking means the unchanged single text block.
+#[test]
+fn anthropic_response_without_thinking_is_unchanged() {
+    let resp = ChatCompletionResponse {
+        id: "id".into(),
+        object: "chat.completion".into(),
+        created: 0,
+        model: "m".into(),
+        choices: vec![crate::openai::ChatCompletionChoice {
+            index: 0,
+            message: ChatMessage {
+                role: "assistant".into(),
+                content: MessageContent::Text("plain".into()),
+                extra: Value::Object(Default::default()),
+            },
+            finish_reason: Some("stop".into()),
+            extra: Value::Null,
+        }],
+        usage: None,
+        extra: Value::Null,
+    };
+    let a = openai_to_anthropic(resp);
+    assert_eq!(a.content.len(), 1);
+    assert_eq!(a.content[0].block_type, "text");
 }
