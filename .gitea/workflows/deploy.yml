@@ -588,13 +588,50 @@ jobs:
           src="asset/nginx/helexa.internal.conf"
 
           # The sudoers drop-in that permits this is installed by
-          # script/infra-setup.sh, which is run by hand. Check first, so
-          # a missing permission reports the remedy instead of surfacing
-          # as an opaque rsync failure.
-          if ! ssh gitea_ci@hanzalova.internal 'sudo -n /usr/sbin/nginx -t' >/dev/null 2>&1; then
-            echo "FAIL: gitea_ci lacks the nginx sudoers entries on hanzalova." >&2
-            echo "      Re-run 'script/infra-setup.sh' once from an operator shell" >&2
-            echo "      to install the updated asset/sudoers.d/cortex-host.conf." >&2
+          # script/infra-setup.sh, which is run by hand, so the live copy
+          # can lag the repo by however long it has been since anyone ran
+          # it. Check EVERY grant the step needs, not a representative
+          # one: the first version of this preflight tested `nginx -t`
+          # alone, which had existed for ages, so it passed and the job
+          # then died on the two helexa-ratelimit.conf grants added in the
+          # same commit as the check. A preflight that names a remedy
+          # while probing the wrong permission is worse than none — it
+          # tells you the sudoers are fine seconds before they are not.
+          #
+          # Each probe runs the command in a harmless form that still
+          # matches its sudoers pattern (sha256sum reads; nginx -t and
+          # `systemctl show` do not mutate). rsync and ln have no such
+          # form, so they are checked with `sudo -nl`, which reports
+          # whether a command is permitted without running it.
+          missing=""
+          probe() {  # probe <description> <command...>
+            local what="$1"; shift
+            ssh gitea_ci@hanzalova.internal "$@" >/dev/null 2>&1 \
+              || missing="${missing}
+                - ${what}"
+          }
+          probe "nginx -t" \
+            'sudo -n /usr/sbin/nginx -t'
+          probe "sha256sum /etc/nginx/sites-available/helexa.internal.conf" \
+            'sudo -n /usr/bin/sha256sum /etc/nginx/sites-available/helexa.internal.conf'
+          probe "sha256sum /etc/nginx/conf.d/helexa-ratelimit.conf" \
+            'sudo -n /usr/bin/sha256sum /etc/nginx/conf.d/helexa-ratelimit.conf'
+          probe "rsync -> /etc/nginx/sites-available/helexa.internal.conf" \
+            'sudo -nl /usr/bin/rsync -a x /etc/nginx/sites-available/helexa.internal.conf'
+          probe "rsync -> /etc/nginx/conf.d/helexa-ratelimit.conf" \
+            'sudo -nl /usr/bin/rsync -a x /etc/nginx/conf.d/helexa-ratelimit.conf'
+          probe "ln -sfn sites-available -> sites-enabled" \
+            'sudo -nl /usr/bin/ln -sfn /etc/nginx/sites-available/helexa.internal.conf /etc/nginx/sites-enabled/helexa.internal.conf'
+          probe "systemctl reload nginx" \
+            'sudo -nl /usr/bin/systemctl reload nginx'
+
+          if [ -n "${missing}" ]; then
+            echo "FAIL: gitea_ci is missing nginx sudoers grants on hanzalova:${missing}" >&2
+            echo "" >&2
+            echo "      Re-run 'script/infra-setup.sh' once from an operator shell to" >&2
+            echo "      install the current asset/sudoers.d/cortex-host.conf. Having run" >&2
+            echo "      it before is not enough — grants are added to that file as deploy" >&2
+            echo "      steps grow, and the host keeps whatever revision it last saw." >&2
             exit 1
           fi
 
