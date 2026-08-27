@@ -24,7 +24,7 @@ confined anywhere.
 
 ```toml
 [[models]]
-id = "Qwen/Qwen3.6-27B"
+id = "Qwen/Qwen3.8-27B"
 harness = "candle"
 min_devices = 2
 min_device_vram_mb = 24000

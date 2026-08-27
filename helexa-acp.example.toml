@@ -35,7 +35,7 @@ default_endpoint = "helexa"
 name = "helexa"
 base_url = "http://hanzalova.internal:31313/v1"
 wire_api = "openai-chat"
-default_model = "Qwen/Qwen3.6-27B"
+default_model = "Qwen/Qwen3.8-27B"
 max_tokens = 8192
 # Compaction kicks in when the rolling history grows past this token
 # budget. Set to your model's context window. Disable by removing

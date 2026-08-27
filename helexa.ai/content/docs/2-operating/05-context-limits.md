@@ -97,9 +97,9 @@ Notes:
   lands, treat the VRAM-safe ceiling in rule 5 as a hard limit you set
   `NEURON_MAX_PROMPT_TOKENS` below, not something the daemon enforces.
 
-## VRAM cost of context (Qwen3.6-27B on beast)
+## VRAM cost of context (Qwen3.8-27B on beast)
 
-Qwen3.6-27B is a hybrid linear-attention model: of its 64 layers only
+Qwen3.8-27B is a hybrid linear-attention model: of its 64 layers only
 every 4th is full-attention (`full_attention_interval = 4` → **16**
 full-attn layers); the rest are `linear_attention` with constant-size
 recurrent state. KV cache grows **only** on the 16 full-attn layers
@@ -168,7 +168,7 @@ value wins over a hand override of the same variable. Use `local.conf`
 only for genuinely host-local, transient experiments — and remember a
 later deploy will re-assert `model.conf`.
 
-**opencode** — `opencode.json`, `provider.models."Qwen/Qwen3.6-27B".limit`:
+**opencode** — `opencode.json`, `provider.models."Qwen/Qwen3.8-27B".limit`:
 
 ```json
 { "context": 131072, "input": 122880, "output": 8192 }

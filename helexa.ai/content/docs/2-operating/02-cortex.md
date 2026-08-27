@@ -78,7 +78,7 @@ Clients should not hardcode model ids. Aliases let them ask for a role:
 [aliases]
 "helexa/small" = "Qwen/Qwen3-1.7B"
 "helexa/balanced" = "Qwen/Qwen3-8B"
-"helexa/large" = "Qwen/Qwen3.6-27B"
+"helexa/large" = "Qwen/Qwen3.8-27B"
 "helexa/image" = "Tongyi-MAI/Z-Image-Turbo"
 ```
 

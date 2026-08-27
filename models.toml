@@ -18,11 +18,11 @@
 #   quadbrat   = 1x RTX 3060 (12 GB)        → small / quantised
 
 # Qwen3-Next single-GPU validation target (Stage 8c). Same architecture
-# as Qwen3.6-27B (`model_type = "qwen3_5"`, same layer_types pattern,
-# same Gated DeltaNet hyperparams) but small enough to fit on any
-# fleet GPU in bf16 (~1.6 GB). Stepping stone — if this answers the
+# as the 27B flagship (`model_type = "qwen3_5"`, same layer_types
+# pattern, same Gated DeltaNet hyperparams) but small enough to fit on
+# any fleet GPU in bf16 (~1.6 GB). Stepping stone — if this answers the
 # Tbilisi probe correctly, the qwen3_5 code path is right and TP-2 on
-# Qwen3.6-27B is purely a sharding/collective problem.
+# the 27B is purely a sharding/collective problem.
 [[models]]
 id = "Qwen/Qwen3.5-0.8B"
 harness = "candle"
@@ -75,49 +75,29 @@ residency_priority = 300
 cost.input = 0.40
 cost.output = 1.60
 
-# Tensor-parallel target. Beast is the only neuron with two big GPUs.
-[[models]]
-id = "Qwen/Qwen3.6-27B"
-harness = "candle"
-# REQUIRED, not cosmetic (#252). Without it a cortex cold-load builds an
-# unquantised request: the model loads bf16, leaves ~2 GB free per card
-# against a ~3.9 GB prefill requirement, reports `loaded`, and then fails
-# every request. Activation from neuron's default_models has always said
-# q6k; this is the same fact on the path cortex uses.
-quant = "q6k"
-# Measured q6k residency across the pair (17.9 + 22.9 GB), not the 51.7 GB
-# bf16 checkpoint size. The old 54000 described a model we do not serve.
-vram_mb = 42000
-min_devices = 2
-min_device_vram_mb = 24000
-pinned_on = ["beast"]
-# The big-node class. Above the everyday class, so image generation can
-# never take beast however idle the flagship is; equal to the frontier
-# tier, so those two swap freely. `pinned_on` here is affinity only --
-# it no longer implies immunity, so this number is what protects it.
-residency_priority = 300
-# Illustrative pricing (USD per 1M tokens) — top tier, the 27B flagship.
-cost.input = 0.30
-cost.output = 1.20
-# DELIBERATE, TEMPORARY operator override (issue #67): unblocks the opencode
-# helexa-provider implementation by giving /v1/models a limit to consume on
-# beast. Mirrors the enforced NEURON_MAX_PROMPT_TOKENS=131072 there.
-# To be REMOVED once neuron self-derives these — its removal is the
-# acceptance test that the computed values replace this hand-set one.
-#limit.context = 131072
-#limit.input = 122880
-#limit.output = 8192
-
-# Qwen3.8-27B (#251). Architecturally identical to the 3.6-27B — same
-# model_type, same layer counts, same vision tower; the two configs
-# differ only in `transformers_version` — so it serves through the same
-# qwen3_5 TP path with the same KV arithmetic.
+# Qwen3.8-27B (#251) — the resident flagship, and beast's `default_models`
+# pre-warm. Serves through the qwen3_5 TP path.
 #
-# Same residency class as the 3.6-27B *deliberately*: equal rank is what
-# lets the two displace each other in BOTH directions, so whichever is
-# asked for takes beast and the other can take it back. A higher number
-# here would let this one claim the node permanently and make the
-# comparison between them impossible.
+# It replaced Qwen3.6-27B, which was retired from this catalogue on
+# 2026-08-27 after the A/B it existed for had run its course. The two were
+# architecturally identical (same model_type, layer counts and vision
+# tower; the configs differed only in `transformers_version`) and were
+# deliberately given equal `residency_priority` so they could displace
+# each other in both directions.
+#
+# That symmetry is exactly what made keeping both expensive. The router's
+# `helexa/balanced` alias still pointed at the 3.6, so every
+# authenticated web-chat turn evicted the resident 3.8 and cold-loaded the
+# 3.6 — a ~70 s TP layer load each way — and the next request for the
+# flagship swapped it straight back. On 2026-08-27 four of those swaps
+# overlapped and left beast holding 32 GB on one card with no model
+# registered and nothing serving.
+#
+# The lesson is not "don't make models swappable": mutual displacement is
+# the right design and #99 wants it. It is that two near-identical models
+# at equal rank need a *reason* to both be present, and once the
+# comparison is over one of them is just a way for a stale alias to take
+# the node down.
 [[models]]
 id = "Qwen/Qwen3.8-27B"
 harness = "candle"
