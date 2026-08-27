@@ -52,12 +52,15 @@ advertises about 168k — above most hard ceilings, in which case it stops
 mattering. On a slower host, or one whose recent traffic has been small
 prompts, it is what caps the window.
 
-**`bootstrap_prefill_tok_per_sec`** applies only until the model has
-measured its own rate. It exists to stop the advertised window
-collapsing on a freshly-restarted host — but note it applies only when
-the EMA has *no* sample at all, and a single tiny request supplies one.
-If you see a host advertising a small window shortly after a restart,
-send it a few thousand-token requests before trusting `/v1/models`.
+**`bootstrap_prefill_tok_per_sec`** applies until the model has measured
+its own rate, and stops the advertised window collapsing on a
+freshly-restarted host. Prefill samples below 512 tokens are ignored
+when computing that rate: a short prompt is dominated by fixed
+per-request cost and says nothing about throughput — the deploy's own
+19-token smoke probe reads as ~145 tok/s on a host that measures ~1,400.
+So a host that has served only small requests keeps the bootstrap
+estimate rather than adopting a misleading one, and no warm-up is
+needed after a restart.
 
 **`output_reserve_tokens`** is what a request that names no cap
 receives. **`max_output_tokens`** is the ceiling advertised to clients

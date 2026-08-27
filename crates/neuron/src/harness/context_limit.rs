@@ -36,6 +36,28 @@ use crate::config::ContextLimitConfig;
 /// few turns.
 const RATE_EMA_ALPHA: f64 = 0.3;
 
+/// Smallest prompt whose prefill time says anything about throughput.
+///
+/// A prefill has a fixed per-request cost — tokenize, launch, sync —
+/// that dominates a short prompt completely. The deploy's own smoke
+/// probe prefills 19 tokens in ~130 ms and reads as **145 tok/s** on a
+/// host that measures ~1,400. Folding that in does not make the
+/// estimate slightly worse; it replaces it.
+///
+/// That mattered because the fallback it displaces is the whole
+/// cold-start guard: with no sample at all, `derive_limit` uses
+/// `bootstrap_prefill_tok_per_sec` (800, ≈96k context at the default
+/// 120 s target). One 19-token probe replaced it with 145 tok/s, and
+/// the host advertised **17,408** — a sixth of what it can serve —
+/// until real traffic happened to warm it (#295).
+///
+/// 512 excludes the smoke probe and the short auxiliary calls agent
+/// harnesses make (observed at 19, 143 and 469 tokens) while admitting
+/// ordinary prompts. At ~1,400 tok/s a 512-token prefill runs ~370 ms,
+/// so fixed overhead is roughly a tenth of it — informative rather than
+/// dominant.
+const MIN_PREFILL_SAMPLE_TOKENS: usize = 512;
+
 /// Fold one throughput sample (`tokens` in `elapsed`) into the EMA held in
 /// `bits`. No-op for degenerate inputs so a probe request or a clock blip
 /// can't poison the average.
@@ -99,7 +121,15 @@ impl ThroughputEma {
 
     /// Fold one prefill measurement (`prompt_tokens` processed in
     /// `elapsed`) into the prefill EMA.
+    ///
+    /// Samples below [`MIN_PREFILL_SAMPLE_TOKENS`] are ignored: they
+    /// measure fixed per-request cost rather than throughput, and the
+    /// value they displace — the bootstrap estimate — is better than
+    /// they are.
     pub fn record(&self, prompt_tokens: usize, elapsed: Duration) {
+        if prompt_tokens < MIN_PREFILL_SAMPLE_TOKENS {
+            return;
+        }
         fold_rate(&self.prefill_bits, prompt_tokens, elapsed);
     }
 
@@ -356,6 +386,60 @@ pub fn derive_limit(
 
 #[cfg(test)]
 mod tests {
+
+    /// The deploy's smoke probe must not set the advertised context.
+    ///
+    /// 19 tokens in 130 ms reads as ~145 tok/s on a host that measures
+    /// ~1,400. Before this guard that one sample displaced the
+    /// bootstrap estimate and the host advertised 17,408 instead of
+    /// ~96,000 — until real traffic happened along (#295).
+    #[test]
+    fn a_smoke_probe_does_not_poison_the_prefill_rate() {
+        let ema = ThroughputEma::new();
+        ema.record(19, Duration::from_millis(130));
+        assert_eq!(
+            ema.get(),
+            None,
+            "a 19-token prefill must leave the EMA unset so the bootstrap value stands"
+        );
+    }
+
+    /// The short auxiliary calls agent harnesses make are the same
+    /// shape as the probe and equally uninformative — observed at 143
+    /// and 469 tokens against prompts three orders of magnitude larger.
+    #[test]
+    fn short_auxiliary_prompts_are_ignored_too() {
+        let ema = ThroughputEma::new();
+        for tokens in [143usize, 469] {
+            ema.record(tokens, Duration::from_millis(200));
+        }
+        assert_eq!(ema.get(), None);
+    }
+
+    /// A real prompt still records, and still tracks a shift.
+    #[test]
+    fn representative_prefills_still_measure() {
+        let ema = ThroughputEma::new();
+        ema.record(1400, Duration::from_secs(1));
+        let first = ema.get().expect("a 1400-token sample must record");
+        assert!((first - 1400.0).abs() < 1.0, "got {first}");
+
+        // A slower host is tracked, not ignored.
+        for _ in 0..20 {
+            ema.record(700, Duration::from_secs(1));
+        }
+        let after = ema.get().unwrap();
+        assert!(after < first && after > 600.0, "got {after}");
+    }
+
+    /// Exactly at the threshold counts — the boundary is inclusive so
+    /// the constant means what it says.
+    #[test]
+    fn the_threshold_itself_is_a_valid_sample() {
+        let ema = ThroughputEma::new();
+        ema.record(MIN_PREFILL_SAMPLE_TOKENS, Duration::from_secs(1));
+        assert!(ema.get().is_some());
+    }
     use super::*;
 
     /// The ceiling a client is told to plan against must not be the
