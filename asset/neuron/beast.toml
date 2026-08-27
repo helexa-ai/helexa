@@ -29,24 +29,33 @@ name = "candle"
 # count. NEURON_BATCHING=0 (systemd drop-in) is the kill switch;
 # removing this section reverts to batch-1 serialization.
 [harness.candle.admission]
-# 2, not 8 (#291). max_in_flight is both the admission bound and the
-# batch engine's slot count, and the KV budget is divided by it at load.
-# At 8 that gave each slot 18,852 tokens out of 150,816 — against a
-# 131,072-token advertised context, which needs 4 GB of KV per card on
-# its own and 32 GB across eight slots, on a 31 GB card already holding
-# ~21 GB of weights. The advertised context and the slot count were
-# incompatible by roughly 7x, and an agentic session ran in a ~19k
-# window while seven idle slots held reservations.
+# 8. max_in_flight bounds how many requests run concurrently. It does
+# NOT partition the KV budget: since #257 (`eca42510`, 2026-08-15) KV is
+# a shared pool and each request reserves what its own prompt needs via
+# `enter_with_kv(principal, kv_reservation_mb(prompt_len, ...))`. A
+# request too big for what is free waits for bytes to come back rather
+# than being handed a fixed 1/N slice.
 #
-# Seven days of paired request spans on this host: 89.6% of busy time
-# was ONE request in flight, 93.6% was two or fewer, and utilisation was
-# 4.9%. Most of what little concurrency exists is helexa-bench's own
-# synthetic bursts. Two slots cover 93.6% of observed load and give each
-# ~75k tokens; the batch engine is still worth 1.79x there (5.24x at
-# eight is throughput nobody is asking this host for). Anything above
-# two queues on admission (#53) with Retry-After rather than being
-# refused.
-max_in_flight = 2
+# This value was briefly set to 2 (#291) on the stated grounds that "the
+# KV budget is divided by it at load, so 8 gives each slot 18,852
+# tokens". That was true before #257 and false after it, and #291 was
+# filed and actioned after that landed. Nothing in the tree divides the
+# budget by the slot count — `kv_budget` is a semaphore of MiB permits
+# and the engine's `max_slots` is only the batch width.
+#
+# The concurrency measurement in #291 stands as data (89.6% of busy time
+# at one request in flight, 4.9% utilisation over seven days) but the
+# conclusion drawn from it does not, and the traffic it described has
+# changed: while it was taken, the router's `helexa/balanced` alias
+# pointed web chat at a second 27B, so per-model concurrency was split
+# across two models that were evicting each other. With both tiers now
+# resolving to this model, chat concurrency lands here.
+#
+# What actually bounds a busy moment is the pool: 3,689 MiB at
+# 32 KiB/token/card is ~118k tokens of KV to share. Eight ordinary chat
+# turns fit easily; a few very long agentic sessions will queue on bytes,
+# which is the correct behaviour and is what #257 built.
+max_in_flight = 8
 
 # Snapshot budget for the cross-request prefix cache (#292).
 #

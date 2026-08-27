@@ -115,7 +115,7 @@ Each loaded model has bounded admission control:
 
 ```toml
 [harness.candle.admission]
-max_in_flight = 2        # concurrent requests actually running
+max_in_flight = 8        # concurrent requests actually running
 max_queue_depth = 8      # waiting before rejection
 max_wait_secs = 30       # how long a queued request waits for a slot
 kv_max_wait_secs = 300   # how long it waits for enough KV budget
@@ -137,17 +137,32 @@ until something times out.
 support it, so concurrent requests share a decode step instead of
 serialising.
 
-Higher is not better, because **the model's KV budget is divided by it
-at load**. A host advertising a 131k context with eight slots needs
-eight times the KV of one slot, which it does not have — the practical
-result is that each slot gets a fraction of the advertised window and a
-single long session runs out of room while seven idle slots hold
-reservations. Size it against the concurrency you actually observe: on
-one production host, seven days of request spans showed 89.6% of busy
-time was a single request in flight and 93.6% was two or fewer, so two
-slots cover the real load and give each a usable context. Anything above
-the limit queues on admission with a `Retry-After` rather than being
-refused.
+**`max_in_flight` does not partition the KV budget.** KV is a shared
+pool, and each request reserves what its own prompt actually needs when
+it is admitted — which is why `kv_max_wait_secs` above exists at all. A
+request larger than what is currently free waits for bytes to come back
+rather than being handed a fixed 1/N slice, and a single long session
+can legitimately hold most of the pool.
+
+So the slot count and the context window are separate questions. What
+bounds a busy moment is the pool: divide `kv_budget_mb` by the model's
+KV cost per token (`GET /health` reports both) to see how many tokens
+are available to share. Many ordinary chat turns fit at once; a few very
+long agentic sessions will queue on bytes.
+
+Size `max_in_flight` against the concurrency you actually want to serve
+concurrently, not against context. Anything above it queues on admission
+with a `Retry-After` rather than being refused, so setting it too low
+converts capacity you have into latency your callers feel. Setting it
+very high mainly costs batch-step efficiency, since the engine pads to
+the widest active sequence.
+
+Measure before assuming you need a high number — but measure the traffic
+you will have, not the traffic you had. On one production host, seven
+days of spans showed 89.6% of busy time at a single request in flight;
+that host's chat tier was at the time being routed to a *different*
+model, and the figure stopped describing it the moment that was
+corrected.
 
 `max_per_principal` is what stops one busy client consuming the whole
 model.
@@ -389,14 +404,15 @@ at roughly 37 s each, against ~20 s of actual decode.
 
 The number is not free, and the direction of the trade is the opposite
 of what it looks like. **The snapshot budget is reserved before the KV
-budget, not from what is left over.** On a 2×32 GB host serving a 27B at
-`max_in_flight = 2`, measured 1:1:
+budget, not from what is left over.** On a 2×32 GB host serving a 27B,
+measured 1:1 — the token column is the pool all concurrent requests
+share, not a per-slot allowance:
 
-| `budget_mb` | KV budget | tokens per slot | holds a 53k snapshot |
+| `budget_mb` | KV budget | tokens in the pool | holds a 53k snapshot |
 |---|---|---|---|
-| 1024 | 4713 MB | 75,400 | no |
-| 2048 | 3689 MB | 59,000 | yes |
-| 3072 | 2665 MB | 42,600 | yes, but a session cannot reach 53k |
+| 1024 | 4713 MB | 150,800 | no |
+| 2048 | 3689 MB | 118,000 | yes |
+| 3072 | 2665 MB | 85,300 | yes, but a session cannot reach 53k |
 
 So raising it too far starves the KV cache and shortens how long a
 single session can run — the model can no longer reach the context whose
