@@ -468,11 +468,21 @@ fn usage_chunk(
 /// where the same wire object could be assembled differently — the
 /// shape of defect #252 and #272 both were.
 ///
-/// Semantics deliberately preserved from the path this replaces:
-/// reasoning text is **dropped** from `content` (it is counted in
-/// `usage.completion_tokens_details.reasoning_tokens` but never
-/// rendered), and `finish_reason` becomes `"tool_calls"` whenever any
-/// tool call was parsed.
+/// Reasoning is kept out of `content` — it is not the assistant's
+/// reply — but it is **returned** on `message.reasoning_content`, the
+/// same field the streaming path emits as
+/// `choice.delta.reasoning_content`.
+///
+/// It used to be discarded here (#300). That was inherited from the
+/// path this replaced and was wrong on both counts: the tokens are
+/// metered in `usage.completion_tokens_details.reasoning_tokens`, so a
+/// caller paid for text it could never see; and a client cannot replay
+/// what it never received, so on the next turn the model saw its own
+/// prior turn as a bare assertion with the reasoning that produced it
+/// deleted.
+///
+/// `finish_reason` becomes `"tool_calls"` whenever any tool call was
+/// parsed.
 ///
 /// Two fields that the old path hardcoded to `None` now populate,
 /// because the events carry them and the struct already had the slots:
@@ -488,6 +498,7 @@ pub async fn collect_chat_completion(
     model_id: String,
 ) -> Result<ChatCompletionResponse, String> {
     let mut content = String::new();
+    let mut reasoning = String::new();
     let mut tool_calls: Vec<serde_json::Value> = Vec::new();
     let mut finish: Option<(FinishReason, u32, u32, u32, u32, Option<FinishTiming>)> = None;
 
@@ -495,8 +506,8 @@ pub async fn collect_chat_completion(
         match event {
             InferenceEvent::Start => {}
             InferenceEvent::TextDelta(t) => content.push_str(&t),
-            // Counted, never rendered — see the doc comment.
-            InferenceEvent::ReasoningDelta(_) => {}
+            // Kept out of `content`, returned on `reasoning_content`.
+            InferenceEvent::ReasoningDelta(t) => reasoning.push_str(&t),
             InferenceEvent::ToolCall {
                 index,
                 id: call_id,
@@ -545,11 +556,16 @@ pub async fn collect_chat_completion(
     } else {
         "tool_calls".to_string()
     };
-    let message_extra = if tool_calls.is_empty() {
-        serde_json::Value::Object(Default::default())
-    } else {
-        json!({ "tool_calls": tool_calls })
-    };
+    let mut message_extra = serde_json::Map::new();
+    if !tool_calls.is_empty() {
+        message_extra.insert("tool_calls".into(), json!(tool_calls));
+    }
+    // Absent rather than empty when the model did not think: a
+    // non-reasoning model must keep the unchanged message shape.
+    if !reasoning.is_empty() {
+        message_extra.insert("reasoning_content".into(), json!(reasoning));
+    }
+    let message_extra = serde_json::Value::Object(message_extra);
 
     Ok(ChatCompletionResponse {
         id,
@@ -588,6 +604,86 @@ pub async fn collect_chat_completion(
 
 #[cfg(test)]
 mod tests {
+
+    /// The model's think block must come back on the non-streaming
+    /// path too (#300).
+    ///
+    /// It used to be dropped here while the streaming path emitted it
+    /// as `choice.delta.reasoning_content`. The tokens were metered
+    /// either way, so a non-streaming caller paid for text it could
+    /// never see — and, worse, could not replay the model's reasoning
+    /// on the next turn, leaving the model to face its own prior turn
+    /// as a bare assertion.
+    #[tokio::test]
+    async fn non_streaming_returns_the_models_reasoning() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::ReasoningDelta(
+            "weighing the options".into(),
+        ))
+        .await
+        .unwrap();
+        tx.send(InferenceEvent::TextDelta("the answer".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 5,
+            completion_tokens: 7,
+            reasoning_tokens: 3,
+            cached_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+
+        let r = collect_chat_completion(rx, "id".into(), 0, "m".into())
+            .await
+            .expect("collect");
+        let msg = &r.choices[0].message;
+        assert_eq!(
+            msg.extra["reasoning_content"], "weighing the options",
+            "reasoning must be returned, not discarded"
+        );
+        // And it must NOT be folded into the visible reply.
+        assert!(
+            matches!(&msg.content, MessageContent::Text(t) if t == "the answer"),
+            "reasoning leaked into content"
+        );
+    }
+
+    /// A non-reasoning model must keep the unchanged message shape —
+    /// absent, not an empty string.
+    #[tokio::test]
+    async fn no_reasoning_means_no_reasoning_field() {
+        let (tx, rx) = mpsc::channel::<InferenceEvent>(8);
+        tx.send(InferenceEvent::Start).await.unwrap();
+        tx.send(InferenceEvent::TextDelta("plain".into()))
+            .await
+            .unwrap();
+        tx.send(InferenceEvent::Finish {
+            reason: FinishReason::Stop,
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            reasoning_tokens: 0,
+            cached_tokens: 0,
+            timing: None,
+        })
+        .await
+        .unwrap();
+        drop(tx);
+        let r = collect_chat_completion(rx, "id".into(), 0, "m".into())
+            .await
+            .expect("collect");
+        assert!(
+            r.choices[0]
+                .message
+                .extra
+                .get("reasoning_content")
+                .is_none()
+        );
+    }
     use super::*;
 
     // ── Non-streaming collector (#285) ────────────────────────────

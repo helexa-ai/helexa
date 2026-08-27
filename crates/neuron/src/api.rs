@@ -486,9 +486,9 @@ async fn responses(
                     input_tokens: u.prompt_tokens,
                     output_tokens: u.completion_tokens,
                     total_tokens: u.prompt_tokens + u.completion_tokens,
-                    // Carry the reasoning sub-count through from the chat
-                    // usage — the non-streaming path now splits off the
-                    // `<think>` span and counts it (see `split_off_reasoning`).
+                    // Carry the reasoning sub-count through from the
+                    // chat usage: the collector counts the `<think>`
+                    // span and returns its text separately.
                     output_tokens_details: u.completion_tokens_details.as_ref().map(|d| {
                         OutputTokensDetails {
                             reasoning_tokens: d.reasoning_tokens,
@@ -502,8 +502,18 @@ async fn responses(
                     model_id,
                     message_item_id: mint_message_item_id(),
                 };
-                let _ = chat_resp; // make the borrow-checker happy if `text` consumed it
-                let resp = openai_responses::build_response(&meta, text, finish, usage);
+                // The model's think block, which the chat collector now
+                // returns on `message.reasoning_content` (#300). Without
+                // this the caller is billed for `reasoning_tokens` it
+                // never sees, and cannot replay the model's own
+                // reasoning on the next turn.
+                let reasoning = chat_resp
+                    .choices
+                    .first()
+                    .and_then(|c| c.message.extra.get("reasoning_content"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                let resp = openai_responses::build_response(&meta, text, finish, usage, reasoning);
                 Json(resp).into_response()
             }
             Err(e) => inference_error_response(e),

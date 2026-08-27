@@ -1249,28 +1249,49 @@ fn finish_to_status(reason: FinishReason) -> &'static str {
 /// Collect a chat-completions response into a non-streaming
 /// [`ResponsesResponse`]. Used by the `/v1/responses` handler when
 /// the request doesn't set `stream: true`.
+///
+/// `reasoning` is the model's think block, when it produced one. It
+/// becomes its own output item ahead of the message — the same shape
+/// and ordering the streaming projector emits. Omitting it (as this did
+/// until #300) meant a non-streaming caller was billed for
+/// `reasoning_tokens` it could never see, and could not replay the
+/// model's own thinking on the next turn.
 pub fn build_response(
     meta: &ResponseMeta,
     full_text: String,
     reason: FinishReason,
     usage: Option<ResponsesUsage>,
+    reasoning: Option<String>,
 ) -> ResponsesResponse {
     let status = finish_to_status(reason).to_string();
+    let mut output: Vec<ResponsesOutputItem> = Vec::with_capacity(2);
+    if let Some(text) = reasoning.filter(|t| !t.is_empty()) {
+        output.push(ResponsesOutputItem::Reasoning {
+            id: reasoning_item_id(meta),
+            summary: vec![cortex_core::responses::ResponsesSummaryPart::summary_text(
+                text,
+            )],
+            status: "completed".into(),
+        });
+    }
     ResponsesResponse {
         id: meta.response_id.clone(),
         object: "response".into(),
         created_at: meta.created_at,
         status: status.clone(),
         model: meta.model_id.clone(),
-        output: vec![ResponsesOutputItem::Message {
-            id: meta.message_item_id.clone(),
-            role: "assistant".into(),
-            content: vec![ResponsesOutputContent::OutputText {
-                text: full_text,
-                annotations: vec![],
-            }],
-            status,
-        }],
+        output: {
+            output.push(ResponsesOutputItem::Message {
+                id: meta.message_item_id.clone(),
+                role: "assistant".into(),
+                content: vec![ResponsesOutputContent::OutputText {
+                    text: full_text,
+                    annotations: vec![],
+                }],
+                status,
+            });
+            output
+        },
         // Same contract as the streaming shell: a truncated response
         // says so, or the caller cannot tell it from a fault.
         incomplete_details: matches!(reason, FinishReason::Length)
@@ -1283,6 +1304,99 @@ pub fn build_response(
 mod tests {
     use super::*;
     use cortex_core::openai::MessageContent;
+
+    /// The non-streaming Responses body must carry a reasoning item
+    /// (#300), matching the item the streaming projector emits.
+    ///
+    /// Observed before the fix: a response reporting
+    /// `output_tokens_details.reasoning_tokens: 4000` with an empty
+    /// `output` — 4,000 tokens generated, metered, and invisible.
+    #[test]
+    fn non_streaming_response_carries_a_reasoning_item() {
+        let r = build_response(
+            &meta(),
+            "the answer".into(),
+            FinishReason::Stop,
+            None,
+            Some("weighing the options".into()),
+        );
+        let v = serde_json::to_value(&r).unwrap();
+        let items = v["output"].as_array().expect("output array");
+        assert_eq!(items.len(), 2, "expected a reasoning item and a message");
+        assert_eq!(items[0]["type"], "reasoning", "reasoning comes first");
+        assert_eq!(items[0]["summary"][0]["type"], "summary_text");
+        assert_eq!(items[0]["summary"][0]["text"], "weighing the options");
+        assert_eq!(items[1]["type"], "message");
+        assert_eq!(items[1]["content"][0]["text"], "the answer");
+    }
+
+    /// A model that did not think produces no reasoning item — the
+    /// unchanged single-item shape.
+    #[test]
+    fn no_reasoning_means_no_reasoning_item() {
+        let r = build_response(&meta(), "plain".into(), FinishReason::Stop, None, None);
+        let v = serde_json::to_value(&r).unwrap();
+        let items = v["output"].as_array().unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0]["type"], "message");
+    }
+
+    /// A file read back must survive the *whole* chain: Responses
+    /// `function_call_output` -> chat message -> rendered prompt.
+    ///
+    /// The reported symptom is a model that writes a file correctly,
+    /// reads it back, and consistently sees errors that are not there.
+    /// This walks the real path rather than a hand-built chat message,
+    /// because the translation is the part in between.
+    #[test]
+    fn a_file_read_back_survives_the_whole_translation() {
+        let file = "<!DOCTYPE html>\n<html lang=\"en\">\n\n  <script>\n    if (a && b || c < d) { s = '#b8905a'; }\n  </script>\n</html>\n";
+        let req: ResponsesRequest = serde_json::from_value(serde_json::json!({
+            "model": "m",
+            "input": [
+                {"type": "message", "role": "user",
+                 "content": [{"type": "input_text", "text": "read it back"}]},
+                {"type": "function_call", "call_id": "c1", "name": "read",
+                 "arguments": "{\"path\":\"/tmp/index.html\"}"},
+                // pi sends the tool result as a plain string (its
+                // `convertToolResultOutput` only produces an array when
+                // images are involved).
+                {"type": "function_call_output", "call_id": "c1", "output": file},
+                {"type": "message", "role": "user",
+                 "content": [{"type": "input_text", "text": "any errors?"}]}
+            ]
+        }))
+        .unwrap();
+        let chat = request_to_chat(req).expect("translate");
+
+        // The tool message must carry the file verbatim.
+        let tool = chat
+            .messages
+            .iter()
+            .find(|m| m.role == "tool")
+            .expect("a tool message");
+        let got = match &tool.content {
+            MessageContent::Text(t) => t.clone(),
+            other => panic!("tool content is not text: {other:?}"),
+        };
+        assert_eq!(got, file, "translation altered the file content");
+
+        // And it must survive the render too.
+        let template = include_str!("../../tests/data/qwen3.8-27b.chat_template.jinja");
+        let out = crate::harness::chat_template::render_chat_template(
+            template,
+            &chat.messages,
+            &Value::Null,
+            &Value::Null,
+        )
+        .expect("render");
+        for probe in ["<!DOCTYPE html>", "if (a && b || c < d)", "s = '#b8905a';"] {
+            assert!(out.contains(probe), "rendered prompt lost {probe:?}");
+        }
+        for bad in ["&lt;", "&amp;", "&quot;"] {
+            assert!(!out.contains(bad), "content HTML-escaped: {bad:?}");
+        }
+    }
 
     /// One agentic step must render as ONE assistant turn.
     ///
@@ -2670,6 +2784,7 @@ mod tests {
                 output_tokens_details: None,
                 input_tokens_details: None,
             }),
+            None,
         );
         assert_eq!(r.status, "completed");
         match &r.output[0] {
@@ -2695,7 +2810,7 @@ mod tests {
 
     #[test]
     fn build_response_length_yields_incomplete_status() {
-        let r = build_response(&meta(), "trunc".into(), FinishReason::Length, None);
+        let r = build_response(&meta(), "trunc".into(), FinishReason::Length, None, None);
         assert_eq!(r.status, "incomplete");
     }
 }
