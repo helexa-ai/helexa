@@ -23,7 +23,7 @@ listen = "0.0.0.0:8088"
 #
 # [aliases]
 # "helexa/small" = "Qwen/Qwen3-8B"
-# "helexa/balanced" = "Qwen/Qwen3.6-27B"
+# "helexa/balanced" = "Qwen/Qwen3.8-27B"
 
 # -- Downstream cortexes -------------------------------------------------
 # Each [[cortexes]] entry is an operator-run cortex the router may dispatch

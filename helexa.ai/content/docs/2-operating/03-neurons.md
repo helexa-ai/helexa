@@ -92,7 +92,7 @@ load cost:
 
 ```toml
 [[default_models]]
-model_id = "Qwen/Qwen3.6-27B"
+model_id = "Qwen/Qwen3.8-27B"
 harness = "candle"
 quant = "q6k"
 tensor_parallel = 2

@@ -80,7 +80,7 @@ The fastest path: env-var single-endpoint config.
 
 ```sh
 export HELEXA_ACP_BASE_URL=http://hanzalova.internal:31313/v1
-export HELEXA_ACP_MODEL=Qwen/Qwen3.6-27B
+export HELEXA_ACP_MODEL=Qwen/Qwen3.8-27B
 helexa-acp  # speaks ACP over stdin/stdout; not interactive
 ```
 
@@ -117,7 +117,7 @@ default_endpoint = "helexa"
 name = "helexa"
 base_url = "http://hanzalova.internal:31313/v1"
 wire_api = "openai-chat"
-default_model = "Qwen/Qwen3.6-27B"
+default_model = "Qwen/Qwen3.8-27B"
 max_tokens = 8192
 context_window = 32768
 
@@ -138,7 +138,7 @@ default_model = "claude-opus-4"
 
 Restart Zed. The model dropdown lists every model from every
 configured endpoint with the `endpoint:model` selector
-(`helexa:Qwen/Qwen3.6-27B`, `openrouter:anthropic/claude-opus-4`,
+(`helexa:Qwen/Qwen3.8-27B`, `openrouter:anthropic/claude-opus-4`,
 …). Switch mid-session; the next prompt routes to the new endpoint.
 
 When only one endpoint is configured the prefix is dropped (model
@@ -166,7 +166,7 @@ Copy-pasteable blocks. Mix and match.
 name = "helexa"
 base_url = "http://hanzalova.internal:31313/v1"
 wire_api = "openai-chat"
-default_model = "Qwen/Qwen3.6-27B"
+default_model = "Qwen/Qwen3.8-27B"
 max_tokens = 8192
 context_window = 32768
 ```
@@ -241,7 +241,7 @@ vLLM.
 name = "lan"
 base_url = "http://hanzalova.internal:31313/v1"
 wire_api = "openai-chat"
-default_model = "Qwen/Qwen3.6-27B"
+default_model = "Qwen/Qwen3.8-27B"
 
 [[endpoints]]
 name = "cloud"

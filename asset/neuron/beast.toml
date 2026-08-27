@@ -7,10 +7,10 @@
 # ─────────────────────────────────────────────────────────────────────
 # neuron.toml for beast.hanzalova.internal
 #
-# 2x RTX 5090 (32 GB each) — TP-2 capable. Pre-warms Qwen3.6-27B with
-# q5k ISQ across both GPUs at activation, matching the validate-neuron
+# 2x RTX 5090 (32 GB each) — TP-2 capable. Pre-warms Qwen3.8-27B with
+# q6k ISQ across both GPUs at activation, matching the validate-neuron
 # invocation: `validate-neuron.sh beast.hanzalova.internal
-# Qwen/Qwen3.6-27B q5k 2`.
+# Qwen/Qwen3.8-27B q6k 2`.
 #
 # Synced to /etc/neuron/neuron.toml by script/infra-setup.sh. Edits
 # take effect after the next deploy workflow run restarts the service
@@ -83,11 +83,15 @@ max_in_flight = 2
 budget_mb = 2048
 
 [[default_models]]
-# Qwen3.8-27B is the resident flagship (#251). Architecturally identical
-# to the 3.6-27B it replaced — same model_type, layer counts and vision
-# tower — so the load spec is unchanged. The 3.6-27B stays catalogued at
-# the same residency class, so it can still be cold-loaded on demand and
-# the two displace each other in either direction.
+# Qwen3.8-27B is the resident flagship (#251). It replaced the
+# 3.6-27B — architecturally identical, same model_type, layer counts and
+# vision tower — so the load spec is unchanged.
+#
+# The 3.6-27B is no longer catalogued (retired 2026-08-27). While both
+# were listed at the same residency class they could displace each other
+# in either direction, which is what let a stale `helexa/balanced` alias
+# evict this model on every authenticated web-chat turn. See models.toml
+# for the incident that ended the arrangement.
 model_id = "Qwen/Qwen3.8-27B"
 harness = "candle"
 quant = "q6k"
