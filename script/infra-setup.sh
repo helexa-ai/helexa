@@ -322,7 +322,27 @@ if ! ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
 fi
 
 # Install the vhost + renewal timer once the cert exists.
+#
+# The rate-limit drop-in goes FIRST and unconditionally. It defines
+# http-context names the vhost references — the `limit_req_zone`s and the
+# `helexa_noquery` log format — and this host was getting the vhost
+# without it: helexa-ratelimit.conf was shipped to the web and angels
+# hosts only, so `helexa.internal.conf` could arrive referencing a log
+# format nginx had never seen.
+#
+# The ordering below makes that a live hazard rather than a caught
+# mistake: the symlink is created before `nginx -t` runs, so a failing
+# test leaves a broken config wired into sites-enabled. The running nginx
+# is unaffected (it is not reloaded), but the NEXT reload or reboot —
+# by anything, including certificate renewal — fails on it.
+#
+# deploy.yml's deploy-nginx job ships the pair in this same order for the
+# same reason.
 if ssh "${cortex_host}" "sudo test -f '${int_cert}'"; then
+    rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/helexa-ratelimit.conf" \
+        "${cortex_host}:/etc/nginx/conf.d/helexa-ratelimit.conf" \
+        || echo "  failed to install helexa-ratelimit.conf"
     if rsync --archive --compress --chown root:root --chmod 0644 --rsync-path 'sudo rsync' \
         "${repo_path}/asset/nginx/${int_domain}.conf" \
         "${cortex_host}:/etc/nginx/sites-available/${int_domain}.conf"; then
