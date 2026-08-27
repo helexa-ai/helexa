@@ -149,16 +149,33 @@ jobs:
             exit 1
           fi
 
+          rl="asset/nginx/helexa-ratelimit.conf"
           local_sum=$(sha256sum "${src}" | cut -d' ' -f1)
+          local_rl=$(sha256sum "${rl}" | cut -d' ' -f1)
           remote_sum=$(ssh gitea_ci@hanzalova.internal \
             'sudo sha256sum /etc/nginx/sites-available/helexa.internal.conf 2>/dev/null | cut -d" " -f1' || true)
+          remote_rl=$(ssh gitea_ci@hanzalova.internal \
+            'sudo sha256sum /etc/nginx/conf.d/helexa-ratelimit.conf 2>/dev/null | cut -d" " -f1' || true)
           link_ok=$(ssh gitea_ci@hanzalova.internal \
             'test -L /etc/nginx/sites-enabled/helexa.internal.conf && echo yes || echo no')
 
-          if [ "${local_sum}" = "${remote_sum}" ] && [ "${link_ok}" = "yes" ]; then
-            echo "nginx vhost unchanged (${local_sum}), sites-enabled is a symlink — nothing to do"
+          if [ "${local_sum}" = "${remote_sum}" ] \
+             && [ "${local_rl}" = "${remote_rl}" ] \
+             && [ "${link_ok}" = "yes" ]; then
+            echo "nginx config unchanged, sites-enabled is a symlink — nothing to do"
             exit 0
           fi
+
+          # Order matters: the vhost references names defined at http
+          # context by helexa-ratelimit.conf (`limit_req_zone`s and the
+          # `helexa_noquery` log format). Ship that first, or a vhost
+          # referencing a not-yet-installed name fails `nginx -t` and the
+          # deploy stops with the two files out of step.
+          echo "syncing nginx rate-limit/log-format: ${remote_rl:-<absent>} -> ${local_rl}"
+          rsync --archive --compress \
+            --chown root:root --chmod 0644 \
+            --rsync-path 'sudo rsync' \
+            "${rl}" gitea_ci@hanzalova.internal:/etc/nginx/conf.d/helexa-ratelimit.conf
 
           echo "syncing nginx vhost: ${remote_sum:-<absent>} -> ${local_sum} (symlink=${link_ok})"
           rsync --archive --compress \
