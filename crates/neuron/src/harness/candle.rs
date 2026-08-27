@@ -669,6 +669,34 @@ fn requested_sampling(request: &ChatCompletionRequest) -> super::sampling::Reque
     }
 }
 
+/// Which API surface a request arrived on.
+///
+/// Carried into the tracing span because neuron translates
+/// `/v1/responses` into a chat request at the door
+/// (`openai_responses::request_to_chat`) and every line after that
+/// point — spans, finish lines, rendered prompts — is emitted by the
+/// shared chat path. Without this the journal reads as though every
+/// client used `/v1/chat/completions`, which is not a missing detail
+/// but an actively wrong one: it says something false about the caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WireSurface {
+    /// `POST /v1/chat/completions`
+    Chat,
+    /// `POST /v1/responses`
+    Responses,
+}
+
+impl WireSurface {
+    /// The value recorded as `wire=` on every span, matching the names
+    /// cortex already logs via `log_inbound` so the two journals join.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Chat => "openai-chat",
+            Self::Responses => "openai-responses",
+        }
+    }
+}
+
 pub struct LoadedModel {
     pub model_id: String,
     /// What the model published in `generation_config.json` (#272).
@@ -2879,8 +2907,9 @@ impl CandleHarness {
         &self,
         request: ChatCompletionRequest,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<ChatCompletionResponse, InferenceError> {
-        let stream = self.inference_stream(request, principal).await?;
+        let stream = self.inference_stream(request, principal, wire).await?;
         wire_chat::collect_chat_completion(
             stream.events,
             stream.id,
@@ -2907,11 +2936,13 @@ impl CandleHarness {
         &self,
         request: ChatCompletionRequest,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
         self.chat_completion_stream_with(
             request,
             wire_chat::ChatProjectionConfig::default(),
             principal,
+            wire,
         )
         .await
     }
@@ -2925,8 +2956,9 @@ impl CandleHarness {
         request: ChatCompletionRequest,
         mut config: wire_chat::ChatProjectionConfig,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<mpsc::Receiver<ChatCompletionChunk>, InferenceError> {
-        let stream = self.inference_stream(request, principal).await?;
+        let stream = self.inference_stream(request, principal, wire).await?;
         // Fill in the model's reasoning markers if the caller
         // didn't pre-populate them — they're a property of the
         // loaded model (which the HTTP handler doesn't reach into
@@ -2954,9 +2986,10 @@ impl CandleHarness {
         response_id: String,
         message_item_id: String,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<mpsc::Receiver<crate::wire::openai_responses::ResponseStreamFrame>, InferenceError>
     {
-        let stream = self.inference_stream(request, principal).await?;
+        let stream = self.inference_stream(request, principal, wire).await?;
         let meta = crate::wire::openai_responses::ResponseMeta {
             response_id,
             created_at: stream.created,
@@ -2978,6 +3011,7 @@ impl CandleHarness {
         &self,
         request: ChatCompletionRequest,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<InferenceStream, InferenceError> {
         let handle = {
             let models = self.models.read().await;
@@ -3002,7 +3036,7 @@ impl CandleHarness {
             LoadedHandle::Single(m) => m,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => {
-                return self.inference_tp_stream(m, request, principal).await;
+                return self.inference_tp_stream(m, request, principal, wire).await;
             }
             LoadedHandle::Image(_) => {
                 return Err(InferenceError::WrongModality {
@@ -3140,7 +3174,12 @@ impl CandleHarness {
         // executor so we capture the span explicitly and re-enter it
         // inside the closure to keep the req_id on every emitted line.
         let req_id = new_req_id();
-        let span = tracing::info_span!("chat_stream", req_id = %req_id, model = %model_id);
+        let span = tracing::info_span!(
+            "chat_stream",
+            req_id = %req_id,
+            model = %model_id,
+            wire = wire.as_str()
+        );
         let prompt_len = prompt_tokens.len();
         let req_start = std::time::Instant::now();
         // Cloned `Arc<LoadedModel>` so the spawned task can mark the
@@ -4714,6 +4753,7 @@ impl CandleHarness {
         tp: Arc<TpLoadedModel>,
         request: ChatCompletionRequest,
         principal: Option<String>,
+        wire: WireSurface,
     ) -> Result<InferenceStream, InferenceError> {
         if tp.poisoned.load(Ordering::Acquire) {
             return Err(self.trigger_recovery(&request.model).await);
@@ -4865,14 +4905,19 @@ impl CandleHarness {
         // of this inference; concurrent requests against the same TP
         // model serialise behind it.
         //
-        // Tagged with the same req_id span as the non-streaming path
-        // so the journal can be reconstructed regardless of which API
-        // surface the client hit.
+        // Tagged with the same req_id span as the non-streaming path,
+        // and with the surface the request actually arrived on. Both
+        // matter: neuron translates `/v1/responses` into a chat request
+        // at the door, so without `wire` every line here reads as
+        // though the caller used `/v1/chat/completions`. The value
+        // matches what cortex logs via `log_inbound`, so the two
+        // journals join on it.
         let req_id = new_req_id();
         let span = tracing::info_span!(
             "tp_chat_stream",
             req_id = %req_id,
-            model = %model_id
+            model = %model_id,
+            wire = wire.as_str()
         );
         let req_start = std::time::Instant::now();
         let (vram_free_mb, vram_total_mb) = tp.query_vram().await;
@@ -7571,6 +7616,26 @@ mod tests {
             &Default::default(),
         );
         assert_eq!(effort_in(&out), None);
+    }
+
+    /// The wire surface must serialise as the string cortex logs, so a
+    /// journal search joins the two.
+    ///
+    /// neuron translates `/v1/responses` into a chat request at the
+    /// door, and every line after that is emitted by the shared chat
+    /// path. Before `wire` was recorded the journal showed
+    /// `chat_completion (stream): done` for every request whatever the
+    /// surface — worse than omitting the detail, because it asserts
+    /// something false about the caller. It cost a real investigation
+    /// into why a Responses-configured client "was using chat
+    /// completions". It was not.
+    #[test]
+    fn the_wire_surface_matches_what_cortex_logs() {
+        // These strings are load-bearing: `cortex-gateway`'s
+        // `log_inbound` emits the same two, so `journalctl | grep
+        // openai-responses` spans both services.
+        assert_eq!(WireSurface::Chat.as_str(), "openai-chat");
+        assert_eq!(WireSurface::Responses.as_str(), "openai-responses");
     }
 
     /// Effort must not select a *rung's* budget — that was the

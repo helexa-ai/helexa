@@ -2,6 +2,7 @@
 
 use crate::activation::ActivationTracker;
 use crate::harness::HarnessRegistry;
+use crate::harness::candle::WireSurface;
 use crate::harness::candle::{CandleHarness, InferenceError};
 use crate::harness::preflight::PreflightError;
 use crate::health::HealthCache;
@@ -362,7 +363,7 @@ async fn chat_completions(
 
     if req.stream.unwrap_or(false) {
         match candle
-            .chat_completion_stream_with(req, chat_config, principal)
+            .chat_completion_stream_with(req, chat_config, principal, WireSurface::Chat)
             .await
         {
             Ok(rx) => {
@@ -381,7 +382,10 @@ async fn chat_completions(
             Err(e) => inference_error_response(e),
         }
     } else {
-        match candle.chat_completion(req, principal).await {
+        match candle
+            .chat_completion(req, principal, WireSurface::Chat)
+            .await
+        {
             Ok(resp) => Json(resp).into_response(),
             Err(e) => inference_error_response(e),
         }
@@ -434,7 +438,13 @@ async fn responses(
 
     if stream_requested {
         match candle
-            .responses_stream(chat_req, response_id, message_item_id, principal)
+            .responses_stream(
+                chat_req,
+                response_id,
+                message_item_id,
+                principal,
+                WireSurface::Responses,
+            )
             .await
         {
             Ok(rx) => {
@@ -458,7 +468,10 @@ async fn responses(
         // and translate the result. We don't currently re-tokenise
         // to compute usage; the harness returns it via the chat
         // response and we pass it through.
-        match candle.chat_completion(chat_req, principal).await {
+        match candle
+            .chat_completion(chat_req, principal, WireSurface::Responses)
+            .await
+        {
             Ok(chat_resp) => {
                 // Extract the assistant text (chat completions
                 // always emits one choice on the candle path).
