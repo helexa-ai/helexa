@@ -117,84 +117,6 @@ jobs:
             echo "models.toml updated: ${remote_sum:-<absent>} -> ${local_sum}"
           fi
 
-      # nginx vhost config for the internal site. Version-controlled in
-      # `asset/nginx/` since the beginning, but until now only ever
-      # installed by `script/infra-setup.sh` — a one-time, run-by-hand
-      # script. So the repo copy and the live file could diverge with
-      # nothing to detect it, which is the #252 shape: two sources of
-      # truth for one thing and nothing forcing agreement.
-      #
-      # Writes to sites-available and (re)points sites-enabled at it as
-      # a symlink. On this host sites-enabled was a *regular file*, not a
-      # symlink — two independent copies, of which nginx reads one. An
-      # operator editing "the config" would reasonably edit
-      # sites-available, watch `nginx -t` pass, reload, and see nothing
-      # change. Making the link canonical is part of the sync rather
-      # than a separate chore, so the layout cannot drift back.
-      #
-      # `nginx -t` gates the reload: a config that fails validation is
-      # left un-reloaded with the previous one still serving.
-      - name: Sync internal nginx vhost
-        run: |
-          src="asset/nginx/helexa.internal.conf"
-
-          # The sudoers drop-in that permits this is installed by
-          # script/infra-setup.sh, which is run by hand. Check first, so
-          # a missing permission reports the remedy instead of surfacing
-          # as an opaque rsync failure.
-          if ! ssh gitea_ci@hanzalova.internal 'sudo -n /usr/sbin/nginx -t' >/dev/null 2>&1; then
-            echo "FAIL: gitea_ci lacks the nginx sudoers entries on hanzalova." >&2
-            echo "      Re-run 'script/infra-setup.sh' once from an operator shell" >&2
-            echo "      to install the updated asset/sudoers.d/cortex-host.conf." >&2
-            exit 1
-          fi
-
-          rl="asset/nginx/helexa-ratelimit.conf"
-          local_sum=$(sha256sum "${src}" | cut -d' ' -f1)
-          local_rl=$(sha256sum "${rl}" | cut -d' ' -f1)
-          remote_sum=$(ssh gitea_ci@hanzalova.internal \
-            'sudo sha256sum /etc/nginx/sites-available/helexa.internal.conf 2>/dev/null | cut -d" " -f1' || true)
-          remote_rl=$(ssh gitea_ci@hanzalova.internal \
-            'sudo sha256sum /etc/nginx/conf.d/helexa-ratelimit.conf 2>/dev/null | cut -d" " -f1' || true)
-          link_ok=$(ssh gitea_ci@hanzalova.internal \
-            'test -L /etc/nginx/sites-enabled/helexa.internal.conf && echo yes || echo no')
-
-          if [ "${local_sum}" = "${remote_sum}" ] \
-             && [ "${local_rl}" = "${remote_rl}" ] \
-             && [ "${link_ok}" = "yes" ]; then
-            echo "nginx config unchanged, sites-enabled is a symlink — nothing to do"
-            exit 0
-          fi
-
-          # Order matters: the vhost references names defined at http
-          # context by helexa-ratelimit.conf (`limit_req_zone`s and the
-          # `helexa_noquery` log format). Ship that first, or a vhost
-          # referencing a not-yet-installed name fails `nginx -t` and the
-          # deploy stops with the two files out of step.
-          echo "syncing nginx rate-limit/log-format: ${remote_rl:-<absent>} -> ${local_rl}"
-          rsync --archive --compress \
-            --chown root:root --chmod 0644 \
-            --rsync-path 'sudo rsync' \
-            "${rl}" gitea_ci@hanzalova.internal:/etc/nginx/conf.d/helexa-ratelimit.conf
-
-          echo "syncing nginx vhost: ${remote_sum:-<absent>} -> ${local_sum} (symlink=${link_ok})"
-          rsync --archive --compress \
-            --chown root:root --chmod 0644 \
-            --rsync-path 'sudo rsync' \
-            "${src}" gitea_ci@hanzalova.internal:/etc/nginx/sites-available/helexa.internal.conf
-
-          ssh gitea_ci@hanzalova.internal 'bash -s' <<'NGINX'
-          set -eu
-          sudo /usr/bin/ln -sfn /etc/nginx/sites-available/helexa.internal.conf \
-                                /etc/nginx/sites-enabled/helexa.internal.conf
-          if ! sudo /usr/sbin/nginx -t; then
-            echo "FAIL: nginx -t rejected the synced config; not reloading" >&2
-            exit 1
-          fi
-          sudo /usr/bin/systemctl reload nginx
-          echo "nginx reloaded"
-          NGINX
-
       # Gating compares `rpm -q` against the packages.json manifest the
       # publish job maintains — NOT unprivileged `dnf check-update`,
       # which proved unreliable as the gitea_ci user (hung on metadata
@@ -256,6 +178,93 @@ jobs:
           # fleet self-heals after a host reboot.
           sudo /usr/bin/systemctl enable --now cortex.service
           DEPLOY
+
+      # nginx vhost config for the internal site. Version-controlled in
+      # `asset/nginx/` since the beginning, but until now only ever
+      # installed by `script/infra-setup.sh` — a one-time, run-by-hand
+      # script. So the repo copy and the live file could diverge with
+      # nothing to detect it, which is the #252 shape: two sources of
+      # truth for one thing and nothing forcing agreement.
+      #
+      # Writes to sites-available and (re)points sites-enabled at it as
+      # a symlink. On this host sites-enabled was a *regular file*, not a
+      # symlink — two independent copies, of which nginx reads one. An
+      # operator editing "the config" would reasonably edit
+      # sites-available, watch `nginx -t` pass, reload, and see nothing
+      # change. Making the link canonical is part of the sync rather
+      # than a separate chore, so the layout cannot drift back.
+      #
+      # `nginx -t` gates the reload: a config that fails validation is
+      # left un-reloaded with the previous one still serving.
+      #
+      # Deliberately placed *after* the cortex package step. The sudoers
+      # drop-in this needs is installed by hand, so until an operator has
+      # run script/infra-setup.sh the step fails — and a step that fails
+      # before the package update would hold the gateway binary hostage
+      # to an unrelated permission. #287 names this ordering trap
+      # explicitly; adding the sync before its grant exists breaks every
+      # deploy. Failing here still turns the job red, which is correct:
+      # the deploy did not do everything it promised.
+      - name: Sync internal nginx vhost
+        run: |
+          src="asset/nginx/helexa.internal.conf"
+
+          # The sudoers drop-in that permits this is installed by
+          # script/infra-setup.sh, which is run by hand. Check first, so
+          # a missing permission reports the remedy instead of surfacing
+          # as an opaque rsync failure.
+          if ! ssh gitea_ci@hanzalova.internal 'sudo -n /usr/sbin/nginx -t' >/dev/null 2>&1; then
+            echo "FAIL: gitea_ci lacks the nginx sudoers entries on hanzalova." >&2
+            echo "      Re-run 'script/infra-setup.sh' once from an operator shell" >&2
+            echo "      to install the updated asset/sudoers.d/cortex-host.conf." >&2
+            exit 1
+          fi
+
+          rl="asset/nginx/helexa-ratelimit.conf"
+          local_sum=$(sha256sum "${src}" | cut -d' ' -f1)
+          local_rl=$(sha256sum "${rl}" | cut -d' ' -f1)
+          remote_sum=$(ssh gitea_ci@hanzalova.internal \
+            'sudo sha256sum /etc/nginx/sites-available/helexa.internal.conf 2>/dev/null | cut -d" " -f1' || true)
+          remote_rl=$(ssh gitea_ci@hanzalova.internal \
+            'sudo sha256sum /etc/nginx/conf.d/helexa-ratelimit.conf 2>/dev/null | cut -d" " -f1' || true)
+          link_ok=$(ssh gitea_ci@hanzalova.internal \
+            'test -L /etc/nginx/sites-enabled/helexa.internal.conf && echo yes || echo no')
+
+          if [ "${local_sum}" = "${remote_sum}" ] \
+             && [ "${local_rl}" = "${remote_rl}" ] \
+             && [ "${link_ok}" = "yes" ]; then
+            echo "nginx config unchanged, sites-enabled is a symlink — nothing to do"
+            exit 0
+          fi
+
+          # Order matters: the vhost references names defined at http
+          # context by helexa-ratelimit.conf (`limit_req_zone`s and the
+          # `helexa_noquery` log format). Ship that first, or a vhost
+          # referencing a not-yet-installed name fails `nginx -t` and the
+          # deploy stops with the two files out of step.
+          echo "syncing nginx rate-limit/log-format: ${remote_rl:-<absent>} -> ${local_rl}"
+          rsync --archive --compress \
+            --chown root:root --chmod 0644 \
+            --rsync-path 'sudo rsync' \
+            "${rl}" gitea_ci@hanzalova.internal:/etc/nginx/conf.d/helexa-ratelimit.conf
+
+          echo "syncing nginx vhost: ${remote_sum:-<absent>} -> ${local_sum} (symlink=${link_ok})"
+          rsync --archive --compress \
+            --chown root:root --chmod 0644 \
+            --rsync-path 'sudo rsync' \
+            "${src}" gitea_ci@hanzalova.internal:/etc/nginx/sites-available/helexa.internal.conf
+
+          ssh gitea_ci@hanzalova.internal 'bash -s' <<'NGINX'
+          set -eu
+          sudo /usr/bin/ln -sfn /etc/nginx/sites-available/helexa.internal.conf \
+                                /etc/nginx/sites-enabled/helexa.internal.conf
+          if ! sudo /usr/sbin/nginx -t; then
+            echo "FAIL: nginx -t rejected the synced config; not reloading" >&2
+            exit 1
+          fi
+          sudo /usr/bin/systemctl reload nginx
+          echo "nginx reloaded"
+          NGINX
 
       # Wait for the service to either come up or wedge, then capture
       # the journal for the invocation this run started. Runs even on
