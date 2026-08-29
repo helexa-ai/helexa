@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "iyasebenza…",
   "showThinking": "Ukucabanga",
-  "showThinkingHint": "Cela imodeli icabange ngaphambi kokuphendula, futhi ubonise ukucabanga kwayo"
+  "showThinkingHint": "Cela imodeli icabange ngaphambi kokuphendula, futhi ubonise ukucabanga kwayo",
+  "effortOff": "Valiwe",
+  "effort_low": "Phansi",
+  "effort_medium": "Maphakathi",
+  "effort_xhigh": "Kuphakeme kakhulu"
 }

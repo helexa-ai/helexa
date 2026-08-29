@@ -90,7 +90,6 @@ fn router_entry(cortex: &str, e: &CortexModelEntry) -> CortexModelEntry {
             max_output_tokens: None,
             context_window: None,
             context_length: None,
-            reasoning_budget: Vec::new(),
             ..e.clone()
         }
     }
@@ -108,6 +107,7 @@ fn merge_into(acc: &mut CortexModelEntry, cortex: &str, e: &CortexModelEntry) {
     }
     acc.tool_call |= e.tool_call;
     acc.reasoning |= e.reasoning;
+    acc.reasoning_budget = merge_reasoning_budget(&acc.reasoning_budget, &e.reasoning_budget);
     acc.limit = tightest_limit(acc.limit.take(), e.limit.clone());
     acc.cost = cheapest_cost(acc.cost.take(), e.cost.clone());
 }
@@ -270,5 +270,116 @@ mod tests {
         assert_eq!(out[0].max_model_len, Some(16_384));
         assert_eq!(out[0].max_input_tokens, None);
         assert_eq!(out[0].max_output_tokens, Some(4096));
+    }
+}
+
+/// Fold two operators' reasoning ladders into the federated view.
+///
+/// A rung is offered if **any** operator can currently serve it, because
+/// the router can route there. Marking it unavailable because one busy
+/// operator is withholding it would hide capacity the federation has.
+///
+/// Conversely a rung only carries an unavailable reason when every
+/// operator offering it is withholding it — and the first such reason is
+/// kept, since they are diagnostics rather than a set to be merged.
+///
+/// Order comes from whichever ladder is longer, so the rungs still read
+/// in the order a client would climb them.
+fn merge_reasoning_budget(
+    acc: &[cortex_core::harness::ReasoningBudgetRung],
+    other: &[cortex_core::harness::ReasoningBudgetRung],
+) -> Vec<cortex_core::harness::ReasoningBudgetRung> {
+    if acc.is_empty() {
+        return other.to_vec();
+    }
+    if other.is_empty() {
+        return acc.to_vec();
+    }
+    let (long, short) = if acc.len() >= other.len() {
+        (acc, other)
+    } else {
+        (other, acc)
+    };
+    long.iter()
+        .map(|rung| {
+            let counterpart = short.iter().find(|r| r.effort == rung.effort);
+            let Some(counterpart) = counterpart else {
+                // Only one operator offers this rung at all; take it as-is.
+                return rung.clone();
+            };
+            let available_somewhere =
+                rung.unavailable_reason.is_none() || counterpart.unavailable_reason.is_none();
+            cortex_core::harness::ReasoningBudgetRung {
+                effort: rung.effort.clone(),
+                tokens: rung.tokens.or(counterpart.tokens),
+                default: rung.default || counterpart.default,
+                unavailable_reason: if available_somewhere {
+                    None
+                } else {
+                    rung.unavailable_reason
+                        .clone()
+                        .or_else(|| counterpart.unavailable_reason.clone())
+                },
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod reasoning_budget_merge_tests {
+    use super::*;
+    use cortex_core::harness::ReasoningBudgetRung;
+
+    fn rung(effort: &str, unavailable: Option<&str>) -> ReasoningBudgetRung {
+        ReasoningBudgetRung {
+            effort: effort.into(),
+            tokens: None,
+            default: false,
+            unavailable_reason: unavailable.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_rung_one_operator_can_serve_is_offered() {
+        // The federation's whole point: a busy operator withholding xhigh
+        // must not hide an idle operator that can serve it.
+        let busy = vec![rung("low", None), rung("xhigh", Some("max_in_flight=8"))];
+        let idle = vec![rung("low", None), rung("xhigh", None)];
+        let merged = merge_reasoning_budget(&busy, &idle);
+        let x = merged.iter().find(|r| r.effort == "xhigh").expect("xhigh");
+        assert_eq!(x.unavailable_reason, None);
+    }
+
+    #[test]
+    fn a_rung_every_operator_withholds_stays_unavailable() {
+        let a = vec![rung("xhigh", Some("max_in_flight=8"))];
+        let b = vec![rung("xhigh", Some("max_in_flight=4"))];
+        let merged = merge_reasoning_budget(&a, &b);
+        assert!(merged[0].unavailable_reason.is_some());
+    }
+
+    #[test]
+    fn an_empty_ladder_does_not_erase_a_populated_one() {
+        // A non-reasoning model, or a cortex too old to report rungs,
+        // must not blank out an operator that does.
+        let populated = vec![rung("low", None), rung("medium", None)];
+        assert_eq!(merge_reasoning_budget(&populated, &[]).len(), 2);
+        assert_eq!(merge_reasoning_budget(&[], &populated).len(), 2);
+    }
+
+    #[test]
+    fn a_rung_only_one_operator_offers_survives_the_merge() {
+        let few = vec![rung("low", None)];
+        let many = vec![rung("low", None), rung("xhigh", None)];
+        let merged = merge_reasoning_budget(&few, &many);
+        assert_eq!(merged.len(), 2, "the longer ladder sets the shape");
+    }
+
+    #[test]
+    fn the_default_flag_survives_from_either_side() {
+        let mut d = rung("xhigh", None);
+        d.default = true;
+        let merged = merge_reasoning_budget(&[rung("xhigh", None)], &[d]);
+        assert!(merged[0].default);
     }
 }

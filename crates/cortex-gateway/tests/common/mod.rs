@@ -519,6 +519,7 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

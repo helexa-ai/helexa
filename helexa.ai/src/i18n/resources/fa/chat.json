@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "در حال اجرا…",
   "showThinking": "استدلال",
-  "showThinkingHint": "از مدل بخواهید پیش از پاسخ فکر کند و استدلالش را نشان دهد"
+  "showThinkingHint": "از مدل بخواهید پیش از پاسخ فکر کند و استدلالش را نشان دهد",
+  "effortOff": "خاموش",
+  "effort_low": "کم",
+  "effort_medium": "متوسط",
+  "effort_xhigh": "خیلی زیاد"
 }

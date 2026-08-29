@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "פועל…",
   "showThinking": "חשיבה",
-  "showThinkingHint": "בקש מהמודל לחשוב לפני שהוא עונה, והצג את החשיבה שלו"
+  "showThinkingHint": "בקש מהמודל לחשוב לפני שהוא עונה, והצג את החשיבה שלו",
+  "effortOff": "כבוי",
+  "effort_low": "נמוך",
+  "effort_medium": "בינוני",
+  "effort_xhigh": "גבוה מאוד"
 }

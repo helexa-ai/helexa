@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "fut…",
   "showThinking": "Gondolatmenet",
-  "showThinkingHint": "Kérd meg a modellt, hogy gondolkodjon válasz előtt, és mutasd a gondolatmenetét"
+  "showThinkingHint": "Kérd meg a modellt, hogy gondolkodjon válasz előtt, és mutasd a gondolatmenetét",
+  "effortOff": "Ki",
+  "effort_low": "Alacsony",
+  "effort_medium": "Közepes",
+  "effort_xhigh": "Nagyon magas"
 }

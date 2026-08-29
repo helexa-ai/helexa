@@ -97,6 +97,7 @@ fn loaded(id: &str, age_secs: i64) -> ModelEntry {
         reasoning: false,
         limit: None,
         servable: None,
+        reasoning_budget: Vec::new(),
     }
 }
 
@@ -168,6 +169,7 @@ async fn test_evict_lru_model() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
         node.models.insert(
@@ -182,6 +184,7 @@ async fn test_evict_lru_model() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }
@@ -250,6 +253,7 @@ async fn test_eviction_increments_lifecycle_cycles() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

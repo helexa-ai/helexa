@@ -330,6 +330,7 @@ async fn test_poller_removes_stale_models() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
         node.models.insert(
@@ -344,6 +345,7 @@ async fn test_poller_removes_stale_models() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

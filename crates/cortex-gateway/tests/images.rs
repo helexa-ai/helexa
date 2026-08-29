@@ -183,6 +183,7 @@ async fn spawn_keyed_gateway(neuron_url: &str, hard_cap: u64) -> String {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

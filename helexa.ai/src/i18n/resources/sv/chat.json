@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "körs…",
   "showThinking": "Resonemang",
-  "showThinkingHint": "Be modellen tänka innan den svarar och visa resonemanget"
+  "showThinkingHint": "Be modellen tänka innan den svarar och visa resonemanget",
+  "effortOff": "Av",
+  "effort_low": "Låg",
+  "effort_medium": "Medel",
+  "effort_xhigh": "Mycket hög"
 }

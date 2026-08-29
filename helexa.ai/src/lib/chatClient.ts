@@ -50,16 +50,20 @@ export interface StreamOptions {
   /** OpenAI tools array; omitted = no tools offered. */
   tools?: readonly unknown[];
   /**
-   * Ask the model to reason, and to send that reasoning back.
+   * How hard to think, or `null`/absent for not at all.
    *
-   * neuron couples generation to surfacing: unless a caller says it will
-   * display reasoning, `enable_thinking` defaults to false and the model
-   * produces none at all. That default is right — an undisplayed think
-   * block still eats the output budget — but it means the reasoning UI
-   * shows nothing until the client opts in. Verified against the live
-   * router: without this, `reasoning_tokens=0` on every request.
+   * Two things travel together and both are needed. The
+   * `x-include-thinking` header says the caller will display reasoning;
+   * without it neuron couples generation to surfacing and the model
+   * produces none at all (`reasoning_tokens=0` on every request, verified
+   * against the live router). The `reasoning.effort` field then selects a
+   * rung of the model's own ladder.
+   *
+   * Rung names are the model's, discovered from `/v1/models` rather than
+   * hardcoded — `Qwen/Qwen3.8-27B` accepts exactly `low`, `medium` and
+   * `xhigh` and its template raises on anything else.
    */
-  includeThinking?: boolean;
+  reasoningEffort?: string | null;
   signal: AbortSignal;
 }
 
@@ -99,7 +103,7 @@ export async function streamChatCompletion(
     // server-side default and the behaviour every other OpenAI client
     // gets — worth preserving exactly, since this toggle exists partly
     // to demonstrate both paths.
-    if (opts.includeThinking) headers["x-include-thinking"] = "true";
+    if (opts.reasoningEffort) headers["x-include-thinking"] = "true";
     resp = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
       headers,
@@ -107,6 +111,11 @@ export async function streamChatCompletion(
         model: opts.model,
         messages: opts.messages,
         ...(opts.tools?.length ? { tools: opts.tools } : {}),
+        // The shape neuron reads (`request.extra.reasoning.effort`).
+        // Omitted entirely when off, so the request is byte-identical to
+        // what a vanilla OpenAI client sends — which is the other half of
+        // what this toggle demonstrates.
+        ...(opts.reasoningEffort ? { reasoning: { effort: opts.reasoningEffort } } : {}),
         stream: true,
       }),
       signal: ctl.signal,

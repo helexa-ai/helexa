@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "كيخدم…",
   "showThinking": "التفكير",
-  "showThinkingHint": "طلب من الموديل يفكر قبل ما يجاوب، وبيّن التفكير ديالو"
+  "showThinkingHint": "طلب من الموديل يفكر قبل ما يجاوب، وبيّن التفكير ديالو",
+  "effortOff": "مطفي",
+  "effort_low": "ضعيف",
+  "effort_medium": "متوسط",
+  "effort_xhigh": "عالي بزاف"
 }

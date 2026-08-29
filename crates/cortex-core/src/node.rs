@@ -67,6 +67,18 @@ pub struct ModelEntry {
     /// older persisted/serialised entries deserialisable.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// The reasoning ladder this *model* offers, with any rung the node
+    /// is currently withholding marked unavailable.
+    ///
+    /// Per model, not per node. It was held on `NodeState` on the
+    /// reasoning that "every model on a neuron reports the same rungs",
+    /// which was true while a rung was only a name from the model's
+    /// template. It stopped being true once availability began depending
+    /// on the model's own `max_in_flight`: two models on one host can
+    /// have different admission settings, and the node-level copy would
+    /// attribute one model's withheld rung to the other.
+    #[serde(default)]
+    pub reasoning_budget: Vec<crate::harness::ReasoningBudgetRung>,
     /// Runtime-detected capability flags from the neuron's `/models`
     /// response (`ModelInfo`). `false` when the neuron predates these
     /// fields or hasn't reported them yet.

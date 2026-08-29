@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "قيد التشغيل…",
   "showThinking": "التفكير",
-  "showThinkingHint": "اطلب من النموذج التفكير قبل الإجابة، واعرض تفكيره"
+  "showThinkingHint": "اطلب من النموذج التفكير قبل الإجابة، واعرض تفكيره",
+  "effortOff": "مغلق",
+  "effort_low": "منخفض",
+  "effort_medium": "متوسط",
+  "effort_xhigh": "مرتفع جدًا"
 }

@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "bezig…",
   "showThinking": "Redenering",
-  "showThinkingHint": "Laat het model nadenken vóór het antwoordt en toon de redenering"
+  "showThinkingHint": "Laat het model nadenken vóór het antwoordt en toon de redenering",
+  "effortOff": "Uit",
+  "effort_low": "Laag",
+  "effort_medium": "Gemiddeld",
+  "effort_xhigh": "Zeer hoog"
 }

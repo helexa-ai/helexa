@@ -82,6 +82,7 @@ capabilities = ["text"]
                 // No cap: effort is expressed to the model through its
                 // template, not enforced by truncating its thinking.
                 tokens: None,
+                unavailable_reason: None,
             })
             .collect();
         node.models.insert(
@@ -105,6 +106,7 @@ capabilities = ["text"]
                     output_ceiling: 32768,
                 }),
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
         // A model with no derivable limit: the flat #78 fields must be
@@ -121,6 +123,7 @@ capabilities = ["text"]
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

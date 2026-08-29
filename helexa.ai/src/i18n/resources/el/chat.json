@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "εκτελείται…",
   "showThinking": "Συλλογισμός",
-  "showThinkingHint": "Ζήτα από το μοντέλο να σκεφτεί πριν απαντήσει και δείξε τον συλλογισμό του"
+  "showThinkingHint": "Ζήτα από το μοντέλο να σκεφτεί πριν απαντήσει και δείξε τον συλλογισμό του",
+  "effortOff": "Ανενεργό",
+  "effort_low": "Χαμηλό",
+  "effort_medium": "Μέτριο",
+  "effort_xhigh": "Πολύ υψηλό"
 }

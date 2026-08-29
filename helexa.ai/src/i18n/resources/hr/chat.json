@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "izvodi se…",
   "showThinking": "Zaključivanje",
-  "showThinkingHint": "Zatraži da model razmisli prije odgovora i prikaži njegovo zaključivanje"
+  "showThinkingHint": "Zatraži da model razmisli prije odgovora i prikaži njegovo zaključivanje",
+  "effortOff": "Isključeno",
+  "effort_low": "Nisko",
+  "effort_medium": "Srednje",
+  "effort_xhigh": "Vrlo visoko"
 }

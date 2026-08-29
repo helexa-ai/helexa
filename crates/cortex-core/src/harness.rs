@@ -259,6 +259,21 @@ pub struct ReasoningBudgetRung {
     /// Qwen3.8 that silently means `xhigh`.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub default: bool,
+    /// Why this rung is not being offered right now, or `None` when it
+    /// is. Absent from the wire in the normal case.
+    ///
+    /// Availability is a *capacity* statement, not a permission: the
+    /// request path does not reject an unavailable rung. A caller that
+    /// insists still gets it, which keeps this from becoming a new
+    /// refusal path for every existing API client. It exists so a UI can
+    /// avoid offering an option that will serve the user badly, and so
+    /// an integrator reading `/v1/models` can see the same thing.
+    ///
+    /// Today the only reason is concurrency: on a node running many
+    /// slots, the longest rung is reported unavailable. See
+    /// `reasoning_budget::availability` for the argument and the knob.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<String>,
 }
 
 /// Operator-set pricing, **USD per 1,000,000 tokens, as JSON numbers**

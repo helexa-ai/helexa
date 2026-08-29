@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "მიმდინარეობს…",
   "showThinking": "მსჯელობა",
-  "showThinkingHint": "სთხოვე მოდელს იფიქროს პასუხამდე და აჩვენე მისი მსჯელობა"
+  "showThinkingHint": "სთხოვე მოდელს იფიქროს პასუხამდე და აჩვენე მისი მსჯელობა",
+  "effortOff": "გამორთული",
+  "effort_low": "დაბალი",
+  "effort_medium": "საშუალო",
+  "effort_xhigh": "ძალიან მაღალი"
 }

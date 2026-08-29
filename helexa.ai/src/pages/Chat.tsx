@@ -15,6 +15,12 @@ import {
 } from "react-icons/lu";
 import Markdown from "../components/Markdown";
 import { TurnBlocks } from "../components/TurnBlocks";
+import {
+  fetchReasoningLadder,
+  reasoningOptions,
+  resolveSelection,
+  type ReasoningRung,
+} from "../lib/reasoningLadder";
 import { CHAT_API_KEY, db } from "../data/db";
 import {
   archiveProject,
@@ -33,7 +39,8 @@ import { ensureChatKey } from "../lib/ensureChatKey";
 import { accountApi } from "../api/account";
 
 /** Persisted across reloads so a demo keeps whatever was last shown. */
-const THINKING_PREF_KEY = "helexa.chat.showThinking";
+const THINKING_PREF_KEY = "helexa.chat.reasoningEffort";
+const ROUTER_BASE = import.meta.env.VITE_ROUTER_BASE_URL || "";
 
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
 const AUTH_MODEL = import.meta.env.VITE_DEFAULT_MODEL || "helexa/balanced";
@@ -161,35 +168,54 @@ export default function Chat() {
     [],
   );
 
-  // Reasoning is opt-in per #304's showcase argument: neuron only
+  // Reasoning effort is opt-in and server-advertised. neuron only
   // *generates* reasoning for callers that say they will display it, so
-  // this toggle switches a real server-side behaviour rather than just a
-  // rendering preference. Both paths are worth demonstrating — an
-  // integrator evaluating helexa wants to see the reasoning path and the
-  // clean-output path that every vanilla OpenAI client gets.
-  const [showThinking, setShowThinking] = useState<boolean>(() => {
+  // this picks a real server-side behaviour rather than a rendering
+  // preference — and both paths are worth demonstrating to an integrator:
+  // the reasoning path, and the clean-output path every vanilla OpenAI
+  // client gets.
+  //
+  // The rungs are the model's own (#290) and their availability is the
+  // deployment's; both are read from `/v1/models` rather than hardcoded,
+  // so a busy node withholding its deepest rung simply stops offering it.
+  const [ladder, setLadder] = useState<ReasoningRung[]>([]);
+  const [effort, setEffort] = useState<string | null>(() => {
     try {
-      return window.localStorage.getItem(THINKING_PREF_KEY) === "1";
+      return window.localStorage.getItem(THINKING_PREF_KEY) || null;
     } catch {
       // Private windows and blocked site data throw on access, not on
       // read — default off rather than taking the page down with it.
-      return false;
+      return null;
     }
   });
+  const options = useMemo(() => reasoningOptions(ladder), [ladder]);
+  // Derived, not synchronised. A remembered rung the deployment has since
+  // withdrawn resolves to off at render, so the picker can never show a
+  // selection it cannot honour — and there is no effect writing state
+  // back, which is both a cascading-render hazard and the lint rule that
+  // once let a defect reach main.
+  const effectiveEffort = useMemo(() => resolveSelection(effort, options), [effort, options]);
+
+  useEffect(() => {
+    const ctl = new AbortController();
+    void fetchReasoningLadder(ROUTER_BASE, model, ctl.signal).then(setLadder);
+    return () => ctl.abort();
+  }, [model]);
+
   useEffect(() => {
     try {
-      window.localStorage.setItem(THINKING_PREF_KEY, showThinking ? "1" : "0");
+      window.localStorage.setItem(THINKING_PREF_KEY, effort ?? "");
     } catch {
       /* preference is a convenience; losing it is not worth an error */
     }
-  }, [showThinking]);
+  }, [effort]);
 
   const { streaming, activity, error, send, stop } = useChat({
     model,
     apiKey: authed ? (chatApiKey ?? undefined) : undefined,
     locale: i18n.language,
     toolsEnabled: authed || anonWebSearch,
-    includeThinking: showThinking,
+    reasoningEffort: effectiveEffort,
   });
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
@@ -524,14 +550,25 @@ export default function Chat() {
               }
             }}
           />
-          <label className="hx-thinking-toggle" title={t("chat:showThinkingHint")}>
-            <input
-              type="checkbox"
-              checked={showThinking}
-              onChange={(e) => setShowThinking(e.target.checked)}
-            />
-            <span>{t("chat:showThinking")}</span>
-          </label>
+          {/* Rendered only when the deployment offers rungs — a control
+            * that cannot work is worse than no control. */}
+          {options.available.length > 0 && (
+            <label className="hx-thinking-toggle" title={t("chat:showThinkingHint")}>
+              <span className="hx-thinking-label">{t("chat:showThinking")}</span>
+              <select
+                className="hx-thinking-select"
+                value={effectiveEffort ?? ""}
+                onChange={(e) => setEffort(e.target.value || null)}
+              >
+                <option value="">{t("chat:effortOff")}</option>
+                {options.available.map((r) => (
+                  <option key={r.effort} value={r.effort}>
+                    {t(`chat:effort_${r.effort}`, { defaultValue: r.effort })}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {streaming ? (
             <button
               type="button"

@@ -847,8 +847,16 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     // First non-empty wins: a catalogue-seeded entry
                     // starts with none, and neurons serving the same
                     // model are configured alike.
+                    // The model's own ladder wins; the node-level copy is
+                    // only a fallback for a neuron too old to report one
+                    // per model. Preferring the node copy would discard
+                    // the per-model availability computed at the source.
                     if e.reasoning_budget.is_empty() {
-                        e.reasoning_budget = node.reasoning_budget.clone();
+                        e.reasoning_budget = if entry.reasoning_budget.is_empty() {
+                            node.reasoning_budget.clone()
+                        } else {
+                            entry.reasoning_budget.clone()
+                        };
                     }
                 })
                 .or_insert_with(|| CortexModelEntry {
@@ -872,7 +880,11 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     context_window: None,
                     context_length: None,
                     // What this neuron says each effort level buys (#223).
-                    reasoning_budget: node.reasoning_budget.clone(),
+                    reasoning_budget: if entry.reasoning_budget.is_empty() {
+                        node.reasoning_budget.clone()
+                    } else {
+                        entry.reasoning_budget.clone()
+                    },
                 });
         }
     }

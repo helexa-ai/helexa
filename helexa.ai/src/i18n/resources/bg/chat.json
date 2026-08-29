@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "изпълнява се…",
   "showThinking": "Разсъждение",
-  "showThinkingHint": "Моделът да мисли преди да отговори и да показва разсъжденията си"
+  "showThinkingHint": "Моделът да мисли преди да отговори и да показва разсъжденията си",
+  "effortOff": "Изкл.",
+  "effort_low": "Ниско",
+  "effort_medium": "Средно",
+  "effort_xhigh": "Много високо"
 }

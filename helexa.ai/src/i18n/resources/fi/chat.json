@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "suoritetaan…",
   "showThinking": "Päättely",
-  "showThinkingHint": "Pyydä mallia ajattelemaan ennen vastaamista ja näytä sen päättely"
+  "showThinkingHint": "Pyydä mallia ajattelemaan ennen vastaamista ja näytä sen päättely",
+  "effortOff": "Pois",
+  "effort_low": "Matala",
+  "effort_medium": "Keskitaso",
+  "effort_xhigh": "Erittäin korkea"
 }

@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "орындалуда…",
   "showThinking": "Пайымдау",
-  "showThinkingHint": "Жауап бермес бұрын модель ойлансын және пайымдауын көрсетсін"
+  "showThinkingHint": "Жауап бермес бұрын модель ойлансын және пайымдауын көрсетсін",
+  "effortOff": "Өшірулі",
+  "effort_low": "Төмен",
+  "effort_medium": "Орташа",
+  "effort_xhigh": "Өте жоғары"
 }

@@ -100,6 +100,7 @@ async fn spawn_gateway(neuron_url: &str, key: ApiKeyConfig) -> (Arc<CortexState>
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

@@ -198,6 +198,7 @@ async fn test_recovering_model_returns_503_and_stays_listed() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "çalışıyor…",
   "showThinking": "Akıl yürütme",
-  "showThinkingHint": "Modelden yanıtlamadan önce düşünmesini iste ve akıl yürütmesini göster"
+  "showThinkingHint": "Modelden yanıtlamadan önce düşünmesini iste ve akıl yürütmesini göster",
+  "effortOff": "Kapalı",
+  "effort_low": "Düşük",
+  "effort_medium": "Orta",
+  "effort_xhigh": "Çok yüksek"
 }

@@ -99,6 +99,7 @@ async fn spawn_gateway(neuron: &str, context: usize) -> String {
                     output_ceiling: 0,
                 }),
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

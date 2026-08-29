@@ -28,6 +28,7 @@ fn entry(id: &str, servable: Option<ModelServability>) -> ModelEntry {
         reasoning: false,
         limit: None,
         servable,
+        reasoning_budget: Vec::new(),
     }
 }
 
