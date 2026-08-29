@@ -453,6 +453,84 @@ for web_host in "${web_hosts[@]}"; do
     fi
 done
 
+# ── angels.internal: internal name for the investor portal ─────────────
+# For networks where the public name does not work from inside — served by
+# the edge nearest helexa-angels, with an internal-CA cert renewed by
+# step@angels.timer. Needs a matching DNS record on the local resolver.
+angels_int_host="oolon.kosherinata.internal"
+angels_int_domain="angels.internal"
+angels_int_cert="/etc/nginx/tls/cert/${angels_int_domain}.pem"
+angels_int_key="/etc/nginx/tls/key/${angels_int_domain}.pem"
+
+echo "==> ${angels_int_host}: internal vhost (${angels_int_domain})"
+ssh "${angels_int_host}" "
+    set -eu
+    sudo install -d -o root -g root -m 0755 /etc/nginx/tls/cert
+    sudo install -d -o root -g root -m 0700 /etc/nginx/tls/key
+"
+if ! ssh "${angels_int_host}" "sudo test -f '${angels_int_cert}'"; then
+    prov_pw_local="${HOME}/.step/secrets/provisioner"
+    prov_pw_remote="/root/.helexa-provisioner-pw"
+    if [[ -f "${prov_pw_local}" ]]; then
+        echo "  issuing ${angels_int_domain} cert (JWK 'lair' provisioner)…"
+        if rsync --archive --chown root:root --chmod 0600 --rsync-path 'sudo rsync' \
+            "${prov_pw_local}" "${angels_int_host}:${prov_pw_remote}"; then
+            ssh "${angels_int_host}" "
+                trap 'sudo rm -f ${prov_pw_remote}' EXIT
+                sudo step ca certificate ${angels_int_domain} ${angels_int_cert} ${angels_int_key} \
+                    --ca-url https://ca.internal \
+                    --root /etc/pki/ca-trust/source/anchors/root-internal.pem \
+                    --provisioner lair \
+                    --provisioner-password-file ${prov_pw_remote} \
+                    --force
+            " || echo "  WARNING: cert issuance failed — review on ${angels_int_host}"
+            ssh "${angels_int_host}" "sudo rm -f ${prov_pw_remote}"
+        else
+            echo "  failed to transfer provisioner secret to ${angels_int_host}"
+        fi
+    else
+        echo "  NOTE: no provisioner secret at ${prov_pw_local}; issue ${angels_int_domain} cert manually."
+    fi
+fi
+# Only wire the vhost once its cert exists. Without this guard a host
+# with no provisioner secret takes the "issue it manually" branch above
+# and then installs a vhost naming a certificate that is not there:
+# `ln -sf` runs before `nginx -t`, so the broken config is already in
+# sites-enabled when the test fails, and the next reload or reboot —
+# including the renewal timer enabled two lines down — fails on it. The
+# helexa.internal block above guards exactly this way; this one did not.
+if ! ssh "${angels_int_host}" "sudo test -f '${angels_int_cert}'"; then
+    echo "  ${angels_int_domain} cert still absent — vhost not installed"
+elif
+    # The rate-limit drop-in first: this vhost references the
+    # `angels_invite` and `angels_auth` zones, which are http-context
+    # names defined there. It was only shipped to this host later, by the
+    # public-portal loop below, so on a host that had not run that yet
+    # `nginx -t` failed on an undefined zone.
+    rsync --archive --compress --chown root:root --chmod 0644 \
+        --rsync-path 'sudo rsync' \
+        "${repo_path}/asset/nginx/helexa-ratelimit.conf" \
+        "${angels_int_host}:/etc/nginx/conf.d/helexa-ratelimit.conf" \
+        || echo "  failed to install helexa-ratelimit.conf"
+    rsync --archive --compress --chown root:root --chmod 0644 \
+    --rsync-path 'sudo rsync' \
+    "${repo_path}/asset/nginx/${angels_int_domain}.conf" \
+    "${angels_int_host}:/etc/nginx/sites-available/${angels_int_domain}.conf"
+then
+    ssh "${angels_int_host}" "
+        set -eu
+        sudo ln -sf ../sites-available/${angels_int_domain}.conf \
+            /etc/nginx/sites-enabled/${angels_int_domain}.conf
+        sudo nginx -t
+        sudo systemctl enable --now step@angels.timer
+    " && echo "  vhost installed + renewal timer enabled"
+    if ssh "${angels_int_host}" "systemctl is-active --quiet nginx"; then
+        ssh "${angels_int_host}" "sudo systemctl reload nginx"
+    fi
+else
+    echo "  failed to install ${angels_int_domain} vhost"
+fi
+
 # ── angels.helexa.ai: the confidential investor portal ─────────────────
 # Unlike the other vhosts this one serves NOTHING from disk: every byte
 # comes from helexa-angels on gallumbits, which assembles each page
