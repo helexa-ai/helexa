@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────
+# MANAGED BY CI — .gitea/workflows/deploy.yml is the only writer.
+#
+# Edits made directly to the deployed copy on gallumbits are reverted by
+# the next deploy, and until then the fleet runs something no commit
+# describes. Change it here, commit, let the pipeline ship it.
+# ─────────────────────────────────────────────────────────────────────
+# helexa-router — federation data plane on gallumbits.
+#
+# Tracked despite living beside the secret-bearing service configs,
+# because it holds no secrets: a listen address, the product-tier
+# aliases, and a mesh endpoint. Being untracked cost an outage on
+# 2026-08-27 — `helexa/balanced` still resolved to Qwen/Qwen3.6-27B
+# after that model had been retired from the catalogue, so every
+# authenticated web-chat turn evicted beast's resident flagship and
+# cold-loaded a model nobody had asked for. Nothing could diff the two
+# files, so nothing did.
+#
+# `script/check-alias-targets.py` now fails CI if any alias below names
+# a model that models.toml does not define.
+
+[router]
+listen = "0.0.0.0:8088"
+poll_interval_secs = 10
+region = "eu-central"
+
+# Product tiers → real model ids (#166). The SPA sends the tier names.
+[aliases]
+"helexa/small" = "Qwen/Qwen3-8B"
+"helexa/balanced" = "Qwen/Qwen3.8-27B"
+
+# hanzalova operator cortex, plaintext over the WireGuard mesh (the mesh
+# is the trust boundary; no TLS pin needed for http://).
+[[cortexes]]
+name = "hanzalova"
+endpoint = "http://hanzalova.internal:31313"
+region = "eu-central"

@@ -177,6 +177,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 script/check-config-consistency.py
+      # Two files describe one routing decision and nothing forced them
+      # to agree. On 2026-08-27 the router still aliased
+      # `helexa/balanced` to a model retired from the catalogue, so
+      # every web-chat turn evicted beast's resident flagship to
+      # cold-load it. Same shape as the check above (#252/#287).
+      - run: python3 script/check-alias-targets.py
 
   web:
     name: Web (lint + typecheck + i18n + build)
