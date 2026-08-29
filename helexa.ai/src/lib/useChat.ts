@@ -30,6 +30,7 @@ import {
   WEB_SEARCH_TOOL,
 } from "./searchTool";
 import { buildSystemPrompt } from "./systemPrompt";
+import { appendReasoning, appendToolCall, attachToolResult } from "./turnBlocks";
 
 /** The tool activity currently executing, for the UI status line. */
 export interface ToolActivity {
@@ -185,21 +186,12 @@ export function useChat(opts: {
             flushed = flush();
           },
           onReasoning: (t) => {
-            // Append into the open reasoning block, or start one. A new
-            // block begins whenever something else (a tool call) came
-            // between, which is what preserves think → act → think order.
-            const last = blocks[blocks.length - 1];
-            if (last?.kind === "reasoning") last.text += t;
-            else blocks.push({ kind: "reasoning", text: t });
+            appendReasoning(blocks, t);
             void flushBlocks();
           },
           onToolCall: (call) => {
             toolCalls.push(call);
-            blocks.push({
-              kind: "tool",
-              name: call.function.name,
-              args: call.function.arguments,
-            });
+            appendToolCall(blocks, call.function.name, call.function.arguments);
             void flushBlocks();
           },
           onUsage: (p, c) =>
@@ -261,16 +253,7 @@ export function useChat(opts: {
           content = r.content;
         }
         reqMessages.push({ role: "tool", tool_call_id: call.id, content });
-        // Attach the result to this call's block. Matched from the end:
-        // the same tool can be called more than once in a turn, and the
-        // one still awaiting a result is always the most recent.
-        for (let i = blocks.length - 1; i >= 0; i--) {
-          const b = blocks[i];
-          if (b.kind === "tool" && b.name === call.function.name && b.result === undefined) {
-            b.result = content;
-            break;
-          }
-        }
+        attachToolResult(blocks, call.function.name, content);
         void flushBlocks();
       }
       setActivity(null);

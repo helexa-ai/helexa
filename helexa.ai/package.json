@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "i18n:check": "node ./scripts/check-i18n-keys.mjs",
     "i18n:meta": "node ./scripts/check-i18n-metadata.mjs",
     "i18n:lang-labels": "node ./scripts/check-i18n-lang-labels.mjs",
@@ -43,6 +45,7 @@
     "globals": "^16.5.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
-    "vite": "^7.2.0"
+    "vite": "^7.2.0",
+    "vitest": "^3.2.7"
   }
 }
