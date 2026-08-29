@@ -29,5 +29,10 @@
   "reading": "loetakse {{host}}…",
   "copyCode": "Kopeeri kood",
   "copiedCode": "Kopeeritud",
-  "anonNearLimit": "Oled lähenemas anonüümse kasutuse piirile. Registreeru tasuta eraldise saamiseks."
+  "anonNearLimit": "Oled lähenemas anonüümse kasutuse piirile. Registreeru tasuta eraldise saamiseks.",
+  "blockReasoning": "Mõtleb",
+  "blockTool": "{{name}}",
+  "blockRunning": "töötab…",
+  "showThinking": "Arutlus",
+  "showThinkingHint": "Palu mudelil enne vastamist mõelda ja näita tema arutlust"
 }

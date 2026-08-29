@@ -29,5 +29,10 @@
   "reading": "læser {{host}}…",
   "copyCode": "Kopiér kode",
   "copiedCode": "Kopieret",
-  "anonNearLimit": "Du nærmer dig den anonyme grænse. Opret en konto og få en gratis tildeling."
+  "anonNearLimit": "Du nærmer dig den anonyme grænse. Opret en konto og få en gratis tildeling.",
+  "blockReasoning": "Tænker",
+  "blockTool": "{{name}}",
+  "blockRunning": "kører…",
+  "showThinking": "Ræsonnement",
+  "showThinkingHint": "Bed modellen tænke før den svarer, og vis dens ræsonnement"
 }

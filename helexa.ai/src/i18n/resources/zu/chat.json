@@ -29,5 +29,10 @@
   "reading": "kufundwa {{host}}…",
   "copyCode": "Kopisha ikhodi",
   "copiedCode": "Kukopishiwe",
-  "anonNearLimit": "Usondela emkhawulweni wokungaziwa. Bhalisa ukuze uthole isabelo samahhala."
+  "anonNearLimit": "Usondela emkhawulweni wokungaziwa. Bhalisa ukuze uthole isabelo samahhala.",
+  "blockReasoning": "Iyacabanga",
+  "blockTool": "{{name}}",
+  "blockRunning": "iyasebenza…",
+  "showThinking": "Ukucabanga",
+  "showThinkingHint": "Cela imodeli icabange ngaphambi kokuphendula, futhi ubonise ukucabanga kwayo"
 }

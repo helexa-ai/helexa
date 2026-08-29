@@ -39,6 +39,23 @@ export interface MessageSource {
   url: string;
 }
 
+/**
+ * Work the assistant did on the way to an answer: a stretch of reasoning,
+ * or one tool call and its result.
+ *
+ * Kept as an ordered list rather than two separate fields because the
+ * order is the story — a turn can reason, call a tool, reason about what
+ * came back, and call another. Flattening that into "the reasoning" and
+ * "the tool calls" would lose which thought preceded which call.
+ *
+ * `text` and `result` grow while streaming, so a block is also its own
+ * progress indicator: a reasoning block with text and no following block
+ * is what the model is doing *right now*.
+ */
+export type TurnBlock =
+  | { kind: "reasoning"; text: string }
+  | { kind: "tool"; name: string; args: string; result?: string };
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -50,6 +67,16 @@ export interface Message {
   promptTokens?: number;
   completionTokens?: number;
   sources?: MessageSource[];
+  /**
+   * Reasoning and tool calls, in the order they happened. Absent on user
+   * turns and on assistant turns that answered directly.
+   *
+   * Not indexed, so no schema version bump: Dexie stores the whole
+   * object and only the declared indexes constrain it. Messages written
+   * before this field existed simply have none, which renders as an
+   * answer with no working shown — correct, since none was captured.
+   */
+  blocks?: TurnBlock[];
 }
 
 /**

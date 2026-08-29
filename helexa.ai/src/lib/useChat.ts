@@ -9,12 +9,13 @@
 // across rounds; consulted sources persist as citations.
 
 import { useRef, useState } from "react";
-import type { MessageSource } from "../data/db";
+import type { MessageSource, TurnBlock } from "../data/db";
 import {
   addMessage,
   finalizeMessage,
   listMessages,
   renameConversation,
+  setMessageBlocks,
   setMessageContent,
 } from "../data/repositories";
 import {
@@ -29,6 +30,7 @@ import {
   WEB_SEARCH_TOOL,
 } from "./searchTool";
 import { buildSystemPrompt } from "./systemPrompt";
+import { appendReasoning, appendToolCall, attachToolResult } from "./turnBlocks";
 
 /** The tool activity currently executing, for the UI status line. */
 export interface ToolActivity {
@@ -57,6 +59,8 @@ export function useChat(opts: {
    * `true` unconditionally. Also selects the tool-aware system prompt.
    */
   toolsEnabled: boolean;
+  /** Ask the model to reason, and show that reasoning. */
+  includeThinking?: boolean;
 }): UseChat {
   const [streaming, setStreaming] = useState(false);
   const [activity, setActivity] = useState<ToolActivity | null>(null);
@@ -123,6 +127,28 @@ export function useChat(opts: {
       }
     };
 
+    // Reasoning and tool calls, in the order they happened. Written as
+    // absolute snapshots on the same coalesced-write discipline as
+    // `acc` — Dexie updates race each other otherwise.
+    const blocks: TurnBlock[] = [];
+    let blocksWriting = false;
+    let blocksDirty = false;
+    const flushBlocks = async () => {
+      if (blocksWriting) {
+        blocksDirty = true;
+        return;
+      }
+      blocksWriting = true;
+      try {
+        do {
+          blocksDirty = false;
+          await setMessageBlocks(assistantId, blocks.map((b) => ({ ...b })));
+        } while (blocksDirty);
+      } finally {
+        blocksWriting = false;
+      }
+    };
+
     const sources: MessageSource[] = [];
     const seenUrls = new Set<string>();
     let failed = false;
@@ -153,6 +179,7 @@ export function useChat(opts: {
           apiKey: opts.apiKey,
           model: opts.model,
           messages: reqMessages,
+          includeThinking: opts.includeThinking,
           tools: offerTools ? [WEB_SEARCH_TOOL, READ_PAGE_TOOL] : undefined,
           signal: controller.signal,
         },
@@ -161,7 +188,15 @@ export function useChat(opts: {
             acc += t;
             flushed = flush();
           },
-          onToolCall: (call) => toolCalls.push(call),
+          onReasoning: (t) => {
+            appendReasoning(blocks, t);
+            void flushBlocks();
+          },
+          onToolCall: (call) => {
+            toolCalls.push(call);
+            appendToolCall(blocks, call.function.name, call.function.arguments);
+            void flushBlocks();
+          },
           onUsage: (p, c) =>
             void finalizeMessage(assistantId, { promptTokens: p, completionTokens: c }),
           onDone: () => {},
@@ -221,6 +256,8 @@ export function useChat(opts: {
           content = r.content;
         }
         reqMessages.push({ role: "tool", tool_call_id: call.id, content });
+        attachToolResult(blocks, call.function.name, content);
+        void flushBlocks();
       }
       setActivity(null);
       // Visual seam between the pre-search text and the answer round.

@@ -29,5 +29,10 @@
   "reading": "מתבצעת קריאה של {{host}}…",
   "copyCode": "העתקת הקוד",
   "copiedCode": "הועתק",
-  "anonNearLimit": "אתם מתקרבים למגבלת השימוש האנונימי. הירשמו לקבלת הקצאה חינם."
+  "anonNearLimit": "אתם מתקרבים למגבלת השימוש האנונימי. הירשמו לקבלת הקצאה חינם.",
+  "blockReasoning": "חושב",
+  "blockTool": "{{name}}",
+  "blockRunning": "פועל…",
+  "showThinking": "חשיבה",
+  "showThinkingHint": "בקש מהמודל לחשוב לפני שהוא עונה, והצג את החשיבה שלו"
 }

@@ -1125,6 +1125,12 @@ jobs:
           cd helexa.ai
           npm ci
           npm run i18n:check
+          # Also run here, not just in ci.yml, for the same reason
+          # i18n:check is: pushes to main skip ci.yml, so this is the only
+          # gate a merge itself passes through. Cheap, and it is the exact
+          # case the web CI comment describes — a defect reaching main and
+          # surfacing as a broken deploy afterwards.
+          npm test
           npm run build
 
       - name: SSH init

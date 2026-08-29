@@ -2063,3 +2063,108 @@ html[dir="rtl"] .hx-landing-composer textarea {
         display: none;
     }
 }
+
+/* Assistant working — reasoning and tool calls (#TurnBlocks).
+ *
+ * Deliberately quieter than the answer: muted text, no bubble of its
+ * own, hairline separators. The whole point is that it can be present
+ * without competing, so it reads as an annotation on the reply rather
+ * than as more reply. */
+.hx-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+.hx-block {
+    border-left: 2px solid var(--color-border-subtle);
+    padding-left: 0.5rem;
+}
+.hx-block-open {
+    border-left-color: var(--color-accent-soft);
+}
+.hx-block-head {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.15rem 0;
+    background: none;
+    border: 0;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    text-align: start;
+    cursor: pointer;
+}
+.hx-block-head:hover {
+    color: var(--color-text);
+}
+.hx-block-caret {
+    flex: none;
+    transition: transform 0.12s ease;
+}
+.hx-block-caret-open {
+    transform: rotate(90deg);
+}
+.hx-block-label {
+    flex: none;
+    font-weight: 600;
+}
+.hx-block-running {
+    flex: none;
+    opacity: 0.7;
+    font-style: italic;
+}
+/* The peek is the first thing to give up space — it is a hint, and a
+ * wrapped one would cost the header its single-line shape. */
+.hx-block-peek {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0.6;
+}
+.hx-block-body {
+    /* Capped and scrollable: a long think block would otherwise push the
+     * answer off-screen, which defeats the point of showing it. */
+    max-height: 16rem;
+    overflow-y: auto;
+    margin: 0.15rem 0 0.35rem;
+    padding-inline-end: 0.4rem;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+/* Reasoning toggle in the composer. Sits with the send button rather
+ * than in a settings panel: it changes what the next message does, so it
+ * belongs where the message is written. */
+.hx-thinking-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0 0.5rem;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+.hx-thinking-toggle:hover {
+    color: var(--color-text);
+}
+.hx-thinking-toggle input {
+    margin: 0;
+    cursor: pointer;
+}
+/* Narrow screens: the composer is already tight, and the label is the
+ * expendable half — the checkbox still reads as a control. */
+@media (max-width: 30rem) {
+    .hx-thinking-toggle span {
+        display: none;
+    }
+}

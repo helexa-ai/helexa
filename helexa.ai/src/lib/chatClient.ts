@@ -21,6 +21,19 @@ export interface ChatMessage {
 
 export interface StreamHandlers {
   onDelta: (text: string) => void;
+  /**
+   * A reasoning delta, from `choice.delta.reasoning_content`.
+   *
+   * Not in the OpenAI spec but the de-facto slot — DeepSeek, vLLM and
+   * SGLang all use it, and neuron emits it by default rather than
+   * folding reasoning into `content`, so a client that ignores the
+   * field still shows a clean answer.
+   *
+   * Worth handling rather than dropping: on a hard prompt the model can
+   * reason for minutes, and these are the only events on the wire for
+   * that whole span. A UI that ignores them looks hung.
+   */
+  onReasoning?: (text: string) => void;
   /** A complete tool call arrived (neuron buffers the whole
    * `<tool_call>` block, so arguments are never fragmented). */
   onToolCall?: (call: ToolCall) => void;
@@ -36,6 +49,17 @@ export interface StreamOptions {
   messages: ChatMessage[];
   /** OpenAI tools array; omitted = no tools offered. */
   tools?: readonly unknown[];
+  /**
+   * Ask the model to reason, and to send that reasoning back.
+   *
+   * neuron couples generation to surfacing: unless a caller says it will
+   * display reasoning, `enable_thinking` defaults to false and the model
+   * produces none at all. That default is right — an undisplayed think
+   * block still eats the output budget — but it means the reasoning UI
+   * shows nothing until the client opts in. Verified against the live
+   * router: without this, `reasoning_tokens=0` on every request.
+   */
+  includeThinking?: boolean;
   signal: AbortSignal;
 }
 
@@ -71,6 +95,11 @@ export async function streamChatCompletion(
       accept: "text/event-stream",
     };
     if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
+    // Only sent when on. Absent means "naïve client", which is the
+    // server-side default and the behaviour every other OpenAI client
+    // gets — worth preserving exactly, since this toggle exists partly
+    // to demonstrate both paths.
+    if (opts.includeThinking) headers["x-include-thinking"] = "true";
     resp = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
       headers,
@@ -134,6 +163,10 @@ export async function streamChatCompletion(
             const json = JSON.parse(data);
             const delta = json?.choices?.[0]?.delta?.content;
             if (typeof delta === "string" && delta) h.onDelta(delta);
+            const reasoning = json?.choices?.[0]?.delta?.reasoning_content;
+            if (typeof reasoning === "string" && reasoning && h.onReasoning) {
+              h.onReasoning(reasoning);
+            }
             const toolCalls = json?.choices?.[0]?.delta?.tool_calls;
             if (Array.isArray(toolCalls) && h.onToolCall) {
               for (const tc of toolCalls) {

@@ -29,5 +29,10 @@
   "reading": "leyendo {{host}}…",
   "copyCode": "Copiar código",
   "copiedCode": "Copiado",
-  "anonNearLimit": "Estás cerca del límite anónimo. Regístrate para obtener una asignación gratuita."
+  "anonNearLimit": "Estás cerca del límite anónimo. Regístrate para obtener una asignación gratuita.",
+  "blockReasoning": "Pensando",
+  "blockTool": "{{name}}",
+  "blockRunning": "ejecutando…",
+  "showThinking": "Razonamiento",
+  "showThinkingHint": "Pide al modelo que piense antes de responder y muestra su razonamiento"
 }

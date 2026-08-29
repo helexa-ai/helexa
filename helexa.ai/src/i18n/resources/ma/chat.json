@@ -29,5 +29,10 @@
   "reading": "كنقراو {{host}}…",
   "copyCode": "نسخ الكود",
   "copiedCode": "تنسخ",
-  "anonNearLimit": "قربتي توصل للحد ديال الاستعمال بلا حساب. سجّل باش تاخد حصة بلاش."
+  "anonNearLimit": "قربتي توصل للحد ديال الاستعمال بلا حساب. سجّل باش تاخد حصة بلاش.",
+  "blockReasoning": "كيفكر",
+  "blockTool": "{{name}}",
+  "blockRunning": "كيخدم…",
+  "showThinking": "التفكير",
+  "showThinkingHint": "طلب من الموديل يفكر قبل ما يجاوب، وبيّن التفكير ديالو"
 }

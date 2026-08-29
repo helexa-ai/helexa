@@ -29,5 +29,10 @@
   "reading": "czytanie {{host}}…",
   "copyCode": "Kopiuj kod",
   "copiedCode": "Skopiowano",
-  "anonNearLimit": "Zbliżasz się do limitu anonimowego użycia. Zarejestruj się, aby otrzymać bezpłatny przydział."
+  "anonNearLimit": "Zbliżasz się do limitu anonimowego użycia. Zarejestruj się, aby otrzymać bezpłatny przydział.",
+  "blockReasoning": "Myślenie",
+  "blockTool": "{{name}}",
+  "blockRunning": "w toku…",
+  "showThinking": "Rozumowanie",
+  "showThinkingHint": "Poproś model, by pomyślał przed odpowiedzią, i pokaż jego rozumowanie"
 }

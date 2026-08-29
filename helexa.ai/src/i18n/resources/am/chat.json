@@ -29,5 +29,10 @@
   "reading": "{{host}} እየተነበበ ነው…",
   "copyCode": "ኮድ ቅዳ",
   "copiedCode": "ተቀድቷል",
-  "anonNearLimit": "ወደ የስም-አልባ ተጠቃሚ ገደብ እየተቃረቡ ነው። ነፃ ድልድል ለማግኘት ይመዝገቡ።"
+  "anonNearLimit": "ወደ የስም-አልባ ተጠቃሚ ገደብ እየተቃረቡ ነው። ነፃ ድልድል ለማግኘት ይመዝገቡ።",
+  "blockReasoning": "በማሰብ ላይ",
+  "blockTool": "{{name}}",
+  "blockRunning": "በማስኬድ ላይ…",
+  "showThinking": "ማመዛዘን",
+  "showThinkingHint": "ሞዴሉ ከመመለሱ በፊት እንዲያስብ ጠይቅ፣ እና ማመዛዘኑን አሳይ"
 }

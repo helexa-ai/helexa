@@ -29,5 +29,10 @@
   "reading": "čtení {{host}}…",
   "copyCode": "Kopírovat kód",
   "copiedCode": "Zkopírováno",
-  "anonNearLimit": "Blížíte se k anonymnímu limitu. Zaregistrujte se a získejte bezplatný příděl."
+  "anonNearLimit": "Blížíte se k anonymnímu limitu. Zaregistrujte se a získejte bezplatný příděl.",
+  "blockReasoning": "Přemýšlení",
+  "blockTool": "{{name}}",
+  "blockRunning": "probíhá…",
+  "showThinking": "Uvažování",
+  "showThinkingHint": "Ať model před odpovědí přemýšlí a ukáže své uvažování"
 }

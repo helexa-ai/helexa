@@ -29,5 +29,10 @@
   "reading": "{{host}} olvasása…",
   "copyCode": "Kód másolása",
   "copiedCode": "Másolva",
-  "anonNearLimit": "Közeledsz az anonim limithez. Regisztrálj ingyenes keretért."
+  "anonNearLimit": "Közeledsz az anonim limithez. Regisztrálj ingyenes keretért.",
+  "blockReasoning": "Gondolkodik",
+  "blockTool": "{{name}}",
+  "blockRunning": "fut…",
+  "showThinking": "Gondolatmenet",
+  "showThinkingHint": "Kérd meg a modellt, hogy gondolkodjon válasz előtt, és mutasd a gondolatmenetét"
 }

@@ -205,6 +205,12 @@ jobs:
       # reached main exactly that way.
       - run: npm run lint
       - run: npm run typecheck
+      # Behaviour, not just types. Gating from the first commit was the
+      # deliberate call (#304): with no existing suite there is nothing to
+      # stabilise, so a warn-first period would only create a window in
+      # which a vacuous test lands and gets normalised — and a suite
+      # nobody trusts is worse than none, because it gets cited.
+      - run: npm test
       # 42 locales with strict key parity is a promise that breaks
       # quietly. Adding an English string without translating it must fail
       # here, not in review, and certainly not in front of somebody

@@ -29,5 +29,10 @@
   "reading": "lettura di {{host}} in corso…",
   "copyCode": "Copia il codice",
   "copiedCode": "Copiato",
-  "anonNearLimit": "Ti stai avvicinando al limite anonimo. Registrati per un’allocazione gratuita."
+  "anonNearLimit": "Ti stai avvicinando al limite anonimo. Registrati per un’allocazione gratuita.",
+  "blockReasoning": "Sto pensando",
+  "blockTool": "{{name}}",
+  "blockRunning": "in esecuzione…",
+  "showThinking": "Ragionamento",
+  "showThinkingHint": "Chiedi al modello di ragionare prima di rispondere e mostra il ragionamento"
 }

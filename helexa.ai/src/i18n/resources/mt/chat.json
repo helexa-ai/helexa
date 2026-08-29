@@ -29,5 +29,10 @@
   "reading": "qed naqra {{host}}…",
   "copyCode": "Ikkopja l-kodiċi",
   "copiedCode": "Ikkupjat",
-  "anonNearLimit": "Qed toqrob lejn il-limitu anonimu. Irreġistra għal allokazzjoni b'xejn."
+  "anonNearLimit": "Qed toqrob lejn il-limitu anonimu. Irreġistra għal allokazzjoni b'xejn.",
+  "blockReasoning": "Qed jaħseb",
+  "blockTool": "{{name}}",
+  "blockRunning": "għaddej…",
+  "showThinking": "Raġunament",
+  "showThinkingHint": "Itlob lill-mudell jaħseb qabel iwieġeb, u uri r-raġunament tiegħu"
 }

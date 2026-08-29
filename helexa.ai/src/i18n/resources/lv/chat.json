@@ -29,5 +29,10 @@
   "reading": "lasa {{host}}…",
   "copyCode": "Kopēt kodu",
   "copiedCode": "Nokopēts",
-  "anonNearLimit": "Tuvojaties anonīmās lietošanas limitam. Reģistrējieties bezmaksas piešķīrumam."
+  "anonNearLimit": "Tuvojaties anonīmās lietošanas limitam. Reģistrējieties bezmaksas piešķīrumam.",
+  "blockReasoning": "Domā",
+  "blockTool": "{{name}}",
+  "blockRunning": "notiek…",
+  "showThinking": "Spriešana",
+  "showThinkingHint": "Lūdz modelim padomāt pirms atbildes un rādi tā spriešanu"
 }

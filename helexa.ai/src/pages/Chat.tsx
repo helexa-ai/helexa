@@ -14,6 +14,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import Markdown from "../components/Markdown";
+import { TurnBlocks } from "../components/TurnBlocks";
 import { CHAT_API_KEY, db } from "../data/db";
 import {
   archiveProject,
@@ -30,6 +31,9 @@ import { useChat } from "../lib/useChat";
 import { useAuth } from "../auth/context";
 import { ensureChatKey } from "../lib/ensureChatKey";
 import { accountApi } from "../api/account";
+
+/** Persisted across reloads so a demo keeps whatever was last shown. */
+const THINKING_PREF_KEY = "helexa.chat.showThinking";
 
 const ANON_MODEL = import.meta.env.VITE_ANON_MODEL || "helexa/small";
 const AUTH_MODEL = import.meta.env.VITE_DEFAULT_MODEL || "helexa/balanced";
@@ -157,11 +161,35 @@ export default function Chat() {
     [],
   );
 
+  // Reasoning is opt-in per #304's showcase argument: neuron only
+  // *generates* reasoning for callers that say they will display it, so
+  // this toggle switches a real server-side behaviour rather than just a
+  // rendering preference. Both paths are worth demonstrating — an
+  // integrator evaluating helexa wants to see the reasoning path and the
+  // clean-output path that every vanilla OpenAI client gets.
+  const [showThinking, setShowThinking] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(THINKING_PREF_KEY) === "1";
+    } catch {
+      // Private windows and blocked site data throw on access, not on
+      // read — default off rather than taking the page down with it.
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(THINKING_PREF_KEY, showThinking ? "1" : "0");
+    } catch {
+      /* preference is a convenience; losing it is not worth an error */
+    }
+  }, [showThinking]);
+
   const { streaming, activity, error, send, stop } = useChat({
     model,
     apiKey: authed ? (chatApiKey ?? undefined) : undefined,
     locale: i18n.language,
     toolsEnabled: authed || anonWebSearch,
+    includeThinking: showThinking,
   });
   const [draft, setDraft] = useState("");
   const threadRef = useRef<HTMLDivElement>(null);
@@ -374,6 +402,17 @@ export default function Chat() {
                 >
                   {/* Assistant turns are markdown (#194); user turns stay
                     * literal — people type `*` and `_` as punctuation. */}
+                  {/* The working comes before the answer, because that
+                    * is the order it happened in — and because a reader
+                    * scrolling back wants the conclusion nearest the
+                    * next turn, not buried under its own reasoning. */}
+                  {m.role !== "user" && m.blocks && m.blocks.length > 0 && (
+                    <TurnBlocks
+                      blocks={m.blocks}
+                      streaming={m.status === "streaming"}
+                      answerStarted={m.content.length > 0}
+                    />
+                  )}
                   {m.role === "user" ? (
                     m.content
                   ) : (
@@ -485,6 +524,14 @@ export default function Chat() {
               }
             }}
           />
+          <label className="hx-thinking-toggle" title={t("chat:showThinkingHint")}>
+            <input
+              type="checkbox"
+              checked={showThinking}
+              onChange={(e) => setShowThinking(e.target.checked)}
+            />
+            <span>{t("chat:showThinking")}</span>
+          </label>
           {streaming ? (
             <button
               type="button"

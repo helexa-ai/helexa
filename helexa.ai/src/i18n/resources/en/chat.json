@@ -29,5 +29,10 @@
   "reading": "reading {{host}}…",
   "copyCode": "Copy code",
   "copiedCode": "Copied",
-  "anonNearLimit": "You're close to the anonymous limit. Sign up for a free allocation."
+  "anonNearLimit": "You're close to the anonymous limit. Sign up for a free allocation.",
+  "blockReasoning": "Thinking",
+  "blockTool": "{{name}}",
+  "blockRunning": "running…",
+  "showThinking": "Reasoning",
+  "showThinkingHint": "Ask the model to think before answering, and show its reasoning"
 }
