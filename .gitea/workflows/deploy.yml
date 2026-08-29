@@ -818,15 +818,48 @@ jobs:
             exit 0
           fi
 
+          # Two questions, not one. The bytes decide whether to SYNC; the
+          # parsed settings decide whether to RESTART. The first run of
+          # this step proved why they differ: the only change was a
+          # comment header, and it bounced the router anyway, dropping
+          # whatever federation requests were in flight. The router reads
+          # its aliases at startup, so a comment is not a reason to
+          # interrupt anyone.
+          #
+          # Reading the remote copy into CI is safe here precisely because
+          # this file holds no secrets — the same property that lets it be
+          # tracked at all.
+          #
+          # The `cat` grant is deliberately NOT in the preflight above: if
+          # it is missing the read yields nothing, the comparison reports
+          # "changed", and the step restarts on any byte difference. That
+          # is the old behaviour, not a broken one, so a host mid-way
+          # through a sudoers rollout degrades instead of failing.
+          remote_copy="$(mktemp)"
+          trap 'rm -f "${remote_copy}"' EXIT
+          ssh gitea_ci@gallumbits.kosherinata.internal \
+            'sudo -n /usr/bin/cat /etc/helexa-router/helexa-router.toml' \
+            > "${remote_copy}" 2>/dev/null || true
+
+          settings_changed=yes
+          if python3 script/toml-settings-equal.py "${remote_copy}" helexa-router.toml; then
+            settings_changed=no
+          fi
+
           echo "syncing helexa-router.toml: ${remote_sum:-<absent>} -> ${local_sum}"
           rsync --archive --compress \
             --chown root:root --chmod 0644 \
             --rsync-path 'sudo rsync' \
             helexa-router.toml \
             gitea_ci@gallumbits.kosherinata.internal:/etc/helexa-router/helexa-router.toml
-          ssh gitea_ci@gallumbits.kosherinata.internal \
-            'sudo -n /usr/bin/systemctl restart helexa-router.service'
-          echo "helexa-router restarted on config change"
+
+          if [ "${settings_changed}" = yes ]; then
+            ssh gitea_ci@gallumbits.kosherinata.internal \
+              'sudo -n /usr/bin/systemctl restart helexa-router.service'
+            echo "helexa-router restarted: settings changed"
+          else
+            echo "helexa-router left running: only comments or formatting changed"
+          fi
 
       - name: Ensure firewalld allows helexa-router + helexa-upstream + helexa-tools + helexa-angels
         run: |
