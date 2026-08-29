@@ -9,12 +9,13 @@
 // across rounds; consulted sources persist as citations.
 
 import { useRef, useState } from "react";
-import type { MessageSource } from "../data/db";
+import type { MessageSource, TurnBlock } from "../data/db";
 import {
   addMessage,
   finalizeMessage,
   listMessages,
   renameConversation,
+  setMessageBlocks,
   setMessageContent,
 } from "../data/repositories";
 import {
@@ -123,6 +124,28 @@ export function useChat(opts: {
       }
     };
 
+    // Reasoning and tool calls, in the order they happened. Written as
+    // absolute snapshots on the same coalesced-write discipline as
+    // `acc` — Dexie updates race each other otherwise.
+    const blocks: TurnBlock[] = [];
+    let blocksWriting = false;
+    let blocksDirty = false;
+    const flushBlocks = async () => {
+      if (blocksWriting) {
+        blocksDirty = true;
+        return;
+      }
+      blocksWriting = true;
+      try {
+        do {
+          blocksDirty = false;
+          await setMessageBlocks(assistantId, blocks.map((b) => ({ ...b })));
+        } while (blocksDirty);
+      } finally {
+        blocksWriting = false;
+      }
+    };
+
     const sources: MessageSource[] = [];
     const seenUrls = new Set<string>();
     let failed = false;
@@ -161,7 +184,24 @@ export function useChat(opts: {
             acc += t;
             flushed = flush();
           },
-          onToolCall: (call) => toolCalls.push(call),
+          onReasoning: (t) => {
+            // Append into the open reasoning block, or start one. A new
+            // block begins whenever something else (a tool call) came
+            // between, which is what preserves think → act → think order.
+            const last = blocks[blocks.length - 1];
+            if (last?.kind === "reasoning") last.text += t;
+            else blocks.push({ kind: "reasoning", text: t });
+            void flushBlocks();
+          },
+          onToolCall: (call) => {
+            toolCalls.push(call);
+            blocks.push({
+              kind: "tool",
+              name: call.function.name,
+              args: call.function.arguments,
+            });
+            void flushBlocks();
+          },
           onUsage: (p, c) =>
             void finalizeMessage(assistantId, { promptTokens: p, completionTokens: c }),
           onDone: () => {},
@@ -221,6 +261,17 @@ export function useChat(opts: {
           content = r.content;
         }
         reqMessages.push({ role: "tool", tool_call_id: call.id, content });
+        // Attach the result to this call's block. Matched from the end:
+        // the same tool can be called more than once in a turn, and the
+        // one still awaiting a result is always the most recent.
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          const b = blocks[i];
+          if (b.kind === "tool" && b.name === call.function.name && b.result === undefined) {
+            b.result = content;
+            break;
+          }
+        }
+        void flushBlocks();
       }
       setActivity(null);
       // Visual seam between the pre-search text and the answer round.

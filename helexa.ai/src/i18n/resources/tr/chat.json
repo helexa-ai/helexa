@@ -29,5 +29,8 @@
   "reading": "{{host}} okunuyor…",
   "copyCode": "Kodu kopyala",
   "copiedCode": "Kopyalandı",
-  "anonNearLimit": "Anonim sınıra yaklaşıyorsunuz. Ücretsiz tahsisat için kaydolun."
+  "anonNearLimit": "Anonim sınıra yaklaşıyorsunuz. Ücretsiz tahsisat için kaydolun.",
+  "blockReasoning": "Düşünüyor",
+  "blockTool": "{{name}}",
+  "blockRunning": "çalışıyor…"
 }

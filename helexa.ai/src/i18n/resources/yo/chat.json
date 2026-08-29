@@ -29,5 +29,8 @@
   "reading": "ń ka {{host}}…",
   "copyCode": "Daakọ kóòdù",
   "copiedCode": "Ti daakọ",
-  "anonNearLimit": "O ti fẹ́rẹ̀ẹ́ dé ààlà aláìlórúkọ. Forúkọsílẹ̀ fún ìpín ọ̀fẹ́."
+  "anonNearLimit": "O ti fẹ́rẹ̀ẹ́ dé ààlà aláìlórúkọ. Forúkọsílẹ̀ fún ìpín ọ̀fẹ́.",
+  "blockReasoning": "Ó ń ronú",
+  "blockTool": "{{name}}",
+  "blockRunning": "ń ṣiṣẹ́…"
 }

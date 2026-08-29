@@ -29,5 +29,8 @@
   "reading": "s'està llegint {{host}}…",
   "copyCode": "Copia el codi",
   "copiedCode": "Copiat",
-  "anonNearLimit": "Us acosteu al límit anònim. Registreu-vos per obtenir una assignació gratuïta."
+  "anonNearLimit": "Us acosteu al límit anònim. Registreu-vos per obtenir una assignació gratuïta.",
+  "blockReasoning": "Pensant",
+  "blockTool": "{{name}}",
+  "blockRunning": "en execució…"
 }

@@ -14,6 +14,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import Markdown from "../components/Markdown";
+import { TurnBlocks } from "../components/TurnBlocks";
 import { CHAT_API_KEY, db } from "../data/db";
 import {
   archiveProject,
@@ -374,6 +375,17 @@ export default function Chat() {
                 >
                   {/* Assistant turns are markdown (#194); user turns stay
                     * literal — people type `*` and `_` as punctuation. */}
+                  {/* The working comes before the answer, because that
+                    * is the order it happened in — and because a reader
+                    * scrolling back wants the conclusion nearest the
+                    * next turn, not buried under its own reasoning. */}
+                  {m.role !== "user" && m.blocks && m.blocks.length > 0 && (
+                    <TurnBlocks
+                      blocks={m.blocks}
+                      streaming={m.status === "streaming"}
+                      answerStarted={m.content.length > 0}
+                    />
+                  )}
                   {m.role === "user" ? (
                     m.content
                   ) : (

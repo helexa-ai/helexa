@@ -29,5 +29,8 @@
   "reading": "leser {{host}}…",
   "copyCode": "Kopier kode",
   "copiedCode": "Kopiert",
-  "anonNearLimit": "Du nærmer deg den anonyme grensen. Registrer deg og få en gratis tildeling."
+  "anonNearLimit": "Du nærmer deg den anonyme grensen. Registrer deg og få en gratis tildeling.",
+  "blockReasoning": "Tenker",
+  "blockTool": "{{name}}",
+  "blockRunning": "kjører…"
 }

@@ -29,5 +29,8 @@
   "reading": "branje {{host}} …",
   "copyCode": "Kopiraj kodo",
   "copiedCode": "Kopirano",
-  "anonNearLimit": "Približujete se omejitvi za anonimne uporabnike. Registrirajte se za brezplačno dodelitev."
+  "anonNearLimit": "Približujete se omejitvi za anonimne uporabnike. Registrirajte se za brezplačno dodelitev.",
+  "blockReasoning": "Razmišlja",
+  "blockTool": "{{name}}",
+  "blockRunning": "poteka…"
 }

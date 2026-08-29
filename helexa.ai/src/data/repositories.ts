@@ -10,6 +10,7 @@ import {
   type Message,
   type MessageRole,
   type Project,
+  type TurnBlock,
 } from "./db";
 
 function uuid(): string {
@@ -138,10 +139,22 @@ export async function setMessageContent(id: string, content: string): Promise<vo
   await db.messages.update(id, { content });
 }
 
+/**
+ * Write the whole block list as an absolute snapshot.
+ *
+ * Same discipline as `setMessageContent`: the caller owns the array and
+ * writes it entire, because a read-modify-write append races itself when
+ * deltas arrive faster than the IndexedDB round-trip — which is how the
+ * content path dropped tokens before it was written this way.
+ */
+export async function setMessageBlocks(id: string, blocks: TurnBlock[]): Promise<void> {
+  await db.messages.update(id, { blocks });
+}
+
 export async function finalizeMessage(
   id: string,
   patch: Partial<
-    Pick<Message, "status" | "errorCode" | "promptTokens" | "completionTokens" | "sources">
+    Pick<Message, "status" | "errorCode" | "promptTokens" | "completionTokens" | "sources" | "blocks">
   >,
 ): Promise<void> {
   await db.messages.update(id, patch);

@@ -29,5 +29,8 @@
   "reading": "lecture de {{host}}…",
   "copyCode": "Copier le code",
   "copiedCode": "Copié",
-  "anonNearLimit": "Vous approchez de la limite anonyme. Inscrivez-vous pour obtenir une allocation gratuite."
+  "anonNearLimit": "Vous approchez de la limite anonyme. Inscrivez-vous pour obtenir une allocation gratuite.",
+  "blockReasoning": "Réflexion",
+  "blockTool": "{{name}}",
+  "blockRunning": "en cours…"
 }

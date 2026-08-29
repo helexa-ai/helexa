@@ -29,5 +29,8 @@
   "reading": "inasoma {{host}}…",
   "copyCode": "Nakili msimbo",
   "copiedCode": "Imenakiliwa",
-  "anonNearLimit": "Unakaribia kikomo cha matumizi bila akaunti. Jisajili upate mgao wa bure."
+  "anonNearLimit": "Unakaribia kikomo cha matumizi bila akaunti. Jisajili upate mgao wa bure.",
+  "blockReasoning": "Inafikiri",
+  "blockTool": "{{name}}",
+  "blockRunning": "inaendelea…"
 }

@@ -29,5 +29,8 @@
   "reading": "luetaan {{host}}…",
   "copyCode": "Kopioi koodi",
   "copiedCode": "Kopioitu",
-  "anonNearLimit": "Lähestyt anonyymin käytön rajaa. Rekisteröidy saadaksesi ilmaisen kiintiön."
+  "anonNearLimit": "Lähestyt anonyymin käytön rajaa. Rekisteröidy saadaksesi ilmaisen kiintiön.",
+  "blockReasoning": "Ajattelee",
+  "blockTool": "{{name}}",
+  "blockRunning": "suoritetaan…"
 }

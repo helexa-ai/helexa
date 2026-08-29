@@ -29,5 +29,8 @@
   "reading": "čítam {{host}}…",
   "copyCode": "Kopírovať kód",
   "copiedCode": "Skopírované",
-  "anonNearLimit": "Blížite sa k anonymnému limitu. Zaregistrujte sa a získajte bezplatný prídel."
+  "anonNearLimit": "Blížite sa k anonymnému limitu. Zaregistrujte sa a získajte bezplatný prídel.",
+  "blockReasoning": "Premýšľa",
+  "blockTool": "{{name}}",
+  "blockRunning": "prebieha…"
 }

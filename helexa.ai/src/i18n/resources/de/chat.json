@@ -29,5 +29,8 @@
   "reading": "{{host}} wird gelesen…",
   "copyCode": "Code kopieren",
   "copiedCode": "Kopiert",
-  "anonNearLimit": "Sie nähern sich dem anonymen Limit. Registrieren Sie sich für ein kostenloses Kontingent."
+  "anonNearLimit": "Sie nähern sich dem anonymen Limit. Registrieren Sie sich für ein kostenloses Kontingent.",
+  "blockReasoning": "Denkt nach",
+  "blockTool": "{{name}}",
+  "blockRunning": "läuft…"
 }

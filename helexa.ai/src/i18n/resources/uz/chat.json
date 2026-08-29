@@ -29,5 +29,8 @@
   "reading": "{{host}} oʻqilmoqda…",
   "copyCode": "Kodni nusxalash",
   "copiedCode": "Nusxalandi",
-  "anonNearLimit": "Anonim cheklovga yaqinlashyapsiz. Bepul kvota olish uchun roʻyxatdan oʻting."
+  "anonNearLimit": "Anonim cheklovga yaqinlashyapsiz. Bepul kvota olish uchun roʻyxatdan oʻting.",
+  "blockReasoning": "O‘ylanmoqda",
+  "blockTool": "{{name}}",
+  "blockRunning": "bajarilmoqda…"
 }

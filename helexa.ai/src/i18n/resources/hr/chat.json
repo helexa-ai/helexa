@@ -29,5 +29,8 @@
   "reading": "čitanje {{host}}…",
   "copyCode": "Kopiraj kôd",
   "copiedCode": "Kopirano",
-  "anonNearLimit": "Približavate se anonimnom limitu. Registrirajte se za besplatnu kvotu."
+  "anonNearLimit": "Približavate se anonimnom limitu. Registrirajte se za besplatnu kvotu.",
+  "blockReasoning": "Razmišljanje",
+  "blockTool": "{{name}}",
+  "blockRunning": "izvodi se…"
 }

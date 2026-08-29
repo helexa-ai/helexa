@@ -29,5 +29,8 @@
   "reading": "a ler {{host}}…",
   "copyCode": "Copiar código",
   "copiedCode": "Copiado",
-  "anonNearLimit": "Está a aproximar-se do limite anónimo. Registe-se para obter uma alocação gratuita."
+  "anonNearLimit": "Está a aproximar-se do limite anónimo. Registe-se para obter uma alocação gratuita.",
+  "blockReasoning": "A pensar",
+  "blockTool": "{{name}}",
+  "blockRunning": "em execução…"
 }
