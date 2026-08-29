@@ -17,6 +17,11 @@ helexa.ai/.env.local
 # ignored by association, and that is precisely how its `helexa/balanced`
 # alias came to point at a retired model for long enough to take beast
 # down (2026-08-27). A file nothing can diff is a file nothing can catch.
+# Operator-owned credential layer, merged after the CI-deployed config
+# by cortex / helexa-upstream / helexa-angels. Must never be committed.
+secrets.toml
+**/secrets.toml
+
 cortex.toml
 doc/plan/*
 /target-cuda/

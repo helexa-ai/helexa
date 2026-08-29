@@ -143,13 +143,46 @@ pub struct NeuronEndpoint {
 impl GatewayConfig {
     /// Load configuration from a TOML file, with environment variable overrides.
     /// Env vars are prefixed with `CORTEX_` and use `__` as a separator.
+    ///
+    /// A sibling `secrets.toml`, if present, is merged **after** the main
+    /// file and therefore wins. It exists so the two have different
+    /// owners: CI writes the main config, and only the operator writes
+    /// the secrets — see [`secrets_path`].
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<figment::Error>> {
+        let path = path.as_ref();
         Figment::new()
             .merge(Toml::file(path))
+            .merge(Toml::file(secrets_path(path)))
             .merge(Env::prefixed("CORTEX_").split("__"))
             .extract()
             .map_err(Box::new)
     }
+}
+
+/// `secrets.toml` beside the main config.
+///
+/// The split exists to make a class of outage impossible rather than
+/// merely unlikely. Config that CI cannot write is config no check can
+/// defend: `helexa-router.toml` was excluded from git because it sat
+/// beside secret-bearing files, and its `helexa/balanced` alias then
+/// pointed at a retired model for long enough to take a node down
+/// (2026-08-27). The fix is not to hand CI the credentials — it is to
+/// stop mixing the two in one file.
+///
+/// So `cortex.toml` holds structure and is deployed by CI, while
+/// `secrets.toml` holds API keys and the upstream bearer, is written
+/// only by the operator, and is never read, written or diffed by the
+/// pipeline. Because it merges last it also wins, so a value present in
+/// both is the operator's.
+///
+/// A missing file is not an error — figment treats an absent
+/// `Toml::file` as an empty source — so a host that keeps everything in
+/// one file, and every existing deployment, keeps working unchanged.
+fn secrets_path(config: &Path) -> std::path::PathBuf {
+    config
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("secrets.toml")
 }
 
 impl Default for GatewayConfig {
@@ -168,5 +201,113 @@ impl Default for GatewayConfig {
             entitlements: EntitlementsConfig::default(),
             upstream: UpstreamClientConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod secrets_layer_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Write `main` (and optionally `secrets.toml`) into a fresh directory
+    /// under the target dir, and load through the real code path.
+    fn load_with(dir: &str, main: &str, secrets: Option<&str>) -> GatewayConfig {
+        // `CARGO_TARGET_TMPDIR` is only set for integration tests, not for
+        // unit tests inside src/, so derive a unique directory instead.
+        let base = std::env::temp_dir().join(format!("helexa-cortex-config-{dir}"));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("create test dir");
+        let cfg = base.join("cortex.toml");
+        write!(
+            std::fs::File::create(&cfg).expect("create config"),
+            "{main}"
+        )
+        .expect("write");
+        if let Some(s) = secrets {
+            let p = base.join("secrets.toml");
+            write!(std::fs::File::create(&p).expect("create secrets"), "{s}").expect("write");
+        }
+        GatewayConfig::load(&cfg).expect("config loads")
+    }
+
+    const MAIN: &str = r#"
+[gateway]
+listen = "0.0.0.0:31313"
+metrics_listen = "0.0.0.0:31314"
+[eviction]
+strategy = "lru"
+defrag_after_cycles = 50
+[entitlements]
+require_auth = true
+
+[[neurons]]
+name = "beast"
+endpoint = "http://beast.invalid:13131"
+"#;
+
+    /// The whole point: a host with no secrets.toml behaves exactly as
+    /// before. Every current deployment is in this state, so if this
+    /// regressed the change would take the fleet down on rollout rather
+    /// than on adoption.
+    #[test]
+    fn an_absent_secrets_file_is_not_an_error() {
+        let cfg = load_with("secrets_absent", MAIN, None);
+        assert!(cfg.entitlements.require_auth);
+        assert!(
+            cfg.entitlements.keys.is_empty(),
+            "no keys configured anywhere means no keys"
+        );
+    }
+
+    /// The array-of-tables case that ruled out env-var overrides:
+    /// `[[entitlements.keys]]` cannot be expressed as `CORTEX_*` env vars,
+    /// so the second TOML layer is what carries it.
+    #[test]
+    fn secrets_file_supplies_the_entitlement_keys() {
+        let cfg = load_with(
+            "secrets_keys",
+            MAIN,
+            Some(
+                r#"
+[[entitlements.keys]]
+key = "sk-test-aaa"
+account_id = "acct-a"
+key_id = "a"
+[[entitlements.keys]]
+key = "sk-test-bbb"
+account_id = "acct-b"
+key_id = "b"
+"#,
+            ),
+        );
+        assert_eq!(cfg.entitlements.keys.len(), 2);
+        assert_eq!(cfg.entitlements.keys[0].key, "sk-test-aaa");
+        assert_eq!(cfg.entitlements.keys[1].account_id, "acct-b");
+        assert!(
+            cfg.entitlements.require_auth,
+            "structure from the CI-owned file must survive the merge"
+        );
+    }
+
+    /// Ordering is the safety property. If CI ever ships a placeholder in
+    /// the main file, the operator's real value must still win — otherwise
+    /// a deploy silently swaps a live credential for a dummy.
+    #[test]
+    fn the_operators_value_wins_over_the_deployed_one() {
+        let cfg = load_with(
+            "secrets_precedence",
+            &format!(
+                "{MAIN}\n[upstream]\nenabled = true\nurl = \"https://example.invalid\"\nbearer = \"PLACEHOLDER\"\n"
+            ),
+            Some("[upstream]\nbearer = \"real-token\"\n"),
+        );
+        assert_eq!(
+            cfg.upstream.bearer, "real-token",
+            "secrets.toml merges last, so it wins"
+        );
+        assert_eq!(
+            cfg.upstream.url, "https://example.invalid",
+            "fields the operator does not override keep the deployed value"
+        );
     }
 }
