@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "у току…",
   "showThinking": "Резоновање",
-  "showThinkingHint": "Затражи да модел размисли пре одговора и прикажи његово резоновање"
+  "showThinkingHint": "Затражи да модел размисли пре одговора и прикажи његово резоновање",
+  "effortOff": "Искључено",
+  "effort_low": "Ниско",
+  "effort_medium": "Средње",
+  "effort_xhigh": "Веома високо"
 }

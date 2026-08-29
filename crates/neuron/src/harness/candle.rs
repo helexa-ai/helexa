@@ -3637,20 +3637,33 @@ impl Harness for CandleHarness {
                 // strongest setting. (Whether a given client reads this
                 // is another matter — pi-ai does not; see
                 // `reasoning_effort`'s module doc.)
-                reasoning_budget: h
-                    .reasoning_efforts()
-                    .levels
-                    .iter()
-                    .map(|effort| cortex_core::harness::ReasoningBudgetRung {
-                        default: h.reasoning_efforts().default.as_deref() == Some(effort.as_str()),
-                        effort: effort.clone(),
-                        // No cap: effort reaches the model through its
-                        // template, and how many tokens it then spends
-                        // is the model's business. Enforcing effort by
-                        // truncation is the defect #290 fixed.
-                        tokens: None,
-                    })
-                    .collect(),
+                reasoning_budget: {
+                    let efforts = h.reasoning_efforts();
+                    let slots = h.capacity().0;
+                    // Withdraw the deepest rung on a busy node, but never
+                    // a model's only rung — the rule steers a choice, and
+                    // with one option there is no choice to steer.
+                    let withhold = (efforts.levels.len() > 1
+                        && !super::reasoning_budget::long_rung_available(slots))
+                    .then(|| super::reasoning_budget::longest_rung(&efforts.levels))
+                    .flatten()
+                    .cloned();
+                    efforts
+                        .levels
+                        .iter()
+                        .map(|effort| cortex_core::harness::ReasoningBudgetRung {
+                            default: efforts.default.as_deref() == Some(effort.as_str()),
+                            effort: effort.clone(),
+                            // No cap: effort reaches the model through its
+                            // template, and how many tokens it then spends
+                            // is the model's business. Enforcing effort by
+                            // truncation is the defect #290 fixed.
+                            tokens: None,
+                            unavailable_reason: (withhold.as_deref() == Some(effort.as_str()))
+                                .then(|| format!("max_in_flight={slots}")),
+                        })
+                        .collect()
+                },
             });
         }
         // Models mid-recovery whose registry slot is absent (the

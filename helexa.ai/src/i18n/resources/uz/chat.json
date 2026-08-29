@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "bajarilmoqda…",
   "showThinking": "Mulohaza",
-  "showThinkingHint": "Modeldan javobdan oldin o‘ylashini so‘rang va mulohazasini ko‘rsating"
+  "showThinkingHint": "Modeldan javobdan oldin o‘ylashini so‘rang va mulohazasini ko‘rsating",
+  "effortOff": "O‘chiq",
+  "effort_low": "Past",
+  "effort_medium": "O‘rta",
+  "effort_xhigh": "Juda yuqori"
 }

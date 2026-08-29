@@ -482,6 +482,11 @@ async fn cold_load(
                     // would make the cold-load path immediately
                     // un-route what it had just placed.
                     servable: None,
+                    // Same reasoning: the ladder and its availability are
+                    // the neuron's to report, and the next poll (~10s)
+                    // fills it. Guessing here risks advertising a rung
+                    // this host is withholding.
+                    reasoning_budget: Vec::new(),
                 },
             );
         }

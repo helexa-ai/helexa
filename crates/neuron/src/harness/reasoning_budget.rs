@@ -303,3 +303,85 @@ mod tests {
         );
     }
 }
+
+/// Whether the longest reasoning rung should be offered on a node
+/// running `max_in_flight` concurrent slots.
+///
+/// Operator-reported (2026-08-29): `xhigh` "hits issues" when this host
+/// runs eight slots. The mechanism is not yet isolated, so this is a
+/// precaution rather than a diagnosis, and it is written down as one —
+/// naming it a fix would stop anyone looking.
+///
+/// The plausible account: `xhigh` instructs the model to deliberate
+/// exhaustively, so a turn can spend tens of thousands of tokens
+/// reasoning. KV is a shared pool (#291), and a slot holds its
+/// reservation for the request's whole life, so several concurrent
+/// `xhigh` turns can hold most of the pool for minutes while shorter
+/// requests queue on bytes. That is consistent with "issues" but is not
+/// evidence of them; #305's turn is a candidate to instrument.
+///
+/// Availability is advertised, never enforced. The request path does not
+/// reject an unavailable rung — a caller that insists still gets it. The
+/// point is to keep a UI from offering an option that will serve someone
+/// badly, not to add a refusal path to every existing API client.
+pub fn long_rung_available(max_in_flight: usize) -> bool {
+    max_in_flight <= LONG_RUNG_MAX_IN_FLIGHT
+}
+
+/// The slot count above which the longest rung stops being offered.
+///
+/// Two, because that is the concurrency at which a single deep session
+/// still has the pool substantially to itself. A named constant rather
+/// than a literal at the call site so the number is findable when the
+/// mechanism above is finally isolated and it turns out to be wrong.
+pub const LONG_RUNG_MAX_IN_FLIGHT: usize = 2;
+
+/// The rung a deployment considers "longest", if it offers one.
+///
+/// Taken as the last entry rather than by matching on `"xhigh"`: the
+/// rungs come from the model's own template (#290), so the name of the
+/// deepest one is the model's to choose and a future model may spell it
+/// differently.
+pub fn longest_rung(levels: &[String]) -> Option<&String> {
+    levels.last()
+}
+
+#[cfg(test)]
+mod availability_tests {
+    use super::*;
+
+    #[test]
+    fn the_long_rung_is_offered_only_at_low_concurrency() {
+        assert!(long_rung_available(1));
+        assert!(long_rung_available(2));
+        assert!(!long_rung_available(3));
+        assert!(!long_rung_available(8));
+    }
+
+    #[test]
+    fn the_longest_rung_is_the_last_one_the_template_offers() {
+        // Not a match on "xhigh": the ladder is the model's, and the
+        // deepest rung is whatever it puts last.
+        let levels = vec!["low".to_string(), "medium".to_string(), "xhigh".to_string()];
+        assert_eq!(longest_rung(&levels).map(String::as_str), Some("xhigh"));
+
+        let other = vec!["brief".to_string(), "exhaustive".to_string()];
+        assert_eq!(longest_rung(&other).map(String::as_str), Some("exhaustive"));
+    }
+
+    #[test]
+    fn a_model_with_no_rungs_has_no_longest_one() {
+        assert_eq!(longest_rung(&[]), None);
+    }
+
+    /// A single-rung model must not have its only option withdrawn: the
+    /// rule exists to steer a choice, and there is no choice to steer.
+    #[test]
+    fn a_single_rung_is_never_withdrawn() {
+        let levels = vec!["only".to_string()];
+        assert_eq!(longest_rung(&levels).map(String::as_str), Some("only"));
+        // The caller is responsible for not withdrawing a lone rung;
+        // pinned here so the intent survives a refactor of that caller.
+        assert_eq!(levels.len(), 1);
+    }
+}

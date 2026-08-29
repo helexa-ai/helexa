@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "በማስኬድ ላይ…",
   "showThinking": "ማመዛዘን",
-  "showThinkingHint": "ሞዴሉ ከመመለሱ በፊት እንዲያስብ ጠይቅ፣ እና ማመዛዘኑን አሳይ"
+  "showThinkingHint": "ሞዴሉ ከመመለሱ በፊት እንዲያስብ ጠይቅ፣ እና ማመዛዘኑን አሳይ",
+  "effortOff": "ጠፍቷል",
+  "effort_low": "ዝቅተኛ",
+  "effort_medium": "መካከለኛ",
+  "effort_xhigh": "በጣም ከፍተኛ"
 }

@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "ń ṣiṣẹ́…",
   "showThinking": "Ìrònú",
-  "showThinkingHint": "Béèrè pé kí àwòṣe náà ronú kí ó tó dáhùn, kí a sì fi ìrònú rẹ̀ hàn"
+  "showThinkingHint": "Béèrè pé kí àwòṣe náà ronú kí ó tó dáhùn, kí a sì fi ìrònú rẹ̀ hàn",
+  "effortOff": "Pa",
+  "effort_low": "Kékeré",
+  "effort_medium": "Aárin",
+  "effort_xhigh": "Gíga gan"
 }

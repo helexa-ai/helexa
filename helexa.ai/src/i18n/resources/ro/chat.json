@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "în curs…",
   "showThinking": "Raționament",
-  "showThinkingHint": "Cere modelului să gândească înainte de a răspunde și arată raționamentul"
+  "showThinkingHint": "Cere modelului să gândească înainte de a răspunde și arată raționamentul",
+  "effortOff": "Oprit",
+  "effort_low": "Scăzut",
+  "effort_medium": "Mediu",
+  "effort_xhigh": "Foarte ridicat"
 }

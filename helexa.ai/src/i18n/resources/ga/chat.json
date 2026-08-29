@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "ar siúl…",
   "showThinking": "Réasúnaíocht",
-  "showThinkingHint": "Iarr ar an tsamhail machnamh a dhéanamh sula bhfreagraíonn sí, agus taispeáin é"
+  "showThinkingHint": "Iarr ar an tsamhail machnamh a dhéanamh sula bhfreagraíonn sí, agus taispeáin é",
+  "effortOff": "As",
+  "effort_low": "Íseal",
+  "effort_medium": "Meánach",
+  "effort_xhigh": "An-ard"
 }

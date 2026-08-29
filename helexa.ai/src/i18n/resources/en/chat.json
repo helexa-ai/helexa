@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "running…",
   "showThinking": "Reasoning",
-  "showThinkingHint": "Ask the model to think before answering, and show its reasoning"
+  "showThinkingHint": "Ask the model to think before answering, and show its reasoning",
+  "effortOff": "Off",
+  "effort_low": "Low",
+  "effort_medium": "Medium",
+  "effort_xhigh": "Extra high"
 }

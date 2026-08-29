@@ -130,12 +130,13 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<Vec<ModelInfo>>().await {
                 Ok(models) => {
-                    // The reasoning-effort ladder is host configuration:
-                    // every model on a neuron reports the same rungs, so
-                    // it is held once per node rather than copied onto
-                    // each model entry where the two could drift (#223).
-                    // Taken from the first model that offers one — a
-                    // non-reasoning model advertises none.
+                    // Node-level ladder, kept only as a fallback for a
+                    // model whose own entry carries none. It is NOT the
+                    // source of truth any more: availability depends on
+                    // the model's `max_in_flight`, so two models on one
+                    // host can legitimately offer different rungs and a
+                    // single node-level copy would attribute one's
+                    // withheld rung to the other. Per-model is set below.
                     node.reasoning_budget = models
                         .iter()
                         .map(|m| m.reasoning_budget.clone())
@@ -158,6 +159,7 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 // authoritative source the gateway advertises.
                                 e.limit = upstream.limit.clone();
                                 e.servable = upstream.servable.clone();
+                                e.reasoning_budget = upstream.reasoning_budget.clone();
                             })
                             .or_insert_with(|| ModelEntry {
                                 id: upstream.id.clone(),
@@ -169,6 +171,7 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
                                 reasoning: upstream.reasoning,
                                 limit: upstream.limit.clone(),
                                 servable: upstream.servable.clone(),
+                                reasoning_budget: upstream.reasoning_budget.clone(),
                             });
                     }
 

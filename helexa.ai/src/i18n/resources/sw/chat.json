@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "inaendelea…",
   "showThinking": "Ufikirio",
-  "showThinkingHint": "Mwombe modeli afikirie kabla ya kujibu, na uonyeshe ufikirio wake"
+  "showThinkingHint": "Mwombe modeli afikirie kabla ya kujibu, na uonyeshe ufikirio wake",
+  "effortOff": "Imezimwa",
+  "effort_low": "Chini",
+  "effort_medium": "Wastani",
+  "effort_xhigh": "Juu sana"
 }

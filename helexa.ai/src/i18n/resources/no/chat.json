@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "kjører…",
   "showThinking": "Resonnement",
-  "showThinkingHint": "Be modellen tenke før den svarer, og vis resonnementet"
+  "showThinkingHint": "Be modellen tenke før den svarer, og vis resonnementet",
+  "effortOff": "Av",
+  "effort_low": "Lav",
+  "effort_medium": "Middels",
+  "effort_xhigh": "Svært høy"
 }

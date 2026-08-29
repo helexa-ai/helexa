@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "ejecutando…",
   "showThinking": "Razonamiento",
-  "showThinkingHint": "Pide al modelo que piense antes de responder y muestra su razonamiento"
+  "showThinkingHint": "Pide al modelo que piense antes de responder y muestra su razonamiento",
+  "effortOff": "Desactivado",
+  "effort_low": "Bajo",
+  "effort_medium": "Medio",
+  "effort_xhigh": "Muy alto"
 }

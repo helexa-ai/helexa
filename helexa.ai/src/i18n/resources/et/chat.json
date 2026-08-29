@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "töötab…",
   "showThinking": "Arutlus",
-  "showThinkingHint": "Palu mudelil enne vastamist mõelda ja näita tema arutlust"
+  "showThinkingHint": "Palu mudelil enne vastamist mõelda ja näita tema arutlust",
+  "effortOff": "Väljas",
+  "effort_low": "Madal",
+  "effort_medium": "Keskmine",
+  "effort_xhigh": "Väga kõrge"
 }

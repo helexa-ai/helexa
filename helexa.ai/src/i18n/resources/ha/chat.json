@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "yana gudana…",
   "showThinking": "Tunani",
-  "showThinkingHint": "Ka nemi samfurin ya yi tunani kafin amsa, kuma a nuna tunaninsa"
+  "showThinkingHint": "Ka nemi samfurin ya yi tunani kafin amsa, kuma a nuna tunaninsa",
+  "effortOff": "A kashe",
+  "effort_low": "Ƙasa",
+  "effort_medium": "Matsakaici",
+  "effort_xhigh": "Mai tsayi sosai"
 }

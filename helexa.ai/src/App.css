@@ -2157,14 +2157,29 @@ html[dir="rtl"] .hx-landing-composer textarea {
 .hx-thinking-toggle:hover {
     color: var(--color-text);
 }
-.hx-thinking-toggle input {
-    margin: 0;
+.hx-thinking-select {
+    background: transparent;
+    color: inherit;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.35rem;
+    padding: 0.1rem 0.25rem;
+    font-size: 0.78rem;
     cursor: pointer;
 }
-/* Narrow screens: the composer is already tight, and the label is the
- * expendable half — the checkbox still reads as a control. */
+.hx-thinking-select:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+}
+/* Options inherit the page background in some engines and end up
+ * unreadable on a dark theme; set both explicitly. */
+.hx-thinking-select option {
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+}
+/* Narrow screens: the composer is already tight, and the word is the
+ * expendable half — the select still reads as a control. */
 @media (max-width: 30rem) {
-    .hx-thinking-toggle span {
+    .hx-thinking-label {
         display: none;
     }
 }

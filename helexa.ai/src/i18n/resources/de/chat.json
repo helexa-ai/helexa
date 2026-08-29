@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "läuft…",
   "showThinking": "Denkprozess",
-  "showThinkingHint": "Das Modell vor der Antwort nachdenken lassen und den Denkprozess anzeigen"
+  "showThinkingHint": "Das Modell vor der Antwort nachdenken lassen und den Denkprozess anzeigen",
+  "effortOff": "Aus",
+  "effort_low": "Niedrig",
+  "effort_medium": "Mittel",
+  "effort_xhigh": "Sehr hoch"
 }

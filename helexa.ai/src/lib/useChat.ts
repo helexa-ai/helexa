@@ -59,8 +59,8 @@ export function useChat(opts: {
    * `true` unconditionally. Also selects the tool-aware system prompt.
    */
   toolsEnabled: boolean;
-  /** Ask the model to reason, and show that reasoning. */
-  includeThinking?: boolean;
+  /** Rung of the model's reasoning ladder, or null for off. */
+  reasoningEffort?: string | null;
 }): UseChat {
   const [streaming, setStreaming] = useState(false);
   const [activity, setActivity] = useState<ToolActivity | null>(null);
@@ -179,7 +179,7 @@ export function useChat(opts: {
           apiKey: opts.apiKey,
           model: opts.model,
           messages: reqMessages,
-          includeThinking: opts.includeThinking,
+          reasoningEffort: opts.reasoningEffort,
           tools: offerTools ? [WEB_SEARCH_TOOL, READ_PAGE_TOOL] : undefined,
           signal: controller.signal,
         },

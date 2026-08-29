@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "poteka…",
   "showThinking": "Sklepanje",
-  "showThinkingHint": "Naj model pred odgovorom premisli in pokaže svoje sklepanje"
+  "showThinkingHint": "Naj model pred odgovorom premisli in pokaže svoje sklepanje",
+  "effortOff": "Izklopljeno",
+  "effort_low": "Nizko",
+  "effort_medium": "Srednje",
+  "effort_xhigh": "Zelo visoko"
 }

@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "vykdoma…",
   "showThinking": "Samprotavimas",
-  "showThinkingHint": "Paprašyk modelio pamąstyti prieš atsakant ir rodyk jo samprotavimą"
+  "showThinkingHint": "Paprašyk modelio pamąstyti prieš atsakant ir rodyk jo samprotavimą",
+  "effortOff": "Išjungta",
+  "effort_low": "Žemas",
+  "effort_medium": "Vidutinis",
+  "effort_xhigh": "Labai aukštas"
 }

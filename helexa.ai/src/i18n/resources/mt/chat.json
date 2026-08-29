@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "għaddej…",
   "showThinking": "Raġunament",
-  "showThinkingHint": "Itlob lill-mudell jaħseb qabel iwieġeb, u uri r-raġunament tiegħu"
+  "showThinkingHint": "Itlob lill-mudell jaħseb qabel iwieġeb, u uri r-raġunament tiegħu",
+  "effortOff": "Mitfi",
+  "effort_low": "Baxx",
+  "effort_medium": "Medju",
+  "effort_xhigh": "Għoli ħafna"
 }

@@ -81,6 +81,7 @@ async fn test_alias_resolves_in_chat_completions() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }
@@ -168,6 +169,7 @@ async fn test_aliases_surface_in_v1_models() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }
@@ -256,6 +258,7 @@ async fn test_alias_falls_through_for_unmapped_model() {
                 reasoning: false,
                 limit: None,
                 servable: None,
+                reasoning_budget: Vec::new(),
             },
         );
     }

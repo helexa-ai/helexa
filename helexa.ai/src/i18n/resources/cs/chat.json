@@ -34,5 +34,9 @@
   "blockTool": "{{name}}",
   "blockRunning": "probíhá…",
   "showThinking": "Uvažování",
-  "showThinkingHint": "Ať model před odpovědí přemýšlí a ukáže své uvažování"
+  "showThinkingHint": "Ať model před odpovědí přemýšlí a ukáže své uvažování",
+  "effortOff": "Vypnuto",
+  "effort_low": "Nízké",
+  "effort_medium": "Střední",
+  "effort_xhigh": "Velmi vysoké"
 }
