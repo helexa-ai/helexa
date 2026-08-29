@@ -53,6 +53,18 @@ fn unique_email() -> String {
     format!("u-{}@test.local", uuid::Uuid::new_v4())
 }
 
+/// A fixture value that is unique per run.
+///
+/// Rows keyed on a hash of these (`email_tokens.token_hash`,
+/// `api_keys.key_hash`) are uniquely indexed, so a hard-coded literal
+/// passes against a virgin database and then fails with `23505` on every
+/// run afterwards — the tests only looked deterministic because CI always
+/// gets a fresh one. Anything inserted under a unique constraint gets a
+/// fresh value here.
+fn unique_secret(prefix: &str) -> String {
+    format!("{prefix}-{}", uuid::Uuid::new_v4())
+}
+
 async fn post(url: String, body: Value, bearer: Option<&str>) -> reqwest::Response {
     let c = reqwest::Client::new();
     let mut req = c.post(url).json(&body);
@@ -85,13 +97,13 @@ async fn verify_endpoint_consumes_token_once() {
         .await
         .unwrap()
         .get("id");
-    let raw = "verify-raw-token-xyz";
+    let raw = unique_secret("verify-raw-token");
     pool.execute(
         sqlx::query(
             "INSERT INTO email_tokens (token_hash, user_id, kind, expires_at) \
              VALUES ($1, $2, 'verify', now() + interval '1 hour')",
         )
-        .bind(sha256(raw))
+        .bind(sha256(&raw))
         .bind(user_id),
     )
     .await
@@ -273,13 +285,13 @@ async fn fingerprint_abuse_silently_deactivates_all_no_clue() {
         .await
         .unwrap()
         .get("id");
-    let raw = "sk-helexa-deactivated-probe";
+    let raw = unique_secret("sk-helexa-deactivated-probe");
     pool.execute(
         sqlx::query(
             "INSERT INTO api_keys (account_id, key_hash, key_prefix) VALUES ($1, $2, 'sk-helexa-')",
         )
         .bind(acct)
-        .bind(sha256(raw)),
+        .bind(sha256(&raw)),
     )
     .await
     .unwrap();
