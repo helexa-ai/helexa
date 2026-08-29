@@ -5753,8 +5753,33 @@ fn parse_qwen_xml_tool_call(
     schemas: &ToolSchemas,
 ) -> Option<(String, String, String)> {
     // `<function=NAME>` — name runs to the closing `>` or end of line.
-    let after_fn = body.split("<function=").nth(1)?;
-    let name = after_fn.split(['>', '\n']).next()?.trim().to_string();
+    //
+    // Falls back to a recovery for a malformation seen in production
+    // (2026-08-29): the model tagged the function itself as a parameter,
+    // emitting `<tool_call><parameter=web_search><parameter=query>…`
+    // with no `<function=` at all. Strict parsing returned None, so the
+    // whole block fell through into `content` and the user's answer was
+    // a screenful of raw markup.
+    //
+    // The recovery is deliberately narrow: a leading `<parameter=X>` is
+    // only promoted when X is a tool this request actually offered. That
+    // is what keeps it from inventing function names out of ordinary
+    // parameters — an unknown name still returns None, and the caller
+    // still owes the user something better than markup.
+    let (name, after_fn, skip_param) = match body.split_once("<function=") {
+        Some((_, after)) => {
+            let n = after.split(['>', '\n']).next()?.trim().to_string();
+            (n, after, None)
+        }
+        None => {
+            let after = body.split_once("<parameter=").map(|(_, a)| a)?;
+            let n = after.split(['>', '\n']).next()?.trim().to_string();
+            if !schemas.contains_key(&n) {
+                return None;
+            }
+            (n.clone(), after, Some(n))
+        }
+    };
     if name.is_empty() {
         return None;
     }
@@ -5777,7 +5802,8 @@ fn parse_qwen_xml_tool_call(
             .to_string();
         let after_gt = seg.split_once('>').map(|(_, after)| after).unwrap_or("");
         let value_raw = after_gt.split("</parameter>").next().unwrap_or("").trim();
-        if !key.is_empty() {
+        // Skip the pseudo-parameter that was actually the function name.
+        if !key.is_empty() && Some(&key) != skip_param.as_ref() {
             let declared = param_types.and_then(|m| m.get(&key)).map(String::as_str);
             args.insert(key, coerce_param_value(value_raw, declared));
         }
@@ -8800,6 +8826,58 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&args).unwrap();
         assert_eq!(v["n"], 42); // sniffed to number
         assert_eq!(v["s"], "hello"); // un-JSON-parseable → string
+    }
+
+    /// The shape Qwen3.8-27B emitted on helexa.ai on 2026-08-29: it
+    /// tagged the function itself as a parameter, so there is no
+    /// `<function=` anywhere. Strict parsing returned None and the whole
+    /// block was re-emitted as text — the user's answer to "what's the
+    /// best hardware to run X on?" was a screenful of raw markup.
+    #[test]
+    fn recovers_a_tool_call_that_tagged_the_function_as_a_parameter() {
+        let body = concat!(
+            "<parameter=web_search>",
+            " <parameter=query> \"Qwen3.8 Flash Next\" hardware GPU </parameter>",
+            " </function>"
+        );
+        let mut schemas = ToolSchemas::new();
+        let mut params = std::collections::HashMap::new();
+        params.insert("query".to_string(), "string".to_string());
+        schemas.insert("web_search".to_string(), params);
+
+        let (_, name, args) = parse_tool_call_body(body, 0, &schemas).expect("recovered");
+        assert_eq!(name, "web_search");
+        let v: serde_json::Value = serde_json::from_str(&args).unwrap();
+        assert_eq!(v["query"], "\"Qwen3.8 Flash Next\" hardware GPU");
+        // The promoted name must not also appear as an argument.
+        assert!(
+            v.get("web_search").is_none(),
+            "the pseudo-parameter carrying the function name is not a parameter"
+        );
+    }
+
+    /// The recovery only promotes a name the request actually offered.
+    /// Without that guard any `<parameter=x>` would mint a function call,
+    /// and a model rambling in angle brackets would start invoking tools.
+    #[test]
+    fn does_not_invent_a_function_from_an_unknown_parameter() {
+        let body = "<parameter=not_a_tool> <parameter=query> hi </parameter>";
+        let mut schemas = ToolSchemas::new();
+        schemas.insert("web_search".to_string(), std::collections::HashMap::new());
+        assert!(parse_tool_call_body(body, 0, &schemas).is_none());
+    }
+
+    /// A well-formed call must not be affected by the recovery path.
+    #[test]
+    fn well_formed_call_still_takes_the_function_branch() {
+        let body = "<function=web_search>\n<parameter=query>\nrust\n</parameter>\n</function>";
+        let mut schemas = ToolSchemas::new();
+        let mut params = std::collections::HashMap::new();
+        params.insert("query".to_string(), "string".to_string());
+        schemas.insert("web_search".to_string(), params);
+        let (_, name, args) = parse_tool_call_body(body, 0, &schemas).expect("parsed");
+        assert_eq!(name, "web_search");
+        assert_eq!(args, r#"{"query":"rust"}"#);
     }
 
     #[test]
