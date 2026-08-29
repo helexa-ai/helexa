@@ -32,5 +32,7 @@
   "anonNearLimit": "Unakaribia kikomo cha matumizi bila akaunti. Jisajili upate mgao wa bure.",
   "blockReasoning": "Inafikiri",
   "blockTool": "{{name}}",
-  "blockRunning": "inaendelea…"
+  "blockRunning": "inaendelea…",
+  "showThinking": "Ufikirio",
+  "showThinkingHint": "Mwombe modeli afikirie kabla ya kujibu, na uonyeshe ufikirio wake"
 }

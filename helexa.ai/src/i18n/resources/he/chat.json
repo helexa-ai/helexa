@@ -32,5 +32,7 @@
   "anonNearLimit": "אתם מתקרבים למגבלת השימוש האנונימי. הירשמו לקבלת הקצאה חינם.",
   "blockReasoning": "חושב",
   "blockTool": "{{name}}",
-  "blockRunning": "פועל…"
+  "blockRunning": "פועל…",
+  "showThinking": "חשיבה",
+  "showThinkingHint": "בקש מהמודל לחשוב לפני שהוא עונה, והצג את החשיבה שלו"
 }

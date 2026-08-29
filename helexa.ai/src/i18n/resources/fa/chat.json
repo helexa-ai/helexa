@@ -32,5 +32,7 @@
   "anonNearLimit": "به محدودیت کاربران ناشناس نزدیک می‌شوید. برای دریافت سهمیه رایگان ثبت‌نام کنید.",
   "blockReasoning": "در حال تفکر",
   "blockTool": "{{name}}",
-  "blockRunning": "در حال اجرا…"
+  "blockRunning": "در حال اجرا…",
+  "showThinking": "استدلال",
+  "showThinkingHint": "از مدل بخواهید پیش از پاسخ فکر کند و استدلالش را نشان دهد"
 }

@@ -32,5 +32,7 @@
   "anonNearLimit": "Lähestyt anonyymin käytön rajaa. Rekisteröidy saadaksesi ilmaisen kiintiön.",
   "blockReasoning": "Ajattelee",
   "blockTool": "{{name}}",
-  "blockRunning": "suoritetaan…"
+  "blockRunning": "suoritetaan…",
+  "showThinking": "Päättely",
+  "showThinkingHint": "Pyydä mallia ajattelemaan ennen vastaamista ja näytä sen päättely"
 }

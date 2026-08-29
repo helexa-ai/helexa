@@ -32,5 +32,7 @@
   "anonNearLimit": "Je nadert de anonieme limiet. Registreer je voor een gratis tegoed.",
   "blockReasoning": "Denkt na",
   "blockTool": "{{name}}",
-  "blockRunning": "bezig…"
+  "blockRunning": "bezig…",
+  "showThinking": "Redenering",
+  "showThinkingHint": "Laat het model nadenken vóór het antwoordt en toon de redenering"
 }

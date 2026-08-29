@@ -32,5 +32,7 @@
   "anonNearLimit": "Ka kusa kai iyakar amfani ba tare da shiga ba. Yi rajista don samun rabo kyauta.",
   "blockReasoning": "Yana tunani",
   "blockTool": "{{name}}",
-  "blockRunning": "yana gudana…"
+  "blockRunning": "yana gudana…",
+  "showThinking": "Tunani",
+  "showThinkingHint": "Ka nemi samfurin ya yi tunani kafin amsa, kuma a nuna tunaninsa"
 }

@@ -32,5 +32,7 @@
   "anonNearLimit": "Está a aproximar-se do limite anónimo. Registe-se para obter uma alocação gratuita.",
   "blockReasoning": "A pensar",
   "blockTool": "{{name}}",
-  "blockRunning": "em execução…"
+  "blockRunning": "em execução…",
+  "showThinking": "Raciocínio",
+  "showThinkingHint": "Pedir ao modelo que pense antes de responder e mostrar o raciocínio"
 }

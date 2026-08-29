@@ -2138,3 +2138,33 @@ html[dir="rtl"] .hx-landing-composer textarea {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
 }
+
+/* Reasoning toggle in the composer. Sits with the send button rather
+ * than in a settings panel: it changes what the next message does, so it
+ * belongs where the message is written. */
+.hx-thinking-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0 0.5rem;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+.hx-thinking-toggle:hover {
+    color: var(--color-text);
+}
+.hx-thinking-toggle input {
+    margin: 0;
+    cursor: pointer;
+}
+/* Narrow screens: the composer is already tight, and the label is the
+ * expendable half — the checkbox still reads as a control. */
+@media (max-width: 30rem) {
+    .hx-thinking-toggle span {
+        display: none;
+    }
+}

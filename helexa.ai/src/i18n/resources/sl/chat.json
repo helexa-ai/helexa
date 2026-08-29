@@ -32,5 +32,7 @@
   "anonNearLimit": "Približujete se omejitvi za anonimne uporabnike. Registrirajte se za brezplačno dodelitev.",
   "blockReasoning": "Razmišlja",
   "blockTool": "{{name}}",
-  "blockRunning": "poteka…"
+  "blockRunning": "poteka…",
+  "showThinking": "Sklepanje",
+  "showThinkingHint": "Naj model pred odgovorom premisli in pokaže svoje sklepanje"
 }

@@ -32,5 +32,7 @@
   "anonNearLimit": "ወደ የስም-አልባ ተጠቃሚ ገደብ እየተቃረቡ ነው። ነፃ ድልድል ለማግኘት ይመዝገቡ።",
   "blockReasoning": "በማሰብ ላይ",
   "blockTool": "{{name}}",
-  "blockRunning": "በማስኬድ ላይ…"
+  "blockRunning": "በማስኬድ ላይ…",
+  "showThinking": "ማመዛዘን",
+  "showThinkingHint": "ሞዴሉ ከመመለሱ በፊት እንዲያስብ ጠይቅ፣ እና ማመዛዘኑን አሳይ"
 }

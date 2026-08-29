@@ -32,5 +32,7 @@
   "anonNearLimit": "أوشكت على بلوغ حد الاستخدام المجهول. أنشئ حسابًا للحصول على مخصّص مجاني.",
   "blockReasoning": "جارٍ التفكير",
   "blockTool": "{{name}}",
-  "blockRunning": "قيد التشغيل…"
+  "blockRunning": "قيد التشغيل…",
+  "showThinking": "التفكير",
+  "showThinkingHint": "اطلب من النموذج التفكير قبل الإجابة، واعرض تفكيره"
 }

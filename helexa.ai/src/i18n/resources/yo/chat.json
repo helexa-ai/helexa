@@ -32,5 +32,7 @@
   "anonNearLimit": "O ti fẹ́rẹ̀ẹ́ dé ààlà aláìlórúkọ. Forúkọsílẹ̀ fún ìpín ọ̀fẹ́.",
   "blockReasoning": "Ó ń ronú",
   "blockTool": "{{name}}",
-  "blockRunning": "ń ṣiṣẹ́…"
+  "blockRunning": "ń ṣiṣẹ́…",
+  "showThinking": "Ìrònú",
+  "showThinkingHint": "Béèrè pé kí àwòṣe náà ronú kí ó tó dáhùn, kí a sì fi ìrònú rẹ̀ hàn"
 }

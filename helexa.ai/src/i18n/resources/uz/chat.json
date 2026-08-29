@@ -32,5 +32,7 @@
   "anonNearLimit": "Anonim cheklovga yaqinlashyapsiz. Bepul kvota olish uchun roʻyxatdan oʻting.",
   "blockReasoning": "O‘ylanmoqda",
   "blockTool": "{{name}}",
-  "blockRunning": "bajarilmoqda…"
+  "blockRunning": "bajarilmoqda…",
+  "showThinking": "Mulohaza",
+  "showThinkingHint": "Modeldan javobdan oldin o‘ylashini so‘rang va mulohazasini ko‘rsating"
 }

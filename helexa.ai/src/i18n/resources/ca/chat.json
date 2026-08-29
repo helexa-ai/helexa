@@ -32,5 +32,7 @@
   "anonNearLimit": "Us acosteu al límit anònim. Registreu-vos per obtenir una assignació gratuïta.",
   "blockReasoning": "Pensant",
   "blockTool": "{{name}}",
-  "blockRunning": "en execució…"
+  "blockRunning": "en execució…",
+  "showThinking": "Raonament",
+  "showThinkingHint": "Demana al model que pensi abans de respondre i mostra'n el raonament"
 }

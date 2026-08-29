@@ -32,5 +32,7 @@
   "anonNearLimit": "Du nærmer deg den anonyme grensen. Registrer deg og få en gratis tildeling.",
   "blockReasoning": "Tenker",
   "blockTool": "{{name}}",
-  "blockRunning": "kjører…"
+  "blockRunning": "kjører…",
+  "showThinking": "Resonnement",
+  "showThinkingHint": "Be modellen tenke før den svarer, og vis resonnementet"
 }

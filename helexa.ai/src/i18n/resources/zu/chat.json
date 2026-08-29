@@ -32,5 +32,7 @@
   "anonNearLimit": "Usondela emkhawulweni wokungaziwa. Bhalisa ukuze uthole isabelo samahhala.",
   "blockReasoning": "Iyacabanga",
   "blockTool": "{{name}}",
-  "blockRunning": "iyasebenza…"
+  "blockRunning": "iyasebenza…",
+  "showThinking": "Ukucabanga",
+  "showThinkingHint": "Cela imodeli icabange ngaphambi kokuphendula, futhi ubonise ukucabanga kwayo"
 }

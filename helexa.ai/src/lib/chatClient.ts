@@ -49,6 +49,17 @@ export interface StreamOptions {
   messages: ChatMessage[];
   /** OpenAI tools array; omitted = no tools offered. */
   tools?: readonly unknown[];
+  /**
+   * Ask the model to reason, and to send that reasoning back.
+   *
+   * neuron couples generation to surfacing: unless a caller says it will
+   * display reasoning, `enable_thinking` defaults to false and the model
+   * produces none at all. That default is right — an undisplayed think
+   * block still eats the output budget — but it means the reasoning UI
+   * shows nothing until the client opts in. Verified against the live
+   * router: without this, `reasoning_tokens=0` on every request.
+   */
+  includeThinking?: boolean;
   signal: AbortSignal;
 }
 
@@ -84,6 +95,11 @@ export async function streamChatCompletion(
       accept: "text/event-stream",
     };
     if (opts.apiKey) headers.authorization = `Bearer ${opts.apiKey}`;
+    // Only sent when on. Absent means "naïve client", which is the
+    // server-side default and the behaviour every other OpenAI client
+    // gets — worth preserving exactly, since this toggle exists partly
+    // to demonstrate both paths.
+    if (opts.includeThinking) headers["x-include-thinking"] = "true";
     resp = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
       headers,

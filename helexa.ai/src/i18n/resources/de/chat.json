@@ -32,5 +32,7 @@
   "anonNearLimit": "Sie nähern sich dem anonymen Limit. Registrieren Sie sich für ein kostenloses Kontingent.",
   "blockReasoning": "Denkt nach",
   "blockTool": "{{name}}",
-  "blockRunning": "läuft…"
+  "blockRunning": "läuft…",
+  "showThinking": "Denkprozess",
+  "showThinkingHint": "Das Modell vor der Antwort nachdenken lassen und den Denkprozess anzeigen"
 }

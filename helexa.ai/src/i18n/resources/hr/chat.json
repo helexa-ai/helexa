@@ -32,5 +32,7 @@
   "anonNearLimit": "Približavate se anonimnom limitu. Registrirajte se za besplatnu kvotu.",
   "blockReasoning": "Razmišljanje",
   "blockTool": "{{name}}",
-  "blockRunning": "izvodi se…"
+  "blockRunning": "izvodi se…",
+  "showThinking": "Zaključivanje",
+  "showThinkingHint": "Zatraži da model razmisli prije odgovora i prikaži njegovo zaključivanje"
 }

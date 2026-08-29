@@ -32,5 +32,7 @@
   "anonNearLimit": "Анонимді шекке жақындап қалдыңыз. Тегін квота алу үшін тіркеліңіз.",
   "blockReasoning": "Ойлануда",
   "blockTool": "{{name}}",
-  "blockRunning": "орындалуда…"
+  "blockRunning": "орындалуда…",
+  "showThinking": "Пайымдау",
+  "showThinkingHint": "Жауап бермес бұрын модель ойлансын және пайымдауын көрсетсін"
 }

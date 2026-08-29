@@ -32,5 +32,7 @@
   "anonNearLimit": "Artėjate prie anoniminio naudojimo ribos. Užsiregistruokite ir gaukite nemokamą kvotą.",
   "blockReasoning": "Mąsto",
   "blockTool": "{{name}}",
-  "blockRunning": "vykdoma…"
+  "blockRunning": "vykdoma…",
+  "showThinking": "Samprotavimas",
+  "showThinkingHint": "Paprašyk modelio pamąstyti prieš atsakant ir rodyk jo samprotavimą"
 }

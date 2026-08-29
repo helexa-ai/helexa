@@ -32,5 +32,7 @@
   "anonNearLimit": "Blížite sa k anonymnému limitu. Zaregistrujte sa a získajte bezplatný prídel.",
   "blockReasoning": "Premýšľa",
   "blockTool": "{{name}}",
-  "blockRunning": "prebieha…"
+  "blockRunning": "prebieha…",
+  "showThinking": "Uvažovanie",
+  "showThinkingHint": "Nech model pred odpoveďou premýšľa a ukáže svoje uvažovanie"
 }

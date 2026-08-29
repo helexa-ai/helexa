@@ -32,5 +32,7 @@
   "anonNearLimit": "Anonim sınıra yaklaşıyorsunuz. Ücretsiz tahsisat için kaydolun.",
   "blockReasoning": "Düşünüyor",
   "blockTool": "{{name}}",
-  "blockRunning": "çalışıyor…"
+  "blockRunning": "çalışıyor…",
+  "showThinking": "Akıl yürütme",
+  "showThinkingHint": "Modelden yanıtlamadan önce düşünmesini iste ve akıl yürütmesini göster"
 }

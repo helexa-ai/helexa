@@ -32,5 +32,7 @@
   "anonNearLimit": "Te apropii de limita pentru utilizatori anonimi. Creează un cont pentru o alocare gratuită.",
   "blockReasoning": "Gândește",
   "blockTool": "{{name}}",
-  "blockRunning": "în curs…"
+  "blockRunning": "în curs…",
+  "showThinking": "Raționament",
+  "showThinkingHint": "Cere modelului să gândească înainte de a răspunde și arată raționamentul"
 }

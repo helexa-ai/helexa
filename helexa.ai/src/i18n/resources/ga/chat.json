@@ -32,5 +32,7 @@
   "anonNearLimit": "Tá tú ag druidim leis an teorainn gan ainm. Cláraigh le haghaidh leithdháileadh saor in aisce.",
   "blockReasoning": "Ag machnamh",
   "blockTool": "{{name}}",
-  "blockRunning": "ar siúl…"
+  "blockRunning": "ar siúl…",
+  "showThinking": "Réasúnaíocht",
+  "showThinkingHint": "Iarr ar an tsamhail machnamh a dhéanamh sula bhfreagraíonn sí, agus taispeáin é"
 }

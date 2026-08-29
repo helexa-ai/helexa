@@ -32,5 +32,7 @@
   "anonNearLimit": "Vous approchez de la limite anonyme. Inscrivez-vous pour obtenir une allocation gratuite.",
   "blockReasoning": "Réflexion",
   "blockTool": "{{name}}",
-  "blockRunning": "en cours…"
+  "blockRunning": "en cours…",
+  "showThinking": "Raisonnement",
+  "showThinkingHint": "Demander au modèle de réfléchir avant de répondre et afficher son raisonnement"
 }

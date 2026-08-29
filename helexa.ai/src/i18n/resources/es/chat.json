@@ -32,5 +32,7 @@
   "anonNearLimit": "Estás cerca del límite anónimo. Regístrate para obtener una asignación gratuita.",
   "blockReasoning": "Pensando",
   "blockTool": "{{name}}",
-  "blockRunning": "ejecutando…"
+  "blockRunning": "ejecutando…",
+  "showThinking": "Razonamiento",
+  "showThinkingHint": "Pide al modelo que piense antes de responder y muestra su razonamiento"
 }
