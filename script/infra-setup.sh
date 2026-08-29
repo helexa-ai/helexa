@@ -645,7 +645,11 @@ fi
 #
 # See the tracking issue; do not close the gap by adding syncs here.
 echo "==> ${svc_host}: syncing service configs"
-sync_config "${svc_host}" "${repo_path}/helexa-router.toml" /etc/helexa-router/helexa-router.toml
+# helexa-router.toml is NOT synced here any more — it is tracked and
+# deploy.yml's deploy-gallumbits job owns it (#287). Two writers for one
+# file is how the fleet ends up running something no commit describes,
+# and this file in particular spent long enough diverging to cost an
+# outage. If it needs changing, change it in the repo.
 # helexa-upstream.toml holds the session JWT secret, the SMTP submission
 # password (no-reply mail) and the database URL.
 sync_config "${svc_host}" "${repo_path}/helexa-upstream.toml" \

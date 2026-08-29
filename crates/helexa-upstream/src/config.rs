@@ -287,13 +287,42 @@ fn default_from_addr() -> String {
 impl UpstreamConfig {
     /// Load from a TOML file with `UPSTREAM_`-prefixed env overrides
     /// (`__` nesting separator).
+    ///
+    /// A sibling `secrets.toml`, if present, merges after the main file
+    /// and wins — see [`secrets_path`].
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Box<figment::Error>> {
+        let path = path.as_ref();
         Figment::new()
             .merge(Toml::file(path))
+            .merge(Toml::file(secrets_path(path)))
             .merge(Env::prefixed("UPSTREAM_").split("__"))
             .extract()
             .map_err(Box::new)
     }
+}
+
+/// `secrets.toml` beside the main config.
+///
+/// The main file holds structure and is deployed by CI; this one holds
+/// credentials, is written only by the operator, and is never read,
+/// written or diffed by the pipeline. Merging it last means the
+/// operator's value wins, so a deploy cannot swap a live credential for
+/// a placeholder.
+///
+/// The split exists because config CI cannot write is config no check
+/// can defend — `helexa-router.toml` was kept out of git for sitting
+/// beside secret-bearing files, and its stale alias then took a node
+/// down (2026-08-27). The answer is to separate secrets from structure,
+/// not to hand the pipeline the credentials.
+///
+/// A missing file is not an error: figment treats an absent
+/// `Toml::file` as an empty source, so existing single-file deployments
+/// keep working untouched.
+fn secrets_path(config: &Path) -> std::path::PathBuf {
+    config
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join("secrets.toml")
 }
 
 #[cfg(test)]

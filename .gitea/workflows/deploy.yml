@@ -59,6 +59,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: python3 script/check-config-consistency.py
+      # Two files describe one routing decision and nothing forced them
+      # to agree. On 2026-08-27 the router still aliased
+      # `helexa/balanced` to a model retired from the catalogue, so
+      # every web-chat turn evicted beast's resident flagship to
+      # cold-load it. Same shape as the check above (#252/#287).
+      - run: python3 script/check-alias-targets.py
 
   deploy-cortex:
     needs: [config-check]
@@ -694,6 +700,10 @@ jobs:
         || github.event.workflow_run.conclusion == 'success'
       }}
     steps:
+      # Needed since "Sync router config" reads helexa-router.toml out of
+      # the tree. This job managed without a checkout while it only ran
+      # package upgrades over ssh.
+      - uses: actions/checkout@v4
       - name: SSH init
         run: |
           mkdir -p ~/.ssh
@@ -760,6 +770,63 @@ jobs:
             sudo /usr/bin/systemctl enable --now "${pkg}.service"
           done
           DEPLOY
+
+      # Router config (#287). Tracked because it holds no secrets, and
+      # synced here because being untracked is what let its
+      # `helexa/balanced` alias keep pointing at a retired model until
+      # beast fell over on 2026-08-27.
+      #
+      # After the package step, deliberately: this needs a sudoers grant
+      # installed by the hand-run script/infra-setup.sh, so on a host that
+      # has not seen the current grants it fails — and a step that fails
+      # before the package work would hold the service binaries hostage to
+      # an unrelated permission. deploy-gallumbits has no dependent jobs,
+      # so the blast radius stops here either way.
+      #
+      # Restarts only on a digest change: the router re-reads its aliases
+      # at startup, and a needless restart drops in-flight federation
+      # requests.
+      - name: Sync router config
+        run: |
+          missing=""
+          probe() {
+            local what="$1"; shift
+            ssh gitea_ci@gallumbits.kosherinata.internal "$@" >/dev/null 2>&1 \
+              || missing="${missing}
+                - ${what}"
+          }
+          probe "sha256sum /etc/helexa-router/helexa-router.toml" \
+            'sudo -n /usr/bin/sha256sum /etc/helexa-router/helexa-router.toml'
+          probe "rsync -> /etc/helexa-router/helexa-router.toml" \
+            'sudo -nl /usr/bin/rsync -a x /etc/helexa-router/helexa-router.toml'
+          probe "systemctl restart helexa-router.service" \
+            'sudo -nl /usr/bin/systemctl restart helexa-router.service'
+          if [ -n "${missing}" ]; then
+            echo "FAIL: gitea_ci is missing sudoers grants on gallumbits:${missing}" >&2
+            echo "" >&2
+            echo "      Re-run 'script/infra-setup.sh' once from an operator shell to" >&2
+            echo "      install the current asset/sudoers.d/gallumbits-host.conf." >&2
+            exit 1
+          fi
+
+          local_sum=$(sha256sum helexa-router.toml | cut -d' ' -f1)
+          remote_sum=$(ssh gitea_ci@gallumbits.kosherinata.internal \
+            'sudo -n /usr/bin/sha256sum /etc/helexa-router/helexa-router.toml 2>/dev/null | cut -d" " -f1' || true)
+
+          if [ "${local_sum}" = "${remote_sum}" ]; then
+            echo "router config unchanged (${local_sum})"
+            exit 0
+          fi
+
+          echo "syncing helexa-router.toml: ${remote_sum:-<absent>} -> ${local_sum}"
+          rsync --archive --compress \
+            --chown root:root --chmod 0644 \
+            --rsync-path 'sudo rsync' \
+            helexa-router.toml \
+            gitea_ci@gallumbits.kosherinata.internal:/etc/helexa-router/helexa-router.toml
+          ssh gitea_ci@gallumbits.kosherinata.internal \
+            'sudo -n /usr/bin/systemctl restart helexa-router.service'
+          echo "helexa-router restarted on config change"
 
       - name: Ensure firewalld allows helexa-router + helexa-upstream + helexa-tools + helexa-angels
         run: |

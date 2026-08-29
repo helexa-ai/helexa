@@ -8,10 +8,23 @@ helexa.ai/.env.local
 *.swo
 .idea/
 .vscode/
+# Secret-bearing service configs. These carry API keys, a JWT secret, DB
+# passwords and SMTP credentials, so they are hand-synced by
+# script/infra-setup.sh rather than shipped by CI (#287 Gap 1).
+#
+# helexa-router.toml is deliberately NOT here: it holds no secrets, only
+# a listen address, the product-tier aliases and a mesh endpoint. It was
+# ignored by association, and that is precisely how its `helexa/balanced`
+# alias came to point at a retired model for long enough to take beast
+# down (2026-08-27). A file nothing can diff is a file nothing can catch.
+# Operator-owned credential layer, merged after the CI-deployed config
+# by cortex / helexa-upstream / helexa-angels. Must never be committed.
+secrets.toml
+**/secrets.toml
+
 cortex.toml
 doc/plan/*
 /target-cuda/
 .claude/
-helexa-router.toml
 helexa-upstream.toml
 helexa-angels.toml

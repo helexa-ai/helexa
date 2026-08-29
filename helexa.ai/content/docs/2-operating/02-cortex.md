@@ -44,6 +44,70 @@ change.
 VRAM fragmentation has had time to accumulate. It is a signal to restart
 that neuron, not an automatic action.
 
+## secrets.toml
+
+Credentials do not belong in the file CI deploys. Put them in a
+`secrets.toml` beside the main config and the service will merge it
+last, so its values win:
+
+```
+/etc/cortex/cortex.toml     structure — deployed by CI, safe to diff
+/etc/cortex/secrets.toml    credentials — yours, root-only, never in git
+```
+
+```toml
+# /etc/cortex/secrets.toml   (root:cortex 0640)
+[[entitlements.keys]]
+key = "sk-…"
+account_id = "acct-a"
+key_id = "a"
+
+[upstream]
+bearer = "…"
+```
+
+`helexa-upstream` and `helexa-angels` read a `secrets.toml` beside their
+own configs the same way — the DB URL, JWT secret and SMTP URL belong
+there.
+
+**An absent `secrets.toml` is not an error.** A single-file deployment
+keeps working exactly as before, so this is opt-in per host and can be
+adopted one service at a time.
+
+### Why bother
+
+Because a config CI cannot write is a config no check can defend, and
+the cost of that is not hypothetical. `helexa-router.toml` was kept out
+of git for sitting beside secret-bearing files. Nothing could diff it
+against the catalogue, so its `helexa/balanced` alias went on pointing
+at a model that had been retired — and since both models were
+deliberately given equal residency priority so they could displace each
+other, every authenticated chat turn evicted the resident flagship to
+cold-load the retired one. Four of those overlapped and the node ended
+up holding 32 GB of GPU memory with no model loaded and nothing
+serving.
+
+Splitting secrets from structure is what lets the structure be
+version-controlled, reviewed and checked. The ordering matters too: the
+operator's file merges last, so a deploy can never replace a live
+credential with a placeholder.
+
+### Moving existing secrets
+
+One-time, per host, and reversible — the service reads both files, so
+you can move a value and restart before moving the next:
+
+1. Create `secrets.toml` beside the config, owned `root:<service>` mode
+   `0640` (`0600` where the service runs as root).
+2. Move the credential blocks across. Leave everything else in place.
+3. Restart the service and confirm it still authenticates — for cortex,
+   a request with a real key should be billed rather than treated as
+   anonymous.
+4. Delete the moved lines from the main file only once step 3 passes.
+
+Until step 4 the value exists in both files, which is safe: the
+operator's copy wins.
+
 ## models.toml
 
 The catalogue says what each model needs and where it may run:
