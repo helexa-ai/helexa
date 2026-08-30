@@ -94,7 +94,7 @@ pub struct CandleHarnessConfig {
     /// configurable because the right values depend on the model and the
     /// hardware.
     #[serde(default)]
-    pub reasoning_budget: crate::harness::reasoning_budget::ReasoningBudgetLadder,
+    pub reasoning_budget: crate::harness::reasoning_budget::ReasoningBudgetConfig,
 
     /// Admission control (#53): bounds the per-model wait queue so a busy
     /// model returns a fast, retryable `429`/`503` instead of stalling new

@@ -13,40 +13,39 @@
 //!
 //! Two halves live here:
 //!
-//! - [`ReasoningBudget`] — how many reasoning tokens this request may
-//!   spend, resolved from whichever control the caller's wire format
-//!   gave them.
+//! - [`ReasoningBudgetConfig`] — the operator's single knob,
+//!   `answer_reserve_tokens`. The budget itself is derived per request
+//!   in `candle::requested_reasoning_budget` as
+//!   `declared_max_tokens − answer_reserve_tokens`, or taken verbatim
+//!   from `reasoning.max_tokens` when the caller sets one.
 //! - [`ReasoningGovernor`] — the per-request state that enforces it, by
 //!   substituting the model's own `</think>` token when the budget runs
 //!   out so generation transitions to answering instead of being cut off.
+//!
+//! **The budget does not depend on the effort level, and must not.**
+//! Effort reaches the model as a prompt instruction through its own chat
+//! template (`candle::apply_effort_kwarg`, #290); deriving a token cap
+//! from it as well is what told Qwen3.8-27B to reason at `xhigh` and
+//! then guillotined it at `medium`'s allowance. This module carried a
+//! per-rung table for that purpose until 2026-08-30; it had been dead
+//! since #290 and is gone. If you are looking for where `low` differs
+//! from `xhigh`, it is the rendered prompt, not a number here.
 
 use serde::{Deserialize, Serialize};
 
-/// Per-model mapping from an OpenAI effort level to a token budget.
+/// How much of a caller's output budget is held back for the answer.
 ///
-/// OpenAI-shaped clients cannot send a token count — pi-ai's vocabulary
-/// is the ladder `off | minimal | low | medium | high | xhigh | max` and
-/// nothing else — so the numbers have to live on the server. Operator
-/// configurable, because the right values depend on the model and the
-/// hardware; a derived default would be a guess baked into the binary.
+/// One field. It was a per-effort ladder until 2026-08-30 — see the
+/// module doc for why that was the wrong shape and why nothing read it.
+/// The name stays `[harness.candle.reasoning_budget]` on the wire so
+/// operator configs keep working; unknown keys are ignored, so a stale
+/// `medium = 12288` is harmless.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ReasoningBudgetLadder {
-    pub minimal: usize,
-    pub low: usize,
-    pub medium: usize,
-    pub high: usize,
-    /// `xhigh` and `max` are only offered by a client when the model
-    /// declares them; absent here means "not offered", and a request
-    /// naming one falls back to `high` rather than being rejected.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub xhigh: Option<usize>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max: Option<usize>,
+pub struct ReasoningBudgetConfig {
     /// Tokens of the caller's **own** output budget held back for the
     /// answer, when the caller names no explicit `reasoning.max_tokens`.
     ///
-    /// This is what an OpenAI-shaped client gets instead of the rungs
-    /// above, and it is deliberately not derived from effort. Effort is
+    /// Deliberately not derived from effort. Effort is
     /// a prompt instruction the model is trained to follow (#290);
     /// making it *also* set a guillotine is what told Qwen3.8-27B to
     /// reason at `xhigh` and then cut it off at `medium`'s 12,288.
@@ -69,7 +68,7 @@ fn default_answer_reserve() -> usize {
     4_096
 }
 
-impl Default for ReasoningBudgetLadder {
+impl Default for ReasoningBudgetConfig {
     /// Rungs sized against observed behaviour rather than round numbers:
     /// a long agentic design turn on this class of model runs to ~27k
     /// tokens, so `high` sits above that (bounded but rarely binding),
@@ -77,54 +76,8 @@ impl Default for ReasoningBudgetLadder {
     /// and `low` at the scale of a focused single-file change.
     fn default() -> Self {
         Self {
-            minimal: 1_024,
-            low: 4_096,
-            medium: 12_288,
-            high: 32_768,
-            xhigh: None,
-            max: None,
             answer_reserve_tokens: default_answer_reserve(),
         }
-    }
-}
-
-impl ReasoningBudgetLadder {
-    /// Resolve an effort level to a token budget.
-    ///
-    /// `none`/`off` are handled before this — they disable thinking
-    /// outright via the chat template — so they have no budget here.
-    /// An unrecognised level resolves to `None` (unbounded) rather than
-    /// to a guess: silently substituting a budget nobody asked for is
-    /// the failure mode this whole area has been full of.
-    pub fn for_effort(&self, effort: &str) -> Option<usize> {
-        match effort.trim().to_ascii_lowercase().as_str() {
-            "minimal" => Some(self.minimal),
-            "low" => Some(self.low),
-            "medium" => Some(self.medium),
-            "high" => Some(self.high),
-            "xhigh" => Some(self.xhigh.unwrap_or(self.high)),
-            "max" => Some(self.max.or(self.xhigh).unwrap_or(self.high)),
-            _ => None,
-        }
-    }
-
-    /// The mapping as a client should see it on `/v1/models` — the rungs
-    /// this deployment actually offers, so a caller picking `low` knows
-    /// what it bought instead of guessing (#274).
-    pub fn advertised(&self) -> Vec<(String, usize)> {
-        let mut out = vec![
-            ("minimal".to_string(), self.minimal),
-            ("low".to_string(), self.low),
-            ("medium".to_string(), self.medium),
-            ("high".to_string(), self.high),
-        ];
-        if let Some(v) = self.xhigh {
-            out.push(("xhigh".to_string(), v));
-        }
-        if let Some(v) = self.max {
-            out.push(("max".to_string(), v));
-        }
-        out
     }
 }
 
@@ -269,38 +222,6 @@ mod tests {
             assert_eq!(g.govern(t), t);
         }
         assert!(!g.forced(), "content after the block must not be governed");
-    }
-
-    #[test]
-    fn the_ladder_resolves_the_levels_clients_can_send() {
-        let l = ReasoningBudgetLadder::default();
-        assert_eq!(l.for_effort("minimal"), Some(1_024));
-        assert_eq!(l.for_effort("LOW"), Some(4_096));
-        assert_eq!(l.for_effort(" medium "), Some(12_288));
-        assert_eq!(l.for_effort("high"), Some(32_768));
-        // Not offered by default → falls back to high rather than
-        // rejecting a level the client was told it could send.
-        assert_eq!(l.for_effort("xhigh"), Some(32_768));
-        assert_eq!(l.for_effort("max"), Some(32_768));
-        // Unknown → unbounded, never a substituted guess.
-        assert_eq!(l.for_effort("enthusiastic"), None);
-        assert_eq!(l.for_effort("none"), None);
-    }
-
-    #[test]
-    fn the_advertised_ladder_lists_only_what_is_offered() {
-        let l = ReasoningBudgetLadder::default();
-        let names: Vec<_> = l.advertised().into_iter().map(|(k, _)| k).collect();
-        assert_eq!(names, ["minimal", "low", "medium", "high"]);
-        let l2 = ReasoningBudgetLadder {
-            xhigh: Some(49_152),
-            ..ReasoningBudgetLadder::default()
-        };
-        assert!(
-            l2.advertised()
-                .iter()
-                .any(|(k, v)| k == "xhigh" && *v == 49_152)
-        );
     }
 }
 

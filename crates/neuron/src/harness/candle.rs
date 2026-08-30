@@ -104,7 +104,7 @@ pub struct CandleHarness {
     context_limit_cfg: crate::config::ContextLimitConfig,
     /// Effort-level → reasoning-token rungs (#223), resolved per request
     /// so a caller can bound how long the model thinks.
-    reasoning_budget_cfg: super::reasoning_budget::ReasoningBudgetLadder,
+    reasoning_budget_cfg: super::reasoning_budget::ReasoningBudgetConfig,
     /// Admission-control settings (#53), used to build each loaded model's
     /// [`super::admission::AdmissionController`] at load time.
     admission_cfg: crate::config::AdmissionConfig,
@@ -614,12 +614,10 @@ impl LoadedImageModel {
 /// the four request-handling paths.
 /// The reasoning-token budget this request asked for, if any (#223).
 ///
-/// Three inlets converge on `extra.reasoning`: Anthropic's
-/// `thinking.budget_tokens` (normalised in translation), the explicit
-/// `reasoning.max_tokens` extension, and OpenAI's `reasoning.effort`
-/// ladder resolved against the operator's configured rungs. An explicit
-/// token count wins over a ladder rung — it is the more specific thing
-/// the caller reached for.
+/// Two inlets converge on `extra.reasoning`: Anthropic's
+/// `thinking.budget_tokens` (normalised in translation) and the explicit
+/// `reasoning.max_tokens` extension. `reasoning.effort` is deliberately
+/// **not** one of them — see below.
 ///
 /// An explicit `reasoning.max_tokens` wins. Failing that, the budget is
 /// the caller's own output budget less `answer_reserve_tokens`, so an
@@ -627,7 +625,9 @@ impl LoadedImageModel {
 /// gets an answer rather than a think block that eats the lot.
 ///
 /// Effort levels used to be mapped onto a token ladder here and enforced
-/// by force-injecting `</think>` at the limit. That made effort mean two
+/// by force-injecting `</think>` at the limit. That ladder was removed
+/// outright on 2026-08-30 — it had been unreachable since #290 and read
+/// as though effort still set a budget. That made effort mean two
 /// incompatible things at once: a prompt instruction to the model, and a
 /// guillotine applied to it. On `Qwen/Qwen3.8-27B` the model was told to
 /// reason at `xhigh` (the template default, because the caller's effort
@@ -647,7 +647,7 @@ impl LoadedImageModel {
 /// the output cap bite than to emit a stub).
 fn requested_reasoning_budget(
     request: &ChatCompletionRequest,
-    ladder: &super::reasoning_budget::ReasoningBudgetLadder,
+    cfg: &super::reasoning_budget::ReasoningBudgetConfig,
     max_new: usize,
 ) -> Option<usize> {
     if let Some(explicit) = request
@@ -659,7 +659,7 @@ fn requested_reasoning_budget(
     {
         return Some(explicit as usize);
     }
-    let reserve = ladder.answer_reserve_tokens;
+    let reserve = cfg.answer_reserve_tokens;
     if reserve == 0 || reserve >= max_new {
         return None;
     }
@@ -7693,29 +7693,36 @@ mod tests {
     /// does not vary with effort.
     #[test]
     fn effort_no_longer_selects_a_rungs_token_budget() {
-        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
-        let medium = requested_reasoning_budget(&req_with_effort(Some("medium")), &ladder, 32_768);
-        let xhigh = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768);
+        let cfg = super::super::reasoning_budget::ReasoningBudgetConfig::default();
+        let medium = requested_reasoning_budget(&req_with_effort(Some("medium")), &cfg, 32_768);
+        let xhigh = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &cfg, 32_768);
         assert_eq!(medium, xhigh, "the bound must not depend on effort");
+        // 12,288 was `medium`'s rung in the cfg this replaced. The
+        // literal is the point: if a future change reintroduces a
+        // per-effort budget, this is the number it would land on.
         assert_ne!(
             medium,
-            Some(ladder.medium),
-            "medium must not become a {}-token guillotine",
-            ladder.medium
+            Some(12_288),
+            "medium must not become a 12288-token guillotine"
+        );
+        assert_eq!(
+            medium,
+            Some(32_768 - cfg.answer_reserve_tokens),
+            "the bound is the caller's budget less the answer reserve"
         );
     }
 
     /// The regression this reserve exists to prevent (#223, reopened by
     /// #290): an OpenAI-shaped client cannot send `reasoning.max_tokens`,
-    /// so removing the effort→ladder mapping left it with no bound at
+    /// so removing the effort→cfg mapping left it with no bound at
     /// all. Qwen3.8-27B then spent the entire 32,768-token budget
     /// thinking and returned no answer — twice, on real sessions.
     #[test]
     fn a_caller_that_names_no_budget_still_keeps_room_to_answer() {
-        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
-        let budget = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768)
+        let cfg = super::super::reasoning_budget::ReasoningBudgetConfig::default();
+        let budget = requested_reasoning_budget(&req_with_effort(Some("xhigh")), &cfg, 32_768)
             .expect("an unbounded think block is what broke");
-        assert_eq!(budget, 32_768 - ladder.answer_reserve_tokens);
+        assert_eq!(budget, 32_768 - cfg.answer_reserve_tokens);
         assert!(
             budget < 32_768,
             "some of the caller's own budget must survive for the answer"
@@ -7726,12 +7733,12 @@ mod tests {
     /// for, so it wins over the reserve in both directions.
     #[test]
     fn an_explicit_max_tokens_still_wins() {
-        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
+        let cfg = super::super::reasoning_budget::ReasoningBudgetConfig::default();
         let mut req = req_with_effort(None);
         if let serde_json::Value::Object(o) = &mut req.extra {
             o.insert("reasoning".into(), serde_json::json!({ "max_tokens": 500 }));
         }
-        assert_eq!(requested_reasoning_budget(&req, &ladder, 32_768), Some(500));
+        assert_eq!(requested_reasoning_budget(&req, &cfg, 32_768), Some(500));
 
         // Above the reserve-derived value, too — not clamped to it.
         if let serde_json::Value::Object(o) = &mut req.extra {
@@ -7740,30 +7747,23 @@ mod tests {
                 serde_json::json!({ "max_tokens": 31_000 }),
             );
         }
-        assert_eq!(
-            requested_reasoning_budget(&req, &ladder, 32_768),
-            Some(31_000)
-        );
+        assert_eq!(requested_reasoning_budget(&req, &cfg, 32_768), Some(31_000));
     }
 
     /// Reserving from a budget too small to think in would emit a stub.
     /// Better to think freely and let the output cap bite.
     #[test]
     fn a_budget_smaller_than_the_reserve_stays_unbounded() {
-        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder::default();
-        for max_new in [0, 1, ladder.answer_reserve_tokens] {
+        let cfg = super::super::reasoning_budget::ReasoningBudgetConfig::default();
+        for max_new in [0, 1, cfg.answer_reserve_tokens] {
             assert_eq!(
-                requested_reasoning_budget(&req_with_effort(None), &ladder, max_new),
+                requested_reasoning_budget(&req_with_effort(None), &cfg, max_new),
                 None,
                 "max_new={max_new} must not produce a bound"
             );
         }
         assert_eq!(
-            requested_reasoning_budget(
-                &req_with_effort(None),
-                &ladder,
-                ladder.answer_reserve_tokens + 1
-            ),
+            requested_reasoning_budget(&req_with_effort(None), &cfg, cfg.answer_reserve_tokens + 1),
             Some(1),
             "one token above the reserve is the first bounded case"
         );
@@ -7773,12 +7773,11 @@ mod tests {
     /// thing creating a bound.
     #[test]
     fn a_zero_reserve_restores_unbounded_reasoning() {
-        let ladder = super::super::reasoning_budget::ReasoningBudgetLadder {
+        let cfg = super::super::reasoning_budget::ReasoningBudgetConfig {
             answer_reserve_tokens: 0,
-            ..Default::default()
         };
         assert_eq!(
-            requested_reasoning_budget(&req_with_effort(Some("xhigh")), &ladder, 32_768),
+            requested_reasoning_budget(&req_with_effort(Some("xhigh")), &cfg, 32_768),
             None
         );
     }
@@ -7890,7 +7889,7 @@ mod tests {
     #[test]
     fn the_reasoning_budget_resolves_from_every_inlet() {
         use cortex_core::openai::{ChatCompletionRequest, MessageContent};
-        let ladder = crate::harness::reasoning_budget::ReasoningBudgetLadder::default();
+        let cfg = crate::harness::reasoning_budget::ReasoningBudgetConfig::default();
         let req = |extra: serde_json::Value| ChatCompletionRequest {
             model: "m".into(),
             messages: vec![],
@@ -7912,14 +7911,14 @@ mod tests {
         // Every case below shares one output budget, so the only thing
         // that varies is the caller's reasoning control.
         const OUT: usize = 32_768;
-        let reserved = OUT - ladder.answer_reserve_tokens;
+        let reserved = OUT - cfg.answer_reserve_tokens;
 
         // Explicit count — also the shape Anthropic's `budget_tokens`
         // is normalised into during translation.
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"max_tokens": 5000}})),
-                &ladder,
+                &cfg,
                 OUT
             ),
             Some(5000)
@@ -7932,7 +7931,7 @@ mod tests {
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "medium"}})),
-                &ladder,
+                &cfg,
                 OUT
             ),
             Some(reserved)
@@ -7941,7 +7940,7 @@ mod tests {
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "low", "max_tokens": 999}})),
-                &ladder,
+                &cfg,
                 OUT
             ),
             Some(999)
@@ -7950,7 +7949,7 @@ mod tests {
         // is the case pi sends, and the one that returned no answer at
         // all while it was unbounded.
         assert_eq!(
-            requested_reasoning_budget(&req(serde_json::json!({})), &ladder, OUT),
+            requested_reasoning_budget(&req(serde_json::json!({})), &cfg, OUT),
             Some(reserved)
         );
         // `none` disables thinking via the template, so the governor
@@ -7958,7 +7957,7 @@ mod tests {
         assert_eq!(
             requested_reasoning_budget(
                 &req(serde_json::json!({"reasoning": {"effort": "none"}})),
-                &ladder,
+                &cfg,
                 OUT
             ),
             Some(reserved)
