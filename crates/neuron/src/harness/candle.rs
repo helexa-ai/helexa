@@ -513,11 +513,21 @@ impl LoadedHandle {
             LoadedHandle::Image(_) => return None,
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
+        // The KV budget admission will actually grant. Advertising past
+        // it hands a client a context it can only discover is a lie by
+        // hitting `413 prompt_too_long_for_vram` mid-session.
+        let kv_budget_mb = match self {
+            LoadedHandle::Single(m) => m.admission.kv_budget_mb(),
+            #[cfg(feature = "cuda")]
+            LoadedHandle::Tp(m) => m.admission.kv_budget_mb(),
+            LoadedHandle::Image(_) => unreachable!("derived_limit returned above"),
+        };
         let limit = super::context_limit::derive_limit(
             &profile,
             free_mb,
             rate,
             max_prompt_tokens_clamp(),
+            kv_budget_mb,
             cfg,
         );
         // Refresh the request-path enforcement cap (#67 phase 5b): the
@@ -8741,7 +8751,8 @@ mod tests {
         let cfg = crate::config::ContextLimitConfig::default();
         let profile = backstop_profile();
 
-        let limit = super::super::context_limit::derive_limit(&profile, 40_000, 800.0, None, &cfg);
+        let limit =
+            super::super::context_limit::derive_limit(&profile, 40_000, 800.0, None, 0, &cfg);
         let cap = limit.input.expect("input budget derived");
         assert_eq!(cap, 87_040);
 
