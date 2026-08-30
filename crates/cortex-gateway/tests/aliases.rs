@@ -13,27 +13,56 @@ use cortex_gateway::state::CortexState;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::net::TcpListener;
 
-/// Write a `models.toml` with one alias to a unique temp path. Returns
-/// the path; the file persists for the test process and gets reaped by
-/// the OS at exit. Using $XDG_RUNTIME_DIR fallback for the temp dir
-/// keeps the file off shared /tmp on CI without pulling in tempfile.
+/// Write a `models.toml` with one alias into a directory of its own
+/// under the system temp dir, and prove the bytes landed before
+/// returning. The file is reaped by the OS at exit.
+///
+/// Each call gets its own directory rather than a distinct filename in
+/// a shared one. Two things make that worth the extra syscall:
+///
+/// - The tests in this file run concurrently in one binary and write
+///   *different* alias tables. A shared name is one collision away from
+///   a test loading another's catalogue.
+/// - The failure is silent. `ModelCatalogue::load` maps a missing,
+///   unreadable, unparseable **or empty** file onto an empty catalogue,
+///   and `resolve_alias` then returns the alias unchanged — so the
+///   mismatch surfaces at whatever assertion happens to touch it, tens
+///   of lines from the cause. Observed on CI 2026-08-30 as
+///   `left: "helexa/small", right: "test-model"` while the same commit
+///   passed on its branch and 60/60 locally.
+///
+/// The read-back is for the same reason: an empty catalogue is
+/// indistinguishable from a catalogue that never loaded, so a test may
+/// not simply assume its fixture is on disk.
 fn write_models_toml(alias: &str, target: &str) -> PathBuf {
+    static SEQ: AtomicU32 = AtomicU32::new(0);
     let contents = format!(
         r#"
 [aliases]
 "{alias}" = "{target}"
 "#
     );
-    let mut path = std::env::temp_dir();
+    let mut dir = std::env::temp_dir();
     let pid = std::process::id();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    path.push(format!("cortex-test-models-{pid}-{now}.toml"));
-    std::fs::write(&path, contents).expect("write temp models.toml");
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    dir.push(format!("cortex-test-models-{pid}-{now}-{seq}"));
+    std::fs::create_dir_all(&dir).expect("create temp catalogue dir");
+    let path = dir.join("models.toml");
+    std::fs::write(&path, &contents).expect("write temp models.toml");
+    let seen = std::fs::read_to_string(&path).expect("read back temp models.toml");
+    assert_eq!(
+        seen,
+        contents,
+        "temp catalogue did not round-trip at {}",
+        path.display()
+    );
     path
 }
 
