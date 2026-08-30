@@ -283,7 +283,8 @@ const DEFAULT_OUTPUT_CEILING: usize = 32_768;
 /// output_ceiling = min(max_output_tokens, max_position_embeddings)
 /// vram_ceiling       = (free_tightest − activation_headroom − min_free_floor) / kv_bytes_per_token_per_card
 /// throughput_ceiling = target_prefill_latency_secs × prefill_tok_per_sec
-/// context = min(max_position_embeddings, vram_ceiling, throughput_ceiling) [clamped by `hard_ceiling` if set]
+/// kv_ceiling         = kv_budget_mb × 1 MiB / kv_bytes_per_token_per_card
+/// context = min(max_position_embeddings, vram_ceiling, throughput_ceiling, kv_ceiling) [clamped by `hard_ceiling` if set]
 /// input   = context − output
 /// ```
 ///
@@ -294,6 +295,23 @@ const DEFAULT_OUTPUT_CEILING: usize = 32_768;
 /// `hard_ceiling` is an optional clamp-only backstop
 /// (`NEURON_MAX_PROMPT_TOKENS` or a catalogue override); `None` = no clamp.
 ///
+/// `kv_budget_mb` is what admission will actually hand out
+/// ([`kv_reservation_mb`](super::candle::kv_reservation_mb) prices every
+/// request against it). Without this term the advertisement and the
+/// admission gate answer "how long a prompt fits" independently, and
+/// they disagree: measured on beast 2026-08-30, a 3689 MiB budget holds
+/// 118,048 tokens at 32 KiB/token/card while the advertised context was
+/// the model's full 131,072 — so a client that believed the
+/// advertisement filled to it and got a hard `413
+/// prompt_too_long_for_vram` with no compaction path. `0` means the
+/// budget is not published yet (pre-load, or CPU) → no clamp, matching
+/// the `free_tightest_mb == 0` sentinel above.
+///
+/// Note this bounds the *whole* sequence. A caller that intends to
+/// request `output_ceiling` output must plan against `context − its own
+/// declared output`, not against `input`: `input` is `context − output`
+/// for the default reserve, which is the only output size it can know.
+///
 /// `reasoning`: `input = context − output` keeps a generation reserve
 /// below the wall; `output` (the reserve) is a *sub-budget* of context,
 /// matching opencode's compaction model.
@@ -302,6 +320,7 @@ pub fn derive_limit(
     free_tightest_mb: u64,
     prefill_tok_per_sec: f64,
     hard_ceiling: Option<usize>,
+    kv_budget_mb: u64,
     cfg: &ContextLimitConfig,
 ) -> ModelLimit {
     let output = cfg.output_reserve_tokens;
@@ -335,10 +354,20 @@ pub fn derive_limit(
     };
     let throughput_ceiling = (cfg.target_prefill_latency_secs * tok_per_sec).max(0.0) as usize;
 
+    // Admission ceiling — what the KV gate will actually grant. Zero is
+    // the "not published yet" sentinel (pre-load, CPU) and imposes no
+    // ceiling, like `free_tightest_mb` above.
+    let kv_ceiling = if kv_budget_mb == 0 || profile.kv_bytes_per_token_per_card == 0 {
+        usize::MAX
+    } else {
+        (kv_budget_mb.saturating_mul(1024 * 1024) / profile.kv_bytes_per_token_per_card) as usize
+    };
+
     let mut context = profile
         .max_position_embeddings
         .min(vram_ceiling)
-        .min(throughput_ceiling);
+        .min(throughput_ceiling)
+        .min(kv_ceiling);
     if let Some(clamp) = hard_ceiling {
         context = context.min(clamp);
     }
@@ -355,6 +384,8 @@ pub fn derive_limit(
         prefill_tok_per_sec = tok_per_sec,
         vram_ceiling,
         throughput_ceiling,
+        kv_budget_mb,
+        kv_ceiling,
         ?hard_ceiling,
         context,
         "derive_limit"
@@ -453,7 +484,7 @@ mod tests {
             kv_bytes_per_token_per_card: 65_536,
             world_size: 2,
         };
-        let limit = derive_limit(&profile, 0, 0.0, None, &cfg);
+        let limit = derive_limit(&profile, 0, 0.0, None, 0, &cfg);
         assert_eq!(limit.output, cfg.output_reserve_tokens, "reserve unchanged");
         assert_eq!(limit.output_ceiling, DEFAULT_OUTPUT_CEILING);
         assert!(limit.output_ceiling > limit.output);
@@ -469,8 +500,52 @@ mod tests {
             kv_bytes_per_token_per_card: 65_536,
             world_size: 1,
         };
-        let limit = derive_limit(&profile, 0, 0.0, None, &cfg);
+        let limit = derive_limit(&profile, 0, 0.0, None, 0, &cfg);
         assert_eq!(limit.output_ceiling, 16_384);
+    }
+
+    /// The advertisement may not promise a context the KV gate will
+    /// refuse. Numbers are the live beast measurement (2026-08-30): a
+    /// 3689 MiB budget at 32 KiB/token/card holds 118,048 tokens, while
+    /// the model's own position limit is 131,072. Before this clamp the
+    /// node advertised 131,072, pi filled a session to 90,432 prompt
+    /// tokens believing it, and the turn died on a hard 413.
+    #[test]
+    fn the_context_never_exceeds_what_admission_will_grant() {
+        let cfg = ContextLimitConfig::default();
+        let profile = ContextProfile {
+            max_position_embeddings: 131_072,
+            kv_bytes_per_token_per_card: 32_768,
+            world_size: 2,
+        };
+        // Roomy VRAM and a fast card, so only the KV budget can bind.
+        let limit = derive_limit(&profile, 60_000, 100_000.0, None, 3689, &cfg);
+        let context = limit.context;
+        assert!(
+            context <= 118_048,
+            "advertised {context} tokens against a budget holding 118,048"
+        );
+        assert_eq!(context, 117_760, "118,048 rounded down to the 1024 grid");
+
+        // A caller planning against the advertised ceiling must fit too:
+        // it subtracts its own declared output from `context`.
+        let ceiling = limit.output_ceiling;
+        assert!(context.saturating_sub(ceiling) <= 118_048 - ceiling);
+    }
+
+    /// Zero is "not published yet" (pre-load, or a CPU load), not "no
+    /// room" — the same sentinel `free_tightest_mb` uses. Collapsing the
+    /// limit to zero there would unadvertise every model on startup.
+    #[test]
+    fn an_unpublished_kv_budget_imposes_no_ceiling() {
+        let cfg = ContextLimitConfig::default();
+        let with_budget = derive_limit(&beast_profile(), 9254, 8500.0, None, 3689, &cfg);
+        let without = derive_limit(&beast_profile(), 9254, 8500.0, None, 0, &cfg);
+        assert!(
+            without.context >= with_budget.context,
+            "the sentinel must not bind tighter than a real budget"
+        );
+        assert!(without.context > 0);
     }
 
     /// The operator's number wins, which is what makes the default a
@@ -487,7 +562,7 @@ mod tests {
             world_size: 2,
         };
         assert_eq!(
-            derive_limit(&profile, 0, 0.0, None, &cfg).output_ceiling,
+            derive_limit(&profile, 0, 0.0, None, 0, &cfg).output_ceiling,
             65_536
         );
     }
@@ -504,10 +579,10 @@ mod tests {
             kv_bytes_per_token_per_card: 65_536,
             world_size: 2,
         };
-        let roomy = derive_limit(&profile, 60_000, 5_000.0, None, &cfg);
+        let roomy = derive_limit(&profile, 60_000, 5_000.0, None, 0, &cfg);
         // Tight enough that the VRAM term binds — the same shape as the
         // fleet advertising 109568 one hour and 131072 the next.
-        let tight = derive_limit(&profile, 6_000, 5_000.0, None, &cfg);
+        let tight = derive_limit(&profile, 6_000, 5_000.0, None, 0, &cfg);
         assert!(
             tight.context < roomy.context,
             "the live window should shrink under VRAM pressure"
@@ -543,7 +618,7 @@ mod tests {
         // VRAM ceiling on beast pre-#11. VRAM (~9.2 GB free) allows far
         // more, max_position_embeddings is 262144, so throughput wins.
         let cfg = ContextLimitConfig::default();
-        let limit = derive_limit(&beast_profile(), 9254, 850.0, None, &cfg);
+        let limit = derive_limit(&beast_profile(), 9254, 850.0, None, 0, &cfg);
         // 120 × 850 = 102000 → rounded down to 1024 → 101376.
         assert_eq!(limit.context, 101376);
         assert_eq!(limit.output, 8192);
@@ -556,8 +631,8 @@ mod tests {
         // Prefix caching (#11) speeds effective prefill → ceiling rises,
         // eventually pinned by VRAM / max_position_embeddings.
         let cfg = ContextLimitConfig::default();
-        let slow = derive_limit(&beast_profile(), 9254, 850.0, None, &cfg);
-        let fast = derive_limit(&beast_profile(), 9254, 8500.0, None, &cfg);
+        let slow = derive_limit(&beast_profile(), 9254, 850.0, None, 0, &cfg);
+        let fast = derive_limit(&beast_profile(), 9254, 8500.0, None, 0, &cfg);
         assert!(fast.context > slow.context);
     }
 
@@ -565,8 +640,8 @@ mod tests {
     fn tighter_vram_lowers_the_limit() {
         // Same model, less free VRAM → VRAM ceiling binds below throughput.
         let cfg = ContextLimitConfig::default();
-        let roomy = derive_limit(&beast_profile(), 9254, 8500.0, None, &cfg);
-        let tight = derive_limit(&beast_profile(), 2600, 8500.0, None, &cfg);
+        let roomy = derive_limit(&beast_profile(), 9254, 8500.0, None, 0, &cfg);
+        let tight = derive_limit(&beast_profile(), 2600, 8500.0, None, 0, &cfg);
         assert!(tight.context < roomy.context);
     }
 
@@ -574,10 +649,10 @@ mod tests {
     fn hard_ceiling_clamps_only_downward() {
         let cfg = ContextLimitConfig::default();
         // A backstop below the derived value clamps it.
-        let clamped = derive_limit(&beast_profile(), 9254, 8500.0, Some(49152), &cfg);
+        let clamped = derive_limit(&beast_profile(), 9254, 8500.0, Some(49152), 0, &cfg);
         assert_eq!(clamped.context, 49152);
         // A backstop above the derived value is a no-op.
-        let unclamped = derive_limit(&beast_profile(), 9254, 850.0, Some(200000), &cfg);
+        let unclamped = derive_limit(&beast_profile(), 9254, 850.0, Some(200000), 0, &cfg);
         assert_eq!(unclamped.context, 101376);
     }
 
@@ -629,7 +704,7 @@ mod tests {
             world_size: 1,
         };
         let cfg = ContextLimitConfig::default();
-        let limit = derive_limit(&profile, 8000, 8500.0, None, &cfg);
+        let limit = derive_limit(&profile, 8000, 8500.0, None, 0, &cfg);
         // max_position_embeddings (32768) binds below throughput (~1.02M).
         assert_eq!(limit.context, 32768);
     }

@@ -320,6 +320,22 @@ mod tests {
 /// requests queue on bytes. That is consistent with "issues" but is not
 /// evidence of them; #305's turn is a candidate to instrument.
 ///
+/// **2026-08-30: that account is now contradicted, and the constant
+/// below did not hold.** A controlled A/B/C on this host reproduced the
+/// defect at `max_in_flight = 2` with `in_flight == 1` — the very
+/// configuration this function calls safe — while the `medium` arm at
+/// `max_in_flight = 8` was clean. Concurrency does not predict it.
+/// Neither does the GatedDeltaNet bf16 state round-trip (#284):
+/// `NEURON_GDN_STATE_F32=1` changed neither the defect rate nor its
+/// class on a run matched to within 0.2% on the opening generation.
+/// What both `xhigh` arms produced was a read against the wrong
+/// receiver with the correct one in scope on an adjacent line
+/// (`tw.damage` for `def.damage`; `1 - slowPct` for `slowPct / 100`) —
+/// the same shape as #305's `<parameter=` for `<function=`. The
+/// mechanism remains unisolated; this is still a precaution, and the
+/// evidence now says it is very likely guarding the wrong variable.
+/// Do not read the number below as a diagnosis.
+///
 /// Availability is advertised, never enforced. The request path does not
 /// reject an unavailable rung — a caller that insists still gets it. The
 /// point is to keep a UI from offering an option that will serve someone
