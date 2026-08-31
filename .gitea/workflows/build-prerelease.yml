@@ -564,6 +564,18 @@ jobs:
       # escalating to a slower uncached rebuild. The cache covers the
       # ~600-crate host-side dep tree (the bulk of the 10-14 min build),
       # shared across all three flavours, so even one run seeds the next.
+      # candle-flash-attn's build script clones CUTLASS from GitHub, and the
+      # runners are one VM per job so that cache starts empty every time.
+      # A burst of concurrent CUDA jobs is enough to start getting refused
+      # ("could not read Username for 'https://github.com'"), which fails a
+      # long job on a transient rate limit. Seed the cache first, with the
+      # retries the build script does not have. Both commands are
+      # best-effort: on failure the build proceeds exactly as it would have
+      # and reports the authoritative error itself.
+      - name: Seed the CUTLASS checkout
+        run: |
+          cargo fetch || true
+          script/seed-cutlass.sh
       - name: Build neuron with CUDA (${{ matrix.flavour }})
         run: |
           export PATH="${{ matrix.cuda_home }}/bin:${PATH}"
