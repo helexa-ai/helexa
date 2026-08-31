@@ -15,8 +15,35 @@ use std::path::{Path, PathBuf};
 pub const DEFAULT_SOURCE_SCHEME: &str = "huggingface";
 
 /// Endpoint URL for the default huggingface source, used when no
-/// `[harness.candle.sources.huggingface]` is configured.
+/// `[harness.candle.sources.huggingface]` is configured and no
+/// `HF_ENDPOINT` is set in the environment.
 pub const DEFAULT_HF_ENDPOINT: &str = "https://huggingface.co";
+
+/// The ecosystem-standard environment variable for redirecting HF
+/// traffic at a mirror.
+pub const HF_ENDPOINT_ENV: &str = "HF_ENDPOINT";
+
+/// Resolve the endpoint for the synthesised `huggingface` source.
+///
+/// `hf-hub` only consults `HF_ENDPOINT` from `ApiBuilder::from_env()`,
+/// and we build with `ApiBuilder::new()` and then set the endpoint
+/// explicitly from config — so without this the variable is read by
+/// nobody and an operator who sets it gets canonical huggingface.co
+/// anyway, silently. Honouring it here keeps that from being a trap.
+///
+/// Precedence is explicit config > `HF_ENDPOINT` > `huggingface.co`;
+/// this function covers the last two, since an operator-supplied
+/// `[harness.candle.sources.huggingface]` block is never overwritten.
+///
+/// Blank or whitespace-only values count as unset, and a trailing
+/// slash is trimmed — `hf-hub` interpolates `{endpoint}/{repo}/...`,
+/// so `https://rf.internal/` would otherwise produce a doubled slash.
+pub fn resolve_hf_endpoint(from_env: Option<String>) -> String {
+    match from_env {
+        Some(raw) if !raw.trim().is_empty() => raw.trim().trim_end_matches('/').to_string(),
+        _ => DEFAULT_HF_ENDPOINT.to_string(),
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeuronConfig {
@@ -67,9 +94,14 @@ pub struct CandleHarnessConfig {
     /// directory.
     ///
     /// When absent or missing the `huggingface` key, the loader
-    /// synthesises a `huggingface` entry pointing at
-    /// `https://huggingface.co` with `hf_cache` (above) as its
-    /// cache_dir. This keeps single-source configs ergonomic.
+    /// synthesises a `huggingface` entry with `hf_cache` (above) as its
+    /// cache_dir, pointing at `HF_ENDPOINT` if that is set in the
+    /// environment and `https://huggingface.co` otherwise. This keeps
+    /// single-source configs ergonomic, and lets a whole host be
+    /// redirected at a mirror with one environment variable.
+    ///
+    /// An entry written here always wins over `HF_ENDPOINT` — an
+    /// operator who has typed a sources block means it.
     #[serde(default)]
     pub sources: HashMap<String, SourceConfig>,
 
@@ -450,10 +482,22 @@ impl CandleHarnessConfig {
     /// (operator-typed) config can still be serialized back to TOML
     /// for diagnostics.
     pub fn effective_sources(&self) -> HashMap<String, SourceConfig> {
+        self.effective_sources_with_hf_endpoint(resolve_hf_endpoint(
+            std::env::var(HF_ENDPOINT_ENV).ok(),
+        ))
+    }
+
+    /// [`Self::effective_sources`] with the huggingface endpoint passed
+    /// in, so the precedence rules are testable without mutating
+    /// process-wide environment state from a parallel test runner.
+    pub fn effective_sources_with_hf_endpoint(
+        &self,
+        hf_endpoint: String,
+    ) -> HashMap<String, SourceConfig> {
         let mut out = self.sources.clone();
         out.entry(DEFAULT_SOURCE_SCHEME.to_string())
             .or_insert_with(|| SourceConfig {
-                endpoint: DEFAULT_HF_ENDPOINT.to_string(),
+                endpoint: hf_endpoint,
                 auth_env: Some("HF_TOKEN".to_string()),
                 cache_dir: self.hf_cache.clone(),
             });
@@ -597,5 +641,64 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(cfg.effective_default_source(), "helexa");
+    }
+
+    #[test]
+    fn hf_endpoint_env_redirects_the_synthesised_source() {
+        let cfg = CandleHarnessConfig::default();
+        let sources = cfg.effective_sources_with_hf_endpoint(resolve_hf_endpoint(Some(
+            "https://rf.internal".to_string(),
+        )));
+        assert_eq!(sources["huggingface"].endpoint, "https://rf.internal");
+        // The token still comes from HF_TOKEN, so a mirror requiring
+        // auth works without further config.
+        assert_eq!(sources["huggingface"].auth_env.as_deref(), Some("HF_TOKEN"));
+    }
+
+    /// Explicit config beats the environment. An operator who has
+    /// written a sources block means it.
+    #[test]
+    fn explicit_source_config_wins_over_hf_endpoint_env() {
+        let cfg = CandleHarnessConfig {
+            sources: HashMap::from([(
+                "huggingface".to_string(),
+                SourceConfig {
+                    endpoint: "https://pinned.example.org".into(),
+                    ..Default::default()
+                },
+            )]),
+            ..Default::default()
+        };
+        let sources = cfg.effective_sources_with_hf_endpoint(resolve_hf_endpoint(Some(
+            "https://rf.internal".to_string(),
+        )));
+        assert_eq!(
+            sources["huggingface"].endpoint,
+            "https://pinned.example.org"
+        );
+    }
+
+    #[test]
+    fn hf_endpoint_falls_back_to_canonical_when_unset_or_blank() {
+        assert_eq!(resolve_hf_endpoint(None), DEFAULT_HF_ENDPOINT);
+        assert_eq!(
+            resolve_hf_endpoint(Some(String::new())),
+            DEFAULT_HF_ENDPOINT
+        );
+        assert_eq!(resolve_hf_endpoint(Some("   ".into())), DEFAULT_HF_ENDPOINT);
+    }
+
+    /// hf-hub interpolates `{endpoint}/{repo}/resolve/...`, so a
+    /// trailing slash would produce a doubled one in every URL.
+    #[test]
+    fn hf_endpoint_trailing_slash_is_trimmed() {
+        assert_eq!(
+            resolve_hf_endpoint(Some("https://rf.internal/".into())),
+            "https://rf.internal"
+        );
+        assert_eq!(
+            resolve_hf_endpoint(Some("  https://rf.internal//  ".into())),
+            "https://rf.internal"
+        );
     }
 }
