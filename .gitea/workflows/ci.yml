@@ -290,6 +290,18 @@ jobs:
       # script (see build-prerelease.yml's neuron build for the same
       # pattern). It probes for sccache and, on a rustc SIGSEGV / OOM,
       # keeps the cache and fails fast rather than rebuilding uncached.
+      # candle-flash-attn's build script clones CUTLASS from GitHub, and the
+      # runners are one VM per job so that cache starts empty every time.
+      # A burst of concurrent CUDA jobs is enough to start getting refused
+      # ("could not read Username for 'https://github.com'"), which fails a
+      # long job on a transient rate limit. Seed the cache first, with the
+      # retries the build script does not have. Both commands are
+      # best-effort: on failure the build proceeds exactly as it would have
+      # and reports the authoritative error itself.
+      - name: Seed the CUTLASS checkout
+        run: |
+          cargo fetch || true
+          script/seed-cutlass.sh
       - name: cargo check --features cuda (sccache escalation)
         run: |
           # act launches the step shell without /etc/profile, so the
