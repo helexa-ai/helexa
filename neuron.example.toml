@@ -45,9 +45,25 @@ name = "candle"
 # default_source = "huggingface"
 
 # Per-scheme source endpoints. Each scheme maps to an HF-compatible
-# registry. The `huggingface` source is auto-synthesised pointing at
-# `https://huggingface.co` when omitted; declare it explicitly here to
-# override the endpoint, auth env, or cache dir.
+# registry. The `huggingface` source is auto-synthesised when omitted;
+# declare it explicitly here to override the endpoint, auth env, or
+# cache dir.
+#
+# Endpoint resolution for the synthesised source (first hit wins):
+#   1. `endpoint` in an explicit block below.
+#   2. `HF_ENDPOINT` env var — the same convention the Python
+#      `huggingface_hub` library uses, so a whole host can be pointed
+#      at a mirror with one systemd drop-in and no config edit:
+#        /etc/systemd/system/neuron.service.d/local.conf:
+#          [Service]
+#          Environment=HF_ENDPOINT=https://rf.internal
+#          Environment=HF_TOKEN=...
+#   3. `https://huggingface.co`.
+#
+# Note the mirror must speak the HF-compatible wire format (siblings
+# listing at `/api/models/{org}/{name}`, blobs at
+# `/{org}/{name}/resolve/{rev}/{path}`), and if it requires auth, the
+# token comes from `auth_env` (default `HF_TOKEN`).
 #
 # [harness.candle.sources.huggingface]
 # endpoint = "https://huggingface.co"
