@@ -21,3 +21,4 @@
 //! the pattern set by `tp_qwen3.rs`.
 
 pub mod qwen3_5;
+pub mod qwen4_exp;
