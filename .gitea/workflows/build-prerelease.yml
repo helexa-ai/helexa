@@ -591,6 +591,15 @@ jobs:
           CUDA_COMPUTE_CAP: ${{ matrix.compute_cap }}
           CARGO_BUILD_JOBS: ${{ matrix.build_jobs }}
           NVCC_THREADS: ${{ matrix.nvcc_threads }}
+          # cudaforge shells out to `git clone` for CUTLASS if the seed
+          # step above did not populate the cache. Give that clone the
+          # same anonymous git environment the seed script uses: CUTLASS
+          # is public, and an inherited credential turns a 200 into a
+          # 401. Scoped to this step — actions/checkout writes global
+          # config and must not see these.
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_COUNT: "0"
 
       - name: Stage binary
         run: |

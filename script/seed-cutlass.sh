@@ -5,25 +5,55 @@
 #
 # candle-flash-attn's build script calls `cudaforge`, which fetches CUTLASS
 # into `${CUDAFORGE_HOME:-$HOME/.cudaforge}/git/checkouts/cutlass-<commit[..16]>`.
-# Our runners are one VM per job, so that cache starts empty every time and
-# each CUDA job clones CUTLASS afresh. A burst of concurrent jobs is then
-# enough to start getting refused:
+# If the cache starts empty — as it does on a fresh or single-use build
+# machine — every CUDA job clones CUTLASS afresh, and a clone GitHub
+# refuses fails the whole job late, after the 20 minutes of kernel
+# compilation that preceded it:
 #
 #   fatal: could not read Username for 'https://github.com': No such device
 #   Error: GitOperationFailed("git clone failed with status: exit status: 128")
 #
-# which fails a 20-minute job on someone else's rate limit, with a message
-# that looks like a credentials problem rather than a network one.
+# That message reads like a missing credential. It is the opposite: see
+# the note on anonymity below.
 #
 # cudaforge short-circuits when the cache directory already holds `include/`
 # at the right commit (dependency.rs, `fetch_with_lock`), so seeding it here
 # — with retries and backoff, which the build script has none of — removes
 # the fetch from the build's critical path.
 #
+# The fetch is forced ANONYMOUS. CUTLASS is a public repository, so an
+# unauthenticated request is a 200 — but a request carrying a credential
+# GitHub does not accept is a 401:
+#
+#   error: RPC failed; HTTP 401 curl 22 The requested URL returned error: 401
+#
+# A build machine can pick a credential up from a credential helper, a
+# credential store, an http.extraheader, or a url.<...>.insteadOf rewrite
+# that embeds a token, any of which may be inherited rather than chosen.
+# Sending nothing is both simpler and strictly more likely to succeed.
+#
 # Best effort by design: if seeding fails, the build behaves exactly as it
 # does today and cargo emits the authoritative error. This script never
 # fails a build that would otherwise have passed.
 set -uo pipefail
+
+# Read no git configuration at all for the duration of this script.
+# Clearing the individual keys instead (an empty credential.helper and an
+# empty http.<url>.extraheader) does neutralise an injected auth header,
+# but it leaves url.<...>.insteadOf rewrites and any config injected
+# through GIT_CONFIG_COUNT untouched — both of which can also redirect or
+# authenticate the fetch. Discarding the config files closes every vector
+# at once and needs no guess about which one a given machine carries;
+# this script has no configuration of its own to lose.
+# GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM require git >= 2.32.
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+export GIT_CONFIG_COUNT=0
+
+# Never prompt: without this a 401 blocks on a username read instead of
+# failing, which turns a refused fetch into a confusing hang.
+export GIT_TERMINAL_PROMPT=0
+export GIT_ASKPASS=/bin/true
 
 CUTLASS_REPO="${CUTLASS_REPO:-https://github.com/NVIDIA/cutlass.git}"
 CACHE_ROOT="${CUDAFORGE_HOME:-$HOME/.cudaforge}/git/checkouts"
@@ -56,11 +86,6 @@ fi
 
 mkdir -p "${CACHE_ROOT}" || exit 0
 rm -rf "${DEST}.partial"
-
-# Never prompt: without this a 401 blocks on a username read instead of
-# failing, which is what turns a refused clone into a confusing hang.
-export GIT_TERMINAL_PROMPT=0
-export GIT_ASKPASS=/bin/true
 
 for attempt in 1 2 3 4 5; do
   if git init -q "${DEST}.partial" \
