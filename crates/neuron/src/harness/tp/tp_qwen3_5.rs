@@ -661,7 +661,7 @@ impl TpQwen3_5Attention {
             &q,
             &k,
             &v,
-            attn_mask,
+            crate::harness::arch::qwen3_5::full_attn::AttnMask::causal(attn_mask),
             self.num_kv_groups,
             scale,
         )?;

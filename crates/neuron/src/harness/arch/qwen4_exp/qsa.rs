@@ -259,6 +259,36 @@ impl Indexer {
         })
     }
 
+    /// Build an indexer from parts, for tests in sibling modules that
+    /// have no VarBuilder to load from. The norms carry zero weight, so
+    /// `(1 + w)` leaves a plain RMS normalisation.
+    #[cfg(test)]
+    pub(crate) fn from_parts(
+        qk_proj: Linear,
+        selector: BlockSelector,
+        n_heads: usize,
+        kv_heads: usize,
+        head_dim: usize,
+    ) -> Self {
+        let norm = || {
+            Qwen3_5RmsNorm::from_weight(
+                Tensor::zeros(head_dim, DType::F32, &candle_core::Device::Cpu).unwrap(),
+                1e-6,
+                None,
+            )
+        };
+        Self {
+            qk_proj,
+            q_layernorm: norm(),
+            k_layernorm: norm(),
+            selector,
+            n_heads,
+            kv_heads,
+            head_dim,
+            key_cache: None,
+        }
+    }
+
     pub fn selector(&self) -> &BlockSelector {
         &self.selector
     }
@@ -345,20 +375,50 @@ impl Indexer {
         dtype: DType,
     ) -> Result<Tensor> {
         let (batch, seq_len, _) = hidden.dims3()?;
-        let device = hidden.device().clone();
         let visible = self.visible_positions(hidden, rope, past_len)?;
-        let total = past_len + seq_len;
+        Ok(dense_mask(
+            &visible,
+            batch,
+            seq_len,
+            past_len + seq_len,
+            hidden.device(),
+            dtype,
+        )?)
+    }
 
-        let mut mask = vec![f32::NEG_INFINITY; batch * seq_len * total];
-        for (b, row) in visible.iter().enumerate() {
-            for (i, positions) in row.iter().enumerate() {
-                let base = (b * seq_len + i) * total;
-                for p in positions {
-                    mask[base + p] = 0.0;
-                }
-            }
+    /// The mask this step needs, or `None` when the selection cannot
+    /// bind at this depth.
+    ///
+    /// This is the serving entry point. Below the budget the mask would
+    /// be the plain causal mask exactly, so `None` lets the caller keep
+    /// the one it already has — and keep the flash path, which an
+    /// additive mask forecloses. The cache is advanced either way.
+    ///
+    /// The saving is not just the mask: below the budget the pooling,
+    /// the rotation of the block keys and the scoring are all skipped,
+    /// because their answer is known.
+    pub fn binding_mask(
+        &mut self,
+        hidden: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+        dtype: DType,
+    ) -> Result<Option<Tensor>> {
+        let (batch, seq_len, _) = hidden.dims3()?;
+        let (q, cache) = self.advance(hidden, past_len)?;
+        let total = cache.dims()[1];
+        if self.selector.is_dense(total) {
+            return Ok(None);
         }
-        Ok(Tensor::from_vec(mask, (batch, 1, seq_len, total), &device)?.to_dtype(dtype)?)
+        let visible = self.positions_from(&q, &cache, rope, past_len)?;
+        Ok(Some(dense_mask(
+            &visible,
+            batch,
+            seq_len,
+            total,
+            hidden.device(),
+            dtype,
+        )?))
     }
 
     /// The positions each query may attend, as `[batch][query]`.
@@ -379,9 +439,16 @@ impl Indexer {
         rope: &RotaryEmbedding,
         past_len: usize,
     ) -> Result<Vec<Vec<Vec<usize>>>> {
-        let (batch, seq_len, _) = hidden.dims3()?;
-        let (q, k) = self.project(hidden)?;
+        let (q, cache) = self.advance(hidden, past_len)?;
+        self.positions_from(&q, &cache, rope, past_len)
+    }
 
+    /// Project this step and extend the cache. Every entry point goes
+    /// through here, because a step that skipped it would leave the
+    /// indexer's cache missing keys that later blocks pool.
+    fn advance(&mut self, hidden: &Tensor, past_len: usize) -> Result<(Tensor, Tensor)> {
+        let (_, seq_len, _) = hidden.dims3()?;
+        let (q, k) = self.project(hidden)?;
         let cache = match self.key_cache.take() {
             Some(prev) => Tensor::cat(&[&prev, &k], 1)?,
             None => k,
@@ -393,10 +460,22 @@ impl Indexer {
              and run for {seq_len} — the cache and the main KV have diverged"
         );
         self.key_cache = Some(cache.clone());
+        Ok((q, cache))
+    }
+
+    fn positions_from(
+        &self,
+        q: &Tensor,
+        cache: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+    ) -> Result<Vec<Vec<Vec<usize>>>> {
+        let (batch, _, seq_len, _) = q.dims4()?;
+        let total = cache.dims()[1];
 
         // Queries rotate at their own positions, which are contiguous.
         let (cos, sin) = rope.plain_cos_sin(past_len, seq_len)?;
-        let q = apply_partial_rotary(&q, &cos, &sin, rope.rotary_dim())?;
+        let q = apply_partial_rotary(q, &cos, &sin, rope.rotary_dim())?;
 
         let n_blocks = self.selector.n_blocks(total);
         if n_blocks == 0 {
@@ -405,7 +484,7 @@ impl Indexer {
                 .map(|_| (0..seq_len).map(|i| (0..=past_len + i).collect()).collect())
                 .collect());
         }
-        let blocks = self.block_keys(&cache, rope, total)?;
+        let blocks = self.block_keys(cache, rope, total)?;
 
         // relu(q . k) summed over heads, for every (query, block) pair
         // in one batched matmul: every head and query shares the same
@@ -437,6 +516,28 @@ impl Indexer {
         }
         Ok(out)
     }
+}
+
+/// Expand per-query position sets into the additive `(B, 1, L, S)` mask
+/// `qwen3_5`'s attention already takes.
+fn dense_mask(
+    visible: &[Vec<Vec<usize>>],
+    batch: usize,
+    seq_len: usize,
+    total: usize,
+    device: &candle_core::Device,
+    dtype: DType,
+) -> candle_core::Result<Tensor> {
+    let mut mask = vec![f32::NEG_INFINITY; batch * seq_len * total];
+    for (b, row) in visible.iter().enumerate() {
+        for (i, positions) in row.iter().enumerate() {
+            let base = (b * seq_len + i) * total;
+            for p in positions {
+                mask[base + p] = 0.0;
+            }
+        }
+    }
+    Tensor::from_vec(mask, (batch, 1, seq_len, total), device)?.to_dtype(dtype)
 }
 
 #[cfg(test)]
@@ -620,23 +721,13 @@ mod tests {
         let fused = (n_heads + 1) * head_dim;
         let qk =
             Tensor::from_vec(spread(fused * hidden_size, 0.3), (fused, hidden_size), &dev).unwrap();
-        let norm = || {
-            Qwen3_5RmsNorm::from_weight(
-                Tensor::zeros(head_dim, DType::F32, &dev).unwrap(),
-                1e-6,
-                None,
-            )
-        };
-        Indexer {
-            qk_proj: Linear::new(qk, None),
-            q_layernorm: norm(),
-            k_layernorm: norm(),
-            selector: BlockSelector::new(n_heads, head_dim, block_size, budget).unwrap(),
+        Indexer::from_parts(
+            Linear::new(qk, None),
+            BlockSelector::new(n_heads, head_dim, block_size, budget).unwrap(),
             n_heads,
-            kv_heads: 1,
+            1,
             head_dim,
-            key_cache: None,
-        }
+        )
     }
 
     fn hidden(batch: usize, seq: usize, width: usize, seed: f32) -> Tensor {

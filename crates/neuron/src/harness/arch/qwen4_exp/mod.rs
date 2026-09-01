@@ -17,12 +17,15 @@
 //! - [`config`] — the checkpoint's own `config.json`, and what its
 //!   fields mean where they are not what they look like.
 //! - [`hyper`] — hyper-connections, the residual structure itself.
+//! - [`full_attn`] — one layer in four, plus the indexer that
+//!   narrows what it may attend.
 //! - [`ple`] — the hashed n-gram table on layer 1: how its rows
 //!   are addressed, and how the gathered rows are consumed.
 //! - [`qsa`] — which blocks of the past a full-attention layer is
 //!   allowed to look at.
 
 pub mod config;
+pub mod full_attn;
 pub mod hyper;
 pub mod ple;
 pub mod qsa;
