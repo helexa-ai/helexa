@@ -16,6 +16,9 @@
 //! anything stacks on it:
 //! - [`hyper`] — hyper-connections, the residual structure itself.
 //! - [`ple`] — addressing for the hashed n-gram table on layer 1.
+//! - [`qsa`] — which blocks of the past a full-attention layer is
+//!   allowed to look at.
 
 pub mod hyper;
 pub mod ple;
+pub mod qsa;
