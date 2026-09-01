@@ -316,6 +316,51 @@ impl Indexer {
         apply_partial_rotary(&normed, &cos, &sin, rope.rotary_dim())
     }
 
+    /// The additive attention mask for this step: `(B, 1, L, past + L)`,
+    /// `0` where the query may attend and `-inf` where it may not.
+    ///
+    /// Same shape and convention as `qwen3_5`'s own causal mask, so it
+    /// goes where that one goes — and it is already causal, since the
+    /// selection only ever offers positions at or behind the query.
+    ///
+    /// **This mask must not reach the flash-attn path.** That path takes
+    /// `attn_mask.is_some()` as "apply causal masking" and never reads
+    /// the tensor, so a QSA mask handed to it is silently replaced by a
+    /// dense causal one — the model runs, the budget does nothing, and
+    /// the only symptom is that long context costs what it always did.
+    /// Whether QSA can use flash-attn at all is an open question in the
+    /// spec (a gather, not a mask, is what the kernel would need);
+    /// until it is answered, a layer building this must take the eager
+    /// path.
+    ///
+    /// The dense `[L, S]` form is the correctness-first one. The spec is
+    /// explicit that a serving implementation should gather the selected
+    /// positions instead of materialising a mask over the whole window —
+    /// at 262k that is a 68 G-element tensor per layer.
+    pub fn attention_mask(
+        &mut self,
+        hidden: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+        dtype: DType,
+    ) -> Result<Tensor> {
+        let (batch, seq_len, _) = hidden.dims3()?;
+        let device = hidden.device().clone();
+        let visible = self.visible_positions(hidden, rope, past_len)?;
+        let total = past_len + seq_len;
+
+        let mut mask = vec![f32::NEG_INFINITY; batch * seq_len * total];
+        for (b, row) in visible.iter().enumerate() {
+            for (i, positions) in row.iter().enumerate() {
+                let base = (b * seq_len + i) * total;
+                for p in positions {
+                    mask[base + p] = 0.0;
+                }
+            }
+        }
+        Ok(Tensor::from_vec(mask, (batch, 1, seq_len, total), &device)?.to_dtype(dtype)?)
+    }
+
     /// The positions each query may attend, as `[batch][query]`.
     ///
     /// `past_len` is the query's sequence offset, so query `i` sits at
@@ -726,5 +771,94 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("diverged"), "got: {err}");
+    }
+
+    /// Below the budget the mask must be the plain causal mask, value
+    /// for value — the consumable form of gate 4. If it is not, the
+    /// layer is not a drop-in for dense attention on short prompts and
+    /// the cheap parity test is worthless.
+    #[test]
+    fn below_budget_the_mask_is_exactly_causal() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 2048);
+        let (batch, seq) = (2, 7);
+        let h = hidden(batch, seq, hidden_size, 6.6);
+
+        let got = ix
+            .attention_mask(&h, &rope_for(head_dim), 0, DType::F32)
+            .unwrap();
+        assert_eq!(got.dims(), &[batch, 1, seq, seq]);
+
+        let want: Vec<f32> = (0..seq)
+            .flat_map(|i| (0..seq).map(move |j| if j <= i { 0.0 } else { f32::NEG_INFINITY }))
+            .collect();
+        let got: Vec<f32> = got.i(0).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(got, want);
+    }
+
+    /// Above the budget the mask is strictly sparser than causal and
+    /// still causal.
+    ///
+    /// It does **not** always keep the query's own position, which is
+    /// surprising enough to pin rather than discover. The tail — the
+    /// positions that never formed a complete block — is what carries
+    /// the diagonal, and when the visible count is an exact multiple of
+    /// the block size there is no tail at all: the query's own position
+    /// sits inside the last complete block and competes for the budget
+    /// like any other. So the diagonal is guaranteed for three visible
+    /// counts in four and merely likely for the fourth.
+    ///
+    /// That follows from step 7 of the spec as written. It is worth a
+    /// reference trace to confirm, because the alternative reading —
+    /// that the current block is always kept — is also a sensible
+    /// design and the two differ only every fourth position.
+    #[test]
+    fn above_budget_the_mask_is_sparse_but_still_causal() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 4);
+        let seq = 12;
+        let h = hidden(1, seq, hidden_size, 7.7);
+
+        let m: Vec<f32> = ix
+            .attention_mask(&h, &rope_for(head_dim), 0, DType::F32)
+            .unwrap()
+            .i(0)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+
+        let block = 4;
+        let mut sparser = false;
+        for i in 0..seq {
+            for j in (i + 1)..seq {
+                assert!(m[i * seq + j].is_infinite(), "query {i} peeked at {j}");
+            }
+            // A tail exists whenever the visible count is not a whole
+            // number of blocks, and the tail always holds the diagonal.
+            if (i + 1) % block != 0 {
+                assert_eq!(
+                    m[i * seq + i],
+                    0.0,
+                    "query {i} has a tail, so it must see itself"
+                );
+            }
+            let visible = (0..=i).filter(|j| m[i * seq + j] == 0.0).count();
+            if visible < i + 1 {
+                sparser = true;
+            }
+        }
+        assert!(sparser, "a budget of one block over 12 positions must bind");
+
+        // The exact-multiple case: 8 visible positions is two whole
+        // blocks and no tail, so position 7 is only attended if its own
+        // block won the budget.
+        let own_block_kept = m[7 * seq + 7] == 0.0;
+        let earlier_block_kept = m[7 * seq] == 0.0;
+        assert!(
+            own_block_kept != earlier_block_kept,
+            "with a one-block budget exactly one of the two blocks wins"
+        );
     }
 }
