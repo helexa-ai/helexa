@@ -564,11 +564,11 @@ jobs:
       # escalating to a slower uncached rebuild. The cache covers the
       # ~600-crate host-side dep tree (the bulk of the 10-14 min build),
       # shared across all three flavours, so even one run seeds the next.
-      # candle-flash-attn's build script clones CUTLASS from GitHub, and the
-      # runners are one VM per job so that cache starts empty every time.
-      # A burst of concurrent CUDA jobs is enough to start getting refused
-      # ("could not read Username for 'https://github.com'"), which fails a
-      # long job on a transient rate limit. Seed the cache first, with the
+      # candle-flash-attn's build script clones CUTLASS from GitHub. That
+      # clone can be refused ("could not read Username for
+      # 'https://github.com'") when the machine carries a git credential
+      # GitHub does not accept — CUTLASS is public, so a credential is
+      # worse than none. Seed the cache first, anonymously and with the
       # retries the build script does not have. Both commands are
       # best-effort: on failure the build proceeds exactly as it would have
       # and reports the authoritative error itself.

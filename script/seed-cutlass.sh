@@ -5,10 +5,11 @@
 #
 # candle-flash-attn's build script calls `cudaforge`, which fetches CUTLASS
 # into `${CUDAFORGE_HOME:-$HOME/.cudaforge}/git/checkouts/cutlass-<commit[..16]>`.
-# If the cache starts empty — as it does on a fresh or single-use build
-# machine — every CUDA job clones CUTLASS afresh, and a clone GitHub
-# refuses fails the whole job late, after the 20 minutes of kernel
-# compilation that preceded it:
+# That cache is per build machine and survives between jobs, so it is cold
+# on any machine that has not built this flavour yet. A cold cache means
+# the job clones CUTLASS afresh, and a clone GitHub refuses fails the
+# whole job late — after the 20 minutes of kernel compilation that
+# preceded it:
 #
 #   fatal: could not read Username for 'https://github.com': No such device
 #   Error: GitOperationFailed("git clone failed with status: exit status: 128")
