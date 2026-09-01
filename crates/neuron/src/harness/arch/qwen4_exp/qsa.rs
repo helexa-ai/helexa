@@ -7,12 +7,12 @@
 //! blocks are attended. That is a 2048-token budget over a 262,144-token
 //! window, which is why decode degrades only ~20% from 0 to 64k.
 //!
-//! This module is the selection itself: pooling the visible keys into
-//! blocks, scoring them, and turning the scores into the set of
-//! positions the main attention may see. It deliberately does not own
-//! the indexer's KV cache, the RoPE application, or the mask — those
-//! belong with the attention layer, and the selection is the part with
-//! an exact test.
+//! [`BlockSelector`] is the selection arithmetic: pooling visible keys
+//! into blocks, scoring them, and turning the scores into a position
+//! set. [`Indexer`] wraps it in the layer's own machinery — the fused
+//! `index_qk_proj`, the two layer norms, the rotation, and the second
+//! KV cache the epic's per-token arithmetic omitted. The mask itself
+//! stays with the attention layer.
 //!
 //! ```text
 //! keys [n_visible, 128]  (raw: pre-norm, pre-RoPE, straight off the cache)
@@ -45,8 +45,15 @@
 //!
 //! See `doc/qwen4_exp-port-spec.md` §3.
 
-use anyhow::{Result, ensure};
-use candle_core::{DType, Tensor};
+use anyhow::{Context, Result, ensure};
+use candle_core::{D, DType, IndexOp, Module, Tensor};
+use candle_nn::Linear;
+use candle_nn::var_builder::ShardedVarBuilder;
+
+use crate::harness::arch::qwen3_5::rmsnorm::Qwen3_5RmsNorm;
+use crate::harness::arch::qwen3_5::rope::{RotaryEmbedding, apply_partial_rotary};
+
+use super::config::TextConfig as Qwen4ExpTextConfig;
 
 /// The indexer's geometry, from `config.json`.
 pub struct BlockSelector {
@@ -174,6 +181,261 @@ impl BlockSelector {
     /// and attend densely — same answer, no indexer work.
     pub fn is_dense(&self, n_visible: usize) -> bool {
         self.n_blocks(n_visible) <= self.block_topk()
+    }
+}
+
+/// The indexer as a layer: projection, norms, rotation, and its own KV
+/// cache, wrapped around [`BlockSelector`].
+///
+/// ```text
+/// hidden [B,L,2560] ─ index_qk_proj ─┬─ q  [B,L,4,128] ─ q_layernorm ─ RoPE(own pos)
+///                                    └─ k  [B,L,128] ─────────────────► cache (raw)
+///                                                                        │
+///        pooled blocks ◄─ RoPE(block start) ◄─ k_layernorm ◄─ mean(f32) ◄┘
+/// ```
+///
+/// Three orderings matter and none of them are guessable from the
+/// shapes:
+///
+/// 1. **The cached key is raw** — pre-norm and pre-RoPE. Normalising or
+///    rotating before the cache would rotate each key at its own
+///    position, but a pooled block is rotated once at the block's
+///    *first* position. Caching post-RoPE quietly makes every block's
+///    position wrong except its first member's.
+/// 2. **Pooling comes before the norm**, not after: `mean` then
+///    `k_layernorm`, so the block's key is normalised as a block.
+/// 3. **`index_qk_proj` is fused, and the split is not a halving.** The
+///    first `n_heads * head_dim` output channels are the queries and
+///    the last `kv_heads * head_dim` are the single index key — 512 and
+///    128 of 640, not 320 and 320.
+///
+/// This is the second KV cache: 12 layers x 1 head x 128 dims, about
+/// 3 KiB/token at bf16 on top of the main 24 KiB. llama.cpp measures
+/// 2304 MB of it beside 6144 MB of main cache at the full 262k window,
+/// so it is a ~27% surcharge and belongs in any `kv_budget_mb`
+/// arithmetic (#310, #315).
+pub struct Indexer {
+    /// Fused `index_qk_proj`: `[n_heads * head_dim + kv_heads * head_dim, hidden]`.
+    qk_proj: Linear,
+    q_layernorm: Qwen3_5RmsNorm,
+    k_layernorm: Qwen3_5RmsNorm,
+    selector: BlockSelector,
+    n_heads: usize,
+    kv_heads: usize,
+    head_dim: usize,
+    /// Raw index keys, `(B, T, kv_heads * head_dim)`. Pre-norm,
+    /// pre-RoPE — see the note above.
+    key_cache: Option<Tensor>,
+}
+
+impl Indexer {
+    /// `vb` should be `.pp(...)`-ed to the attention layer's prefix, so
+    /// the tensors resolve as `index_qk_proj`, `q_layernorm`,
+    /// `k_layernorm`. Every dimension comes from the config rather than
+    /// the caller, so a layer cannot be built against a geometry the
+    /// checkpoint does not declare.
+    pub fn load(vb: &ShardedVarBuilder, cfg: &Qwen4ExpTextConfig) -> Result<Self> {
+        let (n_heads, kv_heads) = (cfg.indexer_n_heads, cfg.indexer_kv_heads);
+        let head_dim = cfg.indexer_head_dim;
+        let fused = (n_heads + kv_heads) * head_dim;
+        let weight = vb
+            .pp("index_qk_proj")
+            .get((fused, cfg.hidden_size), "weight")
+            .with_context(|| format!("load '{}/index_qk_proj/weight'", vb.prefix()))?;
+        Ok(Self {
+            qk_proj: Linear::new(weight, None),
+            q_layernorm: Qwen3_5RmsNorm::load(&vb.pp("q_layernorm"), head_dim, cfg.rms_norm_eps)?,
+            k_layernorm: Qwen3_5RmsNorm::load(&vb.pp("k_layernorm"), head_dim, cfg.rms_norm_eps)?,
+            selector: BlockSelector::new(
+                n_heads,
+                head_dim,
+                cfg.indexer_compress_ratio,
+                cfg.indexer_budget,
+            )?,
+            n_heads,
+            kv_heads,
+            head_dim,
+            key_cache: None,
+        })
+    }
+
+    pub fn selector(&self) -> &BlockSelector {
+        &self.selector
+    }
+
+    /// Drop the indexer's cache. Must happen with the main KV clear —
+    /// a stale indexer cache selects blocks of another request's text.
+    pub fn clear_cache(&mut self) {
+        self.key_cache = None;
+    }
+
+    /// How many positions the indexer has seen.
+    pub fn cached_len(&self) -> usize {
+        self.key_cache.as_ref().map_or(0, |c| c.dims()[1])
+    }
+
+    /// Split the fused projection into normed queries and raw keys.
+    ///
+    /// Returns `q` as `(B, n_heads, L, head_dim)` — normed, unrotated —
+    /// and `k` as `(B, L, kv_heads * head_dim)`, untouched.
+    fn project(&self, hidden: &Tensor) -> candle_core::Result<(Tensor, Tensor)> {
+        let (b, l, _) = hidden.dims3()?;
+        let qk = self.qk_proj.forward(hidden)?;
+        let q_width = self.n_heads * self.head_dim;
+        let q = qk
+            .narrow(D::Minus1, 0, q_width)?
+            .reshape((b, l, self.n_heads, self.head_dim))?;
+        let q = self
+            .q_layernorm
+            .forward(&q)?
+            .transpose(1, 2)?
+            .contiguous()?;
+        let k = qk
+            .narrow(D::Minus1, q_width, self.kv_heads * self.head_dim)?
+            .contiguous()?;
+        Ok((q, k))
+    }
+
+    /// Pool the cache into blocks, norm them, and rotate each at its own
+    /// block's first position. `(B, 1, n_blocks, head_dim)`.
+    fn block_keys(
+        &self,
+        cache: &Tensor,
+        rope: &RotaryEmbedding,
+        total: usize,
+    ) -> candle_core::Result<Tensor> {
+        let b = cache.dims()[0];
+        let starts = self.selector.block_starts(total);
+        let mut pooled = Vec::with_capacity(b);
+        for row in 0..b {
+            pooled.push(self.selector.pool(&cache.i(row)?)?);
+        }
+        let pooled = Tensor::stack(&pooled, 0)?.to_dtype(cache.dtype())?;
+        let normed = self.k_layernorm.forward(&pooled)?.unsqueeze(1)?;
+        let (cos, sin) = rope.cos_sin_at(&starts)?;
+        apply_partial_rotary(&normed, &cos, &sin, rope.rotary_dim())
+    }
+
+    /// The additive attention mask for this step: `(B, 1, L, past + L)`,
+    /// `0` where the query may attend and `-inf` where it may not.
+    ///
+    /// Same shape and convention as `qwen3_5`'s own causal mask, so it
+    /// goes where that one goes — and it is already causal, since the
+    /// selection only ever offers positions at or behind the query.
+    ///
+    /// **This mask must not reach the flash-attn path.** That path takes
+    /// `attn_mask.is_some()` as "apply causal masking" and never reads
+    /// the tensor, so a QSA mask handed to it is silently replaced by a
+    /// dense causal one — the model runs, the budget does nothing, and
+    /// the only symptom is that long context costs what it always did.
+    /// Whether QSA can use flash-attn at all is an open question in the
+    /// spec (a gather, not a mask, is what the kernel would need);
+    /// until it is answered, a layer building this must take the eager
+    /// path.
+    ///
+    /// The dense `[L, S]` form is the correctness-first one. The spec is
+    /// explicit that a serving implementation should gather the selected
+    /// positions instead of materialising a mask over the whole window —
+    /// at 262k that is a 68 G-element tensor per layer.
+    pub fn attention_mask(
+        &mut self,
+        hidden: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+        dtype: DType,
+    ) -> Result<Tensor> {
+        let (batch, seq_len, _) = hidden.dims3()?;
+        let device = hidden.device().clone();
+        let visible = self.visible_positions(hidden, rope, past_len)?;
+        let total = past_len + seq_len;
+
+        let mut mask = vec![f32::NEG_INFINITY; batch * seq_len * total];
+        for (b, row) in visible.iter().enumerate() {
+            for (i, positions) in row.iter().enumerate() {
+                let base = (b * seq_len + i) * total;
+                for p in positions {
+                    mask[base + p] = 0.0;
+                }
+            }
+        }
+        Ok(Tensor::from_vec(mask, (batch, 1, seq_len, total), &device)?.to_dtype(dtype)?)
+    }
+
+    /// The positions each query may attend, as `[batch][query]`.
+    ///
+    /// `past_len` is the query's sequence offset, so query `i` sits at
+    /// absolute position `past_len + i` and sees `past_len + i + 1`
+    /// positions.
+    ///
+    /// The pooling and scoring are batched — one matmul covers every
+    /// query against every block — because a block's pooled key does not
+    /// depend on which query is looking at it. Only the top-k runs per
+    /// query, over the prefix of blocks that query can see. The
+    /// reference is a double loop over batch x query position; it is an
+    /// oracle, not a design.
+    pub fn visible_positions(
+        &mut self,
+        hidden: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+    ) -> Result<Vec<Vec<Vec<usize>>>> {
+        let (batch, seq_len, _) = hidden.dims3()?;
+        let (q, k) = self.project(hidden)?;
+
+        let cache = match self.key_cache.take() {
+            Some(prev) => Tensor::cat(&[&prev, &k], 1)?,
+            None => k,
+        };
+        let total = cache.dims()[1];
+        ensure!(
+            total == past_len + seq_len,
+            "indexer cache holds {total} positions but the queries start at {past_len} \
+             and run for {seq_len} — the cache and the main KV have diverged"
+        );
+        self.key_cache = Some(cache.clone());
+
+        // Queries rotate at their own positions, which are contiguous.
+        let (cos, sin) = rope.plain_cos_sin(past_len, seq_len)?;
+        let q = apply_partial_rotary(&q, &cos, &sin, rope.rotary_dim())?;
+
+        let n_blocks = self.selector.n_blocks(total);
+        if n_blocks == 0 {
+            // Nothing is poolable yet; every query is all tail.
+            return Ok((0..batch)
+                .map(|_| (0..seq_len).map(|i| (0..=past_len + i).collect()).collect())
+                .collect());
+        }
+        let blocks = self.block_keys(&cache, rope, total)?;
+
+        // relu(q . k) summed over heads, for every (query, block) pair
+        // in one batched matmul: every head and query shares the same
+        // block keys, so fold them into the row axis rather than
+        // broadcasting the keys across heads.
+        let q_rows = q.reshape((batch, self.n_heads * seq_len, self.head_dim))?;
+        let keys = blocks.squeeze(1)?.transpose(1, 2)?.contiguous()?;
+        let per_head = q_rows
+            .matmul(&keys)?
+            .reshape((batch, self.n_heads, seq_len, n_blocks))?
+            .relu()?;
+        let scores = (per_head.sum(1)? / (self.head_dim as f64).sqrt())?
+            .to_dtype(DType::F32)?
+            .to_vec3::<f32>()?;
+
+        let mut out = Vec::with_capacity(batch);
+        for row in scores.iter().take(batch) {
+            let mut per_query = Vec::with_capacity(seq_len);
+            for (i, all_blocks) in row.iter().enumerate().take(seq_len) {
+                let visible = past_len + i + 1;
+                // Only blocks wholly behind this query exist for it.
+                let visible_blocks = self.selector.n_blocks(visible);
+                per_query.push(
+                    self.selector
+                        .select(&all_blocks[..visible_blocks], visible)?,
+                );
+            }
+            out.push(per_query);
+        }
+        Ok(out)
     }
 }
 
@@ -317,5 +579,286 @@ mod tests {
             vec![4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22]
         );
         assert!(qsa.select(&[0.1f32], 23).is_err());
+    }
+
+    // ---- the indexer as a layer ----
+
+    use crate::harness::arch::qwen3_5::TextConfig;
+
+    /// A rope whose `head_dim` matches the indexer's, with half of it
+    /// rotating — the shipped model rotates 64 of the indexer's 128,
+    /// which is the same fraction as the main attention's 64 of 256.
+    fn rope_for(head_dim: usize) -> RotaryEmbedding {
+        let json = format!(
+            r#"{{"vocab_size": 8, "hidden_size": 8, "intermediate_size": 8,
+                 "num_hidden_layers": 1, "num_attention_heads": 1,
+                 "num_key_value_heads": 1, "head_dim": {head_dim},
+                 "max_position_embeddings": 128, "rms_norm_eps": 1e-6,
+                 "rope_parameters": {{"rope_theta": 10000.0,
+                                      "partial_rotary_factor": 0.5}}}}"#
+        );
+        let cfg: TextConfig = serde_json::from_str(&json).unwrap();
+        RotaryEmbedding::new(DType::F32, &cfg, &Device::Cpu).unwrap()
+    }
+
+    /// Deterministic, well-spread values — the selection is a top-k, so
+    /// tied scores would make a test flaky rather than wrong.
+    fn spread(n: usize, seed: f32) -> Vec<f32> {
+        (0..n)
+            .map(|i| ((i as f32 * 0.7 + seed) * 1.3).sin() + 0.1 * (i as f32).cos())
+            .collect()
+    }
+
+    fn indexer(
+        hidden_size: usize,
+        n_heads: usize,
+        head_dim: usize,
+        block_size: usize,
+        budget: usize,
+    ) -> Indexer {
+        let dev = Device::Cpu;
+        let fused = (n_heads + 1) * head_dim;
+        let qk =
+            Tensor::from_vec(spread(fused * hidden_size, 0.3), (fused, hidden_size), &dev).unwrap();
+        let norm = || {
+            Qwen3_5RmsNorm::from_weight(
+                Tensor::zeros(head_dim, DType::F32, &dev).unwrap(),
+                1e-6,
+                None,
+            )
+        };
+        Indexer {
+            qk_proj: Linear::new(qk, None),
+            q_layernorm: norm(),
+            k_layernorm: norm(),
+            selector: BlockSelector::new(n_heads, head_dim, block_size, budget).unwrap(),
+            n_heads,
+            kv_heads: 1,
+            head_dim,
+            key_cache: None,
+        }
+    }
+
+    fn hidden(batch: usize, seq: usize, width: usize, seed: f32) -> Tensor {
+        Tensor::from_vec(
+            spread(batch * seq * width, seed),
+            (batch, seq, width),
+            &Device::Cpu,
+        )
+        .unwrap()
+    }
+
+    /// `index_qk_proj` is fused 4:1, not halved. With 4 query heads and
+    /// 1 key head of 8 dims the split is 32 and 8 of 40 — a halving
+    /// would take 20 and 20 and put half a query head in the key.
+    #[test]
+    fn the_fused_projection_splits_by_head_count_not_in_half() {
+        let (hidden_size, n_heads, head_dim) = (8, 4, 8);
+        let ix = indexer(hidden_size, n_heads, head_dim, 4, 16);
+        let h = hidden(1, 3, hidden_size, 1.1);
+
+        let (q, k) = ix.project(&h).unwrap();
+        assert_eq!(q.dims(), &[1, n_heads, 3, head_dim]);
+        assert_eq!(k.dims(), &[1, 3, head_dim]);
+
+        // The key is the LAST head_dim channels of the 40-wide fused
+        // output, and it is untouched by the norms.
+        let fused = ix.qk_proj.forward(&h).unwrap();
+        let want: Vec<f32> = fused
+            .narrow(D::Minus1, n_heads * head_dim, head_dim)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        let got: Vec<f32> = k.flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(got, want);
+    }
+
+    /// The cached key is raw: pre-norm and pre-RoPE. A block is rotated
+    /// once at its first position, so a cache of per-position-rotated
+    /// keys would put three of every four keys at the wrong angle — and
+    /// still return a plausible selection.
+    #[test]
+    fn the_cache_holds_raw_keys() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 4096);
+        let h = hidden(1, 6, hidden_size, 2.2);
+
+        let (_, raw) = ix.project(&h).unwrap();
+        ix.visible_positions(&h, &rope_for(head_dim), 0).unwrap();
+
+        let cached: Vec<f32> = ix
+            .key_cache
+            .as_ref()
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        let want: Vec<f32> = raw.flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(cached, want, "the cache must not be normed or rotated");
+        assert_eq!(ix.cached_len(), 6);
+
+        ix.clear_cache();
+        assert_eq!(ix.cached_len(), 0);
+    }
+
+    /// Gate 4, through the whole layer rather than the bare selector:
+    /// below the budget every query sees every position it causally
+    /// could, so the layer is exactly dense causal attention.
+    #[test]
+    fn below_budget_every_query_sees_its_whole_past() {
+        let (hidden_size, head_dim) = (8, 8);
+        // Budget of 512 blocks, as shipped — 11 positions cannot reach it.
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 2048);
+        let h = hidden(2, 11, hidden_size, 3.3);
+
+        let got = ix.visible_positions(&h, &rope_for(head_dim), 0).unwrap();
+        assert_eq!(got.len(), 2);
+        for row in &got {
+            assert_eq!(row.len(), 11);
+            for (i, positions) in row.iter().enumerate() {
+                assert_eq!(
+                    *positions,
+                    (0..=i).collect::<Vec<_>>(),
+                    "query {i} should attend its whole past"
+                );
+            }
+        }
+    }
+
+    /// Decoding a token must select what a prefill covering the same
+    /// text would select for that position. This is the property the
+    /// cache and the `past_len` arithmetic exist for, and it is tested
+    /// with a budget small enough that the selection actually binds —
+    /// at 1 block of 4 from 9 positions, two blocks compete.
+    #[test]
+    fn a_decode_step_selects_what_the_prefill_would() {
+        let (hidden_size, head_dim) = (8, 8);
+        let rope = rope_for(head_dim);
+        let h = hidden(1, 9, hidden_size, 4.4);
+
+        let mut whole = indexer(hidden_size, 4, head_dim, 4, 4);
+        let want = whole.visible_positions(&h, &rope, 0).unwrap()[0][8].clone();
+
+        let mut split = indexer(hidden_size, 4, head_dim, 4, 4);
+        let prefill = h.narrow(1, 0, 8).unwrap().contiguous().unwrap();
+        split.visible_positions(&prefill, &rope, 0).unwrap();
+        let step = h.narrow(1, 8, 1).unwrap().contiguous().unwrap();
+        let got = split.visible_positions(&step, &rope, 8).unwrap()[0][0].clone();
+
+        assert_eq!(got, want);
+        // And the budget really did bind, or this proves nothing.
+        assert!(
+            got.len() < 9,
+            "expected a bound selection, got all {} positions",
+            got.len()
+        );
+        // The tail is 9 mod 4 = 1 position: the query's own.
+        assert!(got.contains(&8));
+    }
+
+    /// A cache that has drifted from the main KV selects blocks of some
+    /// other request's text. Fail loudly instead.
+    #[test]
+    fn a_cache_out_of_step_with_the_main_kv_is_an_error() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 2048);
+        let h = hidden(1, 2, hidden_size, 5.5);
+        let err = ix
+            .visible_positions(&h, &rope_for(head_dim), 3)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("diverged"), "got: {err}");
+    }
+
+    /// Below the budget the mask must be the plain causal mask, value
+    /// for value — the consumable form of gate 4. If it is not, the
+    /// layer is not a drop-in for dense attention on short prompts and
+    /// the cheap parity test is worthless.
+    #[test]
+    fn below_budget_the_mask_is_exactly_causal() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 2048);
+        let (batch, seq) = (2, 7);
+        let h = hidden(batch, seq, hidden_size, 6.6);
+
+        let got = ix
+            .attention_mask(&h, &rope_for(head_dim), 0, DType::F32)
+            .unwrap();
+        assert_eq!(got.dims(), &[batch, 1, seq, seq]);
+
+        let want: Vec<f32> = (0..seq)
+            .flat_map(|i| (0..seq).map(move |j| if j <= i { 0.0 } else { f32::NEG_INFINITY }))
+            .collect();
+        let got: Vec<f32> = got.i(0).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        assert_eq!(got, want);
+    }
+
+    /// Above the budget the mask is strictly sparser than causal and
+    /// still causal.
+    ///
+    /// It does **not** always keep the query's own position, which is
+    /// surprising enough to pin rather than discover. The tail — the
+    /// positions that never formed a complete block — is what carries
+    /// the diagonal, and when the visible count is an exact multiple of
+    /// the block size there is no tail at all: the query's own position
+    /// sits inside the last complete block and competes for the budget
+    /// like any other. So the diagonal is guaranteed for three visible
+    /// counts in four and merely likely for the fourth.
+    ///
+    /// That follows from step 7 of the spec as written. It is worth a
+    /// reference trace to confirm, because the alternative reading —
+    /// that the current block is always kept — is also a sensible
+    /// design and the two differ only every fourth position.
+    #[test]
+    fn above_budget_the_mask_is_sparse_but_still_causal() {
+        let (hidden_size, head_dim) = (8, 8);
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 4);
+        let seq = 12;
+        let h = hidden(1, seq, hidden_size, 7.7);
+
+        let m: Vec<f32> = ix
+            .attention_mask(&h, &rope_for(head_dim), 0, DType::F32)
+            .unwrap()
+            .i(0)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+
+        let block = 4;
+        let mut sparser = false;
+        for i in 0..seq {
+            for j in (i + 1)..seq {
+                assert!(m[i * seq + j].is_infinite(), "query {i} peeked at {j}");
+            }
+            // A tail exists whenever the visible count is not a whole
+            // number of blocks, and the tail always holds the diagonal.
+            if (i + 1) % block != 0 {
+                assert_eq!(
+                    m[i * seq + i],
+                    0.0,
+                    "query {i} has a tail, so it must see itself"
+                );
+            }
+            let visible = (0..=i).filter(|j| m[i * seq + j] == 0.0).count();
+            if visible < i + 1 {
+                sparser = true;
+            }
+        }
+        assert!(sparser, "a budget of one block over 12 positions must bind");
+
+        // The exact-multiple case: 8 visible positions is two whole
+        // blocks and no tail, so position 7 is only attended if its own
+        // block won the budget.
+        let own_block_kept = m[7 * seq + 7] == 0.0;
+        let earlier_block_kept = m[7 * seq] == 0.0;
+        assert!(
+            own_block_kept != earlier_block_kept,
+            "with a one-block budget exactly one of the two blocks wins"
+        );
     }
 }
