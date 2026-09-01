@@ -19,6 +19,8 @@
 //! - [`hyper`] — hyper-connections, the residual structure itself.
 //! - [`full_attn`] — one layer in four, plus the indexer that
 //!   narrows what it may attend.
+//! - [`linear_attn`] — the other three layers in four, reused whole
+//!   from `qwen3_5` with two settings corrected.
 //! - [`moe`] — the FFN every layer has, loaded from fused expert
 //!   tensors instead of 512 modules.
 //! - [`ple`] — the hashed n-gram table on layer 1: how its rows
@@ -29,6 +31,7 @@
 pub mod config;
 pub mod full_attn;
 pub mod hyper;
+pub mod linear_attn;
 pub mod moe;
 pub mod ple;
 pub mod qsa;
