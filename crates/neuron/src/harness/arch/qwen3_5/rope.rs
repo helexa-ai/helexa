@@ -165,10 +165,23 @@ impl RotaryEmbedding {
     /// row, one decode token per step. [`Self::apply_cos_sin`] detects
     /// the rank-3 shape and broadcasts per row instead of per position.
     pub fn batch_cos_sin(&self, positions: &[usize]) -> candle_core::Result<(Tensor, Tensor)> {
+        let (cos, sin) = self.cos_sin_at(positions)?;
+        Ok((cos.unsqueeze(1)?, sin.unsqueeze(1)?))
+    }
+
+    /// cos/sin gathered at arbitrary, possibly non-contiguous positions,
+    /// shape `(positions.len(), rotary_dim/2)` — the same per-position
+    /// rank-2 form [`Self::plain_cos_sin`] returns, so it feeds the
+    /// sequence axis rather than a batch axis.
+    ///
+    /// `qwen4_exp`'s QSA indexer needs this: its pooled block keys are
+    /// rotated at the *first* position of each block, which is every
+    /// fourth position rather than a contiguous run.
+    pub fn cos_sin_at(&self, positions: &[usize]) -> candle_core::Result<(Tensor, Tensor)> {
         let idx: Vec<u32> = positions.iter().map(|&p| p as u32).collect();
         let idx = Tensor::from_vec(idx, positions.len(), self.cos.device())?;
-        let cos = self.cos.index_select(&idx, 0)?.unsqueeze(1)?;
-        let sin = self.sin.index_select(&idx, 0)?.unsqueeze(1)?;
+        let cos = self.cos.index_select(&idx, 0)?;
+        let sin = self.sin.index_select(&idx, 0)?;
         Ok((cos, sin))
     }
 
@@ -212,38 +225,65 @@ impl RotaryEmbedding {
     ) -> candle_core::Result<(Tensor, Tensor)> {
         let (_, _, _seq_len, head_dim_in) = q.dims4()?;
         debug_assert_eq!(head_dim_in, self.head_dim, "q head_dim mismatch");
-        let per_row = cos.rank() == 3;
-        let rope = |x: &Tensor| -> candle_core::Result<Tensor> {
-            if per_row {
-                rope_per_row(x, cos, sin)
-            } else {
-                candle_nn::rotary_emb::rope_slow(x, cos, sin)
-            }
-        };
-        if self.rotary_dim == self.head_dim {
-            let q_embed = rope(&q.contiguous()?)?;
-            let k_embed = rope(&k.contiguous()?)?;
-            Ok((q_embed, k_embed))
-        } else {
-            // Partial rotation: narrow → rotate → cat the untouched tail.
-            let tail = self.head_dim - self.rotary_dim;
-            let q_rot = q
-                .narrow(candle_core::D::Minus1, 0, self.rotary_dim)?
-                .contiguous()?;
-            let q_pass = q.narrow(candle_core::D::Minus1, self.rotary_dim, tail)?;
-            let k_rot = k
-                .narrow(candle_core::D::Minus1, 0, self.rotary_dim)?
-                .contiguous()?;
-            let k_pass = k.narrow(candle_core::D::Minus1, self.rotary_dim, tail)?;
-            let q_rotated = rope(&q_rot)?;
-            let k_rotated = rope(&k_rot)?;
-            let q_embed =
-                Tensor::cat(&[&q_rotated, &q_pass.contiguous()?], candle_core::D::Minus1)?;
-            let k_embed =
-                Tensor::cat(&[&k_rotated, &k_pass.contiguous()?], candle_core::D::Minus1)?;
-            Ok((q_embed, k_embed))
-        }
+        Ok((
+            apply_partial_rotary(q, cos, sin, self.rotary_dim)?,
+            apply_partial_rotary(k, cos, sin, self.rotary_dim)?,
+        ))
     }
+
+    /// How many of each head's dims rotate. Heads narrower than
+    /// `head_dim` share the same rotation — `qwen4_exp`'s QSA indexer
+    /// keys are 128 wide and still rotate 64 dims against the same
+    /// cos/sin.
+    pub fn rotary_dim(&self) -> usize {
+        self.rotary_dim
+    }
+
+    /// The head width `apply_cos_sin` expects.
+    pub fn head_dim(&self) -> usize {
+        self.head_dim
+    }
+}
+
+/// Rotate the first `rotary_dim` dims of `x` and pass the rest through.
+///
+/// `x` is `(B, H, L, width)` for any `width >= rotary_dim`, and
+/// `cos`/`sin` are `(L, rotary_dim/2)` — or `(B, L, rotary_dim/2)` for
+/// the batched-decode path (#98), dispatched on rank.
+///
+/// Split out of [`RotaryEmbedding::apply_cos_sin`] because the rotation
+/// is a property of the *frequencies*, not of the head it is applied
+/// to: `qwen4_exp`'s sparse-attention indexer rotates 64 of its 128
+/// indexer dims using the same cos/sin the 256-wide attention heads
+/// use, so it needs the rotation without the head-width assertion.
+pub fn apply_partial_rotary(
+    x: &Tensor,
+    cos: &Tensor,
+    sin: &Tensor,
+    rotary_dim: usize,
+) -> candle_core::Result<Tensor> {
+    let width = x.dim(candle_core::D::Minus1)?;
+    debug_assert!(
+        width >= rotary_dim,
+        "rotary_dim {rotary_dim} exceeds head width {width}"
+    );
+    let per_row = cos.rank() == 3;
+    let rope = |t: &Tensor| -> candle_core::Result<Tensor> {
+        if per_row {
+            rope_per_row(t, cos, sin)
+        } else {
+            candle_nn::rotary_emb::rope_slow(t, cos, sin)
+        }
+    };
+    if rotary_dim == width {
+        return rope(&x.contiguous()?);
+    }
+    // Partial rotation: narrow → rotate → cat the untouched tail.
+    let rot = x
+        .narrow(candle_core::D::Minus1, 0, rotary_dim)?
+        .contiguous()?;
+    let pass = x.narrow(candle_core::D::Minus1, rotary_dim, width - rotary_dim)?;
+    Tensor::cat(&[&rope(&rot)?, &pass.contiguous()?], candle_core::D::Minus1)
 }
 
 /// GLM rotate-half (same convention as candle's private
