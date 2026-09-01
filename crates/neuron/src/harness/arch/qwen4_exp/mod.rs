@@ -27,5 +27,6 @@
 pub mod config;
 pub mod full_attn;
 pub mod hyper;
+pub mod linear_attn;
 pub mod ple;
 pub mod qsa;

@@ -67,7 +67,7 @@ use candle_nn::var_builder::ShardedVarBuilder;
 #[cfg(test)]
 use super::RopeParameters;
 use super::TextConfig;
-use super::rmsnorm::{Qwen3_5RmsNormGated, l2norm};
+use super::rmsnorm::{OutputGate, Qwen3_5RmsNormGated, l2norm};
 
 /// Per-rank, per-layer state for the linear-attention block.
 ///
@@ -112,15 +112,69 @@ pub struct GatedDeltaNet {
     // `clear_kv_cache`; otherwise the state persists across forwards
     // and the per-token offset advances naturally.
     state: GatedDeltaNetState,
+    /// Whether the recurrent state is carried in f32 between forwards
+    /// (#284). Per layer rather than per process, because it is a
+    /// property of the checkpoint for architectures that declare
+    /// `mamba_ssm_dtype`.
+    state_f32: bool,
+}
+
+/// Everything a [`GatedDeltaNet`] needs that is not in its weights.
+///
+/// Split out of `TextConfig` so an architecture that is not `qwen3_5`
+/// can build one of these layers without owning a `qwen3_5` config —
+/// the tensor names and layout are shared, only the config type and two
+/// settings differ. `qwen4_exp` reuses 36 of its 48 layers this way.
+#[derive(Debug, Clone, Copy)]
+pub struct GatedDeltaNetParams {
+    pub hidden_size: usize,
+    pub num_value_heads: usize,
+    pub num_key_heads: usize,
+    pub key_head_dim: usize,
+    pub value_head_dim: usize,
+    pub conv_kernel_size: usize,
+    pub rms_norm_eps: f64,
+    /// The output gate's nonlinearity. Qwen3.6 leaves `output_gate_type`
+    /// unset and gets SiLU; `qwen4_exp` states sigmoid, and inheriting
+    /// SiLU there is wrong on every linear-attention layer.
+    pub output_gate: OutputGate,
+    /// Carry the recurrent state in f32 between forwards (#284) rather
+    /// than round-tripping it through the activation dtype. For
+    /// `qwen3_5` this follows `NEURON_GDN_STATE_F32`; an architecture
+    /// whose checkpoint states `mamba_ssm_dtype` should follow the
+    /// checkpoint instead.
+    pub state_f32: bool,
+}
+
+impl GatedDeltaNetParams {
+    /// The `qwen3_5` reading, preserving today's behaviour exactly:
+    /// SiLU regardless of `hidden_act`, and the process-wide flag.
+    pub fn from_qwen3_5(cfg: &TextConfig) -> Self {
+        Self {
+            hidden_size: cfg.hidden_size,
+            num_value_heads: cfg.linear_num_value_heads,
+            num_key_heads: cfg.linear_num_key_heads,
+            key_head_dim: cfg.linear_key_head_dim,
+            value_head_dim: cfg.linear_value_head_dim,
+            conv_kernel_size: cfg.linear_conv_kernel_dim,
+            rms_norm_eps: cfg.rms_norm_eps,
+            output_gate: OutputGate::Silu,
+            state_f32: gdn_state_f32(),
+        }
+    }
 }
 
 impl GatedDeltaNet {
     pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
-        let num_v_heads = cfg.linear_num_value_heads;
-        let num_k_heads = cfg.linear_num_key_heads;
-        let head_k_dim = cfg.linear_key_head_dim;
-        let head_v_dim = cfg.linear_value_head_dim;
-        let conv_kernel_size = cfg.linear_conv_kernel_dim;
+        Self::load_with_params(GatedDeltaNetParams::from_qwen3_5(cfg), vb)
+    }
+
+    pub fn load_with_params(cfg: GatedDeltaNetParams, vb: &ShardedVarBuilder) -> Result<Self> {
+        let num_v_heads = cfg.num_value_heads;
+        let num_k_heads = cfg.num_key_heads;
+        let head_k_dim = cfg.key_head_dim;
+        let head_v_dim = cfg.value_head_dim;
+        let conv_kernel_size = cfg.conv_kernel_size;
 
         if num_v_heads == 0 || num_k_heads == 0 {
             anyhow::bail!(
@@ -192,7 +246,12 @@ impl GatedDeltaNet {
             .with_context(|| format!("load '{}/A_log'", vb.prefix()))?;
 
         // ----- Output gated RMSNorm (per-head_v_dim). -----
-        let norm = Qwen3_5RmsNormGated::load(&vb.pp("norm"), head_v_dim, cfg.rms_norm_eps)?;
+        let norm = Qwen3_5RmsNormGated::load_with_gate(
+            &vb.pp("norm"),
+            head_v_dim,
+            cfg.rms_norm_eps,
+            cfg.output_gate,
+        )?;
 
         Ok(Self {
             in_proj_qkv,
@@ -213,6 +272,7 @@ impl GatedDeltaNet {
             conv_dim,
             conv_kernel_size,
             state: GatedDeltaNetState::default(),
+            state_f32: cfg.state_f32,
         })
     }
 
@@ -392,7 +452,7 @@ impl GatedDeltaNet {
         // by this point, and prefix snapshots deep-copy
         // (`snapshot_state`) precisely so they never share storage with
         // a buffer a later forward will overwrite.
-        self.state.recurrent_state = Some(if gdn_state_f32() {
+        self.state.recurrent_state = Some(if self.state_f32 {
             new_state
         } else {
             new_state.to_dtype(dtype)?
@@ -498,7 +558,7 @@ fn chunked_prefill_enabled() -> bool {
 ///
 /// Costs ~2× the recurrent slab: +37.7 MB per GPU per sequence on the
 /// deployed 27B under TP=2, so +302 MB/GPU at `max_in_flight = 8`.
-fn gdn_state_f32() -> bool {
+pub(crate) fn gdn_state_f32() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| {
         std::env::var("NEURON_GDN_STATE_F32")
@@ -1394,6 +1454,7 @@ mod tests {
             conv_dim,
             conv_kernel_size: cfg.linear_conv_kernel_dim,
             state: GatedDeltaNetState::default(),
+            state_f32: gdn_state_f32(),
         };
 
         let x = Tensor::ones(&[b, l, cfg.hidden_size], dtype, &dev).unwrap();
