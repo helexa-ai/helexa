@@ -198,6 +198,28 @@ diagnose() {
   fi
   rm -rf "${DEST}.trace"
 
+  # Which wire protocol was refused? git >= 2.26 defaults to v2, where
+  # the ref listing is a POST to git-upload-pack carrying a
+  # Git-Protocol header; v0 is a plain GET of /info/refs first. libgit2
+  # — which cargo uses, and which has been observed reaching this same
+  # host seconds before git failed — still speaks v0. If v0 succeeds
+  # here while v2 fails, the fault is in how something on the path
+  # handles the newer protocol, not in access to the repository, and
+  # pinning protocol.version=0 for this fetch is the whole fix.
+  for v in 0 2; do
+    rm -rf "${DEST}.proto"
+    if git init -q "${DEST}.proto" 2>/dev/null \
+      && git -C "${DEST}.proto" remote add origin "${CUTLASS_REPO}" 2>/dev/null; then
+      if git -c protocol.version="${v}" -C "${DEST}.proto" \
+           fetch -q --depth 1 origin "${COMMIT}" 2>/dev/null; then
+        echo "seed-cutlass: protocol v${v}: OK" >&2
+      else
+        echo "seed-cutlass: protocol v${v}: FAILED" >&2
+      fi
+    fi
+    rm -rf "${DEST}.proto"
+  done
+
   echo "seed-cutlass: --- end diagnostics ---" >&2
 }
 
