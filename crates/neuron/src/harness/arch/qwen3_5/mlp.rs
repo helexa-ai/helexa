@@ -17,8 +17,11 @@ pub struct Qwen3_5MLP {
 }
 
 impl Qwen3_5MLP {
-    /// Construct directly from pre-built projections (MoE-block tests).
-    #[cfg(test)]
+    /// Construct directly from pre-built projections.
+    ///
+    /// `qwen4_exp` ships its routed experts as fused 3D tensors rather
+    /// than per-expert modules, so its loader slices them and builds the
+    /// experts here — same SwiGLU, different storage.
     pub(crate) fn from_weights(gate_proj: Linear, up_proj: Linear, down_proj: Linear) -> Self {
         Self {
             gate_proj,
