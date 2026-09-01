@@ -21,16 +21,19 @@
 # — with retries and backoff, which the build script has none of — removes
 # the fetch from the build's critical path.
 #
-# The fetch is forced ANONYMOUS. CUTLASS is a public repository, so an
-# unauthenticated request is a 200 — but a request carrying a credential
-# GitHub does not accept is a 401:
+# The fetch is forced ANONYMOUS, and reports diagnostics when it fails.
+# CUTLASS is public, so no credential is needed or wanted; sending none
+# takes our side of the connection out of the picture, so a failure is
+# unambiguously not something this build machine attached to the request.
+# What has actually been observed is a 401 that nobody has yet traced to
+# a responder:
 #
 #   error: RPC failed; HTTP 401 curl 22 The requested URL returned error: 401
 #
-# A build machine can pick a credential up from a credential helper, a
-# credential store, an http.extraheader, or a url.<...>.insteadOf rewrite
-# that embeds a token, any of which may be inherited rather than chosen.
-# Sending nothing is both simpler and strictly more likely to succeed.
+# Do not assume that is GitHub. GitHub rate-limits its API, not clones,
+# and a filtering proxy or a captive resolver on the path answers 401
+# just as readily. The diagnostics below print who replied and with what
+# headers, which is the thing that tells them apart.
 #
 # Best effort by design: if seeding fails, the build behaves exactly as it
 # does today and cargo emits the authoritative error. This script never
@@ -87,6 +90,31 @@ fi
 mkdir -p "${CACHE_ROOT}" || exit 0
 rm -rf "${DEST}.partial"
 
+# Dumped once, on the first failed attempt. Everything here is best
+# effort and must never fail the script: this runs on a path that is
+# already going wrong. `env -u` restores the real git configuration for
+# the inspection only — the fetch itself still runs without it.
+diagnose() {
+  echo "seed-cutlass: --- diagnostics ---" >&2
+  # Deliberately no public-IP lookup: that would mean calling a third
+  # party from every failing build. The reply headers below already say
+  # who answered, which is the question that matters.
+  echo "seed-cutlass: github.com resolves to $(getent ahostsv4 github.com 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')" >&2
+  proxies=$(env | grep -Ei '^(https?_proxy|all_proxy|no_proxy)=' | tr '\n' ' ')
+  echo "seed-cutlass: proxy env ${proxies:-none}" >&2
+  relevant=$(env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_SYSTEM -u GIT_CONFIG_COUNT \
+    git config --list --show-origin 2>/dev/null \
+    | grep -Ei 'extraheader|insteadof|credential|proxy|askpass' | tr '\n' ' ')
+  echo "seed-cutlass: git config of interest ${relevant:-none}" >&2
+  # The decisive one: a real GitHub reply carries x-github-request-id and
+  # a GitHub server header. A middlebox answering 401 carries neither.
+  echo "seed-cutlass: response headers from the git endpoint:" >&2
+  curl -sS -o /dev/null -D - --max-time 20 \
+    "${CUTLASS_REPO%.git}.git/info/refs?service=git-upload-pack" 2>&1 \
+    | sed 's/^/seed-cutlass:   /' >&2
+  echo "seed-cutlass: --- end diagnostics ---" >&2
+}
+
 for attempt in 1 2 3 4 5; do
   if git init -q "${DEST}.partial" \
     && git -C "${DEST}.partial" remote add origin "${CUTLASS_REPO}" \
@@ -101,6 +129,9 @@ for attempt in 1 2 3 4 5; do
     exit 0
   fi
   rm -rf "${DEST}.partial"
+  if [[ "${attempt}" == 1 ]]; then
+    diagnose
+  fi
   backoff=$((attempt * 15))
   echo "seed-cutlass: attempt ${attempt} failed; retrying in ${backoff}s" >&2
   sleep "${backoff}"
