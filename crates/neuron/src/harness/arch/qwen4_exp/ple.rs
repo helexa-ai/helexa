@@ -8,9 +8,12 @@
 //! PLE is three separable pieces. [`NGramHasher`] is the *addressing*:
 //! token ids to row indices. [`PleBlock`] is the *consumption*: the
 //! gated mix of the gathered embedding into the four residual streams.
-//! Between them sits the gather itself, which is where the table lives
-//! and therefore belongs to #310 — at 27 GB quantised it is not
-//! device-resident, and nothing above depends on how it is fetched.
+//! Between them sits the gather, behind the [`NGramTable`] trait —
+//! *where* those bytes live is #310's decision, and the trait is the
+//! seam so that decision changes one implementation and nothing else.
+//! [`ShardedNGramTable`] is the naive reading of the checkpoint, which
+//! is the baseline that issue measures against rather than its
+//! answer.
 //!
 //! ## Geometry
 //!
@@ -202,6 +205,135 @@ impl NGramHasher {
             }
         }
         out
+    }
+}
+
+/// Where the n-gram table's rows come from.
+///
+/// 320,001,536 rows of 160, and every token needs sixteen of them —
+/// a few KB per token out of 27 GB quantised. That ratio is why the
+/// table can live off-device at almost no cost, and why #310 is a
+/// residency decision rather than an algorithm. Nothing above this
+/// trait depends on the answer.
+pub trait NGramTable: Send + Sync {
+    /// Gather `rows`, **in the order given**, as
+    /// `[rows.len(), head_dim]`.
+    fn gather(&self, rows: &[i64]) -> Result<Tensor>;
+
+    /// Width of one row — `ple_embed_dim / ngram_heads`, 160.
+    fn head_dim(&self) -> usize;
+}
+
+/// The checkpoint's 128 shards, held wherever they were loaded.
+///
+/// The shards are a **flat split of one concatenated table**, not a
+/// split per head: shard `s` holds rows `[s * rows_per_shard,
+/// (s+1) * rows_per_shard)`, so a global row index from the hash
+/// addresses straight into it. They are kept separate rather than
+/// concatenated because joining 128 tensors of 2,500,012 x 160 would
+/// need the whole table free a second time.
+///
+/// This is the naive residency — the bytes end up wherever the
+/// VarBuilder put them, which for a 27 GB table is exactly the problem
+/// #310 exists to solve. It is the control that issue measures its
+/// host- and NVMe-resident variants against.
+pub struct ShardedNGramTable {
+    shards: Vec<Tensor>,
+    rows_per_shard: usize,
+    head_dim: usize,
+}
+
+impl ShardedNGramTable {
+    /// `vb` should be `.pp(...)`-ed to `ple_embedding.ngram_embedding`.
+    pub fn load(
+        vb: &ShardedVarBuilder,
+        parts: usize,
+        rows: usize,
+        head_dim: usize,
+    ) -> Result<Self> {
+        ensure!(parts > 0, "split_ngram_parts must be > 0");
+        ensure!(
+            rows.is_multiple_of(parts),
+            "{rows} rows do not divide evenly into {parts} shards"
+        );
+        let rows_per_shard = rows / parts;
+        let mut shards = Vec::with_capacity(parts);
+        for s in 0..parts {
+            shards.push(
+                vb.pp(format!("shard_{s}"))
+                    .get((rows_per_shard, head_dim), "weight")
+                    .with_context(|| format!("load '{}/shard_{s}/weight'", vb.prefix()))?,
+            );
+        }
+        Ok(Self {
+            shards,
+            rows_per_shard,
+            head_dim,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_shards(shards: Vec<Tensor>) -> Result<Self> {
+        ensure!(!shards.is_empty(), "need at least one shard");
+        let (rows_per_shard, head_dim) = shards[0].dims2()?;
+        Ok(Self {
+            shards,
+            rows_per_shard,
+            head_dim,
+        })
+    }
+
+    fn shard_of(&self, row: i64) -> usize {
+        row as usize / self.rows_per_shard
+    }
+}
+
+impl NGramTable for ShardedNGramTable {
+    fn gather(&self, rows: &[i64]) -> Result<Tensor> {
+        let total = (self.shards.len() * self.rows_per_shard) as i64;
+        if let Some(bad) = rows.iter().find(|r| **r < 0 || **r >= total) {
+            anyhow::bail!("row {bad} is outside the table's 0..{total}");
+        }
+        if rows.is_empty() {
+            let device = self.shards[0].device();
+            return Ok(Tensor::zeros(
+                (0, self.head_dim),
+                self.shards[0].dtype(),
+                device,
+            )?);
+        }
+
+        // Visit each shard once: sort the requests by shard, gather, then
+        // undo the permutation. Getting that inverse wrong hands every
+        // token somebody else's n-gram, which is not a crash.
+        let mut order: Vec<usize> = (0..rows.len()).collect();
+        order.sort_by_key(|&i| (self.shard_of(rows[i]), i));
+
+        let device = self.shards[0].device();
+        let mut parts = Vec::new();
+        let mut i = 0;
+        while i < order.len() {
+            let shard = self.shard_of(rows[order[i]]);
+            let mut within = Vec::new();
+            while i < order.len() && self.shard_of(rows[order[i]]) == shard {
+                within.push((rows[order[i]] as usize - shard * self.rows_per_shard) as u32);
+                i += 1;
+            }
+            let idx = Tensor::from_vec(within.clone(), within.len(), device)?;
+            parts.push(self.shards[shard].index_select(&idx, 0)?);
+        }
+        let gathered = Tensor::cat(&parts, 0)?;
+
+        let mut inverse = vec![0u32; rows.len()];
+        for (position, &original) in order.iter().enumerate() {
+            inverse[original] = position as u32;
+        }
+        let inverse = Tensor::from_vec(inverse, rows.len(), device)?;
+        Ok(gathered.index_select(&inverse, 0)?)
+    }
+
+    fn head_dim(&self) -> usize {
+        self.head_dim
     }
 }
 
@@ -746,6 +878,109 @@ mod tests {
         assert!(
             (first[0] - want[0]).abs() < 1e-5,
             "clear_state should return the block to a fresh prefill"
+        );
+    }
+
+    // ---- the table ----
+
+    /// Rows come back in the order asked for, not the order they were
+    /// fetched in. Two shards of three rows, requested out of order and
+    /// across the boundary: the shard-major gather returns them sorted,
+    /// so the inverse permutation is the whole test. Getting it wrong
+    /// hands every token somebody else's n-gram, silently.
+    #[test]
+    fn a_gather_preserves_the_order_it_was_asked_for() {
+        let dev = Device::Cpu;
+        // Row r holds [r, r] so a row is identifiable by its contents.
+        let shard = |base: f32| {
+            Tensor::from_vec(
+                vec![base, base, base + 1.0, base + 1.0, base + 2.0, base + 2.0],
+                (3, 2),
+                &dev,
+            )
+            .unwrap()
+        };
+        let table = ShardedNGramTable::from_shards(vec![shard(0.0), shard(3.0)]).unwrap();
+        assert_eq!(table.head_dim(), 2);
+
+        let got: Vec<f32> = table
+            .gather(&[4, 1, 3, 0, 5])
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        assert_eq!(got, vec![4.0, 4.0, 1.0, 1.0, 3.0, 3.0, 0.0, 0.0, 5.0, 5.0]);
+    }
+
+    /// Repeated rows are legitimate — sixteen heads can collide — and
+    /// must each come back.
+    #[test]
+    fn a_repeated_row_is_returned_once_per_request() {
+        let dev = Device::Cpu;
+        let shard = Tensor::from_vec(vec![0.0f32, 1.0, 2.0, 3.0], (2, 2), &dev).unwrap();
+        let table = ShardedNGramTable::from_shards(vec![shard]).unwrap();
+        let got: Vec<f32> = table
+            .gather(&[1, 1, 0])
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        assert_eq!(got, vec![2.0, 3.0, 2.0, 3.0, 0.0, 1.0]);
+    }
+
+    /// A row index past the end is a hashing bug upstream, and must not
+    /// become a panic in the middle of a forward.
+    #[test]
+    fn a_row_outside_the_table_is_an_error() {
+        let dev = Device::Cpu;
+        let shard = Tensor::zeros((2, 2), DType::F32, &dev).unwrap();
+        let table = ShardedNGramTable::from_shards(vec![shard]).unwrap();
+        assert!(table.gather(&[0, 1]).is_ok());
+        assert!(table.gather(&[2]).is_err());
+        assert!(table.gather(&[-1]).is_err());
+        assert_eq!(table.gather(&[]).unwrap().dims(), &[0, 2]);
+    }
+
+    /// The hasher and the table meet here: sixteen row indices per
+    /// position, gathered and flattened into the 2560-wide embedding the
+    /// block consumes. The widths have to agree or the projections do
+    /// not fit.
+    #[test]
+    fn hashed_rows_gather_into_one_embedding_per_position() {
+        let dev = Device::Cpu;
+        let heads = 4;
+        let head_dim = 2;
+        let rows = 64;
+        let shard = Tensor::from_vec(
+            (0..rows * head_dim).map(|v| v as f32).collect::<Vec<_>>(),
+            (rows, head_dim),
+            &dev,
+        )
+        .unwrap();
+        let table = ShardedNGramTable::from_shards(vec![shard]).unwrap();
+
+        let hasher = hasher(3, heads / 2);
+        let ids = [7i64, 11, 13];
+        let per_position = hasher.rows(&ids, ids.len()).unwrap();
+        assert_eq!(per_position.len(), 3);
+        assert_eq!(per_position[0].len(), heads);
+
+        let flat: Vec<i64> = per_position
+            .iter()
+            .flatten()
+            .map(|r| r.rem_euclid(rows as i64))
+            .collect();
+        let gathered = table.gather(&flat).unwrap();
+        assert_eq!(gathered.dims(), &[ids.len() * heads, head_dim]);
+        // Reshaped per position, that is the ple_embed_dim-wide row.
+        assert_eq!(
+            gathered
+                .reshape((ids.len(), heads * head_dim))
+                .unwrap()
+                .dims(),
+            &[3, heads * head_dim]
         );
     }
 }
