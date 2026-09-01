@@ -19,6 +19,8 @@
 //! - [`hyper`] — hyper-connections, the residual structure itself.
 //! - [`full_attn`] — one layer in four, plus the indexer that
 //!   narrows what it may attend.
+//! - [`moe`] — the FFN every layer has, loaded from fused expert
+//!   tensors instead of 512 modules.
 //! - [`ple`] — the hashed n-gram table on layer 1: how its rows
 //!   are addressed, and how the gathered rows are consumed.
 //! - [`qsa`] — which blocks of the past a full-attention layer is
@@ -27,5 +29,6 @@
 pub mod config;
 pub mod full_attn;
 pub mod hyper;
+pub mod moe;
 pub mod ple;
 pub mod qsa;
