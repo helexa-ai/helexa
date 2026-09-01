@@ -15,7 +15,8 @@
 //! Built in dependency order, so each piece can be parity-tested before
 //! anything stacks on it:
 //! - [`hyper`] — hyper-connections, the residual structure itself.
-//! - [`ple`] — addressing for the hashed n-gram table on layer 1.
+//! - [`ple`] — the hashed n-gram table on layer 1: how its rows
+//!   are addressed, and how the gathered rows are consumed.
 
 pub mod hyper;
 pub mod ple;
