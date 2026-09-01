@@ -176,6 +176,28 @@ diagnose() {
   echo "seed-cutlass: refusal body: $(curl -sS --max-time 20 "${REFS_URL}" 2>&1 \
     | head -c 200 | tr '\n' ' ')" >&2
 
+  # Replay the fetch under git's own HTTP tracing. Everything above
+  # inspects a request of our choosing — a GET of the ref advertisement.
+  # The exchange that actually fails is the POST to git-upload-pack that
+  # follows it, and anything in the path may treat the two differently,
+  # so a clean GET proves very little. This shows which request was
+  # refused and what came back.
+  #
+  # It also settles, without inference, whether anything attached
+  # credentials: git logs an Authorization header here as <redacted>, so
+  # the line appearing at all means one was sent.
+  echo "seed-cutlass: traced replay of the real fetch:" >&2
+  rm -rf "${DEST}.trace"
+  if git init -q "${DEST}.trace" 2>/dev/null \
+    && git -C "${DEST}.trace" remote add origin "${CUTLASS_REPO}" 2>/dev/null; then
+    GIT_TRACE_CURL=1 GIT_TRACE_CURL_NO_DATA=1 GIT_TRACE_REDACT=1 \
+      git -C "${DEST}.trace" fetch --depth 1 origin "${COMMIT}" 2>&1 \
+      | grep -iE 'Send header: (GET|POST)|Recv header: (HTTP/|server:|www-authenticate:|x-github|content-type:|retry-after:)|Authorization|fatal:|error:' \
+      | sed 's/.*\(Send header\|Recv header\)/\1/; s/^/seed-cutlass:   /' \
+      | head -40 >&2 || true
+  fi
+  rm -rf "${DEST}.trace"
+
   echo "seed-cutlass: --- end diagnostics ---" >&2
 }
 
