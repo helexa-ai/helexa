@@ -314,6 +314,16 @@ jobs:
           export LD_LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LD_LIBRARY_PATH:-}"
           export LIBRARY_PATH="/usr/local/cuda-13.0/targets/x86_64-linux/lib:/usr/local/cuda-13.0/lib64:${LIBRARY_PATH:-}"
           script/ci-cargo-escalate.sh cargo check -p neuron --features cuda,flash-attn --all-targets
+        env:
+          # cudaforge shells out to `git clone` for CUTLASS if the seed
+          # step above did not populate the cache. Give that clone the
+          # same anonymous git environment the seed script uses: CUTLASS
+          # is public, and an inherited credential turns a 200 into a
+          # 401. Scoped to this step — actions/checkout writes global
+          # config and must not see these.
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_COUNT: "0"
 
   srpm-cortex:
     name: Build cortex SRPM

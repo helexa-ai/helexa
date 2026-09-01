@@ -572,7 +572,14 @@ jobs:
       # retries the build script does not have. Both commands are
       # best-effort: on failure the build proceeds exactly as it would have
       # and reports the authoritative error itself.
+      #
+      # Only the flash-attn flavour pulls in candle-flash-attn, and only
+      # candle-flash-attn wants CUTLASS. Guard on that: unguarded, all
+      # three flavours raced for the same checkout at the same moment and
+      # two of them never used it, tripling a burst of exactly the request
+      # that gets refused.
       - name: Seed the CUTLASS checkout
+        if: contains(matrix.cargo_features, 'flash-attn')
         run: |
           cargo fetch || true
           script/seed-cutlass.sh
@@ -591,6 +598,15 @@ jobs:
           CUDA_COMPUTE_CAP: ${{ matrix.compute_cap }}
           CARGO_BUILD_JOBS: ${{ matrix.build_jobs }}
           NVCC_THREADS: ${{ matrix.nvcc_threads }}
+          # cudaforge shells out to `git clone` for CUTLASS if the seed
+          # step above did not populate the cache. Give that clone the
+          # same anonymous git environment the seed script uses: CUTLASS
+          # is public, and an inherited credential turns a 200 into a
+          # 401. Scoped to this step — actions/checkout writes global
+          # config and must not see these.
+          GIT_CONFIG_GLOBAL: /dev/null
+          GIT_CONFIG_SYSTEM: /dev/null
+          GIT_CONFIG_COUNT: "0"
 
       - name: Stage binary
         run: |
