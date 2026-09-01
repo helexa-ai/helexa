@@ -17,6 +17,8 @@
 //! - [`config`] — the checkpoint's own `config.json`, and what its
 //!   fields mean where they are not what they look like.
 //! - [`hyper`] — hyper-connections, the residual structure itself.
+//! - [`decoder`] — the composition: four residual streams, PLE on
+//!   layer 1, and no layernorm outside the hyper-connections.
 //! - [`full_attn`] — one layer in four, plus the indexer that
 //!   narrows what it may attend.
 //! - [`linear_attn`] — the other three layers in four, reused whole
@@ -29,6 +31,7 @@
 //!   allowed to look at.
 
 pub mod config;
+pub mod decoder;
 pub mod full_attn;
 pub mod hyper;
 pub mod linear_attn;

@@ -94,6 +94,43 @@ impl HyperConnection {
         })
     }
 
+    /// A hyper-connection whose three projections are all zero, for
+    /// tests in this module and its siblings.
+    ///
+    /// That makes the whole gate analytic: `down(hn) = 0` so
+    /// `silu(0) = 0`, `up(0) = 0` so `sigmoid(0) = 0.5`, and
+    /// `block_inject(hn) = 0` so `2 * sigmoid(0) = 1`. The mix weight is
+    /// exactly 0.5 everywhere and every stream is injected with weight
+    /// 1, so any error in the `/hc_count` divisions, the sigmoid
+    /// constants, or mean-versus-sum shows up as a wrong number rather
+    /// than a wrong shape.
+    #[cfg(test)]
+    pub(crate) fn zeroed_for_test(
+        hidden_size: usize,
+        hc_count: usize,
+        hc_lowrank: usize,
+        use_combine: bool,
+    ) -> Self {
+        use candle_core::{DType, Device};
+        let dev = Device::Cpu;
+        let wide = hidden_size * hc_count;
+        let z = |o: usize, i: usize| {
+            Linear::new(Tensor::zeros((o, i), DType::F32, &dev).unwrap(), None)
+        };
+        Self {
+            hc_norm: crate::harness::arch::qwen3_5::rmsnorm::Qwen3_5RmsNorm::from_weight(
+                Tensor::zeros(wide, DType::F32, &dev).unwrap(),
+                1e-6,
+                Some(hidden_size),
+            ),
+            mix_down: z(hc_lowrank, wide),
+            mix_up: z(wide, hc_lowrank),
+            block_inject: use_combine.then(|| z(hc_count, wide)),
+            hidden_size,
+            hc_count,
+        }
+    }
+
     /// Split the stream tensor into a sublayer input plus what is needed
     /// to rejoin.
     pub fn split(&self, h: &Tensor) -> candle_core::Result<HyperSplit> {
@@ -171,7 +208,7 @@ fn linear(vb: &ShardedVarBuilder, name: &str, in_dim: usize, out_dim: usize) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{DType, Device};
+    use candle_core::Device;
 
     /// Build a hyper-connection whose three projections are all zero.
     /// That makes the whole gate analytic:
@@ -181,23 +218,7 @@ mod tests {
     /// injected with weight 1. Any error in the /hc_count divisions, the
     /// sigmoid constants, or mean-vs-sum shows up as a wrong number.
     fn zeroed(hidden: usize, hc: usize, lowrank: usize) -> HyperConnection {
-        let dev = Device::Cpu;
-        let wide = hidden * hc;
-        let z = |o: usize, i: usize| {
-            Linear::new(Tensor::zeros((o, i), DType::F32, &dev).unwrap(), None)
-        };
-        HyperConnection {
-            hc_norm: Qwen3_5RmsNorm::from_weight(
-                Tensor::zeros(wide, DType::F32, &dev).unwrap(),
-                1e-6,
-                Some(hidden),
-            ),
-            mix_down: z(lowrank, wide),
-            mix_up: z(wide, lowrank),
-            block_inject: Some(z(hc, wide)),
-            hidden_size: hidden,
-            hc_count: hc,
-        }
+        HyperConnection::zeroed_for_test(hidden, hc, lowrank, true)
     }
 
     #[test]
