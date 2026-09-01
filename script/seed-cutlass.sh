@@ -21,7 +21,7 @@
 # — with retries and backoff, which the build script has none of — removes
 # the fetch from the build's critical path.
 #
-# The fetch is forced ANONYMOUS, and reports diagnostics when it fails.
+# The fetch is forced ANONYMOUS, and probes the remote on every run.
 # CUTLASS is public, so no credential is needed or wanted; sending none
 # takes our side of the connection out of the picture, so a failure is
 # unambiguously not something this build machine attached to the request.
@@ -33,7 +33,8 @@
 # Do not assume that is GitHub. GitHub rate-limits its API, not clones,
 # and a filtering proxy or a captive resolver on the path answers 401
 # just as readily. The diagnostics below print who replied and with what
-# headers, which is the thing that tells them apart.
+# headers on every build, so a refusal arrives with healthy samples
+# beside it rather than alone.
 #
 # Best effort by design: if seeding fails, the build behaves exactly as it
 # does today and cargo emits the authoritative error. This script never
@@ -90,30 +91,96 @@ fi
 mkdir -p "${CACHE_ROOT}" || exit 0
 rm -rf "${DEST}.partial"
 
-# Dumped once, on the first failed attempt. Everything here is best
-# effort and must never fail the script: this runs on a path that is
-# already going wrong. `env -u` restores the real git configuration for
-# the inspection only — the fetch itself still runs without it.
+# ---------------------------------------------------------------------
+# Instrumentation. Two levels, both best effort: none of it may fail a
+# build, so every probe is bounded by a timeout and every failure is
+# swallowed.
+#
+#   probe_remote  runs on EVERY seeding run, successful ones included,
+#                 so consecutive builds form a comparable series. A
+#                 failure observed alone is nearly unreadable; the same
+#                 failure beside twenty healthy samples is evidence.
+#   diagnose      runs once, on the first failed attempt, adding the
+#                 slower checks only worth their time once something has
+#                 already gone wrong.
+#
+# What each field is for:
+#
+#   server, x-github-request-id  whether GitHub answered at all. A proxy
+#                                or captive portal returning 401 on its
+#                                behalf carries neither.
+#   x-github-edge-region, peer   which edge served us, so a fault
+#                                specific to one edge becomes visible.
+#   x-ratelimit-*                whether this egress address is being
+#                                throttled, measured rather than assumed.
+#   response body                distinguishes "Repository not found"
+#                                from any other refusal.
+#   tls issuer                   a re-signed certificate means something
+#                                is terminating TLS in the path.
+#   egress                       the identity any per-source limit is
+#                                applied to, and the only field that
+#                                makes failures on different runners
+#                                comparable. Costs one call to a third
+#                                party, which is why it is in the
+#                                failure path and not the common one.
+# ---------------------------------------------------------------------
+REFS_URL="${CUTLASS_REPO%.git}.git/info/refs?service=git-upload-pack"
+
+probe_remote() {
+  fmt='http=%{http_code} peer=%{remote_ip}:%{remote_port} tls_verify=%{ssl_verify_result}'
+  fmt="${fmt} connects=%{num_connects} redirects=%{num_redirects}"
+  fmt="${fmt} bytes=%{size_download} time=%{time_total}s"
+  # One request, not two: this runs on every build, and doubling the
+  # traffic to the endpoint under suspicion would corrupt what it
+  # measures. Headers land in a file so the summary and the identity
+  # come from the same response.
+  hdr=$(mktemp 2>/dev/null) || return 0
+  echo "seed-cutlass: probe $(curl -sS -o /dev/null -D "${hdr}" --max-time 20 \
+    -w "${fmt}" "${REFS_URL}" 2>&1 | tr '\n' ' ')" >&2
+  tr -d '\r' < "${hdr}" \
+    | grep -iE '^(HTTP/|server:|www-authenticate:|retry-after:|x-github-request-id:|x-github-edge-region:|x-ratelimit-)' \
+    | sed 's/^/seed-cutlass:   /' >&2 || true
+  rm -f "${hdr}"
+}
+
 diagnose() {
   echo "seed-cutlass: --- diagnostics ---" >&2
-  # Deliberately no public-IP lookup: that would mean calling a third
-  # party from every failing build. The reply headers below already say
-  # who answered, which is the question that matters.
-  echo "seed-cutlass: github.com resolves to $(getent ahostsv4 github.com 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')" >&2
+  echo "seed-cutlass: $(git --version 2>/dev/null || echo 'git --version failed')" \
+       "| $(uname -sr 2>/dev/null) | host $(hostname 2>/dev/null)" >&2
+
+  echo "seed-cutlass: dns $(getent ahosts github.com 2>/dev/null \
+    | awk '{print $1}' | sort -u | tr '\n' ' ')" >&2
+  echo "seed-cutlass: egress $(curl -sS --max-time 10 https://api.ipify.org 2>/dev/null \
+    || echo unknown)" >&2
+
   proxies=$(env | grep -Ei '^(https?_proxy|all_proxy|no_proxy)=' | tr '\n' ' ')
   echo "seed-cutlass: proxy env ${proxies:-none}" >&2
+
+  # `env -u` restores the real git configuration for this inspection
+  # only; the fetch itself still runs with config disabled.
   relevant=$(env -u GIT_CONFIG_GLOBAL -u GIT_CONFIG_SYSTEM -u GIT_CONFIG_COUNT \
     git config --list --show-origin 2>/dev/null \
-    | grep -Ei 'extraheader|insteadof|credential|proxy|askpass' | tr '\n' ' ')
+    | grep -Ei 'extraheader|insteadof|credential|proxy|askpass|http\.' | tr '\n' ' ')
   echo "seed-cutlass: git config of interest ${relevant:-none}" >&2
-  # The decisive one: a real GitHub reply carries x-github-request-id and
-  # a GitHub server header. A middlebox answering 401 carries neither.
-  echo "seed-cutlass: response headers from the git endpoint:" >&2
-  curl -sS -o /dev/null -D - --max-time 20 \
-    "${CUTLASS_REPO%.git}.git/info/refs?service=git-upload-pack" 2>&1 \
-    | sed 's/^/seed-cutlass:   /' >&2
+
+  echo "seed-cutlass: what this egress has left on the github api:" >&2
+  curl -sS -o /dev/null -D - --max-time 15 https://api.github.com/rate_limit 2>&1 \
+    | tr -d '\r' | grep -iE '^(HTTP/|x-ratelimit-)' \
+    | sed 's/^/seed-cutlass:   /' >&2 || true
+
+  echo "seed-cutlass: tls path:" >&2
+  curl -sSv -o /dev/null --max-time 20 "${REFS_URL}" 2>&1 \
+    | grep -iE 'subject:|issuer:|SSL connection using|ALPN, server accepted|subjectAltName' \
+    | sed 's/^[*] *//; s/^/seed-cutlass:   /' >&2 || true
+
+  echo "seed-cutlass: refusal body: $(curl -sS --max-time 20 "${REFS_URL}" 2>&1 \
+    | head -c 200 | tr '\n' ' ')" >&2
+
   echo "seed-cutlass: --- end diagnostics ---" >&2
 }
+
+# Unconditional: one sample per run, so the failures have a baseline.
+probe_remote
 
 for attempt in 1 2 3 4 5; do
   if git init -q "${DEST}.partial" \
