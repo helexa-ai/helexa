@@ -84,7 +84,10 @@ impl Attention {
             o_proj: linear(vb, "o_proj", attn_width, cfg.hidden_size)?,
             q_norm: Qwen3_5RmsNorm::load(&vb.pp("q_norm"), head_dim, cfg.rms_norm_eps)?,
             k_norm: Qwen3_5RmsNorm::load(&vb.pp("k_norm"), head_dim, cfg.rms_norm_eps)?,
-            indexer: Indexer::load(vb, cfg)?,
+            // The indexer is a submodule of the attention block, not a
+            // sibling: `self_attn.indexer.index_qk_proj`, per the
+            // checkpoint's own index.
+            indexer: Indexer::load(&vb.pp("indexer"), cfg)?,
             num_heads,
             num_kv_heads,
             num_kv_groups: num_heads / num_kv_heads,

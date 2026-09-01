@@ -23,7 +23,7 @@
 use anyhow::Result;
 use candle_core::{DType, Device, IndexOp, Tensor};
 
-use super::TextConfig;
+use super::{RopeParameters, TextConfig};
 
 #[derive(Debug, Clone)]
 pub struct RotaryEmbedding {
@@ -97,8 +97,30 @@ fn mrope_masks(
 
 impl RotaryEmbedding {
     pub fn new(dtype: DType, cfg: &TextConfig, dev: &Device) -> Result<Self> {
-        let head_dim = cfg.head_dim;
-        let rope = &cfg.rope_parameters;
+        Self::from_parts(
+            dtype,
+            cfg.head_dim,
+            cfg.max_position_embeddings,
+            &cfg.rope_parameters,
+            dev,
+        )
+    }
+
+    /// Build from the three things the rotary actually reads, rather
+    /// than from a whole config.
+    ///
+    /// `qwen4_exp` declares an identical `rope_parameters` block and the
+    /// same `head_dim` (spec §7), so it reuses this module unchanged —
+    /// but it owns a different config type, and fabricating a foreign
+    /// one to pass through here would be a lie the compiler could not
+    /// catch.
+    pub fn from_parts(
+        dtype: DType,
+        head_dim: usize,
+        max_seq_len: usize,
+        rope: &RopeParameters,
+        dev: &Device,
+    ) -> Result<Self> {
         let rotary_dim = (head_dim as f32 * rope.partial_rotary_factor) as usize;
         if !rotary_dim.is_multiple_of(2) {
             anyhow::bail!(
@@ -113,7 +135,6 @@ impl RotaryEmbedding {
                 rope.partial_rotary_factor
             );
         }
-        let max_seq_len = cfg.max_position_embeddings;
         let inv_freq: Vec<f32> = (0..rotary_dim)
             .step_by(2)
             .map(|i| 1f32 / rope.rope_theta.powf(i as f64 / rotary_dim as f64) as f32)
