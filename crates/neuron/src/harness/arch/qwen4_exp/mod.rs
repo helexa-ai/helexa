@@ -17,6 +17,8 @@
 //! - [`config`] — the checkpoint's own `config.json`, and what its
 //!   fields mean where they are not what they look like.
 //! - [`hyper`] — hyper-connections, the residual structure itself.
+//! - [`moe`] — the FFN every layer has, loaded from fused expert
+//!   tensors instead of 512 modules.
 //! - [`ple`] — the hashed n-gram table on layer 1: how its rows
 //!   are addressed, and how the gathered rows are consumed.
 //! - [`qsa`] — which blocks of the past a full-attention layer is
@@ -24,5 +26,6 @@
 
 pub mod config;
 pub mod hyper;
+pub mod moe;
 pub mod ple;
 pub mod qsa;

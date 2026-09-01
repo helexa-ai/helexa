@@ -52,6 +52,32 @@ pub struct Qwen3_5MoeBlock {
 }
 
 impl Qwen3_5MoeBlock {
+    /// Assemble from parts.
+    ///
+    /// The routing arithmetic is identical across the checkpoints that
+    /// use this block; only the storage of the experts differs.
+    /// `qwen4_exp` ships them as fused 3D tensors and slices them
+    /// itself, so it builds the block this way rather than through
+    /// [`Self::load`], which expects per-expert modules and a
+    /// `qwen3_5` config.
+    pub(crate) fn from_parts(
+        gate: Linear,
+        experts: Vec<Qwen3_5MLP>,
+        shared_expert: Option<Qwen3_5MLP>,
+        shared_expert_gate: Option<Linear>,
+        num_experts_per_tok: usize,
+        norm_topk_prob: bool,
+    ) -> Self {
+        Self {
+            gate,
+            experts,
+            shared_expert,
+            shared_expert_gate,
+            num_experts_per_tok,
+            norm_topk_prob,
+        }
+    }
+
     pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
         anyhow::ensure!(
             cfg.num_experts > 0 && cfg.num_experts_per_tok > 0 && cfg.moe_intermediate_size > 0,
