@@ -409,6 +409,7 @@ fn rotary_for(cfg: &TextConfig, dtype: DType, device: &Device) -> Result<RotaryE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::harness::arch::snapshot::LayerKvSnapshot;
     use candle_nn::var_builder::ShardedSafeTensors;
     use std::collections::HashMap;
 
@@ -693,6 +694,15 @@ mod tests {
         assert!(ngram.table.gather(&[TABLE_ROWS as i64]).is_err());
     }
 
+    fn tensor_vec(t: &Tensor) -> Vec<f32> {
+        t.flatten_all()
+            .unwrap()
+            .to_dtype(DType::F32)
+            .unwrap()
+            .to_vec1()
+            .unwrap()
+    }
+
     fn logits_vec(t: &Tensor) -> Vec<f32> {
         t.flatten_all().unwrap().to_vec1().unwrap()
     }
@@ -762,6 +772,97 @@ mod tests {
             "ngram_size - 1 ids carried across the step"
         );
         assert!(snap.size_bytes() > 0);
+    }
+
+    /// Round-trip the snapshot itself, not the logits it leads to.
+    ///
+    /// Taken from llama.cpp's `test-save-load-state` for this
+    /// architecture (their #27941, which fixed the indexer cache
+    /// dropping `ext.x`/`ext.y` on restore): comparing *generated
+    /// output* cannot see a field dropped on the way back in, because a
+    /// dropped field need not change the next token. Comparing the
+    /// captured state can. Their fix moved 198 bytes of 335,692 — a
+    /// logits comparison would never have noticed.
+    ///
+    /// So: snapshot, restore, snapshot again, and require the two to
+    /// agree field for field. Anything `restore_kv_cache` silently
+    /// fails to put back shows up here as a shape or value difference.
+    #[test]
+    fn a_snapshot_survives_its_own_round_trip() {
+        let (_dir, mut model) = build();
+        let prompt = Tensor::from_vec(vec![5u32, 9, 3, 12, 7], (1, 5), &Device::Cpu).unwrap();
+        model.forward(&prompt, 0).unwrap();
+
+        let first = model.snapshot_kv_cache().unwrap();
+        model.restore_kv_cache(&first).unwrap();
+        let second = model.snapshot_kv_cache().unwrap();
+
+        assert_eq!(first.layer_count(), second.layer_count());
+        assert_eq!(
+            first.size_bytes(),
+            second.size_bytes(),
+            "total captured bytes"
+        );
+
+        for (i, (a, b)) in first.layers.iter().zip(second.layers.iter()).enumerate() {
+            match (a, b) {
+                (
+                    LayerKvSnapshot::FullSparse {
+                        kv: ka,
+                        indexer_keys: ia,
+                    },
+                    LayerKvSnapshot::FullSparse {
+                        kv: kb,
+                        indexer_keys: ib,
+                    },
+                ) => {
+                    assert_eq!(ka.is_some(), kb.is_some(), "layer {i} kv presence");
+                    if let (Some((k1, v1)), Some((k2, v2))) = (ka, kb) {
+                        assert_eq!(k1.dims(), k2.dims(), "layer {i} k");
+                        assert_eq!(v1.dims(), v2.dims(), "layer {i} v");
+                        assert_eq!(tensor_vec(k1), tensor_vec(k2), "layer {i} k values");
+                    }
+                    // The field their fix was about: dropped silently,
+                    // and invisible to anything that looks at outputs.
+                    assert_eq!(
+                        ia.is_some(),
+                        ib.is_some(),
+                        "layer {i} indexer cache presence"
+                    );
+                    if let (Some(x), Some(y)) = (ia, ib) {
+                        assert_eq!(x.dims(), y.dims(), "layer {i} indexer keys");
+                        assert_eq!(tensor_vec(x), tensor_vec(y), "layer {i} indexer values");
+                    }
+                }
+                (
+                    LayerKvSnapshot::Linear {
+                        conv_state: ca,
+                        recurrent_state: ra,
+                    },
+                    LayerKvSnapshot::Linear {
+                        conv_state: cb,
+                        recurrent_state: rb,
+                    },
+                ) => {
+                    assert_eq!(ca.is_some(), cb.is_some(), "layer {i} conv presence");
+                    assert_eq!(ra.is_some(), rb.is_some(), "layer {i} recurrent presence");
+                    if let (Some(x), Some(y)) = (ca, cb) {
+                        assert_eq!(tensor_vec(x), tensor_vec(y), "layer {i} conv values");
+                    }
+                    if let (Some(x), Some(y)) = (ra, rb) {
+                        assert_eq!(tensor_vec(x), tensor_vec(y), "layer {i} recurrent values");
+                    }
+                }
+                _ => panic!("layer {i}: snapshot variant changed across a round trip"),
+            }
+        }
+
+        let (pa, pb) = (first.ple.as_ref().unwrap(), second.ple.as_ref().unwrap());
+        assert_eq!(pa.carried_ids, pb.carried_ids, "PLE carried ids");
+        assert_eq!(pa.conv_state.is_some(), pb.conv_state.is_some());
+        if let (Some(x), Some(y)) = (&pa.conv_state, &pb.conv_state) {
+            assert_eq!(tensor_vec(x), tensor_vec(y), "PLE conv context");
+        }
     }
 
     /// A snapshot from a differently-shaped model must be refused
