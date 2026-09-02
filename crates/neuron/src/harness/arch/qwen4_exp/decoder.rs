@@ -46,6 +46,7 @@ use super::full_attn::Attention;
 use super::hyper::HyperConnection;
 use super::ple::PleBlock;
 use super::{linear_attn, moe};
+use crate::harness::arch::snapshot::LayerKvSnapshot;
 
 /// The attention slot: one layer in four is full attention with the QSA
 /// indexer, the rest are the recurrent delta rule.
@@ -188,6 +189,65 @@ impl DecoderLayer {
             ple.clear_state();
         }
         Ok(())
+    }
+
+    /// Capture this layer's attention-side state.
+    pub fn snapshot_kv(&self) -> candle_core::Result<LayerKvSnapshot> {
+        Ok(match &self.mixer {
+            Mixer::Full(attn) => {
+                let (kv, indexer_keys) = attn.snapshot_kv();
+                LayerKvSnapshot::FullSparse { kv, indexer_keys }
+            }
+            Mixer::Linear(net) => {
+                let (conv_state, recurrent_state) = net.snapshot_state()?;
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                }
+            }
+        })
+    }
+
+    /// Replace this layer's attention-side state. A variant mismatch
+    /// means the snapshot came from a different model, or from the same
+    /// model with a different `layer_types` — either way, restoring it
+    /// would put a recurrent state into an attention layer.
+    pub fn restore_kv(&mut self, snap: &LayerKvSnapshot) -> candle_core::Result<()> {
+        match (&mut self.mixer, snap) {
+            (Mixer::Full(attn), LayerKvSnapshot::FullSparse { kv, indexer_keys }) => {
+                attn.restore_kv(kv.as_ref(), indexer_keys.as_ref())
+            }
+            (
+                Mixer::Linear(net),
+                LayerKvSnapshot::Linear {
+                    conv_state,
+                    recurrent_state,
+                },
+            ) => net.restore_state(conv_state.as_ref(), recurrent_state.as_ref()),
+            _ => candle_core::bail!(
+                "restore_kv: snapshot layer kind does not match this layer's mixer kind"
+            ),
+        }
+    }
+
+    /// The PLE block's rolling conv context, if this layer carries one.
+    pub fn snapshot_ple(&self) -> candle_core::Result<Option<Tensor>> {
+        match &self.ple {
+            Some(block) => block.snapshot_state(),
+            None => Ok(None),
+        }
+    }
+
+    /// Restore the PLE conv context. Refuses a snapshot that disagrees
+    /// with this layer about whether PLE lives here at all.
+    pub fn restore_ple(&mut self, conv_state: Option<&Tensor>) -> candle_core::Result<()> {
+        match &mut self.ple {
+            Some(block) => block.restore_state(conv_state),
+            None if conv_state.is_none() => Ok(()),
+            None => candle_core::bail!(
+                "restore_ple: snapshot carries PLE state but this layer has no PLE block"
+            ),
+        }
     }
 
     pub fn has_ple(&self) -> bool {

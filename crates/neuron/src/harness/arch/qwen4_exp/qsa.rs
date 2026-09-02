@@ -293,6 +293,21 @@ impl Indexer {
         &self.selector
     }
 
+    /// Capture the raw key cache for a prefix snapshot.
+    ///
+    /// A shallow clone, like the attention K/V it travels with: the
+    /// cache is only ever *replaced* by a `cat` into a fresh
+    /// allocation, never written in place, so the snapshot stays valid
+    /// after the live cache moves on.
+    pub fn snapshot_keys(&self) -> Option<Tensor> {
+        self.key_cache.clone()
+    }
+
+    /// Replace the key cache from a snapshot.
+    pub fn restore_keys(&mut self, keys: Option<&Tensor>) {
+        self.key_cache = keys.cloned();
+    }
+
     /// Drop the indexer's cache. Must happen with the main KV clear —
     /// a stale indexer cache selects blocks of another request's text.
     pub fn clear_cache(&mut self) {

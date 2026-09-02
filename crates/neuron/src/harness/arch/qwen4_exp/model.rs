@@ -45,6 +45,7 @@ use super::config::{Config, TextConfig};
 use super::decoder::DecoderLayer;
 use super::hyper::HyperConnection;
 use super::ple::{NGramHasher, NGramTable, ShardedNGramTable};
+use crate::harness::arch::snapshot::{KvCacheSnapshot, PleSnapshot};
 
 /// The hashed n-gram lookup, hoisted to the model because it is a
 /// function of the input ids alone.
@@ -87,6 +88,18 @@ impl NGramEmbedding {
             .to_device(device)?;
         debug_assert_eq!(stacked.dims()[1], seq_len);
         Ok(stacked)
+    }
+
+    /// The carried ids, for a prefix snapshot. Two integers per batch
+    /// row — small, but they decide which n-grams the next token
+    /// hashes, so a restore that forgets them silently addresses the
+    /// wrong rows of a 320-million-row table.
+    fn snapshot(&self) -> Vec<Vec<i64>> {
+        self.carried.clone()
+    }
+
+    fn restore(&mut self, carried: &[Vec<i64>]) {
+        self.carried = carried.to_vec();
     }
 
     fn reset(&mut self) {
@@ -210,6 +223,82 @@ impl Qwen4ExpForCausalLM {
         // The mixer's hc_norm is the only normalisation before the head.
         let x = self.mixer.collapse(&h)?;
         Ok(self.lm_head.forward(&x)?)
+    }
+
+    /// Capture every piece of per-request state at one token boundary:
+    /// the attention K/V and the QSA indexer cache per full-attention
+    /// layer, the GatedDeltaNet conv and recurrent states per linear
+    /// layer, and PLE's conv context and carried ids.
+    ///
+    /// There is no `rope_delta` here — this architecture's text path
+    /// takes positions from the caller's offset rather than tracking a
+    /// vision-induced skew, so the field is recorded as zero. When the
+    /// vision tower lands (#314) that stops being true.
+    pub fn snapshot_kv_cache(&self) -> candle_core::Result<KvCacheSnapshot> {
+        let layers = self
+            .layers
+            .iter()
+            .map(|l| l.snapshot_kv())
+            .collect::<candle_core::Result<Vec<_>>>()?;
+        let conv_state = self
+            .layers
+            .iter()
+            .map(|l| l.snapshot_ple())
+            .collect::<candle_core::Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .next();
+        Ok(KvCacheSnapshot {
+            layers,
+            rope_delta: 0,
+            ple: self.ngram.as_ref().map(|n| PleSnapshot {
+                conv_state,
+                carried_ids: n.snapshot(),
+            }),
+        })
+    }
+
+    /// Replace the live state from a snapshot. The snapshot stays valid
+    /// for further restores.
+    pub fn restore_kv_cache(&mut self, snap: &KvCacheSnapshot) -> candle_core::Result<()> {
+        if snap.layers.len() != self.layers.len() {
+            candle_core::bail!(
+                "restore_kv_cache: snapshot has {} layers, model has {}",
+                snap.layers.len(),
+                self.layers.len()
+            );
+        }
+        // A snapshot from a model whose PLE layer sits elsewhere would
+        // otherwise restore the conv context onto the wrong layer and
+        // leave this one holding the previous request's.
+        if snap.ple.is_some() != self.ngram.is_some() {
+            candle_core::bail!(
+                "restore_kv_cache: snapshot {} PLE state, model {} a PLE layer",
+                if snap.ple.is_some() {
+                    "carries"
+                } else {
+                    "has no"
+                },
+                if self.ngram.is_some() {
+                    "has"
+                } else {
+                    "has none"
+                }
+            );
+        }
+        for (layer, layer_snap) in self.layers.iter_mut().zip(snap.layers.iter()) {
+            layer.restore_kv(layer_snap)?;
+        }
+        let conv = snap.ple.as_ref().and_then(|p| p.conv_state.as_ref());
+        for layer in self.layers.iter_mut() {
+            if layer.has_ple() {
+                layer.restore_ple(conv)?;
+            }
+        }
+        if let (Some(ngram), Some(ple)) = (&mut self.ngram, snap.ple.as_ref()) {
+            ngram.restore(&ple.carried_ids);
+        }
+        Ok(())
     }
 
     pub fn clear_kv_cache(&mut self) -> Result<()> {
@@ -602,5 +691,95 @@ mod tests {
         assert_eq!(ngram.table.head_dim(), 2);
         assert!(ngram.table.gather(&[(TABLE_ROWS - 1) as i64]).is_ok());
         assert!(ngram.table.gather(&[TABLE_ROWS as i64]).is_err());
+    }
+
+    fn logits_vec(t: &Tensor) -> Vec<f32> {
+        t.flatten_all().unwrap().to_vec1().unwrap()
+    }
+
+    /// The property prefix caching rests on: a snapshot must *rewind*
+    /// the live state, not merely coexist with it.
+    ///
+    /// So the state is deliberately moved past the snapshot before the
+    /// restore — two further decode steps — and the restored step is
+    /// then required to reproduce the original exactly. An
+    /// implementation that captured nothing would not reproduce it; one
+    /// that restored only the attention K/V and left the indexer cache
+    /// at seven positions would trip the divergence guard rather than
+    /// return wrong numbers.
+    ///
+    /// The control is that a *cleared* model cannot take this step at
+    /// all: with an empty cache and a query at position 4 the guard
+    /// fires. That is what distinguishes restore from clear here, and
+    /// it is asserted rather than assumed.
+    #[test]
+    fn a_restored_snapshot_rewinds_rather_than_merely_continuing() {
+        let (_dir, mut model) = build();
+        let prompt = Tensor::from_vec(vec![5u32, 9, 3, 12], (1, 4), &Device::Cpu).unwrap();
+        let next = Tensor::from_vec(vec![7u32], (1, 1), &Device::Cpu).unwrap();
+
+        model.forward(&prompt, 0).unwrap();
+        let snap = model.snapshot_kv_cache().unwrap();
+        let want = logits_vec(&model.forward(&next, 4).unwrap());
+
+        // Move the live state well past the snapshot.
+        model.forward(&next, 5).unwrap();
+        model.forward(&next, 6).unwrap();
+
+        model.restore_kv_cache(&snap).unwrap();
+        let got = logits_vec(&model.forward(&next, 4).unwrap());
+        assert_eq!(got, want, "restore must rewind to the snapshot's boundary");
+
+        // Control: a cleared model cannot even take the step, so the
+        // restore above did something a clear does not.
+        model.clear_kv_cache().unwrap();
+        // `{:#}` to walk the context chain: the forward wraps the
+        // failure in "layer 1", and the guard is what it wraps.
+        let err = format!("{:#}", model.forward(&next, 4).unwrap_err());
+        assert!(
+            err.contains("diverged"),
+            "expected the cache-divergence guard, got: {err}"
+        );
+    }
+
+    /// The snapshot carries PLE's state, and PLE is the piece with two
+    /// distinct kinds of it — a rolling conv context and the carried
+    /// n-gram ids. Restoring one without the other reads the wrong rows
+    /// of the table, so the snapshot has to hold both.
+    #[test]
+    fn the_snapshot_carries_ple_state() {
+        let (_dir, mut model) = build();
+        let prompt = Tensor::from_vec(vec![5u32, 9, 3, 12], (1, 4), &Device::Cpu).unwrap();
+        model.forward(&prompt, 0).unwrap();
+
+        let snap = model.snapshot_kv_cache().unwrap();
+        let ple = snap.ple.as_ref().expect("layer 1 carries PLE");
+        assert!(ple.conv_state.is_some(), "the dilated conv context");
+        assert_eq!(ple.carried_ids.len(), 1, "one batch row");
+        assert_eq!(
+            ple.carried_ids[0].len(),
+            2,
+            "ngram_size - 1 ids carried across the step"
+        );
+        assert!(snap.size_bytes() > 0);
+    }
+
+    /// A snapshot from a differently-shaped model must be refused
+    /// rather than restored onto whatever lines up.
+    #[test]
+    fn a_mismatched_snapshot_is_refused() {
+        let (_dir, mut model) = build();
+        let prompt = Tensor::from_vec(vec![5u32, 9], (1, 2), &Device::Cpu).unwrap();
+        model.forward(&prompt, 0).unwrap();
+        let mut snap = model.snapshot_kv_cache().unwrap();
+
+        snap.layers.pop();
+        let err = model.restore_kv_cache(&snap).unwrap_err().to_string();
+        assert!(err.contains("layers"), "got: {err}");
+
+        let mut snap = model.snapshot_kv_cache().unwrap();
+        snap.ple = None;
+        let err = model.restore_kv_cache(&snap).unwrap_err().to_string();
+        assert!(err.contains("PLE"), "got: {err}");
     }
 }

@@ -1116,7 +1116,7 @@ impl ModelArch {
     /// candle-transformers archs keep theirs private, so they stay on
     /// the clear-every-request path.
     pub fn supports_kv_snapshot(&self) -> bool {
-        matches!(self, ModelArch::Qwen3_5Dense(_))
+        matches!(self, ModelArch::Qwen3_5Dense(_) | ModelArch::Qwen4Exp(_))
     }
 
     /// Capture the live cache state as a prefix snapshot. See
@@ -1125,6 +1125,7 @@ impl ModelArch {
     pub fn snapshot_kv_cache(&self) -> Result<super::arch::snapshot::KvCacheSnapshot> {
         match self {
             ModelArch::Qwen3_5Dense(m) => Ok(m.snapshot_kv_cache()?),
+            ModelArch::Qwen4Exp(m) => Ok(m.snapshot_kv_cache()?),
             _ => anyhow::bail!("snapshot_kv_cache: architecture has no snapshot support"),
         }
     }
@@ -1137,6 +1138,7 @@ impl ModelArch {
     ) -> Result<()> {
         match self {
             ModelArch::Qwen3_5Dense(m) => Ok(m.restore_kv_cache(snap)?),
+            ModelArch::Qwen4Exp(m) => Ok(m.restore_kv_cache(snap)?),
             _ => anyhow::bail!("restore_kv_cache: architecture has no snapshot support"),
         }
     }

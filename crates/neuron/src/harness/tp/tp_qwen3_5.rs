@@ -1700,6 +1700,7 @@ impl TpQwen3_5Model {
         Ok(KvCacheSnapshot {
             layers,
             rope_delta: self.rope_delta,
+            ple: None,
         })
     }
 

@@ -544,6 +544,7 @@ impl Qwen3_5Model {
         Ok(crate::harness::arch::snapshot::KvCacheSnapshot {
             layers,
             rope_delta: self.rope_delta,
+            ple: None,
         })
     }
 
