@@ -470,11 +470,21 @@ conventions — this is a solved problem in our tree.
 
 **What is new is `group_size`.** `Qwen4ExpTextRMSNorm(dim, group_size)`
 reshapes the last axis to `(-1, group_size)`, normalises each group
-independently, and flattens back. Every 10240-wide norm in this model
-(`hc_norm`, `norm_key`, `norm_query`, `norm_conv`,
-`mtp.pre_fc_norm_hidden`) uses `group_size = 2560`, i.e. four
-independent RMS normalisations, not one over 10240. A single norm over
-the full 10240 vector compiles, runs, and is wrong.
+independently, and flattens back. The 10240-wide norms in the decoder
+(`hc_norm`, `norm_key`, `norm_query`, `norm_conv`) use
+`group_size = 2560`, i.e. four independent RMS normalisations, not one
+over 10240. A single norm over the full 10240 vector compiles, runs,
+and is wrong.
+
+**`mtp.pre_fc_norm_hidden` is the exception, and this document had it
+wrong.** It is 10240 wide and **ungrouped** — one normalisation over
+the whole vector. vLLM distinguishes the two cases explicitly: its
+hyper-connection uses `GroupedGemmaRMSNorm` with
+`group_size = hidden_size`, and the MTP head uses a plain
+`GemmaRMSNorm(hidden_size * hc_count)`. Both classes exist in that
+tree, so the choice is deliberate rather than an oversight. Grouping it
+would rescale the draft head's input in four independent pieces and
+show up as a poor acceptance rate, not as an error. See §9.
 
 Variance is computed in f32 and the `(1 + w)` shift is applied in f32
 before the multiply — same reasoning as the note already in
@@ -501,14 +511,41 @@ mtp.layers.0.*                                  # a complete full_attention
 
 **Transformers does not implement the MTP head.**
 `Qwen4ExpPreTrainedModel._keys_to_ignore_on_load_unexpected = [r"^mtp.*"]`
-— the weights are dropped on load. So for #313 the upstream reference is
-*not* usable, and the authorities are instead llama.cpp PR #27836
-(`--spec-type draft-mtp`) and vLLM's `speculative-config
-{"method": "mtp"}` path. The tensor names above and the two `fc_*`
-projections make the intended wiring clear (project the next token's
-embedding and the accepted hidden state, sum, run one decoder layer,
-reuse `lm_head`), but the accept rule and the proposal depth must come
-from one of those two implementations, not from this document.
+— the weights are dropped on load.
+
+**The wiring, settled against vLLM** (`vllm/models/qwen4_exp/nvidia/
+mtp.py`, read 2026-09-02). vLLM calls this shape
+`residual_linear_shared`, as against the `Linear(2H, H)` + repeat that
+other MTP variants use:
+
+```
+e = fc_embedding(pre_fc_norm_embedding(embed(t)))         # [T, 2560]
+h = pre_fc_norm_hidden(h.flatten(-2))                      # ONE norm over 10240
+h = fc_hidden(h.view(T, hc, 2560))                         # per stream, shared matrix
+h = e.unsqueeze(-2) + h                                    # embedding broadcast to all four
+h = h.flatten(-2)                                          # [T, 10240] -> the decoder layer
+```
+
+Three things here are not guessable from the tensor shapes:
+
+1. **`pre_fc_norm_hidden` is applied to the flattened 10240 and is
+   ungrouped** — see §8, which this document previously got wrong.
+2. **The hidden state is the *pre-final-mixer* multi-stream**, i.e. `h`
+   after the last decoder layer and *before* `hyper_connection_mixer`
+   collapses it. Not the 2560 the LM head sees. vLLM calls this
+   "scheme A"; on later draft steps the head consumes its own previous
+   multi-stream rather than the target's.
+3. **The head emits two things per step**: the collapsed `[T, 2560]`
+   for `lm_head`, and the pre-final-mixer `[T, 10240]` for the next
+   draft step.
+
+PLE is forced off in the draft layer while the HC stream count is kept
+(`ngram_context=None`), which is consistent with `mtp.layers.0` shipping
+no `ple.*` tensors.
+
+The accept rule is standard (greedy prefix match, or the Leviathan
+rejection scheme) and is not architecture-specific; this document
+previously conflated it with the wiring above.
 
 `mtp.layers.0` carries its own full 512-expert MoE — 2.61 B params,
 5.2 GB at BF16. It is not free to keep resident and its placement is
