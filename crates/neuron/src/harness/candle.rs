@@ -2735,6 +2735,9 @@ impl CandleHarness {
             self.resolve_dense_files(spec, source_id).await?;
         let device_for_load = device.clone();
         let model_id_for_log = spec.model_id.clone();
+        // Resolved out here: `spec` is borrowed and does not outlive the
+        // blocking task.
+        let isq = super::quant::parse_quant_string(spec.quant.as_deref())?;
 
         let arch = tokio::task::spawn_blocking(move || -> Result<ModelArch> {
             let cfg_text = std::fs::read_to_string(&config_path).context("read config.json")?;
@@ -2845,9 +2848,19 @@ impl CandleHarness {
                         )
                         .context("build ShardedVarBuilder for qwen4_exp")?
                     };
+                    // ISQ is not optional for this architecture in
+                    // practice: without it the routed experts are
+                    // 241.6 GB. `quant` comes from the catalogue, and a
+                    // load without one will fail on memory rather than
+                    // on anything this code can say (#315).
+                    // ISQ is not really optional here: without it the
+                    // routed experts are 241.6 GB and the load fails on
+                    // memory rather than on anything this code can say.
+                    // The catalogue's `quant` is the knob (#315, #252).
                     let model = super::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                         &cfg,
                         dtype,
+                        isq,
                         &device_for_load,
                         &sharded_vb,
                     )

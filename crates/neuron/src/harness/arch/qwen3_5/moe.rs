@@ -29,6 +29,7 @@
 //! replaces the loop behind the same `forward` signature.
 
 use anyhow::{Context, Result};
+use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
 use candle_core::{DType, IndexOp, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
@@ -56,6 +57,19 @@ use super::mlp::Qwen3_5MLP;
 /// anyway, so the views feed the same GEMMs without a copy.
 pub(crate) enum Experts {
     PerExpert(Vec<Qwen3_5MLP>),
+    /// Quantised in situ at load (#315). One `(gate, up, down)` triple
+    /// per expert.
+    ///
+    /// This is what makes `qwen4_exp` loadable at all: 120.8 B routed
+    /// parameters are 241.6 GB at BF16 and 67.9 GB at q4k, against
+    /// beast's 64 GB of VRAM and ~110 GB of usable host RAM. Nothing
+    /// about the arithmetic works until they shrink.
+    ///
+    /// Quantising *from* the banked tensor is what keeps the peak
+    /// bounded: one layer's fused BF16 tensor is 5.03 GB, and it is
+    /// dropped once its 512 experts are quantised, so the full 241.6 GB
+    /// never exists at once.
+    Quantized(Vec<QuantizedExpert>),
     Banked {
         /// `(num_experts, 2 * intermediate, hidden)` — gate rows first,
         /// then up. Reversing them computes `silu(up) * gate`, which is
@@ -67,12 +81,60 @@ pub(crate) enum Experts {
     },
 }
 
+/// One expert's three projections, quantised.
+pub(crate) struct QuantizedExpert {
+    gate: QMatMul,
+    up: QMatMul,
+    down: QMatMul,
+}
+
 impl Experts {
     pub(crate) fn len(&self) -> usize {
         match self {
             Experts::PerExpert(v) => v.len(),
             Experts::Banked { gate_up, .. } => gate_up.dims()[0],
+            Experts::Quantized(v) => v.len(),
         }
+    }
+
+    /// Quantise a banked pair into per-expert triples.
+    ///
+    /// Takes the fused tensors by reference and drops nothing itself —
+    /// the caller owns the peak, and should hold one layer at a time.
+    pub(crate) fn quantize_banked(
+        gate_up: &Tensor,
+        down: &Tensor,
+        intermediate: usize,
+        dtype: GgmlDType,
+    ) -> candle_core::Result<Self> {
+        let n = gate_up.dims()[0];
+        let mut out = Vec::with_capacity(n);
+        for e in 0..n {
+            let gu = gate_up.i(e)?;
+            // The source must own its storage outright.
+            // `QTensor::quantize` reads `src.storage()` — the whole
+            // backing buffer, ignoring shape and offset — so a view into
+            // the fused tensor hands it every expert's bytes while the
+            // shape claims one, and candle panics on a block-count
+            // mismatch inside `from_float`. Neither `contiguous()` nor
+            // `copy()` saves you here: a slice along dim 0 is already
+            // contiguous, so both are free to hand back something still
+            // sharing the parent's buffer. Round-tripping through a Vec
+            // is the part that actually allocates, and it is also where
+            // the f32 the quantiser wants comes from.
+            let q = |t: Tensor| -> candle_core::Result<QMatMul> {
+                let dims = t.dims().to_vec();
+                let vals = t.to_dtype(DType::F32)?.flatten_all()?.to_vec1::<f32>()?;
+                let owned = Tensor::from_vec(vals, dims, t.device())?;
+                QMatMul::from_qtensor(QTensor::quantize(&owned, dtype)?)
+            };
+            out.push(QuantizedExpert {
+                gate: q(gu.narrow(0, 0, intermediate)?)?,
+                up: q(gu.narrow(0, intermediate, intermediate)?)?,
+                down: q(down.i(e)?)?,
+            });
+        }
+        Ok(Experts::Quantized(out))
     }
 
     /// Expert `e` applied to the rows routed to it.
@@ -90,6 +152,19 @@ impl Experts {
                 let lhs = candle_nn::ops::silu(&xs.matmul(&gate_w.t()?)?)?;
                 let rhs = xs.matmul(&up_w.t()?)?;
                 (lhs * rhs)?.matmul(&down.i(e)?.t()?)
+            }
+            Experts::Quantized(v) => {
+                let q = &v[e];
+                // The quantised kernels accumulate in f32 whatever the
+                // activation dtype, so the cast is explicit here rather
+                // than implied — and the result comes back in the
+                // caller's dtype so the routing arithmetic upstream
+                // does not have to know which layout it got.
+                let dtype = xs.dtype();
+                let xs32 = xs.to_dtype(DType::F32)?;
+                let lhs = candle_nn::ops::silu(&q.gate.forward(&xs32)?)?;
+                let rhs = q.up.forward(&xs32)?;
+                q.down.forward(&(lhs * rhs)?)?.to_dtype(dtype)
             }
         }
     }
@@ -538,5 +613,62 @@ mod tests {
             (got[0] - swapped).abs() > 1e-3,
             "this is silu(up) * gate: {got:?}"
         );
+    }
+
+    /// In-situ quantisation has to approximate the dense expert, not
+    /// merely produce numbers of the right shape.
+    ///
+    /// Dimensions are 256 because the k-quants block on 256 elements —
+    /// a tiny fixture silently cannot be quantised at all, which is the
+    /// first thing that bites when this is tried on a toy model.
+    ///
+    /// The assertion is relative error against the dense output, with a
+    /// noise baseline: a q8_0 expert should be close, a q4k expert
+    /// looser, and both far nearer the truth than an unrelated expert
+    /// is. Without that last comparison a "quantised" path that
+    /// returned anything smoothly wrong would pass.
+    #[test]
+    fn quantised_experts_approximate_the_dense_ones() {
+        let (n_experts, hidden, inter) = (2usize, 256usize, 256usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let banked = Experts::Banked {
+            gate_up: gate_up.clone(),
+            down: down.clone(),
+            intermediate: inter,
+        };
+        let xs = randn(&[4, hidden]);
+
+        let rel_err = |a: &[f32], b: &[f32]| -> f32 {
+            let num: f32 = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum();
+            let den: f32 = a.iter().map(|x| x * x).sum::<f32>().max(1e-12);
+            (num / den).sqrt()
+        };
+        let out = |e: &Experts, i: usize| -> Vec<f32> {
+            e.forward_one(i, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap()
+        };
+
+        let dense0 = out(&banked, 0);
+        // Baseline: a different expert on the same input. Any quantised
+        // reading must beat this by a wide margin.
+        let noise = rel_err(&dense0, &out(&banked, 1));
+
+        for (dtype, tol) in [(GgmlDType::Q8_0, 0.05f32), (GgmlDType::Q4K, 0.20f32)] {
+            let q = Experts::quantize_banked(&gate_up, &down, inter, dtype).unwrap();
+            assert_eq!(q.len(), n_experts);
+            let err = rel_err(&dense0, &out(&q, 0));
+            assert!(err < tol, "{dtype:?} relative error {err:.4} exceeds {tol}");
+            assert!(
+                err < noise / 2.0,
+                "{dtype:?} error {err:.4} is not clearly better than an unrelated \
+                 expert ({noise:.4}) — the quantised path may not be reading \
+                 this expert at all"
+            );
+        }
     }
 }

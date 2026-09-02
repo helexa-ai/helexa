@@ -34,6 +34,7 @@
 //! See `doc/qwen4_exp-port-spec.md`.
 
 use anyhow::{Context, Result, ensure};
+use candle_core::quantized::GgmlDType;
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
 use candle_nn::{Embedding, Linear};
@@ -124,9 +125,14 @@ pub struct Qwen4ExpForCausalLM {
 }
 
 impl Qwen4ExpForCausalLM {
+    /// `quant` quantises the routed experts in situ (#315). `None`
+    /// keeps the checkpoint's precision, which for this architecture is
+    /// useful only on a model small enough to hold: 241.6 GB of BF16
+    /// experts fit neither 64 GB of VRAM nor 123 GB of host RAM.
     pub fn load(
         cfg: &Config,
         dtype: DType,
+        quant: Option<GgmlDType>,
         device: &Device,
         vb: &ShardedVarBuilder,
     ) -> Result<Self> {
@@ -147,7 +153,7 @@ impl Qwen4ExpForCausalLM {
         let mut layers = Vec::with_capacity(text.num_hidden_layers);
         for i in 0..text.num_hidden_layers {
             layers.push(
-                DecoderLayer::load(text, rotary.clone(), i, &layers_vb.pp(i))
+                DecoderLayer::load(text, rotary.clone(), i, quant, &layers_vb.pp(i))
                     .with_context(|| format!("load decoder layer {i}"))?,
             );
         }
@@ -751,7 +757,7 @@ mod tests {
         candle_core::safetensors::save(&tensors(&cfg.text_config), &path).unwrap();
         let vb =
             unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
-        let model = Qwen4ExpForCausalLM::load(&cfg, DType::F32, &Device::Cpu, &vb).unwrap();
+        let model = Qwen4ExpForCausalLM::load(&cfg, DType::F32, None, &Device::Cpu, &vb).unwrap();
         (dir, model)
     }
 
@@ -1015,7 +1021,7 @@ mod tests {
         let vb =
             unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
         let rotary = Arc::new(rotary_for(&cfg.text_config, DType::F32, &Device::Cpu).unwrap());
-        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), &vb).unwrap();
+        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), None, &vb).unwrap();
 
         let prompt = Tensor::from_vec(vec![5u32, 9, 3, 12], (1, 4), &Device::Cpu).unwrap();
         let (_logits, hidden) = model.forward_with_hidden(&prompt, 0).unwrap();
@@ -1072,7 +1078,7 @@ mod tests {
         let vb =
             unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
         let rotary = Arc::new(rotary_for(&cfg.text_config, DType::F32, &Device::Cpu).unwrap());
-        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), &vb).unwrap();
+        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), None, &vb).unwrap();
 
         let h = cfg.text_config.hidden_size;
         let collapsed = Tensor::zeros((1, 1, h), DType::F32, &Device::Cpu).unwrap();

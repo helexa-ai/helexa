@@ -41,6 +41,8 @@ use crate::harness::arch::qwen3_5::linear_attn::GatedDeltaNet;
 use crate::harness::arch::qwen3_5::moe::Qwen3_5MoeBlock;
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
 
+use candle_core::quantized::GgmlDType;
+
 use super::config::TextConfig;
 use super::full_attn::Attention;
 use super::hyper::HyperConnection;
@@ -72,6 +74,7 @@ impl DecoderLayer {
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
         layer_idx: usize,
+        quant: Option<GgmlDType>,
         vb: &ShardedVarBuilder,
     ) -> Result<Self> {
         let layer_type = cfg
@@ -89,6 +92,7 @@ impl DecoderLayer {
             rotary,
             layer_type,
             cfg.ple_layers().contains(&layer_idx),
+            quant,
             vb,
         )
     }
@@ -104,6 +108,7 @@ impl DecoderLayer {
         rotary: Arc<RotaryEmbedding>,
         layer_type: &str,
         with_ple: bool,
+        quant: Option<GgmlDType>,
         vb: &ShardedVarBuilder,
     ) -> Result<Self> {
         let mixer = match layer_type {
@@ -150,7 +155,7 @@ impl DecoderLayer {
             attn_hc: hc("attn_hyper_connection")?,
             mlp_hc: hc("mlp_hyper_connection")?,
             mixer,
-            mlp: moe::load(cfg, &vb.pp("mlp"))?,
+            mlp: moe::load(cfg, quant, &vb.pp("mlp"))?,
             ple,
         })
     }
