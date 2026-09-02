@@ -1050,6 +1050,16 @@ pub enum ModelArch {
     // are real; forward bails "not implemented yet". See
     // `arch/qwen3_5.rs` for the open architecture work.
     Qwen3_5Dense(super::arch::qwen3_5::Qwen3_5ForCausalLM),
+
+    // Qwen3.8-Flash-Next (model_type "qwen4_exp") — a new architecture
+    // generation, not a Qwen3 variant: four residual streams joined by
+    // hyper-connections, QSA sparse attention, and a hashed n-gram
+    // table on one layer. Boxed for the same reason as LlamaDense.
+    //
+    // No snapshot or batched-decode support yet, so it falls through to
+    // the "no batched-decode support" arms and serves one request at a
+    // time. See `arch/qwen4_exp/` and the epic on #307.
+    Qwen4Exp(Box<super::arch::qwen4_exp::model::Qwen4ExpForCausalLM>),
 }
 
 impl ModelArch {
@@ -1066,6 +1076,7 @@ impl ModelArch {
             ModelArch::LlamaQuantized(m) => m.forward(input, offset)?,
             ModelArch::LlamaDense(m) => m.forward(input, offset)?,
             ModelArch::Qwen3_5Dense(m) => m.forward(input, offset)?,
+            ModelArch::Qwen4Exp(m) => m.forward(input, offset)?,
         };
         squeeze_to_vocab(&raw)
     }
@@ -1093,6 +1104,10 @@ impl ModelArch {
                 m.clear_kv_cache();
                 Ok(())
             }
+            // Clears the KV caches, the QSA indexer's separate cache and
+            // PLE's carried ids together — a survivor of any one of them
+            // reads the previous request's text.
+            ModelArch::Qwen4Exp(m) => m.clear_kv_cache(),
         }
     }
 
@@ -1332,8 +1347,14 @@ impl LlamaDense {
 /// value. New entries land alongside a new `ModelArch` variant + a
 /// dispatch branch in `load_arch_dense` (plus, for TP, a parallel
 /// pattern in `tp_qwen3.rs`).
-const DENSE_SUPPORTED_MODEL_TYPES: &[&str] =
-    &["llama", "qwen3", "qwen3_5", "qwen3_moe", "qwen3_next"];
+const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &[
+    "llama",
+    "qwen3",
+    "qwen3_5",
+    "qwen3_moe",
+    "qwen3_next",
+    "qwen4_exp",
+];
 
 /// Pre-flight check the operator's `config.json` against the set of
 /// architectures the dense path actually knows how to build. Surfaces
@@ -1388,6 +1409,11 @@ pub(crate) fn check_dense_config_supported(config_json: &str, model_id: &str) ->
 /// families than the TP path because each TP-aware module is a real
 /// chunk of work (`tp_qwen3.rs` is the only one shipped today).
 #[cfg(feature = "cuda")]
+// `qwen4_exp` is deliberately absent: the single-GPU path loads it, but
+// there is no `tp_qwen4_exp.rs`, so a `tensor_parallel` request for it
+// is refused here rather than silently served from one device. This
+// list is `cfg(cuda)`, so no CPU-build test can cover it — the gate is
+// the list itself.
 const TP_SUPPORTED_MODEL_TYPES: &[&str] = &["qwen3", "qwen3_5", "qwen3_next"];
 
 /// TP-side counterpart to `check_dense_config_supported`. Gates the
@@ -2801,6 +2827,30 @@ impl CandleHarness {
                     let model = super::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, sharded_vb)
                         .context("build Qwen3-Next dense model")?;
                     Ok(ModelArch::Qwen3_5Dense(model))
+                }
+                "qwen4_exp" => {
+                    // Qwen3.8-Flash-Next. Like qwen3_5 it loads through
+                    // the sharded backend; unlike it, the config is a
+                    // separate type — the field vocabulary overlaps but
+                    // the model-level plumbing does not.
+                    let cfg = super::arch::qwen4_exp::config::Config::from_config_json(&cfg_text)
+                        .context("parse qwen4_exp config.json")?;
+                    let sharded_vb = unsafe {
+                        candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                            &safetensors_paths,
+                            dtype,
+                            &device_for_load,
+                        )
+                        .context("build ShardedVarBuilder for qwen4_exp")?
+                    };
+                    let model = super::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
+                        &cfg,
+                        dtype,
+                        &device_for_load,
+                        &sharded_vb,
+                    )
+                    .context("build qwen4_exp model")?;
+                    Ok(ModelArch::Qwen4Exp(Box::new(model)))
                 }
                 other => {
                     // Defensive: `check_dense_config_supported` already
@@ -8111,6 +8161,22 @@ mod tests {
             "architectures": ["Qwen3ForCausalLM"]
         }"#;
         check_dense_config_supported(cfg, "Qwen/Qwen3-1.7B").expect("qwen3 should pass");
+    }
+
+    #[test]
+    fn check_dense_config_accepts_qwen4_exp() {
+        // Qwen3.8-Flash-Next is a new architecture generation rather
+        // than a Qwen3 variant, so it has its own model_type and its own
+        // arm in `load_arch_dense`. The gate and that match must agree —
+        // a type in the supported set with no arm reaches the defensive
+        // "unrouted" bail instead of loading.
+        let cfg = r#"{
+            "model_type": "qwen4_exp",
+            "architectures": ["Qwen4ExpForConditionalGeneration"],
+            "text_config": {"hidden_size": 2560}
+        }"#;
+        check_dense_config_supported(cfg, "Qwen/Qwen3.8-Flash-Next")
+            .expect("qwen4_exp should be in the supported set");
     }
 
     #[test]

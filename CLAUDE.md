@@ -1061,3 +1061,85 @@ ampere flavour.
 - Deferred by operator decision: Z-Image base variant, operator
   fine-tunes, Z-Image-Edit (`images/edits`). Qwen-Image-2512 is the
   parked "frontier image" tier (own epic if taken).
+
+## 2026-09-02 addendum: qwen4_exp (Qwen3.8-Flash-Next) text path
+
+`Qwen/Qwen3.8-Flash-Next` is `model_type: qwen4_exp` — a new
+architecture generation, not a Qwen3 variant. Epic #307; the port spec
+is `doc/qwen4_exp-port-spec.md` and remains the reference for every
+dimension. The text path is implemented in `crates/neuron/src/harness/
+arch/qwen4_exp/` and routed in `harness/candle.rs`; it loads a
+checkpoint and returns logits.
+
+**What is genuinely new**, and where each lives:
+
+- `hyper.rs` — **four residual streams**, not one. The inter-layer
+  residual is `hidden_size * hc_count` (10240) wide, initialised as four
+  copies of the token embedding. There is **no `input_layernorm`, no
+  `post_attention_layernorm` and no final `model.norm`** in the
+  checkpoint: the `hc_norm` inside each hyper-connection does all three
+  jobs. Do not go looking for the missing tensor.
+- `ple.rs` — a hashed n-gram embedding on **zero-indexed layer 1**
+  (`ple_layer_ids: [2]` is one-indexed upstream) over a 320,001,536-row
+  table, 28.44% of the model's parameters. Three pieces: addressing
+  (`NGramHasher`), the gather (`NGramTable` trait — residency is #310),
+  and consumption (`PleBlock`).
+- `qsa.rs` — sparse attention. Blocks of 4 past positions are scored by
+  a 4-head side channel and only the best 512 attended, which is what
+  makes a 262k window affordable. Keeps a **second KV cache** (12
+  layers × 1 head × 128 dims, ~3 KiB/token) that every `kv_budget_mb`
+  arithmetic must account for.
+- `decoder.rs`, `model.rs` — the composition.
+
+**Reused from `arch/qwen3_5/` unchanged**: `rope.rs` (identical
+interleaved M-RoPE config), the GatedDeltaNet for 36 of 48 layers, and
+the MoE routing. Those reuses needed three small seams in `qwen3_5`,
+all behaviour-preserving: `apply_partial_rotary` / `cos_sin_at` on the
+rotary, `GatedDeltaNetParams` on the linear attention, and `from_parts`
+constructors on the MoE and MLP.
+
+### Sharp edges
+
+- **Read `model.safetensors.index.json` before writing a loader.** It is
+  170 KB, needs no auth, and `curl`-able from HF at the pinned revision.
+  It caught a real bug: the QSA indexer is at
+  `...self_attn.indexer.index_qk_proj.weight`, a **submodule of the
+  attention block**, where the spec's prose implied a sibling. That
+  failure would otherwise have surfaced after a 360 GB download.
+- **The three PLE buffers are I64 in a bf16 checkpoint.** Read through
+  the model's VarBuilder they round multipliers of ~1e13 and prime vocab
+  sizes of ~2e7 into nonsense; the table is then sized wrong and the
+  addressing still returns rows. Force the dtype.
+- **A QSA mask must never reach the flash-attn path.**
+  `attention_context` used to take `Option<&Tensor>` and read
+  `is_some()` as "causal", never looking at the tensor — so an arbitrary
+  mask was silently replaced by a dense causal one. It is now
+  `AttnMask::{None, Causal, Additive}`, and `Additive` forces the eager
+  path. Whether QSA can use flash-attn at all (it needs a *gather*, not
+  a mask) is open and now on the critical path.
+- **PLE's short conv is dilated** by `ngram_size`, so it reaches 9
+  positions back and its cached context is 9 wide, not `kernel_size`. It
+  cannot reuse `run_causal_conv1d`, which assumes dilation 1.
+- **`output_gate_type: sigmoid` and `mamba_ssm_dtype: float32`** are the
+  checkpoint's explicit choices, against our SiLU fallback and #284's
+  bf16 round-trip default. A port must not answer an upstream choice
+  with our own.
+
+### What the text path does not yet do
+
+- **No batched decode.** `supports_kv_snapshot` is false, so it serves
+  one request at a time whatever `max_in_flight` says. Extending
+  `snapshot.rs` to carry PLE's two state slots and the indexer cache is
+  its own piece of work.
+- **No tensor parallelism** — absent from `TP_SUPPORTED_MODEL_TYPES`, so
+  a `tensor_parallel` request is refused rather than silently served
+  from one device.
+- **The n-gram table's residency is undecided** (#310). The shipped
+  `ShardedNGramTable` holds the shards wherever the VarBuilder put them,
+  which for 27 GB is the problem that issue exists to solve; it is the
+  control, not the answer.
+- **Gate 6 (full-model logits parity against a reference trace) is
+  open.** Gates 4 and 5 — QSA below budget is exactly dense, and above
+  budget matches a naive oracle — are closed.
+- **MTP (#313), vision (#314), quantisation and rollout (#315)** are
+  untouched.
