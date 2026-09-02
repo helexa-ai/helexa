@@ -84,6 +84,28 @@ impl DecoderLayer {
                     cfg.layer_types.len()
                 )
             })?;
+        Self::load_typed(
+            cfg,
+            rotary,
+            layer_type,
+            cfg.ple_layers().contains(&layer_idx),
+            vb,
+        )
+    }
+
+    /// Load a layer whose type the caller knows, rather than one looked
+    /// up in `layer_types`.
+    ///
+    /// The MTP head's layer (#313) needs this: it lives under
+    /// `mtp.layers.0` with its own single-entry type list, and it
+    /// carries no PLE wherever the main model puts one.
+    pub fn load_typed(
+        cfg: &TextConfig,
+        rotary: Arc<RotaryEmbedding>,
+        layer_type: &str,
+        with_ple: bool,
+        vb: &ShardedVarBuilder,
+    ) -> Result<Self> {
         let mixer = match layer_type {
             "full_attention" => {
                 Mixer::Full(Box::new(Attention::load(cfg, rotary, &vb.pp("self_attn"))?))
@@ -92,8 +114,8 @@ impl DecoderLayer {
                 Mixer::Linear(Box::new(linear_attn::load(cfg, &vb.pp("linear_attn"))?))
             }
             other => anyhow::bail!(
-                "unknown layer_type '{other}' for layer {layer_idx} (expected \
-                 'full_attention' or 'linear_attention')"
+                "unknown layer_type '{other}' (expected 'full_attention' or \
+                 'linear_attention')"
             ),
         };
 
@@ -110,7 +132,7 @@ impl DecoderLayer {
             )
         };
 
-        let ple = if cfg.ple_layers().contains(&layer_idx) {
+        let ple = if with_ple {
             Some(PleBlock::load(
                 &vb.pp("ple"),
                 cfg.hidden_size,

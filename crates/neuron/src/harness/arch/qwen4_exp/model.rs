@@ -190,6 +190,24 @@ impl Qwen4ExpForCausalLM {
     /// `input_ids` is `(B, T)`; `offset` is the sequence position the
     /// first of them sits at. Returns logits `(B, T, vocab)`.
     pub fn forward(&mut self, input_ids: &Tensor, offset: usize) -> Result<Tensor> {
+        Ok(self.forward_inner(input_ids, offset)?.0)
+    }
+
+    /// Logits, plus the four-stream residual as it stood *before* the
+    /// mixer collapsed it.
+    ///
+    /// The MTP draft head consumes that pre-mixer stream, not the 2560
+    /// the LM head sees (#313), so it has to leave the model here rather
+    /// than be reconstructed from the logits — which it could not be.
+    pub fn forward_with_hidden(
+        &mut self,
+        input_ids: &Tensor,
+        offset: usize,
+    ) -> Result<(Tensor, Tensor)> {
+        self.forward_inner(input_ids, offset)
+    }
+
+    fn forward_inner(&mut self, input_ids: &Tensor, offset: usize) -> Result<(Tensor, Tensor)> {
         let (batch, seq_len) = input_ids.dims2()?;
 
         // Four identical streams — the residual this architecture
@@ -222,7 +240,7 @@ impl Qwen4ExpForCausalLM {
 
         // The mixer's hc_norm is the only normalisation before the head.
         let x = self.mixer.collapse(&h)?;
-        Ok(self.lm_head.forward(&x)?)
+        Ok((self.lm_head.forward(&x)?, h))
     }
 
     /// Capture every piece of per-request state at one token boundary:
@@ -299,6 +317,15 @@ impl Qwen4ExpForCausalLM {
             ngram.restore(&ple.carried_ids);
         }
         Ok(())
+    }
+
+    /// `embed_tokens` applied to `input_ids`.
+    ///
+    /// The MTP head reuses this embedding
+    /// (`mtp_use_dedicated_embeddings: false`) but does not own it, so
+    /// the speculative loop borrows it from the target model.
+    pub fn embed(&self, input_ids: &Tensor) -> Result<Tensor> {
+        Ok(self.embed_tokens.forward(input_ids)?)
     }
 
     pub fn clear_kv_cache(&mut self) -> Result<()> {
@@ -625,6 +652,95 @@ mod tests {
                 }
             }
         }
+
+        // ---- the MTP draft head ----
+        // A second full-attention layer plus the two fc_* projections
+        // and their pre-norms. Emitted unconditionally: the head is what
+        // #313 builds on and the fixture is the only place its loader
+        // gets exercised.
+        {
+            let m = "mtp";
+            t.insert(format!("{m}.pre_fc_norm_embedding.weight"), rand(vec![h]));
+            t.insert(format!("{m}.pre_fc_norm_hidden.weight"), rand(vec![wide]));
+            t.insert(format!("{m}.fc_embedding.weight"), rand(vec![h, h]));
+            t.insert(format!("{m}.fc_hidden.weight"), rand(vec![h, h]));
+            t.insert(
+                format!("{m}.hyper_connection_mixer.hc_norm.weight"),
+                rand(vec![wide]),
+            );
+            t.insert(
+                format!("{m}.hyper_connection_mixer.input_mix_weight_down.weight"),
+                rand(vec![cfg.hc_lowrank, wide]),
+            );
+            t.insert(
+                format!("{m}.hyper_connection_mixer.input_mix_weight_up.weight"),
+                rand(vec![wide, cfg.hc_lowrank]),
+            );
+            let l = format!("{m}.layers.0");
+            for which in ["attn_hyper_connection", "mlp_hyper_connection"] {
+                t.insert(format!("{l}.{which}.hc_norm.weight"), rand(vec![wide]));
+                t.insert(
+                    format!("{l}.{which}.input_mix_weight_down.weight"),
+                    rand(vec![cfg.hc_lowrank, wide]),
+                );
+                t.insert(
+                    format!("{l}.{which}.input_mix_weight_up.weight"),
+                    rand(vec![wide, cfg.hc_lowrank]),
+                );
+                t.insert(
+                    format!("{l}.{which}.block_inject_weight.weight"),
+                    rand(vec![hc, wide]),
+                );
+            }
+            let a = format!("{l}.self_attn");
+            let heads = cfg.num_attention_heads * cfg.head_dim;
+            t.insert(format!("{a}.q_proj.weight"), rand(vec![heads * 2, h]));
+            t.insert(
+                format!("{a}.k_proj.weight"),
+                rand(vec![cfg.num_key_value_heads * cfg.head_dim, h]),
+            );
+            t.insert(
+                format!("{a}.v_proj.weight"),
+                rand(vec![cfg.num_key_value_heads * cfg.head_dim, h]),
+            );
+            t.insert(format!("{a}.o_proj.weight"), rand(vec![h, heads]));
+            t.insert(format!("{a}.q_norm.weight"), rand(vec![cfg.head_dim]));
+            t.insert(format!("{a}.k_norm.weight"), rand(vec![cfg.head_dim]));
+            let fused = (cfg.indexer_n_heads + cfg.indexer_kv_heads) * cfg.indexer_head_dim;
+            t.insert(
+                format!("{a}.indexer.index_qk_proj.weight"),
+                rand(vec![fused, h]),
+            );
+            t.insert(
+                format!("{a}.indexer.q_layernorm.weight"),
+                rand(vec![cfg.indexer_head_dim]),
+            );
+            t.insert(
+                format!("{a}.indexer.k_layernorm.weight"),
+                rand(vec![cfg.indexer_head_dim]),
+            );
+            let mm = format!("{l}.mlp");
+            t.insert(format!("{mm}.gate.weight"), rand(vec![cfg.num_experts, h]));
+            t.insert(
+                format!("{mm}.experts.gate_up_proj"),
+                rand(vec![cfg.num_experts, cfg.moe_intermediate_size * 2, h]),
+            );
+            t.insert(
+                format!("{mm}.experts.down_proj"),
+                rand(vec![cfg.num_experts, h, cfg.moe_intermediate_size]),
+            );
+            for pj in ["gate_proj", "up_proj"] {
+                t.insert(
+                    format!("{mm}.shared_expert.{pj}.weight"),
+                    rand(vec![cfg.shared_expert_intermediate_size, h]),
+                );
+            }
+            t.insert(
+                format!("{mm}.shared_expert.down_proj.weight"),
+                rand(vec![h, cfg.shared_expert_intermediate_size]),
+            );
+            t.insert(format!("{mm}.shared_expert_gate.weight"), rand(vec![1, h]));
+        }
         t
     }
 
@@ -882,5 +998,90 @@ mod tests {
         snap.ple = None;
         let err = model.restore_kv_cache(&snap).unwrap_err().to_string();
         assert!(err.contains("PLE"), "got: {err}");
+    }
+
+    /// The draft head, end to end on the fixture: the target's
+    /// pre-mixer stream and the next token's embedding go in, and both
+    /// of the head's outputs come out — the collapse for `lm_head` and
+    /// the multi stream that a second draft step would consume.
+    #[test]
+    fn the_mtp_head_drafts_from_the_targets_pre_mixer_stream() {
+        use crate::harness::arch::qwen4_exp::mtp::MtpHead;
+        let (_dir, mut model) = build();
+        let cfg = Config::from_config_json(TINY).unwrap();
+        let dir2 = tempfile::tempdir().unwrap();
+        let path = dir2.path().join("model.safetensors");
+        candle_core::safetensors::save(&tensors(&cfg.text_config), &path).unwrap();
+        let vb =
+            unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
+        let rotary = Arc::new(rotary_for(&cfg.text_config, DType::F32, &Device::Cpu).unwrap());
+        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), &vb).unwrap();
+
+        let prompt = Tensor::from_vec(vec![5u32, 9, 3, 12], (1, 4), &Device::Cpu).unwrap();
+        let (_logits, hidden) = model.forward_with_hidden(&prompt, 0).unwrap();
+        let wide = cfg.text_config.stream_width();
+        assert_eq!(hidden.dims(), &[1, 4, wide], "the pre-mixer stream");
+
+        // The head owns its own KV and indexer caches, so it has to walk
+        // the prompt alongside the target before it can draft from
+        // position 4 — a draft head that only ever sees the newest token
+        // is decoding against an empty past.
+        let ids: Vec<u32> = prompt.flatten_all().unwrap().to_vec1().unwrap();
+        for (i, id) in ids.iter().enumerate() {
+            let tok = Tensor::from_vec(vec![*id], (1, 1), &Device::Cpu).unwrap();
+            let e = model.embed(&tok).unwrap();
+            let h_i = hidden.narrow(1, i, 1).unwrap().contiguous().unwrap();
+            let (cos, sin) = rotary.plain_cos_sin(i, 1).unwrap();
+            head.forward(&e, &h_i, None, &cos, &sin, i).unwrap();
+        }
+
+        let next = Tensor::from_vec(vec![7u32], (1, 1), &Device::Cpu).unwrap();
+        let e = model.embed(&next).unwrap();
+        let last = hidden.narrow(1, 3, 1).unwrap().contiguous().unwrap();
+        let (cos, sin) = rotary.plain_cos_sin(4, 1).unwrap();
+
+        let step = head.forward(&e, &last, None, &cos, &sin, 4).unwrap();
+        assert_eq!(
+            step.sample_hidden.dims(),
+            &[1, 1, cfg.text_config.hidden_size]
+        );
+        assert_eq!(step.multi_stream.dims(), &[1, 1, wide]);
+        let v: Vec<f32> = step.sample_hidden.flatten_all().unwrap().to_vec1().unwrap();
+        assert!(v.iter().all(|x| x.is_finite()));
+
+        // Chained: the second step reads the head's own multi stream,
+        // not the target's and not the collapse.
+        let (cos, sin) = rotary.plain_cos_sin(5, 1).unwrap();
+        let step2 = head
+            .forward(&e, &step.multi_stream, None, &cos, &sin, 5)
+            .unwrap();
+        assert_eq!(step2.multi_stream.dims(), &[1, 1, wide]);
+    }
+
+    /// Handing the head the collapsed hidden state instead of the
+    /// pre-mixer stream is the mistake the shapes invite — both are
+    /// "the hidden state" and only one is right. It is refused by width
+    /// rather than silently broadcast.
+    #[test]
+    fn the_head_refuses_the_collapsed_hidden_state() {
+        use crate::harness::arch::qwen4_exp::mtp::MtpHead;
+        let cfg = Config::from_config_json(TINY).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.safetensors");
+        candle_core::safetensors::save(&tensors(&cfg.text_config), &path).unwrap();
+        let vb =
+            unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
+        let rotary = Arc::new(rotary_for(&cfg.text_config, DType::F32, &Device::Cpu).unwrap());
+        let mut head = MtpHead::load(&cfg.text_config, rotary.clone(), &vb).unwrap();
+
+        let h = cfg.text_config.hidden_size;
+        let collapsed = Tensor::zeros((1, 1, h), DType::F32, &Device::Cpu).unwrap();
+        let e = Tensor::zeros((1, 1, h), DType::F32, &Device::Cpu).unwrap();
+        let (cos, sin) = rotary.plain_cos_sin(0, 1).unwrap();
+        let err = head
+            .forward(&e, &collapsed, None, &cos, &sin, 0)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("pre-final-mixer"), "got: {err}");
     }
 }

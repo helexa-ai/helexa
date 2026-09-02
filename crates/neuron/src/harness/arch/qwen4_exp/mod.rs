@@ -25,6 +25,8 @@
 //!   from `qwen3_5` with two settings corrected.
 //! - [`model`] — embeddings in, logits out; four streams, one
 //!   n-gram lookup, and no final norm.
+//! - [`mtp`] — the shipped draft head: one more decoder layer, fed
+//!   the target's pre-mixer stream and the next token's embedding.
 //! - [`moe`] — the FFN every layer has, loaded from fused expert
 //!   tensors instead of 512 modules.
 //! - [`ple`] — the hashed n-gram table on layer 1: how its rows
@@ -39,5 +41,6 @@ pub mod hyper;
 pub mod linear_attn;
 pub mod model;
 pub mod moe;
+pub mod mtp;
 pub mod ple;
 pub mod qsa;
