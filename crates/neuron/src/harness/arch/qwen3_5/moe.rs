@@ -29,18 +29,78 @@
 //! replaces the loop behind the same `forward` signature.
 
 use anyhow::{Context, Result};
-use candle_core::{DType, Module, Tensor};
+use candle_core::{DType, IndexOp, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
 use super::TextConfig;
 use super::mlp::Qwen3_5MLP;
 
+/// How a layer's routed experts are stored.
+///
+/// Two shapes, because the right one depends on whether the model fits.
+///
+/// `PerExpert` is the Qwen3-Next layout: one module per expert, sliced
+/// out at load. Fine when the weights are device-resident anyway.
+///
+/// `Banked` keeps the checkpoint's own fused tensors whole and takes a
+/// view per routed expert. `qwen4_exp` needs it: slicing its 512
+/// experts into modules copies **241.6 GB** at BF16 — 5.03 GB per
+/// layer — which fits in neither 64 GB of VRAM nor 123 GB of host RAM,
+/// at any quantisation. It is also the layout a host-resident bank with
+/// a device-side gather wants (#318), so the fused form is where that
+/// work starts rather than something it would have to undo.
+///
+/// Banking costs nothing per call: a slice along dim 0 of a contiguous
+/// tensor is contiguous, and `x.matmul(w.t())` is what `Linear` does
+/// anyway, so the views feed the same GEMMs without a copy.
+pub(crate) enum Experts {
+    PerExpert(Vec<Qwen3_5MLP>),
+    Banked {
+        /// `(num_experts, 2 * intermediate, hidden)` — gate rows first,
+        /// then up. Reversing them computes `silu(up) * gate`, which is
+        /// a different function of the same weights (#312).
+        gate_up: Tensor,
+        /// `(num_experts, hidden, intermediate)`
+        down: Tensor,
+        intermediate: usize,
+    },
+}
+
+impl Experts {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Experts::PerExpert(v) => v.len(),
+            Experts::Banked { gate_up, .. } => gate_up.dims()[0],
+        }
+    }
+
+    /// Expert `e` applied to the rows routed to it.
+    pub(crate) fn forward_one(&self, e: usize, xs: &Tensor) -> candle_core::Result<Tensor> {
+        match self {
+            Experts::PerExpert(v) => v[e].forward(xs),
+            Experts::Banked {
+                gate_up,
+                down,
+                intermediate,
+            } => {
+                let gu = gate_up.i(e)?;
+                let gate_w = gu.narrow(0, 0, *intermediate)?;
+                let up_w = gu.narrow(0, *intermediate, *intermediate)?;
+                let lhs = candle_nn::ops::silu(&xs.matmul(&gate_w.t()?)?)?;
+                let rhs = xs.matmul(&up_w.t()?)?;
+                (lhs * rhs)?.matmul(&down.i(e)?.t()?)
+            }
+        }
+    }
+}
+
 pub struct Qwen3_5MoeBlock {
     /// Router: `(num_experts, hidden)`, checkpoint name `mlp.gate`.
     gate: Linear,
-    /// Routed experts, checkpoint names `mlp.experts.{i}.{gate,up,down}_proj`.
-    experts: Vec<Qwen3_5MLP>,
+    /// Routed experts. Per-expert modules for `qwen3_5`; the
+    /// checkpoint's fused tensors for `qwen4_exp` — see [`Experts`].
+    experts: Experts,
     /// Always-on expert, `mlp.shared_expert.*`. `None` when the config
     /// declares no shared expert (Qwen3-30B-A3B style).
     shared_expert: Option<Qwen3_5MLP>,
@@ -62,7 +122,7 @@ impl Qwen3_5MoeBlock {
     /// `qwen3_5` config.
     pub(crate) fn from_parts(
         gate: Linear,
-        experts: Vec<Qwen3_5MLP>,
+        experts: Experts,
         shared_expert: Option<Qwen3_5MLP>,
         shared_expert_gate: Option<Linear>,
         num_experts_per_tok: usize,
@@ -129,7 +189,7 @@ impl Qwen3_5MoeBlock {
 
         Ok(Self {
             gate,
-            experts,
+            experts: Experts::PerExpert(experts),
             shared_expert,
             shared_expert_gate,
             num_experts_per_tok: cfg.num_experts_per_tok,
@@ -201,13 +261,13 @@ impl Module for Qwen3_5MoeBlock {
         )?;
 
         let mut ys = xs_flat.zeros_like()?;
-        for (e, expert) in self.experts.iter().enumerate() {
+        for e in 0..self.experts.len() {
             if tokens_for[e].is_empty() {
                 continue;
             }
             let rows = Tensor::new(tokens_for[e].as_slice(), xs.device())?;
             let picked = xs_flat.index_select(&rows, 0)?;
-            let out = expert.forward(&picked)?;
+            let out = self.experts.forward_one(e, &picked)?;
             let w = Tensor::new(weights_for[e].as_slice(), xs.device())?
                 .to_dtype(out.dtype())?
                 .reshape(((), 1))?;
@@ -252,7 +312,7 @@ mod tests {
 
         let block = Qwen3_5MoeBlock {
             gate: Linear::new(randn(&[n_exp, hidden]), None),
-            experts: (0..n_exp).map(|_| rand_mlp(hidden, inter)).collect(),
+            experts: Experts::PerExpert((0..n_exp).map(|_| rand_mlp(hidden, inter)).collect()),
             shared_expert: Some(rand_mlp(hidden, inter)),
             shared_expert_gate: Some(Linear::new(randn(&[1, hidden]), None)),
             num_experts_per_tok: top_k,
@@ -283,8 +343,9 @@ mod tests {
             let mut expect = vec![0f32; hidden];
             for &e in selected {
                 let w = probs[e] / denom;
-                let out: Vec<f32> = block.experts[e]
-                    .forward(&row)
+                let out: Vec<f32> = block
+                    .experts
+                    .forward_one(e, &row)
                     .unwrap()
                     .flatten_all()
                     .unwrap()
@@ -336,7 +397,7 @@ mod tests {
         let (hidden, inter, n_exp) = (4, 2, 3);
         let block = Qwen3_5MoeBlock {
             gate: Linear::new(randn(&[n_exp, hidden]), None),
-            experts: (0..n_exp).map(|_| rand_mlp(hidden, inter)).collect(),
+            experts: Experts::PerExpert((0..n_exp).map(|_| rand_mlp(hidden, inter)).collect()),
             shared_expert: None,
             shared_expert_gate: None,
             num_experts_per_tok: 1,
@@ -368,8 +429,9 @@ mod tests {
             .max_by(|&a, &b| exps[a].partial_cmp(&exps[b]).unwrap())
             .unwrap();
         let w = exps[best] / sum;
-        let out: Vec<f32> = block.experts[best]
-            .forward(&xs.reshape(((), hidden)).unwrap())
+        let out: Vec<f32> = block
+            .experts
+            .forward_one(best, &xs.reshape(((), hidden)).unwrap())
             .unwrap()
             .flatten_all()
             .unwrap()
@@ -382,5 +444,99 @@ mod tests {
                 w * o
             );
         }
+    }
+
+    /// Banking is a storage change, so the two layouts must compute the
+    /// same function. Same weights, expressed both ways, asserted
+    /// identical — otherwise "we only changed where the bytes live" is
+    /// a claim rather than a fact.
+    #[test]
+    fn banked_experts_equal_per_expert_modules() {
+        let (n_experts, hidden, inter) = (3usize, 4usize, 2usize);
+
+        // One source of truth for the weights, laid out both ways.
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+
+        let per_expert: Vec<Qwen3_5MLP> = (0..n_experts)
+            .map(|e| {
+                let gu = gate_up.i(e).unwrap();
+                Qwen3_5MLP::from_weights(
+                    Linear::new(gu.narrow(0, 0, inter).unwrap().contiguous().unwrap(), None),
+                    Linear::new(
+                        gu.narrow(0, inter, inter).unwrap().contiguous().unwrap(),
+                        None,
+                    ),
+                    Linear::new(down.i(e).unwrap().contiguous().unwrap(), None),
+                )
+            })
+            .collect();
+
+        let sliced = Experts::PerExpert(per_expert);
+        let banked = Experts::Banked {
+            gate_up,
+            down,
+            intermediate: inter,
+        };
+        assert_eq!(sliced.len(), banked.len());
+
+        let xs = randn(&[5, hidden]);
+        for e in 0..n_experts {
+            let a: Vec<f32> = sliced
+                .forward_one(e, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
+            let b: Vec<f32> = banked
+                .forward_one(e, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
+            assert_eq!(a.len(), b.len());
+            for (x, y) in a.iter().zip(b.iter()) {
+                assert!(
+                    (x - y).abs() < 1e-5,
+                    "expert {e} differs between layouts: {a:?} vs {b:?}"
+                );
+            }
+        }
+    }
+
+    /// And the halves are not interchangeable: reading `gate_up` the
+    /// other way round computes silu(up) * gate, which the banked path
+    /// would do just as silently as the sliced one.
+    #[test]
+    fn banked_reads_the_gate_before_the_up() {
+        let dev = Device::Cpu;
+        // gate row picks channel 0, up row picks channel 1.
+        let gate_up = Tensor::from_vec(vec![1.0f32, 0.0, 0.0, 1.0], (1, 2, 2), &dev).unwrap();
+        let down = Tensor::from_vec(vec![1.0f32, 0.0], (1, 2, 1), &dev).unwrap();
+        let banked = Experts::Banked {
+            gate_up,
+            down,
+            intermediate: 1,
+        };
+        let xs = Tensor::from_vec(vec![1.0f32, 2.0], (1, 2), &dev).unwrap();
+        let got: Vec<f32> = banked
+            .forward_one(0, &xs)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+
+        // silu(gate.x) * (up.x) = silu(1) * 2
+        let want = (1.0f32 / (1.0 + (-1.0f32).exp())) * 2.0;
+        assert!((got[0] - want).abs() < 1e-5, "got {got:?} want {want}");
+        // the swapped reading would be silu(2) * 1
+        let swapped = (2.0f32 / (1.0 + (-2.0f32).exp())) * 1.0;
+        assert!(
+            (got[0] - swapped).abs() > 1e-3,
+            "this is silu(up) * gate: {got:?}"
+        );
     }
 }

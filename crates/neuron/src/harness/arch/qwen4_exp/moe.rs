@@ -22,21 +22,29 @@
 //! of error that produces a model that talks and reasons slightly
 //! worse. It is asserted below rather than commented.
 //!
-//! The fused layout is the better one for a grouped GEMM, and keeping
-//! it would be the faster path; that is an algorithm change, and the
-//! spec is explicit that this stage is not it. Sparsity is extreme —
-//! 10 of 512 with an intermediate of 640 — so the routing, not the
-//! GEMM shape, is what dominates today.
+//! ## Why the fused tensors stay fused
+//!
+//! Slicing them into 512 per-expert modules copies **241.6 GB** at
+//! BF16, 5.03 GB per layer. That fits in neither beast's 64 GB of VRAM
+//! nor its 123 GB of host RAM, and no quantisation rescues it: #309
+//! measured 59.4 GB of 63.7 used at 4.25 bpw with only *four* layers'
+//! experts offloaded. A model that cannot be held cannot be loaded.
+//!
+//! So the block takes `Experts::Banked` and views one expert per
+//! routed token instead. A slice along dim 0 of a contiguous tensor is
+//! contiguous, and `x.matmul(w.t())` is what `Linear` does anyway, so
+//! the views feed the same GEMMs with no copy. It is also the layout a
+//! host-resident bank with a device-side gather wants (#318).
 //!
 //! See `doc/qwen4_exp-port-spec.md` §6.
 
 use anyhow::{Context, Result};
-use candle_core::{IndexOp, Tensor};
+use candle_core::Tensor;
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
 use crate::harness::arch::qwen3_5::mlp::Qwen3_5MLP;
-use crate::harness::arch::qwen3_5::moe::Qwen3_5MoeBlock;
+use crate::harness::arch::qwen3_5::moe::{Experts, Qwen3_5MoeBlock};
 
 use super::config::TextConfig;
 
@@ -65,7 +73,7 @@ pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock>
     let down = experts_vb
         .get((cfg.num_experts, h, inter), "down_proj")
         .with_context(|| format!("load '{}/down_proj'", experts_vb.prefix()))?;
-    let experts = split_fused_experts(&gate_up, &down, inter)?;
+    check_fused_experts(&gate_up, &down, inter)?;
 
     let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {
         let shared = Qwen3_5MLP::load_with_dims(
@@ -85,7 +93,11 @@ pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock>
 
     Ok(Qwen3_5MoeBlock::from_parts(
         gate,
-        experts,
+        Experts::Banked {
+            gate_up,
+            down,
+            intermediate: inter,
+        },
         shared_expert,
         shared_expert_gate,
         cfg.num_experts_per_tok,
@@ -93,14 +105,17 @@ pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock>
     ))
 }
 
-/// Slice `(E, 2I, H)` and `(E, H, I)` into `E` SwiGLU experts.
+/// Validate the fused pair before it is banked.
 ///
-/// Gate first, up second — see the module note.
-pub(crate) fn split_fused_experts(
+/// The block will take views of these per routed expert, so a
+/// disagreement here surfaces as a shape error mid-forward on whichever
+/// token first routes to the offending expert — which is a worse place
+/// to find it than at load.
+pub(crate) fn check_fused_experts(
     gate_up: &Tensor,
     down: &Tensor,
     intermediate: usize,
-) -> Result<Vec<Qwen3_5MLP>> {
+) -> Result<()> {
     let (experts, fused, _) = gate_up.dims3()?;
     anyhow::ensure!(
         fused == intermediate * 2,
@@ -111,78 +126,27 @@ pub(crate) fn split_fused_experts(
         "down_proj holds {} experts, gate_up_proj holds {experts}",
         down.dims3()?.0
     );
-
-    let mut out = Vec::with_capacity(experts);
-    for e in 0..experts {
-        let fused_e = gate_up.i(e)?;
-        out.push(Qwen3_5MLP::from_weights(
-            Linear::new(fused_e.narrow(0, 0, intermediate)?.contiguous()?, None),
-            Linear::new(
-                fused_e
-                    .narrow(0, intermediate, intermediate)?
-                    .contiguous()?,
-                None,
-            ),
-            Linear::new(down.i(e)?.contiguous()?, None),
-        ));
-    }
-    Ok(out)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{DType, Device, Module};
+    use candle_core::{DType, Device};
 
-    /// One expert, two hidden dims, one intermediate. The gate row picks
-    /// the first input channel and the up row picks the second, so
-    /// swapping them swaps which channel is squashed by the SiLU — and
-    /// the two answers differ by more than any tolerance.
+    /// The loader validates the fused pair up front. Without this the
+    /// first token to route to a bad expert fails mid-forward, which is
+    /// a worse place to learn the checkpoint disagrees with the config.
     #[test]
-    fn the_gate_is_the_first_half_of_the_fused_tensor() {
-        let dev = Device::Cpu;
-        // gate_up: [[gate row], [up row]] = [[1, 0], [0, 1]]
-        let gate_up = Tensor::from_vec(vec![1.0f32, 0.0, 0.0, 1.0], (1, 2, 2), &dev).unwrap();
-        // down: (E=1, H=2, I=1)
-        let down = Tensor::from_vec(vec![2.0f32, 3.0], (1, 2, 1), &dev).unwrap();
-
-        let experts = split_fused_experts(&gate_up, &down, 1).unwrap();
-        assert_eq!(experts.len(), 1);
-
-        let x = Tensor::from_vec(vec![1.0f32, 2.0], (1, 2), &dev).unwrap();
-        let got: Vec<f32> = experts[0]
-            .forward(&x)
-            .unwrap()
-            .flatten_all()
-            .unwrap()
-            .to_vec1()
-            .unwrap();
-
-        // gate(x) = 1, up(x) = 2  ->  silu(1) * 2  ->  down
-        let silu1 = 1.0f32 / (1.0 + (-1.0f32).exp());
-        let want = [2.0 * silu1 * 2.0, 3.0 * silu1 * 2.0];
-        for (g, w) in got.iter().zip(want.iter()) {
-            assert!((g - w).abs() < 1e-5, "got {got:?} want {want:?}");
-        }
-
-        // The swapped reading: silu(2) * 1, which is a different model.
-        let silu2 = 2.0f32 / (1.0 + (-2.0f32).exp());
-        assert!(
-            (got[0] - 2.0 * silu2).abs() > 1e-3,
-            "this is silu(up) * gate, not silu(gate) * up: {got:?}"
-        );
-    }
-
-    #[test]
-    fn a_fused_tensor_of_the_wrong_width_is_rejected() {
+    fn a_fused_pair_that_disagrees_with_the_config_is_rejected() {
         let dev = Device::Cpu;
         let gate_up = Tensor::zeros((2, 6, 4), DType::F32, &dev).unwrap();
         let down = Tensor::zeros((2, 4, 3), DType::F32, &dev).unwrap();
-        assert!(split_fused_experts(&gate_up, &down, 3).is_ok());
+        assert!(check_fused_experts(&gate_up, &down, 3).is_ok());
         // 2 x 4 != 6
-        assert!(split_fused_experts(&gate_up, &down, 4).is_err());
+        assert!(check_fused_experts(&gate_up, &down, 4).is_err());
         // expert counts must agree
         let down_short = Tensor::zeros((1, 4, 3), DType::F32, &dev).unwrap();
-        assert!(split_fused_experts(&gate_up, &down_short, 3).is_err());
+        assert!(check_fused_experts(&gate_up, &down_short, 3).is_err());
     }
 }

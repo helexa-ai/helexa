@@ -19,9 +19,12 @@ pub struct Qwen3_5MLP {
 impl Qwen3_5MLP {
     /// Construct directly from pre-built projections.
     ///
-    /// `qwen4_exp` ships its routed experts as fused 3D tensors rather
-    /// than per-expert modules, so its loader slices them and builds the
-    /// experts here — same SwiGLU, different storage.
+    /// Test-only again: `qwen4_exp` briefly built its 512 experts this
+    /// way before the fused tensors stayed banked (`Experts::Banked`),
+    /// which removed the last caller outside tests. The differential
+    /// test that proves banking neutral still needs it, to express the
+    /// same weights in the layout it is being compared against.
+    #[cfg(test)]
     pub(crate) fn from_weights(gate_proj: Linear, up_proj: Linear, down_proj: Linear) -> Self {
         Self {
             gate_proj,
