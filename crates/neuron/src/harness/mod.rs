@@ -12,6 +12,7 @@ pub mod image;
 pub mod prefix_cache;
 pub mod preflight;
 pub mod preprocess;
+pub(crate) mod quant;
 pub mod reasoning_budget;
 pub mod reasoning_effort;
 pub mod sampling;

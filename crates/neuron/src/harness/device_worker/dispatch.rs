@@ -1045,7 +1045,7 @@ fn tp_load_shard_inner(
         "qwen3_5" | "qwen3_next" => {
             let cfg = crate::harness::tp::tp_qwen3_5::Config::from_config_json(config_json)
                 .context("parse Qwen3-Next Config JSON for leader load")?;
-            let quant_dtype = crate::harness::tp::worker::parse_quant_string(quant)?;
+            let quant_dtype = crate::harness::quant::parse_quant_string(quant)?;
             TpLeaderModel::Qwen3_5(crate::harness::tp::tp_qwen3_5::TpQwen3_5ForCausalLM::load(
                 cfg,
                 &vb,

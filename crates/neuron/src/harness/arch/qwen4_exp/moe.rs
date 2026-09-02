@@ -40,6 +40,7 @@
 
 use anyhow::{Context, Result};
 use candle_core::Tensor;
+use candle_core::quantized::GgmlDType;
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
@@ -49,7 +50,17 @@ use crate::harness::arch::qwen3_5::moe::{Experts, Qwen3_5MoeBlock};
 use super::config::TextConfig;
 
 /// `vb` should be `.pp(...)`-ed to the layer's `mlp` prefix.
-pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock> {
+///
+/// `quant` quantises the routed experts in situ (#315). Without it the
+/// experts stay banked at the checkpoint's precision, which is only
+/// useful for a model small enough to hold — 120.8 B routed parameters
+/// are 241.6 GB at BF16 and fit nowhere on this hardware, so a real
+/// load of `Qwen3.8-Flash-Next` always passes one.
+pub fn load(
+    cfg: &TextConfig,
+    quant: Option<GgmlDType>,
+    vb: &ShardedVarBuilder,
+) -> Result<Qwen3_5MoeBlock> {
     let (h, inter) = (cfg.hidden_size, cfg.moe_intermediate_size);
     anyhow::ensure!(
         cfg.num_experts > 0 && cfg.num_experts_per_tok > 0 && inter > 0,
@@ -74,6 +85,18 @@ pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock>
         .get((cfg.num_experts, h, inter), "down_proj")
         .with_context(|| format!("load '{}/down_proj'", experts_vb.prefix()))?;
     check_fused_experts(&gate_up, &down, inter)?;
+    // The fused pair is the peak: 5.03 GB per layer at BF16. Quantising
+    // here and letting it drop at the end of this function is what keeps
+    // the whole 241.6 GB from ever existing.
+    let experts = match quant {
+        Some(dtype) => Experts::quantize_banked(&gate_up, &down, inter, dtype)
+            .with_context(|| format!("quantize experts to {dtype:?}"))?,
+        None => Experts::Banked {
+            gate_up,
+            down,
+            intermediate: inter,
+        },
+    };
 
     let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {
         let shared = Qwen3_5MLP::load_with_dims(
@@ -93,11 +116,7 @@ pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Qwen3_5MoeBlock>
 
     Ok(Qwen3_5MoeBlock::from_parts(
         gate,
-        Experts::Banked {
-            gate_up,
-            down,
-            intermediate: inter,
-        },
+        experts,
         shared_expert,
         shared_expert_gate,
         cfg.num_experts_per_tok,

@@ -46,6 +46,7 @@
 //! See `doc/qwen4_exp-port-spec.md` §9 and #313.
 
 use anyhow::{Context, Result};
+use candle_core::quantized::GgmlDType;
 use candle_core::{D, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
@@ -87,6 +88,7 @@ impl MtpHead {
     pub fn load(
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
+        quant: Option<GgmlDType>,
         vb: &ShardedVarBuilder,
     ) -> Result<Self> {
         let mtp = vb.pp("mtp");
@@ -111,6 +113,7 @@ impl MtpHead {
                 rotary,
                 "full_attention",
                 false,
+                quant,
                 &mtp.pp("layers").pp(0),
             )
             .context("load mtp.layers.0")?,
