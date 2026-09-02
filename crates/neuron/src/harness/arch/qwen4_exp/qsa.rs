@@ -229,9 +229,9 @@ pub struct Indexer {
 }
 
 impl Indexer {
-    /// `vb` should be `.pp(...)`-ed to the attention layer's prefix, so
-    /// the tensors resolve as `index_qk_proj`, `q_layernorm`,
-    /// `k_layernorm`. Every dimension comes from the config rather than
+    /// `vb` should be `.pp(...)`-ed to the **indexer's** prefix —
+    /// `self_attn.indexer`, not `self_attn` — so the tensors resolve as
+    /// `index_qk_proj`, `q_layernorm`, `k_layernorm`. Every dimension comes from the config rather than
     /// the caller, so a layer cannot be built against a geometry the
     /// checkpoint does not declare.
     pub fn load(vb: &ShardedVarBuilder, cfg: &Qwen4ExpTextConfig) -> Result<Self> {
