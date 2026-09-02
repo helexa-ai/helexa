@@ -952,4 +952,202 @@ mod tests {
             "with a one-block budget exactly one of the two blocks wins"
         );
     }
+
+    // ---- gate 5: the batched path against a naive one ----
+
+    /// A deliberately naive QSA, written the way the reference is: one
+    /// query at a time, pooling and scoring and selecting in plain f32
+    /// rather than in one batched matmul.
+    ///
+    /// It shares only the projection and the rotation with the
+    /// implementation — the weights, which are not the subject. The
+    /// pooling, the per-query visibility, the scoring, the top-k and
+    /// the tail assembly are all done independently here, because those
+    /// are what gate 5 is asking about.
+    fn oracle(
+        ix: &Indexer,
+        hidden: &Tensor,
+        rope: &RotaryEmbedding,
+        past_len: usize,
+    ) -> Vec<Vec<Vec<usize>>> {
+        let (batch, seq_len, _) = hidden.dims3().unwrap();
+        let (q, keys) = ix.project(hidden).unwrap();
+        let total = past_len + seq_len;
+        let block = ix.selector.block_size;
+        let n_blocks = total / block;
+
+        // Raw cached keys, as plain numbers.
+        let raw: Vec<Vec<Vec<f32>>> = (0..batch)
+            .map(|b| {
+                (0..total)
+                    .map(|t| keys.i(b).unwrap().i(t).unwrap().to_vec1::<f32>().unwrap())
+                    .collect()
+            })
+            .collect();
+
+        let mut out = Vec::new();
+        for (b, rows) in raw.iter().enumerate() {
+            // Pool each block by hand: the mean of four rows.
+            let pooled: Vec<Vec<f32>> = rows
+                .chunks_exact(block)
+                .take(n_blocks)
+                .map(|chunk| {
+                    let mut acc = vec![0.0f64; ix.head_dim];
+                    for row in chunk {
+                        for (a, v) in acc.iter_mut().zip(row) {
+                            *a += *v as f64;
+                        }
+                    }
+                    acc.iter().map(|a| (a / block as f64) as f32).collect()
+                })
+                .collect();
+
+            // Norm and rotate the pooled keys with the layer's own
+            // weights, one block at a time and at its own start.
+            let mut block_keys = Vec::with_capacity(n_blocks);
+            for (blk, row) in pooled.iter().enumerate() {
+                let t =
+                    Tensor::from_vec(row.clone(), (1, 1, 1, ix.head_dim), keys.device()).unwrap();
+                let normed = ix.k_layernorm.forward(&t).unwrap();
+                let (cos, sin) = rope.cos_sin_at(&[blk * block]).unwrap();
+                block_keys.push(
+                    apply_partial_rotary(&normed, &cos, &sin, rope.rotary_dim())
+                        .unwrap()
+                        .flatten_all()
+                        .unwrap()
+                        .to_vec1::<f32>()
+                        .unwrap(),
+                );
+            }
+
+            let mut per_query = Vec::with_capacity(seq_len);
+            for i in 0..seq_len {
+                let pos = past_len + i;
+                // This query's heads, rotated at its own position.
+                let qi = q
+                    .i(b)
+                    .unwrap()
+                    .narrow(1, i, 1)
+                    .unwrap()
+                    .unsqueeze(0)
+                    .unwrap();
+                let (cos, sin) = rope.cos_sin_at(&[pos]).unwrap();
+                let qi = apply_partial_rotary(&qi, &cos, &sin, rope.rotary_dim()).unwrap();
+                let heads: Vec<Vec<f32>> = (0..ix.n_heads)
+                    .map(|h| {
+                        qi.i(0)
+                            .unwrap()
+                            .i(h)
+                            .unwrap()
+                            .i(0)
+                            .unwrap()
+                            .to_vec1::<f32>()
+                            .unwrap()
+                    })
+                    .collect();
+
+                let visible = pos + 1;
+                let visible_blocks = visible / block;
+                let mut scored: Vec<(usize, f32)> = (0..visible_blocks)
+                    .map(|blk| {
+                        let score: f32 = heads
+                            .iter()
+                            .map(|h| {
+                                let dot: f32 =
+                                    h.iter().zip(&block_keys[blk]).map(|(a, b)| a * b).sum();
+                                dot.max(0.0)
+                            })
+                            .sum::<f32>()
+                            / (ix.head_dim as f32).sqrt();
+                        (blk, score)
+                    })
+                    .collect();
+
+                // Top-k, ties to the earlier block.
+                scored.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then(a.0.cmp(&b.0))
+                });
+                scored.truncate(ix.selector.block_topk().min(visible_blocks));
+                let mut chosen: Vec<usize> = scored.iter().map(|(blk, _)| *blk).collect();
+                chosen.sort_unstable();
+
+                let mut positions = Vec::new();
+                for blk in chosen {
+                    positions.extend(blk * block..(blk + 1) * block);
+                }
+                positions.extend(visible_blocks * block..visible);
+                per_query.push(positions);
+            }
+            out.push(per_query);
+        }
+        out
+    }
+
+    /// **Gate 5.** Above the budget, where the selection actually binds,
+    /// the batched implementation must choose what the naive one does.
+    ///
+    /// Gate 4 proves the layer is dense attention below the budget,
+    /// which is a strong statement about the easy case and says nothing
+    /// about the hard one. This is the hard one: 23 positions, a budget
+    /// of two blocks out of five, so three blocks are discarded per
+    /// query and the ordering of the scores is what decides which.
+    #[test]
+    fn above_budget_selection_matches_the_naive_reference() {
+        let (hidden_size, head_dim) = (8, 8);
+        let rope = rope_for(head_dim);
+        let h = hidden(2, 23, hidden_size, 8.8);
+
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 8);
+        assert!(!ix.selector.is_dense(23), "the budget must bind");
+        let got = ix.visible_positions(&h, &rope, 0).unwrap();
+
+        let reference = indexer(hidden_size, 4, head_dim, 4, 8);
+        let want = oracle(&reference, &h, &rope, 0);
+
+        assert_eq!(got.len(), want.len());
+        for (b, (rows_got, rows_want)) in got.iter().zip(&want).enumerate() {
+            for (i, (g, w)) in rows_got.iter().zip(rows_want).enumerate() {
+                assert_eq!(g, w, "batch {b}, query {i}");
+            }
+        }
+
+        // Guard against agreeing on nothing: at least one query must
+        // actually have discarded a block, or this proves only that two
+        // implementations of dense attention agree.
+        let discarded = got[0]
+            .iter()
+            .enumerate()
+            .filter(|(i, positions)| positions.len() < i + 1)
+            .count();
+        assert!(
+            discarded > 0,
+            "no query discarded a block; the comparison is vacuous"
+        );
+    }
+
+    /// The same, continued across a decode boundary: the reference sees
+    /// one flat sequence, the implementation sees a prefill and then a
+    /// step reading its own cache.
+    #[test]
+    fn a_bound_decode_step_matches_the_naive_reference() {
+        let (hidden_size, head_dim) = (8, 8);
+        let rope = rope_for(head_dim);
+        let h = hidden(1, 23, hidden_size, 9.9);
+
+        let mut ix = indexer(hidden_size, 4, head_dim, 4, 8);
+        let prefill = h.narrow(1, 0, 22).unwrap().contiguous().unwrap();
+        ix.visible_positions(&prefill, &rope, 0).unwrap();
+        let step = h.narrow(1, 22, 1).unwrap().contiguous().unwrap();
+        let got = ix.visible_positions(&step, &rope, 22).unwrap();
+
+        let reference = indexer(hidden_size, 4, head_dim, 4, 8);
+        let want = oracle(&reference, &h, &rope, 0);
+
+        assert_eq!(
+            got[0][0], want[0][22],
+            "the last query, after a decode step"
+        );
+    }
 }
