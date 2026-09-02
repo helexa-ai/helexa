@@ -491,6 +491,26 @@ impl PleBlock {
         (self.kernel_size - 1) * self.dilation
     }
 
+    /// Capture the rolling conv context for a prefix snapshot.
+    ///
+    /// Deep-copied rather than shared. The buffer is replaced by
+    /// assignment today, so a shallow clone would be sound — but
+    /// `narrow(..).contiguous()` on an already-contiguous slice is a
+    /// view, so whether the snapshot shares storage depends on a
+    /// property of the *data*, not of the code. That is exactly the
+    /// kind of conditional aliasing the GatedDeltaNet states are
+    /// deep-copied to avoid, and nine positions of a 10240-wide signal
+    /// is not worth being clever about.
+    pub fn snapshot_state(&self) -> candle_core::Result<Option<Tensor>> {
+        self.conv_state.as_ref().map(Tensor::copy).transpose()
+    }
+
+    /// Replace the rolling conv context from a snapshot.
+    pub fn restore_state(&mut self, conv_state: Option<&Tensor>) -> candle_core::Result<()> {
+        self.conv_state = conv_state.map(Tensor::copy).transpose()?;
+        Ok(())
+    }
+
     /// Drop the rolling conv context. Call alongside a KV-cache clear;
     /// the carried n-gram ids ([`NGramHasher::context_len`]) reset with
     /// it.

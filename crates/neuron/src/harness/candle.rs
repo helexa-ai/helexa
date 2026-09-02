@@ -555,7 +555,7 @@ impl LoadedHandle {
 #[derive(Clone)]
 pub enum KvSnapshotRef {
     Worker(super::device_worker::KvSnapshotId),
-    Local(Arc<super::arch::qwen3_5::snapshot::KvCacheSnapshot>),
+    Local(Arc<super::arch::snapshot::KvCacheSnapshot>),
     #[cfg(feature = "cuda")]
     Tp(u64),
 }
@@ -1116,15 +1116,16 @@ impl ModelArch {
     /// candle-transformers archs keep theirs private, so they stay on
     /// the clear-every-request path.
     pub fn supports_kv_snapshot(&self) -> bool {
-        matches!(self, ModelArch::Qwen3_5Dense(_))
+        matches!(self, ModelArch::Qwen3_5Dense(_) | ModelArch::Qwen4Exp(_))
     }
 
     /// Capture the live cache state as a prefix snapshot. See
     /// `arch/qwen3_5/snapshot.rs` for what a snapshot contains and the
     /// copy-semantics constraints.
-    pub fn snapshot_kv_cache(&self) -> Result<super::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+    pub fn snapshot_kv_cache(&self) -> Result<super::arch::snapshot::KvCacheSnapshot> {
         match self {
             ModelArch::Qwen3_5Dense(m) => Ok(m.snapshot_kv_cache()?),
+            ModelArch::Qwen4Exp(m) => Ok(m.snapshot_kv_cache()?),
             _ => anyhow::bail!("snapshot_kv_cache: architecture has no snapshot support"),
         }
     }
@@ -1133,10 +1134,11 @@ impl ModelArch {
     /// restore-instead-of-clear half of prefix caching.
     pub fn restore_kv_cache(
         &mut self,
-        snap: &super::arch::qwen3_5::snapshot::KvCacheSnapshot,
+        snap: &super::arch::snapshot::KvCacheSnapshot,
     ) -> Result<()> {
         match self {
             ModelArch::Qwen3_5Dense(m) => Ok(m.restore_kv_cache(snap)?),
+            ModelArch::Qwen4Exp(m) => Ok(m.restore_kv_cache(snap)?),
             _ => anyhow::bail!("restore_kv_cache: architecture has no snapshot support"),
         }
     }

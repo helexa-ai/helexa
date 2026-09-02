@@ -170,6 +170,34 @@ impl Attention {
         Ok(self.o_proj.forward(&gated)?)
     }
 
+    /// Capture both caches at one token boundary.
+    ///
+    /// The same reason `clear_kv_cache` drops them together: a
+    /// snapshot holding only the attention K/V restores a layer whose
+    /// indexer still holds the previous request's keys, and the
+    /// selection it computes from them is wrong without being invalid.
+    pub fn snapshot_kv(&self) -> (Option<(Tensor, Tensor)>, Option<Tensor>) {
+        let kv = match (self.kv_cache.k(), self.kv_cache.v()) {
+            (Some(k), Some(v)) => Some((k.clone(), v.clone())),
+            _ => None,
+        };
+        (kv, self.indexer.snapshot_keys())
+    }
+
+    /// Replace both caches from a snapshot.
+    pub fn restore_kv(
+        &mut self,
+        kv: Option<&(Tensor, Tensor)>,
+        indexer_keys: Option<&Tensor>,
+    ) -> candle_core::Result<()> {
+        self.kv_cache.reset();
+        if let Some((k, v)) = kv {
+            self.kv_cache.append(k, v)?;
+        }
+        self.indexer.restore_keys(indexer_keys);
+        Ok(())
+    }
+
     /// Both caches, together. Dropping only one leaves the indexer
     /// selecting blocks of a previous request's text.
     pub fn clear_kv_cache(&mut self) {

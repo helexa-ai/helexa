@@ -1,5 +1,12 @@
 //! Cache-state snapshots for prefix KV caching (#11).
 //!
+//! Shared across architectures rather than owned by one: `qwen3_5`,
+//! its TP mirror `tp_qwen3_5`, and `qwen4_exp` all capture state
+//! through these types, and `ModelArch::snapshot_kv_cache` hands one
+//! back whatever the architecture. It lived under `arch/qwen3_5/`
+//! while that was the only arch with a snapshot, which stopped being
+//! true.
+//!
 //! A snapshot captures everything `clear_kv_cache` would destroy, at
 //! one consistent token boundary:
 //!
@@ -40,6 +47,17 @@ pub enum LayerKvSnapshot {
         conv_state: Option<Tensor>,
         recurrent_state: Option<Tensor>,
     },
+    /// A full-attention layer that also keeps a QSA indexer cache
+    /// (`qwen4_exp`). The indexer's raw keys are a second, separately
+    /// shaped cache — one head of 128 dims per position — and a
+    /// snapshot that captured only `kv` would restore a layer whose
+    /// indexer still holds the *previous* request's keys, selecting
+    /// blocks of somebody else's text. It fails fluently, so the two
+    /// travel together or not at all.
+    FullSparse {
+        kv: Option<(Tensor, Tensor)>,
+        indexer_keys: Option<Tensor>,
+    },
 }
 
 /// One consistent cache snapshot of a `Qwen3_5Model` (or its TP
@@ -50,6 +68,9 @@ pub enum LayerKvSnapshot {
 pub struct KvCacheSnapshot {
     pub(crate) layers: Vec<LayerKvSnapshot>,
     pub(crate) rope_delta: i64,
+    /// `qwen4_exp`'s PLE state. `None` for architectures without a
+    /// hashed n-gram layer, which is every other one today.
+    pub(crate) ple: Option<PleSnapshot>,
 }
 
 impl KvCacheSnapshot {
@@ -79,8 +100,44 @@ impl KvCacheSnapshot {
                     conv_state.as_ref().map(t_bytes).unwrap_or(0)
                         + recurrent_state.as_ref().map(t_bytes).unwrap_or(0)
                 }
+                LayerKvSnapshot::FullSparse { kv, indexer_keys } => {
+                    kv.as_ref()
+                        .map(|(k, v)| t_bytes(k) + t_bytes(v))
+                        .unwrap_or(0)
+                        + indexer_keys.as_ref().map(t_bytes).unwrap_or(0)
+                }
             })
-            .sum()
+            .sum::<u64>()
+            + self.ple.as_ref().map(PleSnapshot::size_bytes).unwrap_or(0)
+    }
+}
+
+/// PLE's per-request state (`qwen4_exp`), captured at the same token
+/// boundary as the layers.
+///
+/// Two pieces with different natures. `conv_state` is the dilated
+/// short conv's left context — nine positions of a 10240-wide signal,
+/// deep-copied like the GatedDeltaNet states because the conv writes
+/// its rolling buffer in place. `carried_ids` is the previous
+/// `ngram_size - 1` **token ids** per batch row, which upstream keeps
+/// as a third "conv state" on the same layer; they are ids, not
+/// activations, and cost two integers per sequence.
+pub struct PleSnapshot {
+    pub(crate) conv_state: Option<Tensor>,
+    pub(crate) carried_ids: Vec<Vec<i64>>,
+}
+
+impl PleSnapshot {
+    fn size_bytes(&self) -> u64 {
+        self.conv_state
+            .as_ref()
+            .map(|t| (t.elem_count() * t.dtype().size_in_bytes()) as u64)
+            .unwrap_or(0)
+            + self
+                .carried_ids
+                .iter()
+                .map(|r| (r.len() * std::mem::size_of::<i64>()) as u64)
+                .sum::<u64>()
     }
 }
 
@@ -145,6 +202,7 @@ pub fn assemble_batch(seqs: &[(&KvCacheSnapshot, usize)]) -> candle_core::Result
     }
     Ok(BatchedKvState {
         snapshot: KvCacheSnapshot {
+            ple: None,
             layers,
             rope_delta: 0,
         },
@@ -159,6 +217,14 @@ fn assemble_layer(
     padded_len: usize,
 ) -> candle_core::Result<LayerKvSnapshot> {
     match &seqs[0].0.layers[li] {
+        // Batched decode for the sparse-attention layers is not built
+        // yet. Assembling them as if they were plain full-attention
+        // would drop the indexer cache and hand every row a selection
+        // computed from another request's keys, which produces text.
+        LayerKvSnapshot::FullSparse { .. } => candle_core::bail!(
+            "assemble_batch: layer {li} carries a QSA indexer cache; batched decode \
+             for this architecture is not implemented"
+        ),
         LayerKvSnapshot::Full(_) => {
             let mut ks = Vec::with_capacity(seqs.len());
             let mut vs = Vec::with_capacity(seqs.len());
@@ -242,6 +308,10 @@ pub fn extract_row(
     let mut layers = Vec::with_capacity(snap.layers.len());
     for (li, layer) in snap.layers.iter().enumerate() {
         layers.push(match layer {
+            LayerKvSnapshot::FullSparse { .. } => candle_core::bail!(
+                "extract_row: layer {li} carries a QSA indexer cache; batched decode \
+                 for this architecture is not implemented"
+            ),
             LayerKvSnapshot::Full(Some((k, v))) => {
                 let (b, _h, s, _d) = k.dims4()?;
                 if row >= b {
@@ -274,6 +344,7 @@ pub fn extract_row(
         });
     }
     Ok(KvCacheSnapshot {
+        ple: None,
         layers,
         rope_delta: 0,
     })
@@ -312,7 +383,7 @@ fn pad_seq(t: &Tensor, padded_len: usize) -> candle_core::Result<Tensor> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Qwen3_5Model, RopeParameters, TextConfig};
+    use crate::harness::arch::qwen3_5::{Qwen3_5Model, RopeParameters, TextConfig};
     use candle_core::{DType, Device, Tensor};
     use std::collections::HashMap;
 

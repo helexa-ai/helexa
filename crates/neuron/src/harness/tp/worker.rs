@@ -119,7 +119,7 @@ impl WorkerModel {
     /// `TpLeaderModel` support first.
     fn snapshot_kv_cache(
         &self,
-    ) -> candle_core::Result<crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+    ) -> candle_core::Result<crate::harness::arch::snapshot::KvCacheSnapshot> {
         match self {
             WorkerModel::Qwen3(_) => {
                 candle_core::bail!("snapshot_kv_cache: qwen3 (dense) has no snapshot support")
@@ -130,7 +130,7 @@ impl WorkerModel {
 
     fn restore_kv_cache(
         &mut self,
-        snap: &crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot,
+        snap: &crate::harness::arch::snapshot::KvCacheSnapshot,
     ) -> candle_core::Result<()> {
         match self {
             WorkerModel::Qwen3(_) => {
@@ -227,7 +227,7 @@ struct WorkerState {
     /// pool and shared across all ranks. Dropped with the shard on
     /// `UnloadModel`.
     #[cfg(feature = "cuda")]
-    kv_snapshots: HashMap<(String, u64), crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot>,
+    kv_snapshots: HashMap<(String, u64), crate::harness::arch::snapshot::KvCacheSnapshot>,
     /// Placeholder mirroring `models` on the non-cuda build.
     #[cfg(not(feature = "cuda"))]
     #[allow(dead_code)]
@@ -689,11 +689,10 @@ impl WorkerState {
             };
             pairs.push((snap, *len));
         }
-        let result =
-            crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs).and_then(|batch| {
-                model.restore_kv_cache(&batch.snapshot)?;
-                Ok(batch.padded_len)
-            });
+        let result = crate::harness::arch::snapshot::assemble_batch(&pairs).and_then(|batch| {
+            model.restore_kv_cache(&batch.snapshot)?;
+            Ok(batch.padded_len)
+        });
         match result {
             Ok(padded_len) => WorkerResponse::KvBatchAssembled {
                 padded_len: padded_len as u64,
@@ -756,7 +755,7 @@ impl WorkerState {
         };
         let mut total_bytes = 0u64;
         for (&(row, prefix_len), &id) in rows.iter().zip(snapshot_ids) {
-            match crate::harness::arch::qwen3_5::snapshot::extract_row(
+            match crate::harness::arch::snapshot::extract_row(
                 &live, row, prefix_len, padded_len, steps,
             ) {
                 Ok(snap) => {

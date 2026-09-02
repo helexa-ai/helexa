@@ -163,7 +163,7 @@ pub enum Job {
     /// state and install it as the model's live state (#98). `seqs`
     /// pairs each snapshot id with its true token length; attention
     /// K/V is right-padded to the batch max and `cat`ed on dim 0 (see
-    /// `arch::qwen3_5::snapshot::assemble_batch`). Replies with the
+    /// `arch::snapshot::assemble_batch`). Replies with the
     /// padded uniform KV length. The source snapshots remain stored —
     /// the caller drops them via `DropKvSnapshot` when the sequences
     /// leave the batch.

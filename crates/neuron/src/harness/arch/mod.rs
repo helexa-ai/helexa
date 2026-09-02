@@ -22,3 +22,4 @@
 
 pub mod qwen3_5;
 pub mod qwen4_exp;
+pub mod snapshot;
