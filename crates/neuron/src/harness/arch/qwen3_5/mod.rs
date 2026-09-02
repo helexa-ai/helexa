@@ -79,7 +79,6 @@ pub mod mlp;
 pub mod moe;
 pub mod rmsnorm;
 pub mod rope;
-pub mod snapshot;
 pub mod vision;
 
 use decoder::Qwen3_5DecoderLayer;
@@ -534,13 +533,15 @@ impl Qwen3_5Model {
     /// counter as one consistent prefix snapshot (#11). Only valid at
     /// a token boundary — i.e. between forward calls, which is the
     /// only time the caller can reach this anyway.
-    pub fn snapshot_kv_cache(&self) -> candle_core::Result<snapshot::KvCacheSnapshot> {
+    pub fn snapshot_kv_cache(
+        &self,
+    ) -> candle_core::Result<crate::harness::arch::snapshot::KvCacheSnapshot> {
         let layers = self
             .layers
             .iter()
             .map(|l| l.snapshot_kv())
             .collect::<candle_core::Result<Vec<_>>>()?;
-        Ok(snapshot::KvCacheSnapshot {
+        Ok(crate::harness::arch::snapshot::KvCacheSnapshot {
             layers,
             rope_delta: self.rope_delta,
         })
@@ -550,7 +551,7 @@ impl Qwen3_5Model {
     /// snapshot. The snapshot stays valid for further restores.
     pub fn restore_kv_cache(
         &mut self,
-        snap: &snapshot::KvCacheSnapshot,
+        snap: &crate::harness::arch::snapshot::KvCacheSnapshot,
     ) -> candle_core::Result<()> {
         if snap.layers.len() != self.layers.len() {
             candle_core::bail!(
@@ -582,7 +583,7 @@ impl Qwen3_5Model {
     /// new token per batch row — with each row at its own sequence
     /// position `positions[i]` (typically `prefix_lens[i] + step`).
     /// The cache must hold batched state (see
-    /// `snapshot::assemble_batch`); `attn_mask` is the padding mask
+    /// `crate::harness::arch::snapshot::assemble_batch`); `attn_mask` is the padding mask
     /// from [`Self::batch_decode_mask`] (or `None` when no row is
     /// padded). Text-only: `rope_delta` is ignored — positions are
     /// explicit and vision requests never enter the batch path.
@@ -1084,14 +1085,16 @@ impl Qwen3_5ForCausalLM {
     }
 
     /// See [`Qwen3_5Model::snapshot_kv_cache`].
-    pub fn snapshot_kv_cache(&self) -> candle_core::Result<snapshot::KvCacheSnapshot> {
+    pub fn snapshot_kv_cache(
+        &self,
+    ) -> candle_core::Result<crate::harness::arch::snapshot::KvCacheSnapshot> {
         self.base.snapshot_kv_cache()
     }
 
     /// See [`Qwen3_5Model::restore_kv_cache`].
     pub fn restore_kv_cache(
         &mut self,
-        snap: &snapshot::KvCacheSnapshot,
+        snap: &crate::harness::arch::snapshot::KvCacheSnapshot,
     ) -> candle_core::Result<()> {
         self.base.restore_kv_cache(snap)
     }

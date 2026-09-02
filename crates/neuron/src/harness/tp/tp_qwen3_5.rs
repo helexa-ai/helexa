@@ -45,10 +45,10 @@ use super::tp_linear::{ColumnParallelLinear, RowParallelLinear};
 use crate::harness::arch::qwen3_5::linear_attn::repeat_interleave;
 use crate::harness::arch::qwen3_5::rmsnorm::{Qwen3_5RmsNorm, Qwen3_5RmsNormGated, l2norm};
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
-use crate::harness::arch::qwen3_5::snapshot::{KvCacheSnapshot, LayerKvSnapshot};
 use crate::harness::arch::qwen3_5::splice_runs;
 use crate::harness::arch::qwen3_5::vision::VisionTower;
 pub use crate::harness::arch::qwen3_5::{Config, TextConfig};
+use crate::harness::arch::snapshot::{KvCacheSnapshot, LayerKvSnapshot};
 
 // ─── linear-attention (Gated DeltaNet) ──────────────────────────────
 

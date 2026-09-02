@@ -1,5 +1,12 @@
 //! Cache-state snapshots for prefix KV caching (#11).
 //!
+//! Shared across architectures rather than owned by one: `qwen3_5`,
+//! its TP mirror `tp_qwen3_5`, and `qwen4_exp` all capture state
+//! through these types, and `ModelArch::snapshot_kv_cache` hands one
+//! back whatever the architecture. It lived under `arch/qwen3_5/`
+//! while that was the only arch with a snapshot, which stopped being
+//! true.
+//!
 //! A snapshot captures everything `clear_kv_cache` would destroy, at
 //! one consistent token boundary:
 //!
@@ -312,7 +319,7 @@ fn pad_seq(t: &Tensor, padded_len: usize) -> candle_core::Result<Tensor> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Qwen3_5Model, RopeParameters, TextConfig};
+    use crate::harness::arch::qwen3_5::{Qwen3_5Model, RopeParameters, TextConfig};
     use candle_core::{DType, Device, Tensor};
     use std::collections::HashMap;
 

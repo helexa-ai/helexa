@@ -13,7 +13,7 @@
 //! ARCH model state in this state slab will gain a companion
 //! `tp_models: HashMap<TpHandle, Box<TpLeaderModel>>`.
 
-use crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot;
+use crate::harness::arch::snapshot::KvCacheSnapshot;
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
@@ -1179,7 +1179,7 @@ fn tp_assemble_kv_batch(
         })?;
         pairs.push((snap, *len));
     }
-    let batch = crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs)?;
+    let batch = crate::harness::arch::snapshot::assemble_batch(&pairs)?;
     let model = tp_models
         .get_mut(&handle)
         .ok_or_else(|| anyhow::anyhow!("TpAssembleKvBatch: no model for handle {}", handle.0))?;
@@ -1212,9 +1212,8 @@ fn tp_extract_kv_rows(
         .snapshot_kv_cache()?;
     let mut total = 0u64;
     for (&(row, prefix_len), &id) in rows.iter().zip(snapshot_ids) {
-        let snap = crate::harness::arch::qwen3_5::snapshot::extract_row(
-            &live, row, prefix_len, padded_len, steps,
-        )?;
+        let snap =
+            crate::harness::arch::snapshot::extract_row(&live, row, prefix_len, padded_len, steps)?;
         total += snap.size_bytes();
         state.tp_kv_snapshots.insert((handle, id), snap);
     }
@@ -1337,7 +1336,7 @@ fn assemble_kv_batch(
         })?;
         pairs.push((snap, *len));
     }
-    let batch = crate::harness::arch::qwen3_5::snapshot::assemble_batch(&pairs)?;
+    let batch = crate::harness::arch::snapshot::assemble_batch(&pairs)?;
     let arch = models
         .get_mut(&handle)
         .ok_or_else(|| anyhow::anyhow!("AssembleKvBatch: no model for handle {}", handle.0))?;
@@ -1363,9 +1362,8 @@ fn extract_kv_rows(
         .snapshot_kv_cache()?;
     let mut out = Vec::with_capacity(rows.len());
     for &(row, prefix_len) in rows {
-        let snap = crate::harness::arch::qwen3_5::snapshot::extract_row(
-            &live, row, prefix_len, padded_len, steps,
-        )?;
+        let snap =
+            crate::harness::arch::snapshot::extract_row(&live, row, prefix_len, padded_len, steps)?;
         let id = KvSnapshotId(state.next_kv_snapshot_id);
         state.next_kv_snapshot_id = state.next_kv_snapshot_id.wrapping_add(1);
         let bytes = snap.size_bytes();

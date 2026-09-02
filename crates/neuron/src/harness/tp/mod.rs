@@ -138,7 +138,7 @@ impl TpLeaderModel {
     /// Capture rank 0's cache state for a prefix snapshot (#11).
     pub fn snapshot_kv_cache(
         &self,
-    ) -> candle_core::Result<crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot> {
+    ) -> candle_core::Result<crate::harness::arch::snapshot::KvCacheSnapshot> {
         match self {
             TpLeaderModel::Qwen3(_) => {
                 candle_core::bail!("snapshot_kv_cache: qwen3 (dense) has no snapshot support")
@@ -150,7 +150,7 @@ impl TpLeaderModel {
     /// Replace rank 0's live cache state with a stored snapshot.
     pub fn restore_kv_cache(
         &mut self,
-        snap: &crate::harness::arch::qwen3_5::snapshot::KvCacheSnapshot,
+        snap: &crate::harness::arch::snapshot::KvCacheSnapshot,
     ) -> candle_core::Result<()> {
         match self {
             TpLeaderModel::Qwen3(_) => {

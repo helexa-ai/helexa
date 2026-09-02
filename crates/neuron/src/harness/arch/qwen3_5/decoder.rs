@@ -18,6 +18,7 @@ use candle_core::{Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
 use std::sync::Arc;
 
+use super::super::snapshot::LayerKvSnapshot;
 use super::TextConfig;
 use super::full_attn::Qwen3_5Attention;
 use super::linear_attn::GatedDeltaNet;
@@ -25,7 +26,6 @@ use super::mlp::Qwen3_5MLP;
 use super::moe::Qwen3_5MoeBlock;
 use super::rmsnorm::Qwen3_5RmsNorm;
 use super::rope::RotaryEmbedding;
-use super::snapshot::LayerKvSnapshot;
 
 /// One of the two attention flavours sitting in a decoder layer's
 /// attention slot. Full-attention layers need the rotary table and
