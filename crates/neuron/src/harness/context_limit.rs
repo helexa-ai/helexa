@@ -375,9 +375,15 @@ pub fn derive_limit(
 
     // Observability (#126): every input and intermediate term, so a
     // surprising advertised limit is diagnosable from the journal
-    // instead of re-deriving by hand. DEBUG — this runs on every
-    // `GET /models` poll (a few lines per poll cycle).
-    tracing::debug!(
+    // instead of re-deriving by hand.
+    //
+    // TRACE, not debug: this runs on every `GET /models` poll and every
+    // input is fixed at load, so the line is byte-identical each time —
+    // about 8,600 a day per model at a 10s poll. It is worth having when
+    // reasoning about a context ceiling and worth nothing the rest of
+    // the time, and at debug it buries the lines that are not routine
+    // (#320).
+    tracing::trace!(
         max_pos = profile.max_position_embeddings,
         kv_bytes_per_token_per_card = profile.kv_bytes_per_token_per_card,
         free_tightest_mb,
