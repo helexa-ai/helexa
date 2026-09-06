@@ -2885,6 +2885,59 @@ impl CandleHarness {
         Ok((tokenizer_path, arch))
     }
 
+    /// Whether this spec's `quant` names a GGUF the repo actually has.
+    ///
+    /// `quant` is overloaded (#320): the TP path reads it as in-situ
+    /// quantisation of safetensors, while the single-GPU paths read it
+    /// as "select the GGUF whose filename contains this string". A repo
+    /// with no GGUF at all cannot mean the second, so rather than fail
+    /// with an error about a file that was never going to exist, the
+    /// same string is read the way the TP path reads it.
+    ///
+    /// This is deliberately narrow. A repo that *does* carry GGUFs keeps
+    /// the old behaviour exactly, including the old error when none of
+    /// them match the requested quant — that case is a typo, not an ISQ
+    /// request, and turning it into a silent 360 GB dense load would be
+    /// a worse answer than the error.
+    async fn quant_selects_a_gguf(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<bool> {
+        let Some(quant) = spec.quant.as_deref().filter(|q| !q.is_empty()) else {
+            return Ok(false);
+        };
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let info = api
+            .model(source_id.repo_path())
+            .info()
+            .await
+            .with_context(|| format!("fetch HF repo info for {source_id}"))?;
+        let names: Vec<String> = info
+            .siblings
+            .iter()
+            .map(|s| s.rfilename.to_lowercase())
+            .collect();
+        let any_gguf = names.iter().any(|n| n.ends_with(".gguf"));
+        if any_gguf {
+            return Ok(true);
+        }
+        let any_safetensors = names.iter().any(|n| n.ends_with(".safetensors"));
+        if any_safetensors {
+            tracing::info!(
+                model = %source_id,
+                quant = %quant,
+                "no GGUF in this repo; reading `quant` as in-situ quantization of \
+                 the safetensors (#320)"
+            );
+            return Ok(false);
+        }
+        anyhow::bail!(
+            "repo {source_id} has neither a GGUF nor safetensors; `quant = {quant:?}` \
+             cannot be satisfied"
+        )
+    }
+
     /// Resolve a model spec to local GGUF and tokenizer file paths via
     /// hf-hub. Downloads on first use; subsequent calls are cached.
     async fn resolve_files(
@@ -3869,7 +3922,7 @@ impl Harness for CandleHarness {
             context_profile,
         ) = if let Some(w) = &worker {
             // CUDA path: resolve, then load in the worker.
-            if spec.quant.is_some() {
+            if self.quant_selects_a_gguf(spec, &source_id).await? {
                 let (gguf_path, tokenizer_path) = self.resolve_files(spec, &source_id).await?;
                 let handle = w
                     .load_gguf(gguf_path, spec.model_id.clone())
@@ -3922,7 +3975,7 @@ impl Harness for CandleHarness {
             }
         } else {
             // CPU path: legacy spawn_blocking + Arc<Mutex<ModelArch>>.
-            let (tokenizer_path, arch) = if spec.quant.is_some() {
+            let (tokenizer_path, arch) = if self.quant_selects_a_gguf(spec, &source_id).await? {
                 self.load_arch_gguf(spec, &source_id, &device).await?
             } else {
                 self.load_arch_dense(spec, &source_id, &device).await?

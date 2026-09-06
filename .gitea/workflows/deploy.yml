@@ -317,22 +317,36 @@ jobs:
           # restart decision below, exactly like the drop-in.
           neuron_toml_changed="${{ steps.neuronconf.outputs.changed }}"
 
-          # ── Desired per-model systemd drop-in ─────────────────────────
-          # model.conf carries NEURON_MAX_PROMPT_TOKENS so the context cap
-          # is deterministic per host and rolled out (with a restart) by
+          # ── Desired per-host systemd drop-in ──────────────────────────
+          # model.conf carries the environment neuron is started with, so
+          # it is deterministic per host and rolled out (with a restart) by
           # this workflow, not hand-edited. It sorts after local.conf, so a
           # deploy-managed value wins over any manual local override of the
-          # same variable. See doc/context-limits.md.
+          # same variable.
+          #
+          # RUST_LOG is fleet-uniform and unconditional. The code default
+          # is `info`, which is too coarse to diagnose a load or a routing
+          # decision after the fact, and before this it was `debug` on
+          # exactly one host because someone set it there by hand. A
+          # verbosity you have to remember to set is a verbosity you find
+          # out you did not have at the moment you needed it. Bumping a
+          # module (`debug,neuron::harness::candle=trace`) is a one-line
+          # change here, applied everywhere, with an audit trail.
+          #
+          # NEURON_MAX_PROMPT_TOKENS is per-host and stays conditional;
+          # see doc/context-limits.md.
           conf=/etc/systemd/system/neuron.service.d/model.conf
           config_changed=${neuron_toml_changed:-0}
+          rust_log="debug"
+          desired=$(printf '%s\n%s\n%s' \
+            "# Managed by .gitea/workflows/deploy.yml - do not edit by hand." \
+            "[Service]" \
+            "Environment=RUST_LOG=${rust_log}")
           if [ -n "${max_prompt_tokens}" ]; then
-            desired=$(printf '%s\n%s\n%s\n%s' \
-              "# Managed by .gitea/workflows/deploy.yml - do not edit by hand." \
-              "# Per-model context cap; see doc/context-limits.md." \
-              "[Service]" \
+            desired=$(printf '%s\n%s' "${desired}" \
               "Environment=NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens}")
-            [ "${desired}" = "$(cat "${conf}" 2>/dev/null || true)" ] || config_changed=1
           fi
+          [ "${desired}" = "$(cat "${conf}" 2>/dev/null || true)" ] || config_changed=1
 
           # ── Desired registry drop-in ──────────────────────────────────
           # Every model fetch goes through rustingface rather than
@@ -411,15 +425,13 @@ jobs:
           echo "installed=${installed} published=${latest:-unknown} pkg_changed=${pkg_changed} config_changed=${config_changed} — deploying"
 
           # Write the drop-in (staged in gitea_ci's dir, installed root-owned).
-          # Guarded on max_prompt_tokens as well as config_changed: since
-          # a neuron.toml change also sets config_changed, an entry with
-          # no max_prompt_tokens would otherwise reach this with `desired`
-          # unset.
-          if [ "${config_changed}" -eq 1 ] && [ -n "${max_prompt_tokens}" ]; then
+          # `desired` is always set now that RUST_LOG is unconditional, so
+          # config_changed alone is the guard.
+          if [ "${config_changed}" -eq 1 ]; then
             printf '%s\n' "${desired}" > /var/lib/gitea_ci/model.conf
             sudo /usr/bin/install -o root -g root -m 0644 -D /var/lib/gitea_ci/model.conf "${conf}"
             rm -f /var/lib/gitea_ci/model.conf
-            echo "applied ${conf}: NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens}"
+            echo "applied ${conf}: RUST_LOG=${rust_log} NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens:-<unset>}"
           fi
 
           # Staged 0600 in gitea_ci's own dir before install, so the token
