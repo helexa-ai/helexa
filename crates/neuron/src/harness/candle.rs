@@ -1349,7 +1349,7 @@ impl LlamaDense {
 /// value. New entries land alongside a new `ModelArch` variant + a
 /// dispatch branch in `load_arch_dense` (plus, for TP, a parallel
 /// pattern in `tp_qwen3.rs`).
-const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &[
+pub(crate) const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &[
     "llama",
     "qwen3",
     "qwen3_5",
@@ -3953,8 +3953,12 @@ impl Harness for CandleHarness {
                     super::context_limit::profile_from_qwen3_5_config(&config_path, 1).or_else(
                         || super::context_limit::profile_from_qwen4_exp_config(&config_path, 1),
                     );
+                // In-situ quantisation (#320) reaches the worker load
+                // too, not just the CPU one — parsed here because
+                // `spec` does not cross the channel.
+                let isq = super::quant::parse_quant_string(spec.quant.as_deref())?;
                 let load = w
-                    .load_dense(config_path, safetensors_paths, spec.model_id.clone())
+                    .load_dense(config_path, safetensors_paths, spec.model_id.clone(), isq)
                     .await
                     .map_err(|e| anyhow::anyhow!("worker load_dense: {e:#}"))?;
                 // Prefix snapshots (#11): the built model answers for

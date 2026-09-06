@@ -128,6 +128,10 @@ pub enum Job {
         config_path: PathBuf,
         safetensors_paths: Vec<PathBuf>,
         model_id: String,
+        /// In-situ quantisation (#320): the catalogue's `quant`,
+        /// already parsed. `None` loads at the checkpoint dtype.
+        /// Archs that cannot quantise in situ ignore it.
+        quant: Option<candle_core::quantized::GgmlDType>,
         reply: oneshot::Sender<Result<DenseLoad>>,
     },
     /// Remove the model from the slab and drop it. The `Drop` runs on

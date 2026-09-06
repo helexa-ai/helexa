@@ -146,20 +146,26 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 config_path,
                 safetensors_paths,
                 model_id,
+                quant,
                 reply,
             } => {
-                let result =
-                    load_dense_inner(&state.device, &config_path, &safetensors_paths, &model_id)
-                        .map(|arch| {
-                            // Ask the model, once, while it is still in
-                            // hand. See `DenseLoad`.
-                            let supports_kv_snapshot = arch.supports_kv_snapshot();
-                            let handle = insert_arch(&mut state, Box::new(arch));
-                            DenseLoad {
-                                handle,
-                                supports_kv_snapshot,
-                            }
-                        });
+                let result = load_dense_inner(
+                    &state.device,
+                    &config_path,
+                    &safetensors_paths,
+                    &model_id,
+                    quant,
+                )
+                .map(|arch| {
+                    // Ask the model, once, while it is still in
+                    // hand. See `DenseLoad`.
+                    let supports_kv_snapshot = arch.supports_kv_snapshot();
+                    let handle = insert_arch(&mut state, Box::new(arch));
+                    DenseLoad {
+                        handle,
+                        supports_kv_snapshot,
+                    }
+                });
                 // As for `LoadGguf`. It matters more here: a dense
                 // load that runs out of VRAM part-way has typically
                 // allocated tens of gigabytes first, and the evicted
@@ -933,6 +939,7 @@ fn load_dense_inner(
     config_path: &std::path::Path,
     safetensors_paths: &[std::path::PathBuf],
     model_id: &str,
+    quant: Option<candle_core::quantized::GgmlDType>,
 ) -> anyhow::Result<ModelArch> {
     use anyhow::Context;
     use candle_core::DType;
@@ -1025,6 +1032,36 @@ fn load_dense_inner(
             let model = crate::harness::arch::qwen3_5::Qwen3_5ForCausalLM::new(cfg, sharded_vb)
                 .context("build Qwen3-Next dense model")?;
             Ok(ModelArch::Qwen3_5Dense(model))
+        }
+        "qwen4_exp" => {
+            // Qwen3.8-Flash-Next. Mirrors the CPU path in
+            // `candle::load_arch_dense` — same config type, same
+            // sharded backend, same in-situ quantisation.
+            //
+            // ISQ is not optional for this architecture: the routed
+            // experts are 241.6 GB at BF16 (measured from the
+            // checkpoint's own headers), against 32.6 GB of card. A
+            // load without a `quant` will fail on memory rather than
+            // on anything this code can say (#315, #252).
+            let cfg = crate::harness::arch::qwen4_exp::config::Config::from_config_json(&cfg_text)
+                .context("parse qwen4_exp config.json")?;
+            let sharded_vb = unsafe {
+                candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                    safetensors_paths,
+                    dtype,
+                    device,
+                )
+                .context("build ShardedVarBuilder for qwen4_exp")?
+            };
+            let model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
+                &cfg,
+                dtype,
+                quant,
+                device,
+                &sharded_vb,
+            )
+            .context("build qwen4_exp model")?;
+            Ok(ModelArch::Qwen4Exp(Box::new(model)))
         }
         other => anyhow::bail!(
             "unrouted supported model_type '{other}' — \
@@ -1704,6 +1741,45 @@ fn drain_poisoned(job: Job, device_index: u32) {
             // Filtered by the matches!() guard in run(); reaching
             // here would be a logic error.
             unreachable!("Shutdown is filtered before drain_poisoned");
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every architecture the preflight admits must have a loader arm
+    /// on **this** path, not only on the CPU one in
+    /// `candle::load_arch_dense`.
+    ///
+    /// There are two dense loaders — the worker's (every CUDA load)
+    /// and candle's (the CPU fallback) — and one list gating both.
+    /// `qwen4_exp` was added to the list and to the CPU loader, so it
+    /// passed preflight and then hit the "unrouted supported
+    /// model_type" bail here: on a GPU host the model was
+    /// unloadable, in about 200 ms, having read nothing. The bail's
+    /// own comment said the two must stay in sync; nothing checked.
+    ///
+    /// A bare `{"model_type": ...}` reaches the arm and then fails on
+    /// the typed parse, which is fine — this asserts only that an arm
+    /// exists to fail in.
+    #[test]
+    fn every_supported_dense_model_type_has_a_loader_arm() {
+        let dir = tempfile::tempdir().unwrap();
+        for model_type in crate::harness::candle::DENSE_SUPPORTED_MODEL_TYPES {
+            let path = dir.path().join(format!("{model_type}.json"));
+            std::fs::write(&path, format!(r#"{{"model_type": "{model_type}"}}"#)).unwrap();
+            let msg =
+                match load_dense_inner(&candle_core::Device::Cpu, &path, &[], model_type, None) {
+                    Ok(_) => panic!("a bare config must not build a model"),
+                    Err(e) => format!("{e:#}"),
+                };
+            assert!(
+                !msg.contains("unrouted"),
+                "`{model_type}` is in DENSE_SUPPORTED_MODEL_TYPES but load_dense_inner \
+                 has no arm for it: {msg}"
+            );
         }
     }
 }

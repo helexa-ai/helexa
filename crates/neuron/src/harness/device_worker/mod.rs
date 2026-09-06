@@ -221,6 +221,7 @@ impl DeviceWorkerHandle {
         config_path: std::path::PathBuf,
         safetensors_paths: Vec<std::path::PathBuf>,
         model_id: String,
+        quant: Option<candle_core::quantized::GgmlDType>,
     ) -> Result<DenseLoad, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -233,6 +234,7 @@ impl DeviceWorkerHandle {
                 config_path,
                 safetensors_paths,
                 model_id,
+                quant,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
@@ -1243,6 +1245,7 @@ mod tests {
                 fixture.join("config.json"),
                 vec![fixture.join("model.safetensors")],
                 "qwen3_next-tiny".into(),
+                None,
             )
             .await
             .expect("load tiny fixture")
