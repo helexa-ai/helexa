@@ -1349,7 +1349,7 @@ impl LlamaDense {
 /// value. New entries land alongside a new `ModelArch` variant + a
 /// dispatch branch in `load_arch_dense` (plus, for TP, a parallel
 /// pattern in `tp_qwen3.rs`).
-const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &[
+pub(crate) const DENSE_SUPPORTED_MODEL_TYPES: &[&str] = &[
     "llama",
     "qwen3",
     "qwen3_5",
@@ -3946,30 +3946,32 @@ impl Harness for CandleHarness {
                 let (config_path, tokenizer_path, safetensors_paths) =
                     self.resolve_dense_files(spec, &source_id).await?;
                 let meta = VisionMeta::from_config_path(&config_path);
-                // Prefix snapshots (#11) exist only for the in-tree
-                // qwen3_5 arch — which serves BOTH its model_types
-                // (qwen3_5 and the flat-config qwen3_next MoE family);
-                // the worker holds the ModelArch so the async side
-                // decides from config.json instead.
-                let snapshot_capable = matches!(
-                    config_model_type(&config_path).as_deref(),
-                    Some(super::arch::qwen3_5::MODEL_TYPE)
-                        | Some(super::arch::qwen3_5::MODEL_TYPE_NEXT)
-                );
                 // Context-limit physics (#67): single-GPU → world_size 1.
-                // `None` for non-qwen3_5 dense archs.
+                // `None` for dense archs with no profile builder — they
+                // fall back to the static prompt cap.
                 let context_profile =
-                    super::context_limit::profile_from_qwen3_5_config(&config_path, 1);
-                let handle = w
-                    .load_dense(config_path, safetensors_paths, spec.model_id.clone())
+                    super::context_limit::profile_from_qwen3_5_config(&config_path, 1).or_else(
+                        || super::context_limit::profile_from_qwen4_exp_config(&config_path, 1),
+                    );
+                // In-situ quantisation (#320) reaches the worker load
+                // too, not just the CPU one — parsed here because
+                // `spec` does not cross the channel.
+                let isq = super::quant::parse_quant_string(spec.quant.as_deref())?;
+                let load = w
+                    .load_dense(config_path, safetensors_paths, spec.model_id.clone(), isq)
                     .await
                     .map_err(|e| anyhow::anyhow!("worker load_dense: {e:#}"))?;
+                // Prefix snapshots (#11): the built model answers for
+                // itself on the way back, rather than the async side
+                // re-deriving the answer from `config.json`. See
+                // `DenseLoad` — the re-derivation is what silently
+                // dropped batched decode for qwen4_exp.
                 (
                     tokenizer_path,
                     None,
-                    Some(handle),
+                    Some(load.handle),
                     meta,
-                    snapshot_capable,
+                    load.supports_kv_snapshot,
                     context_profile,
                 )
             }
@@ -4793,6 +4795,13 @@ impl CandleHarness {
             image_token_id: vision_meta.image_token_id,
             image_grid_factor: vision_meta.image_grid_factor,
             spec: spec.clone(),
+            // Snapshot capability re-derived from `config.json`
+            // rather than asked of the loaded shard. Correct today —
+            // `TP_SUPPORTED_MODEL_TYPES` is exactly these two — but it
+            // is the same shape as the bug `DenseLoad` fixed on the
+            // single-GPU path, so whoever adds an arch here (#319)
+            // must add it in both places or lose batched decode
+            // silently.
             prefix_cache: self.new_prefix_cache(matches!(
                 config_model_type(&config_path).as_deref(),
                 Some(super::arch::qwen3_5::MODEL_TYPE)
@@ -6344,9 +6353,14 @@ struct VisionMeta {
 }
 
 /// Peek at `config.json` for its `model_type`. Best-effort — `None`
-/// on any read/parse error. The load path uses this to decide prefix-
-/// snapshot capability for worker-held models the async side can't
-/// inspect directly.
+/// on any read/parse error.
+///
+/// Only the TP load path still asks: the single-GPU path takes the
+/// arch's own answer off the load reply (`DenseLoad`) rather than
+/// re-deriving it here, which is what stopped the two from drifting.
+/// The TP path has the same hazard and not yet the same cure — see
+/// the note at its call site.
+#[cfg(feature = "cuda")]
 fn config_model_type(config_path: &std::path::Path) -> Option<String> {
     let text = std::fs::read_to_string(config_path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
