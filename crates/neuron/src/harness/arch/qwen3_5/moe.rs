@@ -88,6 +88,51 @@ pub(crate) struct QuantizedExpert {
     down: QMatMul,
 }
 
+/// The quantisation type actually usable for rows of `row` elements.
+///
+/// ggml quantises along the last dimension, and a row must be a whole
+/// number of blocks. The k-quants (`Q2K`..`Q8K`) block on 256; the
+/// older types block on 32. `qwen4_exp`'s `down_proj` reduces over
+/// `moe_intermediate_size = 640`, which is 2.5 blocks of 256 — so a
+/// `quant = "q4k"` load fails on the very first layer with
+/// `quantized tensor must have their last dim divisible by block size
+/// [2560, 640] 256`, having read 131 shards to get there.
+///
+/// Substituting a 32-block type for that half is what llama.cpp does
+/// with the same constraint, and it costs almost nothing here: `Q4_0`
+/// and `Q4K` are both 4.5 bpw, so the memory arithmetic the placement
+/// decisions rest on is unchanged. The quality is a little worse per
+/// bit — `Q4_0` has one scale per 32 values where `Q4K` has a
+/// two-level hierarchy — which is a real trade, but it applies to one
+/// of the three expert matrices and the alternative is not loading.
+///
+/// Errors rather than falls back further if the row will not even
+/// divide 32: that is a config we do not understand, and silently
+/// leaving those weights dense would be a memory surprise, not a
+/// mercy.
+pub(crate) fn quant_for_row(requested: GgmlDType, row: usize) -> candle_core::Result<GgmlDType> {
+    if row.is_multiple_of(requested.block_size()) {
+        return Ok(requested);
+    }
+    let fallback = match requested {
+        GgmlDType::Q2K | GgmlDType::Q3K | GgmlDType::Q4K => GgmlDType::Q4_0,
+        GgmlDType::Q5K => GgmlDType::Q5_0,
+        GgmlDType::Q6K | GgmlDType::Q8K => GgmlDType::Q8_0,
+        // Already a 32-block type: there is nothing coarser to fall
+        // back to, so this is the error case below.
+        other => other,
+    };
+    if row.is_multiple_of(fallback.block_size()) {
+        return Ok(fallback);
+    }
+    candle_core::bail!(
+        "cannot quantise a row of {row} elements as {requested:?} (block \
+         {}) or {fallback:?} (block {}): the row divides neither",
+        requested.block_size(),
+        fallback.block_size(),
+    )
+}
+
 impl Experts {
     pub(crate) fn len(&self) -> usize {
         match self {
@@ -101,6 +146,10 @@ impl Experts {
     ///
     /// Takes the fused tensors by reference and drops nothing itself —
     /// the caller owns the peak, and should hold one layer at a time.
+    ///
+    /// The two halves may not end up the same dtype: see
+    /// [`quant_for_row`]. `qwen4_exp`'s `down_proj` reduces over 640,
+    /// which no k-quant can block.
     pub(crate) fn quantize_banked(
         gate_up: &Tensor,
         down: &Tensor,
@@ -108,6 +157,22 @@ impl Experts {
         dtype: GgmlDType,
     ) -> candle_core::Result<Self> {
         let n = gate_up.dims()[0];
+        // Decided once, from the shapes, rather than per expert —
+        // every expert in a layer has the same two row widths, and
+        // 512 identical log lines per layer would bury the fact.
+        let gate_up_dtype = quant_for_row(dtype, gate_up.dims()[2])?;
+        let down_dtype = quant_for_row(dtype, down.dims()[2])?;
+        if gate_up_dtype != dtype || down_dtype != dtype {
+            tracing::info!(
+                requested = ?dtype,
+                gate_up_row = gate_up.dims()[2],
+                gate_up_dtype = ?gate_up_dtype,
+                down_row = down.dims()[2],
+                down_dtype = ?down_dtype,
+                "expert quantisation: a row width does not divide the requested \
+                 block size; substituting a 32-block type for that half"
+            );
+        }
         let mut out = Vec::with_capacity(n);
         for e in 0..n {
             let gu = gate_up.i(e)?;
@@ -122,16 +187,16 @@ impl Experts {
             // sharing the parent's buffer. Round-tripping through a Vec
             // is the part that actually allocates, and it is also where
             // the f32 the quantiser wants comes from.
-            let q = |t: Tensor| -> candle_core::Result<QMatMul> {
+            let q = |t: Tensor, dtype: GgmlDType| -> candle_core::Result<QMatMul> {
                 let dims = t.dims().to_vec();
                 let vals = t.to_dtype(DType::F32)?.flatten_all()?.to_vec1::<f32>()?;
                 let owned = Tensor::from_vec(vals, dims, t.device())?;
                 QMatMul::from_qtensor(QTensor::quantize(&owned, dtype)?)
             };
             out.push(QuantizedExpert {
-                gate: q(gu.narrow(0, 0, intermediate)?)?,
-                up: q(gu.narrow(0, intermediate, intermediate)?)?,
-                down: q(down.i(e)?)?,
+                gate: q(gu.narrow(0, 0, intermediate)?, gate_up_dtype)?,
+                up: q(gu.narrow(0, intermediate, intermediate)?, gate_up_dtype)?,
+                down: q(down.i(e)?, down_dtype)?,
             });
         }
         Ok(Experts::Quantized(out))
@@ -622,6 +687,58 @@ mod tests {
     /// a tiny fixture silently cannot be quantised at all, which is the
     /// first thing that bites when this is tried on a toy model.
     ///
+    /// `qwen4_exp`'s real expert widths, which no k-quant can block.
+    ///
+    /// `moe_intermediate_size` is 640, so `down_proj` is `[2560, 640]`
+    /// and its 640-element rows are 2.5 blocks of 256. The load died
+    /// on beast at decoder layer 0 with `quantized tensor must have
+    /// their last dim divisible by block size [2560, 640] 256`, after
+    /// resolving all 131 shards.
+    ///
+    /// The fixture that missed it was 256 wide in both dimensions —
+    /// the smallest width a k-quant accepts — so every row divided
+    /// and the orientation could not matter. This one uses the
+    /// checkpoint's own numbers, scaled down only in expert count.
+    #[test]
+    fn the_real_expert_widths_quantise_despite_a_640_wide_reduction() {
+        assert_eq!(
+            quant_for_row(GgmlDType::Q4K, 2560).unwrap(),
+            GgmlDType::Q4K,
+            "gate_up reduces over hidden_size, which is 10 whole blocks"
+        );
+        assert_eq!(
+            quant_for_row(GgmlDType::Q4K, 640).unwrap(),
+            GgmlDType::Q4_0,
+            "down reduces over moe_intermediate_size, which is not"
+        );
+        assert_eq!(quant_for_row(GgmlDType::Q6K, 640).unwrap(), GgmlDType::Q8_0);
+        assert_eq!(
+            quant_for_row(GgmlDType::Q8_0, 640).unwrap(),
+            GgmlDType::Q8_0
+        );
+        // 100 divides neither 256 nor 32.
+        assert!(quant_for_row(GgmlDType::Q4K, 100).is_err());
+
+        // And the whole path runs at those widths.
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let quantised = Experts::quantize_banked(&gate_up, &down, inter, GgmlDType::Q4K)
+            .expect("the real widths must quantise");
+        let xs = randn(&[2, hidden]);
+        let got = quantised.forward_one(0, &xs).expect("forward");
+        assert_eq!(got.dims(), &[2, hidden]);
+        assert!(
+            got.flatten_all()
+                .unwrap()
+                .to_vec1::<f32>()
+                .unwrap()
+                .iter()
+                .all(|v| v.is_finite()),
+            "a substituted dtype must still produce finite output"
+        );
+    }
+
     /// The assertion is relative error against the dense output, with a
     /// noise baseline: a q8_0 expert should be close, a q4k expert
     /// looser, and both far nearer the truth than an unrelated expert
