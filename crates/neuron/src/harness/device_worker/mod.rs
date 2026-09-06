@@ -51,7 +51,7 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "cuda")]
 pub use jobs::TpHandle;
-pub use jobs::{ArchHandle, ImageHandle, Job, KvSnapshotId};
+pub use jobs::{ArchHandle, DenseLoad, ImageHandle, Job, KvSnapshotId};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -221,7 +221,7 @@ impl DeviceWorkerHandle {
         config_path: std::path::PathBuf,
         safetensors_paths: Vec<std::path::PathBuf>,
         model_id: String,
-    ) -> Result<ArchHandle, WorkerError> {
+    ) -> Result<DenseLoad, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
                 device_index: self.device_index,
@@ -1245,7 +1245,8 @@ mod tests {
                 "qwen3_next-tiny".into(),
             )
             .await
-            .expect("load tiny fixture");
+            .expect("load tiny fixture")
+            .handle;
 
         let prompts: [&[u32]; 3] = [&[1, 2, 3], &[4, 5], &[7, 3, 2, 5, 6]];
         let steps: [&[u32]; 3] = [&[11, 12, 13], &[9, 8, 7], &[21, 22, 23]];

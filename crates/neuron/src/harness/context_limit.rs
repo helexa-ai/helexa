@@ -252,6 +252,85 @@ pub fn profile_from_qwen3_5_config(config_path: &Path, world_size: u32) -> Optio
     })
 }
 
+/// Bytes of **QSA indexer** cache one token adds, per card (#307).
+///
+/// `qwen4_exp` keeps a second cache beside the main one: on every
+/// full-attention layer the indexer stores the raw index key,
+/// `indexer_kv_heads * indexer_head_dim` wide, in the compute dtype
+/// (`arch::qwen4_exp::qsa::Indexer::key_cache`). Keys only — the
+/// indexer scores blocks, it does not attend them — so there is no
+/// `2 *` here.
+///
+/// It does not shard: `indexer_kv_heads` is 1, so a TP rank holds the
+/// whole thing however wide the world is. At the checkpoint's 12
+/// full-attention layers x 1 head x 128 dims that is 3 KiB/token on
+/// top of the main cache's 24 — the surcharge the epic's original
+/// arithmetic omitted, and it grows with context exactly as the main
+/// cache does.
+pub fn indexer_bytes_per_token(
+    n_full_attn_layers: usize,
+    indexer_kv_heads: usize,
+    indexer_head_dim: usize,
+    dtype_bytes: usize,
+) -> u64 {
+    (n_full_attn_layers * indexer_kv_heads * indexer_head_dim * dtype_bytes) as u64
+}
+
+/// Build a [`ContextProfile`] from a `qwen4_exp` `config.json` — the
+/// sibling of [`profile_from_qwen3_5_config`] for the other hybrid
+/// arch. Returns `None` for any other `model_type` or an unparseable
+/// config.
+///
+/// Same shape of physics, one term more: the per-token cost is the
+/// main KV cache **plus** the QSA indexer's, because both grow per
+/// token and both come out of the same card. Advertising against the
+/// main cache alone would overstate what is servable by about an
+/// eighth, which is the class of error #281 is about.
+///
+/// `layer_types` is always populated by the time `from_config_json`
+/// returns (it fills the array from `full_attention_interval` when the
+/// checkpoint omits it), so counting it is authoritative here.
+pub fn profile_from_qwen4_exp_config(
+    config_path: &Path,
+    world_size: u32,
+) -> Option<ContextProfile> {
+    let text = std::fs::read_to_string(config_path).ok()?;
+    if !super::arch::qwen4_exp::config::is_qwen4_exp(&text) {
+        return None;
+    }
+    let cfg = super::arch::qwen4_exp::config::Config::from_config_json(&text).ok()?;
+    let tc = &cfg.text_config;
+    let n_full_attn_layers = tc
+        .layer_types
+        .iter()
+        .filter(|t| t.as_str() == "full_attention")
+        .count();
+    // A model with no full-attention layer has no growing cache, and
+    // the derivation divides by this. Nothing in the family looks like
+    // that, so treat it as a config we do not understand rather than
+    // inventing an unbounded context.
+    if n_full_attn_layers == 0 {
+        return None;
+    }
+    let kv_bytes_per_token_per_card = kv_bytes_per_token(
+        n_full_attn_layers,
+        tc.num_key_value_heads,
+        tc.head_dim,
+        KV_CACHE_DTYPE_BYTES,
+        world_size,
+    ) + indexer_bytes_per_token(
+        n_full_attn_layers,
+        tc.indexer_kv_heads,
+        tc.indexer_head_dim,
+        KV_CACHE_DTYPE_BYTES,
+    );
+    Some(ContextProfile {
+        max_position_embeddings: tc.max_position_embeddings,
+        kv_bytes_per_token_per_card,
+        world_size,
+    })
+}
+
 /// Round a token count down to a clean boundary so the advertised limit
 /// doesn't jitter by a handful of tokens as live VRAM / the throughput
 /// EMA wobble between polls.
@@ -423,6 +502,57 @@ pub fn derive_limit(
 
 #[cfg(test)]
 mod tests {
+
+    /// The advertised limit for `qwen4_exp` must price both caches.
+    ///
+    /// The main KV cache is 12 full-attention layers x 2 kv heads x 256
+    /// dims x 2 (K and V) x 2 bytes = 24 KiB/token, and the QSA indexer
+    /// adds 12 x 1 x 128 x 2 bytes = 3 KiB on top. Counting only the
+    /// first would advertise ~12.5% more context than the card can
+    /// hold — the failure mode #281 exists to stop, and the one the
+    /// epic's own arithmetic made before the indexer cache was found.
+    ///
+    /// Driven from the checkpoint's verbatim `config.json`, so a field
+    /// that changes shape upstream fails here rather than in
+    /// production.
+    #[test]
+    fn a_qwen4_exp_profile_counts_the_indexer_cache_too() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, super::super::arch::qwen4_exp::config::SHIPPED).unwrap();
+
+        let profile = profile_from_qwen4_exp_config(&path, 1)
+            .expect("the shipped config.json must yield a profile");
+
+        assert_eq!(profile.max_position_embeddings, 262_144);
+        assert_eq!(
+            profile.kv_bytes_per_token_per_card,
+            24 * 1024 + 3 * 1024,
+            "main KV plus the indexer's second cache"
+        );
+    }
+
+    /// The two hybrid archs must not answer for each other: whichever
+    /// builder runs first has to decline a config it does not own, or
+    /// the load path's `or_else` chain silently prices one model with
+    /// the other's physics.
+    #[test]
+    fn the_profile_builders_decline_each_others_configs() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, super::super::arch::qwen4_exp::config::SHIPPED).unwrap();
+        assert!(
+            profile_from_qwen3_5_config(&path, 1).is_none(),
+            "the qwen3_5 builder must decline a qwen4_exp config"
+        );
+
+        let path = dir.path().join("other.json");
+        std::fs::write(&path, r#"{"model_type": "qwen3_next"}"#).unwrap();
+        assert!(
+            profile_from_qwen4_exp_config(&path, 1).is_none(),
+            "the qwen4_exp builder must decline everything else"
+        );
+    }
 
     /// The deploy's smoke probe must not set the advertised context.
     ///

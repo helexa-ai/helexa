@@ -19,6 +19,27 @@ use tokio::sync::oneshot;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArchHandle(pub u64);
 
+/// What a dense load hands back: the handle, plus what the arch it
+/// built says about itself.
+///
+/// The async side cannot ask the model anything — it lives in the
+/// worker's slab and never crosses the channel — so anything the
+/// serving path needs to know has to ride back on the reply. Prefix
+/// snapshot support (#11) is the first such fact, and it is here
+/// rather than re-derived from `config.json` because that is exactly
+/// how it went wrong: the async side matched a list of `model_type`
+/// strings that `ModelArch::supports_kv_snapshot` had since grown
+/// past, so `qwen4_exp` loaded with batched decode silently off.
+/// A capability the arch answers for itself cannot drift from the
+/// arch.
+#[derive(Debug, Clone, Copy)]
+pub struct DenseLoad {
+    pub handle: ArchHandle,
+    /// [`crate::harness::candle::ModelArch::supports_kv_snapshot`], as
+    /// answered by the model that was actually built.
+    pub supports_kv_snapshot: bool,
+}
+
 /// Opaque handle to a `TpLeaderModel` stored in the worker thread's
 /// state slab. Same shape as [`ArchHandle`] but in a separate
 /// namespace so the two slabs can coexist without ambiguity. Phase 3
@@ -107,7 +128,7 @@ pub enum Job {
         config_path: PathBuf,
         safetensors_paths: Vec<PathBuf>,
         model_id: String,
-        reply: oneshot::Sender<Result<ArchHandle>>,
+        reply: oneshot::Sender<Result<DenseLoad>>,
     },
     /// Remove the model from the slab and drop it. The `Drop` runs on
     /// the worker thread so CUDA tensors release their memory on the

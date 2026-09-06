@@ -1263,7 +1263,8 @@ mod tests {
                 "qwen3_next-tiny".into(),
             )
             .await
-            .expect("load fixture");
+            .expect("load fixture")
+            .handle;
 
         let admission_cfg = AdmissionConfig {
             max_in_flight: 3,

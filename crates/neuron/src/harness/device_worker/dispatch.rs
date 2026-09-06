@@ -17,7 +17,9 @@ use crate::harness::arch::snapshot::KvCacheSnapshot;
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
-use crate::harness::device_worker::jobs::{ArchHandle, ImageHandle, ImageInput, Job, KvSnapshotId};
+use crate::harness::device_worker::jobs::{
+    ArchHandle, DenseLoad, ImageHandle, ImageInput, Job, KvSnapshotId,
+};
 use crate::harness::image::ZImagePipeline;
 #[cfg(feature = "cuda")]
 use crate::harness::tp::TpLeaderModel;
@@ -131,6 +133,13 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
             } => {
                 let result = load_gguf_inner(&state.device, &gguf_path, &model_id)
                     .map(|arch| insert_arch(&mut state, Box::new(arch)));
+                // Same reasoning as `LoadImage`: release load-time
+                // transients before serving, and — on the failure
+                // path — give back whatever the partial load had
+                // allocated before it gave up. Without this a load
+                // that OOMs leaves its bytes in the pool, where the
+                // driver still counts them against the next load.
+                trim_device_pool(&state);
                 let _ = reply.send(result);
             }
             Job::LoadDense {
@@ -141,7 +150,21 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
             } => {
                 let result =
                     load_dense_inner(&state.device, &config_path, &safetensors_paths, &model_id)
-                        .map(|arch| insert_arch(&mut state, Box::new(arch)));
+                        .map(|arch| {
+                            // Ask the model, once, while it is still in
+                            // hand. See `DenseLoad`.
+                            let supports_kv_snapshot = arch.supports_kv_snapshot();
+                            let handle = insert_arch(&mut state, Box::new(arch));
+                            DenseLoad {
+                                handle,
+                                supports_kv_snapshot,
+                            }
+                        });
+                // As for `LoadGguf`. It matters more here: a dense
+                // load that runs out of VRAM part-way has typically
+                // allocated tens of gigabytes first, and the evicted
+                // model waiting to be restored needs them back.
+                trim_device_pool(&state);
                 let _ = reply.send(result);
             }
             Job::DropArch { handle, reply } => {
@@ -158,6 +181,14 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 // the end of the arm; calling drop() explicitly just
                 // makes the intent visible.
                 drop(removed);
+                // Return the freed blocks to the system rather than
+                // the stream-ordered pool, so the next load actually
+                // sees the VRAM — `DropImage` has done this since the
+                // benjy cold-swap, and an unload is an unload whatever
+                // modality asked for it.
+                if was_present {
+                    trim_device_pool(&state);
+                }
                 tracing::debug!(
                     device_index,
                     handle = handle.0,
@@ -374,6 +405,13 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let was_present = removed.is_some();
                 drop(removed);
                 state.tp_kv_snapshots.retain(|(h, _), _| *h != handle);
+                // As `DropArch`: this is only the leader's shard —
+                // the other ranks free theirs in their own processes
+                // — but the leader's is the one sharing a card with
+                // whatever loads next.
+                if was_present {
+                    trim_device_pool(&state);
+                }
                 tracing::debug!(
                     device_index,
                     tp_handle = handle.0,
