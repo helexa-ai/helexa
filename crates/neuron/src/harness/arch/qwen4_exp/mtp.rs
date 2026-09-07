@@ -123,6 +123,7 @@ impl MtpHead {
                     safetensors_paths: &[],
                     isq_cache: None,
                     experts_onto: vb.device(),
+                    experts_vb: None,
                 },
             )
             .context("load mtp.layers.0")?,

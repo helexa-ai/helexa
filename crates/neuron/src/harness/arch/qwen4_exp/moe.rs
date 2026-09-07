@@ -77,7 +77,20 @@ pub fn load(
         None,
     );
 
-    let experts_vb = vb.pp("experts");
+    // Read the fused tensors wherever the experts are going to live.
+    // When that is the host, this is a VarBuilder bound to it, walked
+    // to the same prefix — so the 5.03 GB pair never touches the
+    // device on its way to being quantised into RAM.
+    let experts_vb = match opts.experts_vb {
+        Some(host_root) => {
+            let mut at = host_root.clone();
+            for segment in vb.prefix().split('.').filter(|s| !s.is_empty()) {
+                at = at.pp(segment);
+            }
+            at.pp("experts")
+        }
+        None => vb.pp("experts"),
+    };
     // The cache key is the layer's own tensor prefix, so it cannot
     // collide across layers and needs no separate index to be passed
     // down alongside it.

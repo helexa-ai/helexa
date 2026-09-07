@@ -809,6 +809,7 @@ mod tests {
                 safetensors_paths: std::slice::from_ref(&path),
                 isq_cache: None,
                 experts_onto: &Device::Cpu,
+                experts_vb: None,
             },
         )
         .unwrap();

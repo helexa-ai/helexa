@@ -1081,6 +1081,23 @@ fn load_dense_inner(
                 )
                 .context("build ShardedVarBuilder for qwen4_exp")?
             };
+            // A second view of the same checkpoint, bound to host
+            // memory, so host-resident experts are read straight there
+            // rather than through 5.03 GB of VRAM per layer (#318).
+            // Built once for the model: it maps the same files, and
+            // mapping is not what costs.
+            let host_vb = if experts_on_host {
+                Some(unsafe {
+                    candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                        safetensors_paths,
+                        dtype,
+                        &candle_core::Device::Cpu,
+                    )
+                    .context("build host ShardedVarBuilder for qwen4_exp experts")?
+                })
+            } else {
+                None
+            };
             let model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                 &cfg,
                 dtype,
@@ -1090,6 +1107,7 @@ fn load_dense_inner(
                     quant,
                     safetensors_paths,
                     isq_cache,
+                    experts_vb: host_vb.as_ref(),
                     // Host residency (#318) is what makes a model whose
                     // experts exceed VRAM loadable; everything else in
                     // the model still lands on the device.

@@ -422,6 +422,7 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
             safetensors_paths: std::slice::from_ref(&weights),
             isq_cache: None,
             experts_onto: &device,
+            experts_vb: None,
         },
     )
     .expect("load the fixture through the production loader");
