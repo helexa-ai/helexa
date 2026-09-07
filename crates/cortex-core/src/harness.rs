@@ -172,6 +172,39 @@ pub struct ModelSpec {
     /// a belief. A request's own `chat_template_kwargs` still wins.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preserve_thinking: Option<bool>,
+
+    /// Where the routed experts of a sparse MoE live (#318).
+    ///
+    /// `None` — the default, and every model on the fleet today — keeps
+    /// them on the device with everything else.
+    ///
+    /// `Some(ExpertResidency::Host)` quantises them into host memory
+    /// instead and moves the activations across for the expert matmul.
+    /// That is the only way `qwen4_exp` loads at all: its routed
+    /// experts are 73.0 GB at q4k against 63.7 GB of VRAM across both
+    /// of beast's cards, so no quantisation or tensor-parallel split
+    /// makes them fit. It is slow — a token's experts are ~1.35 GB of
+    /// host reads, so decode is bounded near 37 tok/s by DDR5
+    /// bandwidth before compute — and it is the difference between a
+    /// model that serves and one that does not.
+    ///
+    /// Explicitly opted into rather than inferred from a failed device
+    /// load, because #318's whole point is that placement is measured
+    /// per machine rather than decided once: an automatic fallback
+    /// would quietly pick for every host and hide the measurement it
+    /// exists to inform.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expert_residency: Option<ExpertResidency>,
+}
+
+/// Where a sparse MoE's routed experts are held (#318).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExpertResidency {
+    /// On the device, with the rest of the model. The default.
+    Device,
+    /// In host memory, with activations crossing for each expert.
+    Host,
 }
 
 /// Per-model token budget advertised by the catalogue or neuron.

@@ -30,7 +30,7 @@
 
 use anyhow::{Context, Result};
 use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
-use candle_core::{DType, IndexOp, Module, Tensor};
+use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
@@ -86,6 +86,20 @@ pub(crate) struct QuantizedExpert {
     gate: QMatMul,
     up: QMatMul,
     down: QMatMul,
+}
+
+impl QuantizedExpert {
+    /// Where this expert's weights are, when that is knowable.
+    ///
+    /// `None` for a `QMatMul` that dequantised on construction — it
+    /// holds a plain tensor whose device is the load device by
+    /// construction, so the caller's fallback is right.
+    fn device(&self) -> Option<Device> {
+        match &self.gate {
+            QMatMul::QTensor(t) => Some(t.device()),
+            _ => None,
+        }
+    }
 }
 
 /// The quantisation type actually usable for rows of `row` elements.
@@ -170,11 +184,31 @@ impl Experts {
     /// The two halves may not end up the same dtype: see
     /// [`quant_for_row`]. `qwen4_exp`'s `down_proj` reduces over 640,
     /// which no k-quant can block.
+    /// `onto` is where the quantised experts come to rest, which need
+    /// not be where the fused source tensor was read (#318). Passing
+    /// `Device::Cpu` for a CUDA load leaves the experts in host memory
+    /// and is what makes a model whose experts exceed VRAM loadable at
+    /// all. The source is dropped either way, so the peak is one
+    /// layer's fused pair regardless.
+    /// Quantise where the source already is. Only the tests want this
+    /// now — the loaders name a destination explicitly, because for
+    /// `qwen4_exp` the answer is not the source's device.
+    #[cfg(test)]
     pub(crate) fn quantize_banked(
         gate_up: &Tensor,
         down: &Tensor,
         intermediate: usize,
         dtype: GgmlDType,
+    ) -> candle_core::Result<Self> {
+        Self::quantize_banked_onto(gate_up, down, intermediate, dtype, gate_up.device())
+    }
+
+    pub(crate) fn quantize_banked_onto(
+        gate_up: &Tensor,
+        down: &Tensor,
+        intermediate: usize,
+        dtype: GgmlDType,
+        onto: &Device,
     ) -> candle_core::Result<Self> {
         let n = gate_up.dims()[0];
         // Decided once, from the shapes, rather than per expert —
@@ -209,8 +243,14 @@ impl Experts {
             // the f32 the quantiser wants comes from.
             let q = |t: Tensor, dtype: GgmlDType| -> candle_core::Result<QMatMul> {
                 let dims = t.dims().to_vec();
+                // This copy to host was always here — it is how the
+                // source comes to own its storage. Building the owned
+                // tensor on `onto` rather than on `t.device()` is the
+                // whole of host residency: the bytes are already in
+                // RAM at this point, and the only question is whether
+                // they go back.
                 let vals = t.to_dtype(DType::F32)?.flatten_all()?.to_vec1::<f32>()?;
-                let owned = Tensor::from_vec(vals, dims, t.device())?;
+                let owned = Tensor::from_vec(vals, dims, onto)?;
                 QMatMul::from_qtensor(QTensor::quantize(&owned, dtype)?)
             };
             out.push(QuantizedExpert {
@@ -294,13 +334,25 @@ impl Experts {
                 // The quantised kernels accumulate in f32 whatever the
                 // activation dtype, so the cast is explicit here rather
                 // than implied — and the result comes back in the
-                // caller's dtype so the routing arithmetic upstream
-                // does not have to know which layout it got.
+                // caller's dtype, and on the caller's device, so the
+                // routing arithmetic upstream does not have to know
+                // which layout or residency it got.
                 let dtype = xs.dtype();
-                let xs32 = xs.to_dtype(DType::F32)?;
+                let home = q.device().unwrap_or_else(|| xs.device().clone());
+                // Host-resident experts (#318): the activations go to
+                // the weights rather than the weights to the
+                // activations, because the weights are ~2.4 GB a layer
+                // and the activations are the rows routed to one
+                // expert. `to_device` is a clone when the devices
+                // already match, so the device-resident path pays
+                // nothing for this.
+                let xs32 = xs.to_dtype(DType::F32)?.to_device(&home)?;
                 let lhs = candle_nn::ops::silu(&q.gate.forward(&xs32)?)?;
                 let rhs = q.up.forward(&xs32)?;
-                q.down.forward(&(lhs * rhs)?)?.to_dtype(dtype)
+                q.down
+                    .forward(&(lhs * rhs)?)?
+                    .to_device(xs.device())?
+                    .to_dtype(dtype)
             }
         }
     }
@@ -758,6 +810,54 @@ mod tests {
     /// a tiny fixture silently cannot be quantised at all, which is the
     /// first thing that bites when this is tried on a toy model.
     ///
+    /// Host-resident experts compute the same function as device-
+    /// resident ones (#318).
+    ///
+    /// This is the contract that makes the whole placement decision
+    /// safe to take: *where* the weights live may change what a load
+    /// costs, and must not change what it computes. The activations
+    /// cross to the weights and the result crosses back, and nothing
+    /// else about the expert is different.
+    ///
+    /// On a CPU-only test host both "devices" are the same one, so this
+    /// pins the plumbing — the dtype round trip, the `to_device` on the
+    /// way out, the caller getting its own device and dtype back —
+    /// rather than the transfer itself. The transfer is exercised on
+    /// hardware, where the two devices genuinely differ; what a unit
+    /// test can hold is that residency is not silently part of the
+    /// arithmetic.
+    #[test]
+    fn host_resident_experts_compute_the_same_function() {
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+
+        let on_device =
+            Experts::quantize_banked_onto(&gate_up, &down, inter, GgmlDType::Q4K, &Device::Cpu)
+                .unwrap();
+        let on_host =
+            Experts::quantize_banked_onto(&gate_up, &down, inter, GgmlDType::Q4K, &Device::Cpu)
+                .unwrap();
+
+        let xs = randn(&[3, hidden]);
+        for e in 0..n_experts {
+            let a: Vec<f32> = on_device
+                .forward_one(e, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
+            let b = on_host.forward_one(e, &xs).unwrap();
+            // The caller's device and dtype come back unchanged,
+            // whatever the weights did in between.
+            assert_eq!(b.dtype(), xs.dtype());
+            assert!(b.device().same_device(xs.device()));
+            let b: Vec<f32> = b.flatten_all().unwrap().to_vec1().unwrap();
+            assert_eq!(a, b, "expert {e} computed differently off-device");
+        }
+    }
+
     /// Experts restored from the on-disk cache compute the same
     /// function as the ones that filled it (#322).
     ///

@@ -403,6 +403,7 @@ mod tests {
             devices: None,
             sampling: None,
             preserve_thinking: None,
+            expert_residency: None,
         }
     }
 

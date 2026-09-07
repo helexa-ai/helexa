@@ -545,6 +545,11 @@ async fn profile_to_spec(
         // this host was configured to hold resident.
         sampling: profile.sampling.clone(),
         preserve_thinking: profile.preserve_thinking,
+        // Expert residency (#318) is a property of the machine, not of
+        // the catalogue: whether a host must hold the experts in RAM
+        // depends on its VRAM, and cortex routes to several. The neuron
+        // decides from its own config.
+        expert_residency: None,
     }
 }
 

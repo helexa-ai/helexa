@@ -113,12 +113,17 @@ impl MtpHead {
                 rotary,
                 "full_attention",
                 false,
-                quant,
                 &mtp.pp("layers").pp(0),
                 // The MTP head is not on the serving path (#313), so it
                 // has nothing to gain from the cache and nothing to
-                // stale it.
-                None,
+                // stale it — and its experts go wherever the rest of it
+                // does.
+                &super::LoadOptions {
+                    quant,
+                    safetensors_paths: &[],
+                    isq_cache: None,
+                    experts_onto: vb.device(),
+                },
             )
             .context("load mtp.layers.0")?,
             mixer: HyperConnection::load(

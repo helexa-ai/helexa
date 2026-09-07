@@ -34,7 +34,6 @@
 //! See `doc/qwen4_exp-port-spec.md`.
 
 use anyhow::{Context, Result, ensure};
-use candle_core::quantized::GgmlDType;
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::var_builder::ShardedVarBuilder;
 use candle_nn::{Embedding, Linear};
@@ -137,11 +136,9 @@ impl Qwen4ExpForCausalLM {
     pub fn load(
         cfg: &Config,
         dtype: DType,
-        quant: Option<GgmlDType>,
         device: &Device,
         vb: &ShardedVarBuilder,
-        safetensors_paths: &[std::path::PathBuf],
-        isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
+        opts: &super::LoadOptions<'_>,
     ) -> Result<Self> {
         let text = &cfg.text_config;
         // `RotaryEmbedding` reads a qwen3_5 config; the rope block is the
@@ -170,7 +167,7 @@ impl Qwen4ExpForCausalLM {
             Some(layer) => Some(load_ngram(
                 text,
                 &layers_vb.pp(*layer).pp("ple"),
-                safetensors_paths,
+                opts.safetensors_paths,
                 device,
             )?),
             None => None,
@@ -179,7 +176,7 @@ impl Qwen4ExpForCausalLM {
         let mut layers = Vec::with_capacity(text.num_hidden_layers);
         for i in 0..text.num_hidden_layers {
             layers.push(
-                DecoderLayer::load(text, rotary.clone(), i, quant, &layers_vb.pp(i), isq_cache)
+                DecoderLayer::load(text, rotary.clone(), i, &layers_vb.pp(i), opts)
                     .with_context(|| format!("load decoder layer {i}"))?,
             );
         }
@@ -805,11 +802,14 @@ mod tests {
         let model = Qwen4ExpForCausalLM::load(
             &cfg,
             DType::F32,
-            None,
             &Device::Cpu,
             &vb,
-            std::slice::from_ref(&path),
-            None,
+            &super::super::LoadOptions {
+                quant: None,
+                safetensors_paths: std::slice::from_ref(&path),
+                isq_cache: None,
+                experts_onto: &Device::Cpu,
+            },
         )
         .unwrap();
         (dir, model)
