@@ -3147,6 +3147,7 @@ dependencies = [
  "half",
  "hf-hub",
  "image",
+ "memmap2",
  "minijinja",
  "minijinja-contrib",
  "rayon",

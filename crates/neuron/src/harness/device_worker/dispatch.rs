@@ -1059,6 +1059,7 @@ fn load_dense_inner(
                 quant,
                 device,
                 &sharded_vb,
+                safetensors_paths,
             )
             .context("build qwen4_exp model")?;
             Ok(ModelArch::Qwen4Exp(Box::new(model)))
