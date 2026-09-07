@@ -12,6 +12,59 @@ HuggingFace reference" claim to checked-in numbers.
 | `qwen3_5-0.8b-text` | Qwen/Qwen3.5-0.8B | text (>64-token prompt → chunked GDN prefill) | f32 | `text_logits_match_reference` |
 | `qwen3_5-0.8b-vision` | Qwen/Qwen3.5-0.8B | 448×448 synthetic image + prompt | f32 | `vision_tower_and_logits_match_reference` |
 | `qwen3_6-27b-text` | Qwen/Qwen3.6-27B | text | bf16 | manual (see below) |
+| `qwen4_exp-tiny` | random weights, real architecture | text, 12 tokens | f32 | `qwen4_exp_logits_match_reference` |
+
+## `qwen4_exp-tiny` is different, and runs in CI
+
+The others replay a real snapshot and self-skip without
+`NEURON_REF_MODEL_PATH`. This one is 44 KB of random weights in the
+real architecture — 4 layers (3 linear-attention, 1 QSA), PLE on layer
+1, 2 experts — generated *by* `transformers` itself via
+[`script/generate_qwen4_exp_fixture.py`](../../../../../script/generate_qwen4_exp_fixture.py).
+So it is checked in, needs no weights, and runs on every push.
+
+That matters because the whole `qwen4_exp` architecture was ported from
+a written spec (#308) and tested against our own reading of it. This is
+the only thing in the tree that compares it to the implementation it
+was ported from (#323).
+
+Two properties of the fixture are load-bearing, and both were learned
+by getting them wrong:
+
+- **Weights are `uniform(-0.8, 0.8)`, not `uniform(-0.1, 0.1)`.** Near
+  the origin `silu(x) ~ x/2`, so the SwiGLU is nearly symmetric and
+  reading the fused expert's gate and up halves the wrong way round
+  moved the logits by 2.4e-4 — inside any tolerance worth writing. At
+  the larger scale the same mutation moves them by 2.7.
+- **The generator refuses to emit a fixture containing a QSA selection
+  tie.** A block scores exactly 0.0 whenever relu clamps every head, so
+  ties are common with random weights; when the k-th and (k+1)-th
+  scores are equal, which block is dropped is decided by `topk`'s
+  ordering of equal elements, which torch does not specify and whose
+  CPU and CUDA kernels need not agree. Seeds 0, 1 and 4 produce ties;
+  seed 2 (the default) does not. See "the tie-break" below.
+
+Regenerate with the reference from `transformers` **main** — the 5.9.0
+release does not carry `qwen4_exp`:
+
+```sh
+python -m venv --system-site-packages .venv
+.venv/bin/pip install --no-deps "transformers @ git+https://github.com/huggingface/transformers@main"
+.venv/bin/pip install "tokenizers>=0.23.1,<0.24" "safetensors>=0.8.0"
+.venv/bin/python script/generate_qwen4_exp_fixture.py \
+    --config crates/neuron/tests/fixtures/numerical/qwen4_exp-tiny/config.json \
+    --out crates/neuron/tests/fixtures/numerical/qwen4_exp-tiny
+```
+
+### The tie-break
+
+Where the reference and this port genuinely differ: at an exact tie in
+the QSA block scores, `topk` keeps one block and we keep another. Ours
+is deterministic (lower block index wins); torch's is unspecified. A
+tie means every head's dot product was clamped to zero for both blocks
+— the indexer scored them equally worthless — so either choice is
+defensible, and there is no stable target to match. The fixture avoids
+the situation rather than pretending it is resolved.
 
 ## Running the comparison
 
