@@ -339,3 +339,94 @@ fn vision_tower_and_logits_match_reference() {
     );
     assert_eq!(cr.argmax_ours, cr.argmax_ref, "chunked argmax vs reference");
 }
+
+/// `qwen4_exp` logits against the upstream reference (#323).
+///
+/// Unlike the fixtures above this one needs no `NEURON_REF_MODEL_PATH`
+/// and no snapshot: the model is 44 KB of random weights in the real
+/// architecture, generated *by* `transformers` itself
+/// (`script/generate_qwen4_exp_fixture.py`), so it is checked in and
+/// this runs on every push. A tensor name we cannot find is therefore a
+/// finding about our loader rather than a fixture that drifted.
+///
+/// f32 on both sides, for the reason in this file's header: cross-dtype
+/// comparison measures bf16 rounding, not implementation error.
+///
+/// What it covers that the unit tests cannot: the four novel blocks
+/// composed. Hyper-connections carrying four residual streams with no
+/// layernorm of the usual kind, the PLE n-gram gather on layer 1, QSA
+/// on layer 3, and the final mixer collapse with no `model.norm` before
+/// `lm_head` — every one of which was written from prose and tested
+/// against our own reading of it.
+#[test]
+fn qwen4_exp_logits_match_reference() {
+    use candle_nn::var_builder::ShardedSafeTensors;
+    use neuron::harness::arch::qwen4_exp::config::Config as Qwen4ExpConfig;
+    use neuron::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM;
+
+    let fixture = fixture_root().join("qwen4_exp-tiny");
+    let weights = fixture.join("model.safetensors");
+    let device = Device::Cpu;
+
+    let cfg = Qwen4ExpConfig::from_config_json(
+        &std::fs::read_to_string(fixture.join("config.json")).unwrap(),
+    )
+    .expect("parse the fixture config");
+
+    let vb = unsafe { ShardedSafeTensors::var_builder(&[&weights], DType::F32, &device).unwrap() };
+    let mut model = Qwen4ExpForCausalLM::load(
+        &cfg,
+        DType::F32,
+        None,
+        &device,
+        &vb,
+        std::slice::from_ref(&weights),
+    )
+    .expect("load the fixture through the production loader");
+
+    let expected = candle_core::safetensors::load(fixture.join("expected.safetensors"), &device)
+        .expect("read the reference output");
+    let ids = expected["input_ids"].to_dtype(DType::U32).unwrap();
+    let reference: Vec<f32> = expected["logits"].flatten_all().unwrap().to_vec1().unwrap();
+
+    let logits = model.forward(&ids, 0).expect("forward");
+    let ours: Vec<f32> = logits
+        .to_dtype(DType::F32)
+        .unwrap()
+        .flatten_all()
+        .unwrap()
+        .to_vec1()
+        .unwrap();
+
+    let c = compare(&ours, &reference);
+    eprintln!(
+        "qwen4_exp: max_abs={:.6} cosine={:.6} argmax ours={} ref={}",
+        c.max_abs, c.cosine, c.argmax_ours, c.argmax_ref
+    );
+    // On failure, break the error down by position before asserting.
+    // Whether the divergence is confined to one position or spread
+    // across all of them is the first thing worth knowing: localised
+    // means a discrete choice went differently (an expert, a QSA
+    // block), spread means the arithmetic drifted. Finding that out
+    // cost an hour the first time.
+    if c.max_abs >= 1e-5 {
+        let v = cfg.text_config.vocab_size;
+        for t in 0..(ours.len() / v) {
+            let pc = compare(&ours[t * v..(t + 1) * v], &reference[t * v..(t + 1) * v]);
+            eprintln!(
+                "  pos {t:2}: max_abs={:.6} cosine={:.6}",
+                pc.max_abs, pc.cosine
+            );
+        }
+    }
+    assert_eq!(c.argmax_ours, c.argmax_ref, "argmax token diverged");
+    // f32 against f32 is *exact* here — observed max_abs 0.000000 — so
+    // the bound is set just off the floor rather than at a comfortable
+    // distance. That is deliberate: at 1e-3 this test still passed with
+    // the fused expert's gate and up halves read the wrong way round
+    // (max_abs 2.4e-4), which is the single error the loader's own
+    // comment warns about. A tolerance wide enough to be safe is wide
+    // enough to hide the defect it was written for.
+    assert!(c.cosine > 0.999_999, "cosine {:.6} too low", c.cosine);
+    assert!(c.max_abs < 1e-5, "max abs diff {:.6} too high", c.max_abs);
+}
