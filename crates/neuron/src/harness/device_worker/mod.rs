@@ -222,6 +222,7 @@ impl DeviceWorkerHandle {
         safetensors_paths: Vec<std::path::PathBuf>,
         model_id: String,
         quant: Option<candle_core::quantized::GgmlDType>,
+        isq_cache: Option<crate::harness::isq_cache::IsqCache>,
     ) -> Result<DenseLoad, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -235,6 +236,7 @@ impl DeviceWorkerHandle {
                 safetensors_paths,
                 model_id,
                 quant,
+                isq_cache,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
@@ -1245,6 +1247,7 @@ mod tests {
                 fixture.join("config.json"),
                 vec![fixture.join("model.safetensors")],
                 "qwen3_next-tiny".into(),
+                None,
                 None,
             )
             .await

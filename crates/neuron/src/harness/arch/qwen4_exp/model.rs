@@ -141,6 +141,7 @@ impl Qwen4ExpForCausalLM {
         device: &Device,
         vb: &ShardedVarBuilder,
         safetensors_paths: &[std::path::PathBuf],
+        isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
     ) -> Result<Self> {
         let text = &cfg.text_config;
         // `RotaryEmbedding` reads a qwen3_5 config; the rope block is the
@@ -178,7 +179,7 @@ impl Qwen4ExpForCausalLM {
         let mut layers = Vec::with_capacity(text.num_hidden_layers);
         for i in 0..text.num_hidden_layers {
             layers.push(
-                DecoderLayer::load(text, rotary.clone(), i, quant, &layers_vb.pp(i))
+                DecoderLayer::load(text, rotary.clone(), i, quant, &layers_vb.pp(i), isq_cache)
                     .with_context(|| format!("load decoder layer {i}"))?,
             );
         }
@@ -808,6 +809,7 @@ mod tests {
             &Device::Cpu,
             &vb,
             std::slice::from_ref(&path),
+            None,
         )
         .unwrap();
         (dir, model)

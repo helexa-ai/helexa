@@ -1262,6 +1262,7 @@ mod tests {
                 vec![fixture.join("model.safetensors")],
                 "qwen3_next-tiny".into(),
                 None,
+                None,
             )
             .await
             .expect("load fixture")

@@ -2738,6 +2738,12 @@ impl CandleHarness {
         // Resolved out here: `spec` is borrowed and does not outlive the
         // blocking task.
         let isq = super::quant::parse_quant_string(spec.quant.as_deref())?;
+        let isq_cache = self.isq_cache_for(
+            &spec.model_id,
+            &source_id.scheme,
+            spec.quant.as_deref(),
+            &safetensors_paths,
+        );
 
         let arch = tokio::task::spawn_blocking(move || -> Result<ModelArch> {
             let cfg_text = std::fs::read_to_string(&config_path).context("read config.json")?;
@@ -2864,6 +2870,7 @@ impl CandleHarness {
                         &device_for_load,
                         &sharded_vb,
                         &safetensors_paths,
+                        isq_cache.as_ref(),
                     )
                     .context("build qwen4_exp model")?;
                     Ok(ModelArch::Qwen4Exp(Box::new(model)))
@@ -2900,6 +2907,46 @@ impl CandleHarness {
     /// them match the requested quant — that case is a typo, not an ISQ
     /// request, and turning it into a silent 360 GB dense load would be
     /// a worse answer than the error.
+    /// The quantisation cache for this load, or `None` when the quant
+    /// is unset or the checkpoint's revision cannot be identified
+    /// (#322).
+    ///
+    /// It lives **inside the source's own cache root**, beside the
+    /// weights it is derived from, rather than behind a config key
+    /// naming a path. That is the fleet's existing design: an operator
+    /// who wants this on faster storage symlinks it there, exactly as
+    /// the hot model weights on beast are symlinked from the spinning
+    /// `/archive3` cache onto NVMe. Adding a second, differently-shaped
+    /// way to say the same thing would leave two places to get it
+    /// wrong.
+    ///
+    /// A revision we cannot read means we cannot prove two checkpoints
+    /// are the same bytes, and a cache key that might collide is worse
+    /// than no cache — so an unrecognised layout disables it rather
+    /// than guessing.
+    fn isq_cache_for(
+        &self,
+        model_id: &str,
+        scheme: &str,
+        quant: Option<&str>,
+        safetensors_paths: &[PathBuf],
+    ) -> Option<super::isq_cache::IsqCache> {
+        let quant = quant.filter(|q| !q.is_empty())?;
+        let root = self.hf_cache_for(scheme).ok()?.path().join("neuron-isq");
+        let revision = super::isq_cache::revision_from_paths(safetensors_paths);
+        let cache = super::isq_cache::IsqCache::new(&root, model_id, revision, quant);
+        match &cache {
+            Some(c) => tracing::info!(model = model_id, quant, dir = %c.dir().display(),
+                "isq cache: enabled for this load (#322)"),
+            None => tracing::info!(
+                model = model_id,
+                quant,
+                "isq cache: disabled — the checkpoint revision could not be identified"
+            ),
+        }
+        cache
+    }
+
     async fn quant_selects_a_gguf(
         &self,
         spec: &ModelSpec,
@@ -3958,8 +4005,23 @@ impl Harness for CandleHarness {
                 // too, not just the CPU one — parsed here because
                 // `spec` does not cross the channel.
                 let isq = super::quant::parse_quant_string(spec.quant.as_deref())?;
+                // Built here rather than in the worker: the worker has
+                // no view of the config, and an `IsqCache` is a path,
+                // so it crosses the channel freely.
+                let isq_cache = self.isq_cache_for(
+                    &spec.model_id,
+                    &source_id.scheme,
+                    spec.quant.as_deref(),
+                    &safetensors_paths,
+                );
                 let load = w
-                    .load_dense(config_path, safetensors_paths, spec.model_id.clone(), isq)
+                    .load_dense(
+                        config_path,
+                        safetensors_paths,
+                        spec.model_id.clone(),
+                        isq,
+                        isq_cache,
+                    )
                     .await
                     .map_err(|e| anyhow::anyhow!("worker load_dense: {e:#}"))?;
                 // Prefix snapshots (#11): the built model answers for
