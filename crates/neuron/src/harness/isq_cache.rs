@@ -163,35 +163,56 @@ impl IsqCache {
     /// Through a temporary file and a rename, so an interrupted write
     /// cannot leave a half-artifact that a later load would read as
     /// real. Errors are logged and swallowed.
+    /// Write a layer, refusing one that would take an unreasonable
+    /// share of the disk. The production entry point: every failure is
+    /// logged and swallowed.
     pub fn store(&self, key: &str, tensors: &[(&str, &QTensor)]) {
+        let bytes: u64 = tensors
+            .iter()
+            .map(|(_, t)| t.storage_size_in_bytes() as u64)
+            .sum();
+        if let Some(free) = free_bytes(&self.dir)
+            && too_large_for(bytes, free)
+        {
+            tracing::warn!(
+                dir = %self.dir.display(), key,
+                gib = bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                free_gib = free as f64 / (1024.0 * 1024.0 * 1024.0),
+                "isq cache: refusing a write that would take over {:.0}% of the free space",
+                MAX_SHARE_OF_FREE * 100.0,
+            );
+            return;
+        }
         if let Err(e) = self.try_store(key, tensors) {
             tracing::warn!(dir = %self.dir.display(), key, error = %e,
                 "isq cache: could not write this layer; the load continues uncached");
         }
     }
 
-    /// The fallible half of [`Self::store`]. Production swallows the
-    /// error because a cache must never fail a load; tests call this
-    /// instead, so that a write which quietly does not happen fails
-    /// them with its reason rather than as a later missing artifact.
+    /// Write a layer. Nothing else — no policy, and in particular no
+    /// question asked of the filesystem about its size.
+    ///
+    /// That separation is the point. The disk check lives in
+    /// [`Self::store`], so the round-trip tests exercise the write and
+    /// the read without their result depending on how full the machine
+    /// running them happens to be. A unit test that consults the free
+    /// space of whatever host executes it is not testing this code.
     pub(crate) fn try_store(&self, key: &str, tensors: &[(&str, &QTensor)]) -> anyhow::Result<()> {
-        let bytes: usize = tensors.iter().map(|(_, t)| t.storage_size_in_bytes()).sum();
         std::fs::create_dir_all(&self.dir)?;
-        if let Some(free) = free_bytes(&self.dir)
-            && too_large_for(bytes as u64, free)
-        {
-            anyhow::bail!(
-                "writing {:.1} GiB would take more than {:.0}% of the {:.1} GiB free",
-                bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                MAX_SHARE_OF_FREE * 100.0,
-                free as f64 / (1024.0 * 1024.0 * 1024.0),
-            );
-        }
         let final_path = self.dir.join(format!("{key}.gguf"));
         let tmp = self.dir.join(format!(".{key}.{}.tmp", std::process::id()));
-        {
+        let write = (|| -> anyhow::Result<()> {
             let mut f = std::fs::File::create(&tmp)?;
             gguf_file::write(&mut f, &[], tensors)?;
+            Ok(())
+        })();
+        if let Err(e) = write {
+            // A partial artifact is dead weight that nothing will ever
+            // clean up — and on the failure this is most likely to see,
+            // a full disk, it is dead weight made of the last free
+            // bytes.
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
         }
         std::fs::rename(&tmp, &final_path)?;
         Ok(())
