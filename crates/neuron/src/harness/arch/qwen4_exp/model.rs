@@ -45,7 +45,7 @@ use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
 use super::config::{Config, TextConfig};
 use super::decoder::DecoderLayer;
 use super::hyper::HyperConnection;
-use super::ple::{NGramHasher, NGramTable, ShardedNGramTable};
+use super::ple::{MmapNGramTable, NGramHasher, NGramTable, ShardedNGramTable};
 use crate::harness::arch::snapshot::{KvCacheSnapshot, PleSnapshot};
 
 /// The hashed n-gram lookup, hoisted to the model because it is a
@@ -129,12 +129,18 @@ impl Qwen4ExpForCausalLM {
     /// keeps the checkpoint's precision, which for this architecture is
     /// useful only on a model small enough to hold: 241.6 GB of BF16
     /// experts fit neither 64 GB of VRAM nor 123 GB of host RAM.
+    /// `safetensors_paths` is the checkpoint's own file set, used only
+    /// to mmap the PLE n-gram table where it already lies (#310). Empty
+    /// falls back to [`ShardedNGramTable`], which puts 102.4 GB
+    /// wherever `vb` points — the oracle, not a residency to serve
+    /// from.
     pub fn load(
         cfg: &Config,
         dtype: DType,
         quant: Option<GgmlDType>,
         device: &Device,
         vb: &ShardedVarBuilder,
+        safetensors_paths: &[std::path::PathBuf],
     ) -> Result<Self> {
         let text = &cfg.text_config;
         // `RotaryEmbedding` reads a qwen3_5 config; the rope block is the
@@ -150,6 +156,25 @@ impl Qwen4ExpForCausalLM {
         let embed_tokens = Embedding::new(embed_weight, text.hidden_size);
 
         let layers_vb = root.pp("layers");
+
+        // Before the layers, not after them. The table is mapped rather
+        // than made resident (#310), so its position in the load order
+        // costs nothing — but everything it can get wrong is a name or
+        // an extent, and those are worth finding in the second before
+        // the expert loop rather than the half-hour after it. Loading
+        // it last meant a checkpoint whose shard names had moved would
+        // report that only once 48 layers of experts had been
+        // quantised, or — since they do not currently fit — never.
+        let ngram = match text.ple_layers().first() {
+            Some(layer) => Some(load_ngram(
+                text,
+                &layers_vb.pp(*layer).pp("ple"),
+                safetensors_paths,
+                device,
+            )?),
+            None => None,
+        };
+
         let mut layers = Vec::with_capacity(text.num_hidden_layers);
         for i in 0..text.num_hidden_layers {
             layers.push(
@@ -174,11 +199,6 @@ impl Qwen4ExpForCausalLM {
             .pp("lm_head")
             .get((text.vocab_size, text.hidden_size), "weight")
             .context("load 'lm_head.weight'")?;
-
-        let ngram = match text.ple_layers().first() {
-            Some(layer) => Some(load_ngram(text, &layers_vb.pp(*layer).pp("ple"))?),
-            None => None,
-        };
 
         Ok(Self {
             embed_tokens,
@@ -356,7 +376,12 @@ impl Qwen4ExpForCausalLM {
     }
 }
 
-fn load_ngram(cfg: &TextConfig, ple_vb: &ShardedVarBuilder) -> Result<NGramEmbedding> {
+fn load_ngram(
+    cfg: &TextConfig,
+    ple_vb: &ShardedVarBuilder,
+    safetensors_paths: &[std::path::PathBuf],
+    device: &Device,
+) -> Result<NGramEmbedding> {
     let vb = ple_vb.pp("ple_embedding");
     let heads = cfg.ngram_heads();
     let head_dim = cfg.ngram_head_dim();
@@ -382,12 +407,28 @@ fn load_ngram(cfg: &TextConfig, ple_vb: &ShardedVarBuilder) -> Result<NGramEmbed
         cfg.split_ngram_parts
     );
 
-    let table = ShardedNGramTable::load(
-        &vb.pp("ngram_embedding"),
-        cfg.split_ngram_parts,
-        rows,
-        head_dim,
-    )?;
+    // The shard names are whatever this VarBuilder would have asked
+    // for, so the prefix is taken from it rather than rebuilt from the
+    // layer index — the two cannot disagree that way, and getting it
+    // wrong is a 102.4 GB read of the wrong thing.
+    let ngram_vb = vb.pp("ngram_embedding");
+    let table: Box<dyn NGramTable> = if safetensors_paths.is_empty() {
+        Box::new(ShardedNGramTable::load(
+            &ngram_vb,
+            cfg.split_ngram_parts,
+            rows,
+            head_dim,
+        )?)
+    } else {
+        Box::new(MmapNGramTable::open(
+            safetensors_paths,
+            &ngram_vb.prefix(),
+            cfg.split_ngram_parts,
+            rows,
+            head_dim,
+            device,
+        )?)
+    };
 
     Ok(NGramEmbedding {
         hasher: NGramHasher::new(
@@ -398,7 +439,7 @@ fn load_ngram(cfg: &TextConfig, ple_vb: &ShardedVarBuilder) -> Result<NGramEmbed
             offsets,
             cfg.eos_token_id,
         )?,
-        table: Box::new(table),
+        table,
         heads,
         head_dim,
         carried: Vec::new(),
@@ -757,7 +798,18 @@ mod tests {
         candle_core::safetensors::save(&tensors(&cfg.text_config), &path).unwrap();
         let vb =
             unsafe { ShardedSafeTensors::var_builder(&[&path], DType::F32, &Device::Cpu).unwrap() };
-        let model = Qwen4ExpForCausalLM::load(&cfg, DType::F32, None, &Device::Cpu, &vb).unwrap();
+        // Passing the path exercises the mmap table (#310), which is
+        // the residency production uses — the whole suite then runs
+        // against the gather that actually serves, not the oracle.
+        let model = Qwen4ExpForCausalLM::load(
+            &cfg,
+            DType::F32,
+            None,
+            &Device::Cpu,
+            &vb,
+            std::slice::from_ref(&path),
+        )
+        .unwrap();
         (dir, model)
     }
 

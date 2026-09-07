@@ -66,7 +66,7 @@
 //! reimplement. See `doc/qwen4_exp-port-spec.md` §2.
 
 use anyhow::{Context, Result, ensure};
-use candle_core::{D, Module, Tensor};
+use candle_core::{D, DType, Device, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
@@ -335,6 +335,216 @@ impl NGramTable for ShardedNGramTable {
     fn head_dim(&self) -> usize {
         self.head_dim
     }
+}
+
+/// The table read straight out of the checkpoint by mmap (#310).
+///
+/// The shipping residency. Nothing is made resident anywhere: the 128
+/// shard tensors are mapped where they already lie in the checkpoint's
+/// safetensors files, and a gather copies the requested rows out of
+/// the mapping. The page cache decides what stays warm, which for this
+/// access pattern is the right decision-maker — a token needs sixteen
+/// rows of 160 values, about 5 KB, out of 102.4 GB, so almost the whole
+/// table is cold at any instant and nothing is served by making it
+/// otherwise.
+///
+/// This is what makes the model loadable at all. [`ShardedNGramTable`]
+/// puts those 102.4 GB wherever the `VarBuilder` points, which for a
+/// CUDA load is a 32 GB card; it stays as the oracle this is diffed
+/// against, not as a residency anyone would choose.
+///
+/// Mapping the checkpoint's own tensors in place — rather than building
+/// a separate artifact — is FreeToken's `source_from_safetensors`
+/// trick, and the reason it works here is that the shards are already
+/// exactly what we want: contiguous, equal-stride, row-major, one
+/// extent each. There is nothing to convert and nothing to keep in
+/// sync.
+///
+/// Unlike the sharded gather this needs no sort-and-permute: rows are
+/// copied in the order asked for, so the inverse permutation that has
+/// to be right there cannot be wrong here.
+pub struct MmapNGramTable {
+    /// One mapping per checkpoint file that holds shards. Kept for the
+    /// table's lifetime because every `gather` reads through them.
+    maps: Vec<memmap2::Mmap>,
+    /// Byte position of each shard's row 0: which mapping, and where in
+    /// it. Resolved once at load so a gather is arithmetic.
+    shards: Vec<ShardExtent>,
+    rows_per_shard: usize,
+    head_dim: usize,
+    dtype: DType,
+    row_bytes: usize,
+    device: Device,
+}
+
+/// Where one shard's bytes live.
+struct ShardExtent {
+    map: usize,
+    offset: usize,
+}
+
+impl MmapNGramTable {
+    /// `prefix` is the full tensor-name prefix of the shards, e.g.
+    /// `model.language_model.layers.1.ple.ple_embedding.ngram_embedding`
+    /// — the shards are then `{prefix}.shard_{s}.weight`.
+    ///
+    /// `files` is the checkpoint's safetensors set; shards may be
+    /// spread across any of them (in the real checkpoint, 33 of the
+    /// 131 files carry them), so each is opened and asked what it has.
+    pub fn open(
+        files: &[std::path::PathBuf],
+        prefix: &str,
+        parts: usize,
+        rows: usize,
+        head_dim: usize,
+        device: &Device,
+    ) -> Result<Self> {
+        ensure!(parts > 0, "split_ngram_parts must be > 0");
+        ensure!(
+            rows.is_multiple_of(parts),
+            "{rows} rows do not divide evenly into {parts} shards"
+        );
+        let rows_per_shard = rows / parts;
+
+        let mut maps: Vec<memmap2::Mmap> = Vec::new();
+        let mut found: Vec<Option<ShardExtent>> = (0..parts).map(|_| None).collect();
+        let mut dtype: Option<DType> = None;
+
+        for path in files {
+            let file = std::fs::File::open(path)
+                .with_context(|| format!("open {} for the n-gram table", path.display()))?;
+            // SAFETY: the same contract candle's own safetensors
+            // loading takes — the checkpoint is not modified while we
+            // serve from it. A truncated or rewritten file underneath a
+            // live mapping is a corrupt-model problem, not one this can
+            // defend against.
+            let map = unsafe { memmap2::Mmap::map(&file) }
+                .with_context(|| format!("mmap {}", path.display()))?;
+            let (header_len, meta) =
+                safetensors::SafeTensors::read_metadata(&map).map_err(|e| {
+                    anyhow::anyhow!("read safetensors metadata from {}: {e}", path.display())
+                })?;
+            // `data_offsets` are relative to the start of the data
+            // section, which follows the 8-byte header length and the
+            // header itself.
+            let data_start = 8 + header_len;
+
+            let mut used = false;
+            for (s, slot) in found.iter_mut().enumerate() {
+                if slot.is_some() {
+                    continue;
+                }
+                let name = format!("{prefix}.shard_{s}.weight");
+                let Some(info) = meta.info(&name) else {
+                    continue;
+                };
+                ensure!(
+                    info.shape == [rows_per_shard, head_dim],
+                    "'{name}' is {:?}, expected [{rows_per_shard}, {head_dim}]",
+                    info.shape
+                );
+                let dt = st_dtype(info.dtype)
+                    .with_context(|| format!("'{name}' has a dtype the gather cannot read"))?;
+                match dtype {
+                    None => dtype = Some(dt),
+                    Some(seen) => ensure!(
+                        seen == dt,
+                        "shard dtypes disagree: {seen:?} then {dt:?} at '{name}'"
+                    ),
+                }
+                *slot = Some(ShardExtent {
+                    map: maps.len(),
+                    offset: data_start + info.data_offsets.0,
+                });
+                used = true;
+            }
+            if used {
+                maps.push(map);
+            }
+        }
+
+        let dtype = dtype.context("no n-gram shard was found in any checkpoint file")?;
+        let shards = found
+            .into_iter()
+            .enumerate()
+            .map(|(s, e)| e.with_context(|| format!("'{prefix}.shard_{s}.weight' is in no file")))
+            .collect::<Result<Vec<_>>>()?;
+
+        let row_bytes = head_dim * dtype.size_in_bytes();
+        // Every extent must actually contain its rows: a header that
+        // disagrees with the file length would otherwise surface as a
+        // panic inside a gather, mid-request.
+        for (s, extent) in shards.iter().enumerate() {
+            let end = extent.offset + rows_per_shard * row_bytes;
+            ensure!(
+                end <= maps[extent.map].len(),
+                "shard {s} claims bytes {}..{end} of a {}-byte file",
+                extent.offset,
+                maps[extent.map].len()
+            );
+        }
+
+        tracing::info!(
+            parts,
+            rows,
+            head_dim,
+            ?dtype,
+            files = maps.len(),
+            gib = (rows * row_bytes) as f64 / (1024.0 * 1024.0 * 1024.0),
+            "ple: n-gram table mapped from the checkpoint, not made resident (#310)"
+        );
+
+        Ok(Self {
+            maps,
+            shards,
+            rows_per_shard,
+            head_dim,
+            dtype,
+            row_bytes,
+            device: device.clone(),
+        })
+    }
+}
+
+impl NGramTable for MmapNGramTable {
+    fn gather(&self, rows: &[i64]) -> Result<Tensor> {
+        let total = (self.shards.len() * self.rows_per_shard) as i64;
+        if let Some(bad) = rows.iter().find(|r| **r < 0 || **r >= total) {
+            anyhow::bail!("row {bad} is outside the table's 0..{total}");
+        }
+        let mut out = vec![0u8; rows.len() * self.row_bytes];
+        for (slot, &row) in rows.iter().enumerate() {
+            let shard = row as usize / self.rows_per_shard;
+            let within = row as usize % self.rows_per_shard;
+            let extent = &self.shards[shard];
+            let from = extent.offset + within * self.row_bytes;
+            out[slot * self.row_bytes..(slot + 1) * self.row_bytes]
+                .copy_from_slice(&self.maps[extent.map][from..from + self.row_bytes]);
+        }
+        Ok(Tensor::from_raw_buffer(
+            &out,
+            self.dtype,
+            &[rows.len(), self.head_dim],
+            &self.device,
+        )?)
+    }
+
+    fn head_dim(&self) -> usize {
+        self.head_dim
+    }
+}
+
+/// safetensors' dtype vocabulary is wider than candle's. Only the
+/// float widths a checkpoint would store an embedding table in are
+/// accepted; anything else is a checkpoint we do not understand rather
+/// than one to guess at.
+fn st_dtype(dtype: safetensors::Dtype) -> Result<DType> {
+    Ok(match dtype {
+        safetensors::Dtype::BF16 => DType::BF16,
+        safetensors::Dtype::F16 => DType::F16,
+        safetensors::Dtype::F32 => DType::F32,
+        other => anyhow::bail!("unsupported n-gram table dtype {other:?}"),
+    })
 }
 
 /// The consumption half of PLE: `Qwen4ExpTextPLE` minus the table.
@@ -902,6 +1112,88 @@ mod tests {
     }
 
     // ---- the table ----
+
+    /// The mmap table against the device-resident one, row for row.
+    ///
+    /// This is the differential #310 asks for: [`ShardedNGramTable`] is
+    /// the oracle — obviously correct, and unusable at 102.4 GB — and
+    /// [`MmapNGramTable`] is what serves. They must agree on every row
+    /// of every shard, in whatever order they are asked, or the model
+    /// quietly reads somebody else's n-gram.
+    ///
+    /// The row list is chosen to break the things that can break: shard
+    /// boundaries in both directions, the first and last row of the
+    /// table, a repeat, and an order that is not sorted (the oracle
+    /// sorts internally and inverts the permutation; the mmap path does
+    /// not, so a disagreement here is exactly that inverse being wrong
+    /// on one side).
+    #[test]
+    fn the_mapped_table_agrees_with_the_resident_one() {
+        let dev = Device::Cpu;
+        let (parts, rows_per_shard, head_dim) = (4usize, 5usize, 3usize);
+        let prefix = "model.language_model.layers.1.ple.ple_embedding.ngram_embedding";
+
+        // Row r holds [r, r + 0.5, r + 0.25] — distinct per row, and
+        // not a pattern a stride mistake would reproduce.
+        let mut tensors = std::collections::HashMap::new();
+        for s in 0..parts {
+            let mut v = Vec::with_capacity(rows_per_shard * head_dim);
+            for r in 0..rows_per_shard {
+                let global = (s * rows_per_shard + r) as f32;
+                v.extend_from_slice(&[global, global + 0.5, global + 0.25]);
+            }
+            tensors.insert(
+                format!("{prefix}.shard_{s}.weight"),
+                Tensor::from_vec(v, (rows_per_shard, head_dim), &dev).unwrap(),
+            );
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("model.safetensors");
+        candle_core::safetensors::save(&tensors, &path).unwrap();
+
+        let vb = unsafe {
+            candle_nn::var_builder::ShardedSafeTensors::var_builder(&[&path], DType::F32, &dev)
+                .unwrap()
+        };
+        let total = parts * rows_per_shard;
+        let oracle = ShardedNGramTable::load(&vb.pp(prefix), parts, total, head_dim).unwrap();
+        let mapped = MmapNGramTable::open(
+            std::slice::from_ref(&path),
+            prefix,
+            parts,
+            total,
+            head_dim,
+            &dev,
+        )
+        .unwrap();
+
+        assert_eq!(mapped.head_dim(), oracle.head_dim());
+
+        let asked: Vec<i64> = vec![19, 0, 5, 4, 9, 10, 19, 1, 15, 14, 7, 7];
+        let flat = |t: Tensor| -> Vec<f32> { t.flatten_all().unwrap().to_vec1().unwrap() };
+        let from_oracle = flat(oracle.gather(&asked).unwrap());
+        let from_mapped = flat(mapped.gather(&asked).unwrap());
+        assert_eq!(
+            from_mapped, from_oracle,
+            "the mapped gather disagrees with the resident one"
+        );
+        // And that both are right, rather than wrong together.
+        assert_eq!(&from_mapped[..3], &[19.0, 19.5, 19.25]);
+        assert_eq!(&from_mapped[3..6], &[0.0, 0.5, 0.25]);
+
+        // Every row of the table, in order, so no shard is untouched.
+        let all: Vec<i64> = (0..total as i64).collect();
+        assert_eq!(
+            flat(mapped.gather(&all).unwrap()),
+            flat(oracle.gather(&all).unwrap())
+        );
+
+        // The empty gather and the out-of-range guard behave alike.
+        assert_eq!(mapped.gather(&[]).unwrap().dims(), &[0, head_dim]);
+        assert!(mapped.gather(&[total as i64]).is_err());
+        assert!(mapped.gather(&[-1]).is_err());
+    }
 
     /// Rows come back in the order asked for, not the order they were
     /// fetched in. Two shards of three rows, requested out of order and
