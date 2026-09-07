@@ -415,11 +415,14 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
     let mut model = Qwen4ExpForCausalLM::load(
         &cfg,
         DType::F32,
-        None,
         &device,
         &vb,
-        std::slice::from_ref(&weights),
-        None,
+        &neuron::harness::arch::qwen4_exp::LoadOptions {
+            quant: None,
+            safetensors_paths: std::slice::from_ref(&weights),
+            isq_cache: None,
+            experts_onto: &device,
+        },
     )
     .expect("load the fixture through the production loader");
 

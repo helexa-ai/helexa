@@ -148,6 +148,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 model_id,
                 quant,
                 isq_cache,
+                experts_on_host,
                 reply,
             } => {
                 let result = load_dense_inner(
@@ -157,6 +158,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     &model_id,
                     quant,
                     isq_cache.as_ref(),
+                    experts_on_host,
                 )
                 .map(|arch| {
                     // Ask the model, once, while it is still in
@@ -961,6 +963,7 @@ fn load_dense_inner(
     model_id: &str,
     quant: Option<candle_core::quantized::GgmlDType>,
     isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
+    experts_on_host: bool,
 ) -> anyhow::Result<ModelArch> {
     use anyhow::Context;
     use candle_core::DType;
@@ -1081,11 +1084,21 @@ fn load_dense_inner(
             let model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                 &cfg,
                 dtype,
-                quant,
                 device,
                 &sharded_vb,
-                safetensors_paths,
-                isq_cache,
+                &crate::harness::arch::qwen4_exp::LoadOptions {
+                    quant,
+                    safetensors_paths,
+                    isq_cache,
+                    // Host residency (#318) is what makes a model whose
+                    // experts exceed VRAM loadable; everything else in
+                    // the model still lands on the device.
+                    experts_onto: if experts_on_host {
+                        &candle_core::Device::Cpu
+                    } else {
+                        device
+                    },
+                },
             )
             .context("build qwen4_exp model")?;
             Ok(ModelArch::Qwen4Exp(Box::new(model)))
@@ -1804,6 +1817,7 @@ mod tests {
                 model_type,
                 None,
                 None,
+                false,
             ) {
                 Ok(_) => panic!("a bare config must not build a model"),
                 Err(e) => format!("{e:#}"),

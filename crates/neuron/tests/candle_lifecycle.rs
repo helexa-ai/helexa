@@ -55,6 +55,7 @@ async fn test_candle_qwen3_load_unload_lifecycle() {
         devices: Some(vec![0]),
         sampling: None,
         preserve_thinking: None,
+        expert_residency: None,
     };
 
     registry

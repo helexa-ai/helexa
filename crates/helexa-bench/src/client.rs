@@ -218,6 +218,10 @@ impl TargetClient {
             // ever used to load a model the host has no config for.
             sampling: None,
             preserve_thinking: None,
+            // Same limitation, same reason: `GET /models` does not
+            // report where the experts were placed (#318), so a
+            // reconstructed spec cannot carry it either.
+            expert_residency: None,
         })
     }
 

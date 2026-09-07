@@ -135,6 +135,8 @@ pub enum Job {
         /// Where to cache the quantised weights (#322). Built on the
         /// async side, which is the only side that can see the config.
         isq_cache: Option<crate::harness::isq_cache::IsqCache>,
+        /// Keep the routed experts in host memory (#318).
+        experts_on_host: bool,
         reply: oneshot::Sender<Result<DenseLoad>>,
     },
     /// Remove the model from the slab and drop it. The `Drop` runs on

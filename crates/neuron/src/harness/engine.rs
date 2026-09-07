@@ -1263,6 +1263,7 @@ mod tests {
                 "qwen3_next-tiny".into(),
                 None,
                 None,
+                false,
             )
             .await
             .expect("load fixture")

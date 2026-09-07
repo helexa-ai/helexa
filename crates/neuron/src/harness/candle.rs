@@ -2866,11 +2866,17 @@ impl CandleHarness {
                     let model = super::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                         &cfg,
                         dtype,
-                        isq,
                         &device_for_load,
                         &sharded_vb,
-                        &safetensors_paths,
-                        isq_cache.as_ref(),
+                        &super::arch::qwen4_exp::LoadOptions {
+                            quant: isq,
+                            safetensors_paths: &safetensors_paths,
+                            isq_cache: isq_cache.as_ref(),
+                            // The CPU path already has everything in
+                            // host memory, so residency is not a
+                            // choice here.
+                            experts_onto: &device_for_load,
+                        },
                     )
                     .context("build qwen4_exp model")?;
                     Ok(ModelArch::Qwen4Exp(Box::new(model)))
@@ -4014,6 +4020,17 @@ impl Harness for CandleHarness {
                     spec.quant.as_deref(),
                     &safetensors_paths,
                 );
+                let experts_on_host = matches!(
+                    spec.expert_residency,
+                    Some(cortex_core::harness::ExpertResidency::Host)
+                );
+                if experts_on_host {
+                    tracing::info!(
+                        model = %spec.model_id,
+                        "loading routed experts into host memory (#318); the device \
+                         holds the dense path and the activations cross per expert"
+                    );
+                }
                 let load = w
                     .load_dense(
                         config_path,
@@ -4021,6 +4038,7 @@ impl Harness for CandleHarness {
                         spec.model_id.clone(),
                         isq,
                         isq_cache,
+                        experts_on_host,
                     )
                     .await
                     .map_err(|e| anyhow::anyhow!("worker load_dense: {e:#}"))?;

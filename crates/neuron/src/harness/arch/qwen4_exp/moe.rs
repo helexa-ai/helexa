@@ -40,7 +40,6 @@
 
 use anyhow::{Context, Result};
 use candle_core::Tensor;
-use candle_core::quantized::GgmlDType;
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
@@ -58,10 +57,10 @@ use super::config::TextConfig;
 /// load of `Qwen3.8-Flash-Next` always passes one.
 pub fn load(
     cfg: &TextConfig,
-    quant: Option<GgmlDType>,
     vb: &ShardedVarBuilder,
-    isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
+    opts: &super::LoadOptions<'_>,
 ) -> Result<Qwen3_5MoeBlock> {
+    let (quant, isq_cache, experts_onto) = (opts.quant, opts.isq_cache, opts.experts_onto);
     let (h, inter) = (cfg.hidden_size, cfg.moe_intermediate_size);
     anyhow::ensure!(
         cfg.num_experts > 0 && cfg.num_experts_per_tok > 0 && inter > 0,
@@ -118,8 +117,9 @@ pub fn load(
             // existing.
             match quant {
                 Some(dtype) => {
-                    let experts = Experts::quantize_banked(&gate_up, &down, inter, dtype)
-                        .with_context(|| format!("quantize experts to {dtype:?}"))?;
+                    let experts =
+                        Experts::quantize_banked_onto(&gate_up, &down, inter, dtype, experts_onto)
+                            .with_context(|| format!("quantize experts to {dtype:?}"))?;
                     if let (Some(cache), Some(entries)) = (isq_cache, experts.cache_entries()) {
                         let refs: Vec<(&str, &candle_core::quantized::QTensor)> = entries
                             .iter()

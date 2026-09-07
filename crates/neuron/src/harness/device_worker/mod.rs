@@ -223,6 +223,7 @@ impl DeviceWorkerHandle {
         model_id: String,
         quant: Option<candle_core::quantized::GgmlDType>,
         isq_cache: Option<crate::harness::isq_cache::IsqCache>,
+        experts_on_host: bool,
     ) -> Result<DenseLoad, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {
             return Err(WorkerError::Poisoned {
@@ -237,6 +238,7 @@ impl DeviceWorkerHandle {
                 model_id,
                 quant,
                 isq_cache,
+                experts_on_host,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
@@ -1249,6 +1251,7 @@ mod tests {
                 "qwen3_next-tiny".into(),
                 None,
                 None,
+                false,
             )
             .await
             .expect("load tiny fixture")
