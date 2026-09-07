@@ -197,10 +197,18 @@ impl TextConfig {
             .map(|d| d.eq_ignore_ascii_case("float32") || d.eq_ignore_ascii_case("f32"))
     }
 
+    /// Both spellings upstream uses. The shipped checkpoint's
+    /// `layer_types` says `full_attention` (36 linear, 12 full), but
+    /// `Qwen4ExpTextConfig` *derives* the array with
+    /// `qwen_sparse_attention` when the checkpoint omits it. Matching
+    /// only the first is a silent misclassification: every layer would
+    /// read as linear attention, and a model that is 3:1 linear would
+    /// look almost right until its full-attention tensors were not
+    /// found.
     pub fn is_full_attention(&self, layer: usize) -> bool {
         self.layer_types
             .get(layer)
-            .is_some_and(|t| t == "full_attention")
+            .is_some_and(|t| t == "full_attention" || t == "qwen_sparse_attention")
     }
 
     fn fill_layer_types(&mut self) -> Result<()> {
@@ -474,6 +482,35 @@ mod tests {
     }
 
     /// A one-indexed field that reads 0 is a config written against the
+    /// Upstream has two names for the same layer, and we must read both.
+    ///
+    /// The shipped `config.json` spells the attention layers
+    /// `full_attention`. `Qwen4ExpTextConfig` derives them as
+    /// `qwen_sparse_attention` when the checkpoint omits the array —
+    /// observed directly from `transformers` `main`, which reports
+    /// `['linear_attention', ..., 'qwen_sparse_attention']` for a config
+    /// carrying only `full_attention_interval`.
+    ///
+    /// Reading only the shipped spelling would classify every layer as
+    /// linear on such a config. That is not a load error at the point it
+    /// happens — it is a model built with the wrong 12 layers, which
+    /// fails later and elsewhere.
+    #[test]
+    fn both_upstream_spellings_of_a_full_attention_layer_are_read() {
+        let mut cfg = Config::from_config_json(SHIPPED).unwrap().text_config;
+
+        cfg.layer_types = vec!["linear_attention".into(), "full_attention".into()];
+        assert!(!cfg.is_full_attention(0));
+        assert!(cfg.is_full_attention(1), "the shipped spelling");
+
+        cfg.layer_types = vec!["linear_attention".into(), "qwen_sparse_attention".into()];
+        assert!(!cfg.is_full_attention(0));
+        assert!(
+            cfg.is_full_attention(1),
+            "the derived spelling must classify as full attention too"
+        );
+    }
+
     /// wrong convention, not a layer.
     #[test]
     fn rejects_a_zero_ple_layer_id() {
