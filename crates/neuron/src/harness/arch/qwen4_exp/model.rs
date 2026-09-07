@@ -156,6 +156,25 @@ impl Qwen4ExpForCausalLM {
         let embed_tokens = Embedding::new(embed_weight, text.hidden_size);
 
         let layers_vb = root.pp("layers");
+
+        // Before the layers, not after them. The table is mapped rather
+        // than made resident (#310), so its position in the load order
+        // costs nothing — but everything it can get wrong is a name or
+        // an extent, and those are worth finding in the second before
+        // the expert loop rather than the half-hour after it. Loading
+        // it last meant a checkpoint whose shard names had moved would
+        // report that only once 48 layers of experts had been
+        // quantised, or — since they do not currently fit — never.
+        let ngram = match text.ple_layers().first() {
+            Some(layer) => Some(load_ngram(
+                text,
+                &layers_vb.pp(*layer).pp("ple"),
+                safetensors_paths,
+                device,
+            )?),
+            None => None,
+        };
+
         let mut layers = Vec::with_capacity(text.num_hidden_layers);
         for i in 0..text.num_hidden_layers {
             layers.push(
@@ -180,16 +199,6 @@ impl Qwen4ExpForCausalLM {
             .pp("lm_head")
             .get((text.vocab_size, text.hidden_size), "weight")
             .context("load 'lm_head.weight'")?;
-
-        let ngram = match text.ple_layers().first() {
-            Some(layer) => Some(load_ngram(
-                text,
-                &layers_vb.pp(*layer).pp("ple"),
-                safetensors_paths,
-                device,
-            )?),
-            None => None,
-        };
 
         Ok(Self {
             embed_tokens,
