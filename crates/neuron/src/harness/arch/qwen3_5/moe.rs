@@ -98,39 +98,59 @@ pub(crate) struct QuantizedExpert {
 /// `quantized tensor must have their last dim divisible by block size
 /// [2560, 640] 256`, having read 131 shards to get there.
 ///
-/// Substituting a 32-block type for that half is what llama.cpp does
-/// with the same constraint, and it costs almost nothing here: `Q4_0`
-/// and `Q4K` are both 4.5 bpw, so the memory arithmetic the placement
-/// decisions rest on is unchanged. The quality is a little worse per
-/// bit — `Q4_0` has one scale per 32 values where `Q4K` has a
-/// two-level hierarchy — which is a real trade, but it applies to one
-/// of the three expert matrices and the alternative is not loading.
+/// **This table is llama.cpp's**, from `tensor_type_fallback` in
+/// `src/llama-quant.cpp`, and the principle behind it is the part
+/// worth stating: **every fallback spends bits rather than saving
+/// them.** A k-quant carries a two-level scale hierarchy that the
+/// legacy 32-block types do not, so it is better than a legacy type at
+/// equal width — dropping `Q4K` (4.5 bpw) to `Q4_0` (also 4.5) would
+/// hold the memory constant and take the quality hit silently.
+/// Upstream declines that trade and pays a bit instead:
 ///
-/// Errors rather than falls back further if the row will not even
-/// divide 32: that is a config we do not understand, and silently
-/// leaving those weights dense would be a memory surprise, not a
-/// mercy.
+/// | requested | fallback | bpw |
+/// |---|---|---|
+/// | `Q2K`, `Q3K` | `Q4_0` | 2.63 / 3.44 -> 4.5 |
+/// | `Q4K` | `Q5_0` | 4.5 -> 5.5 |
+/// | `Q5K` | `Q5_1` | 5.5 -> 6.0 |
+/// | `Q6K`, `Q8K` | `Q8_0` | 6.56 -> 8.5 |
+///
+/// For `qwen4_exp` that is not free: `down_proj` is exactly a third of
+/// the 120.8 B routed parameters, so `Q5_0` rather than `Q4_0` costs
+/// **+5.0 GB** across the expert bank (67.9 -> 73.0 GB). We take it
+/// anyway. The cheaper table was an unmeasured divergence in the one
+/// direction that flatters the constraint we are straining against,
+/// and this matrix is the one a mixed k-quant scheme normally treats
+/// as quality-critical. If the 5 GB turns out to buy nothing, #315 is
+/// where that gets measured and reversed on evidence.
+///
+/// A row that divides 32 either — vanishingly rare, and impossible for
+/// this checkpoint since 640 and 2560 are both multiples of 32 — falls
+/// back to F16 as upstream does, loudly. It is a 3.5x blowup on that
+/// tensor, so it must never be quiet.
 pub(crate) fn quant_for_row(requested: GgmlDType, row: usize) -> candle_core::Result<GgmlDType> {
     if row.is_multiple_of(requested.block_size()) {
         return Ok(requested);
     }
     let fallback = match requested {
-        GgmlDType::Q2K | GgmlDType::Q3K | GgmlDType::Q4K => GgmlDType::Q4_0,
-        GgmlDType::Q5K => GgmlDType::Q5_0,
+        GgmlDType::Q2K | GgmlDType::Q3K => GgmlDType::Q4_0,
+        GgmlDType::Q4K => GgmlDType::Q5_0,
+        GgmlDType::Q5K => GgmlDType::Q5_1,
         GgmlDType::Q6K | GgmlDType::Q8K => GgmlDType::Q8_0,
-        // Already a 32-block type: there is nothing coarser to fall
-        // back to, so this is the error case below.
+        // Already a 32-block type (or not a quant at all): there is no
+        // smaller block to demote to, so the F16 check below decides.
         other => other,
     };
     if row.is_multiple_of(fallback.block_size()) {
         return Ok(fallback);
     }
-    candle_core::bail!(
-        "cannot quantise a row of {row} elements as {requested:?} (block \
-         {}) or {fallback:?} (block {}): the row divides neither",
-        requested.block_size(),
-        fallback.block_size(),
-    )
+    tracing::warn!(
+        ?requested,
+        ?fallback,
+        row,
+        "row divides neither the requested block size nor its 32-wide \
+         fallback; storing this tensor as F16 — 3.5x the bytes"
+    );
+    Ok(GgmlDType::F16)
 }
 
 impl Experts {
@@ -708,16 +728,25 @@ mod tests {
         );
         assert_eq!(
             quant_for_row(GgmlDType::Q4K, 640).unwrap(),
-            GgmlDType::Q4_0,
+            GgmlDType::Q5_0,
             "down reduces over moe_intermediate_size, which is not"
         );
+        // llama.cpp's `tensor_type_fallback` table, which spends bits
+        // rather than saving them: a legacy 32-block type is worse than
+        // a k-quant at equal width, so upstream pays one to avoid the
+        // quality cliff. Q4_0 above would be 4.5 bpw like Q4K and would
+        // save 5.0 GB across the expert bank — that is the trade we
+        // declined, and this is where it is pinned.
+        assert_eq!(quant_for_row(GgmlDType::Q5K, 640).unwrap(), GgmlDType::Q5_1);
+        assert_eq!(quant_for_row(GgmlDType::Q2K, 640).unwrap(), GgmlDType::Q4_0);
+        assert_eq!(quant_for_row(GgmlDType::Q3K, 640).unwrap(), GgmlDType::Q4_0);
         assert_eq!(quant_for_row(GgmlDType::Q6K, 640).unwrap(), GgmlDType::Q8_0);
         assert_eq!(
             quant_for_row(GgmlDType::Q8_0, 640).unwrap(),
             GgmlDType::Q8_0
         );
-        // 100 divides neither 256 nor 32.
-        assert!(quant_for_row(GgmlDType::Q4K, 100).is_err());
+        // 100 divides neither 256 nor 32: F16, as upstream does.
+        assert_eq!(quant_for_row(GgmlDType::Q4K, 100).unwrap(), GgmlDType::F16);
 
         // And the whole path runs at those widths.
         let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
