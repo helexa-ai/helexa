@@ -2876,6 +2876,7 @@ impl CandleHarness {
                             // host memory, so residency is not a
                             // choice here.
                             experts_onto: &device_for_load,
+                            experts_vb: None,
                         },
                     )
                     .context("build qwen4_exp model")?;

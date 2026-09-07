@@ -71,4 +71,20 @@ pub struct LoadOptions<'a> {
     /// for an ordinary model, host memory for one whose experts exceed
     /// VRAM.
     pub experts_onto: &'a candle_core::Device,
+    /// A VarBuilder rooted at the checkpoint but bound to
+    /// [`Self::experts_onto`], used to read the fused expert tensors
+    /// when that is not the load device.
+    ///
+    /// Without it, host-resident experts still arrive *through* VRAM:
+    /// `get` puts the layer's 5.03 GB fused pair on the load device,
+    /// the quantiser copies it to the host, and the source is dropped
+    /// — 48 times, 241 GB of PCIe traffic, against a pool that has to
+    /// absorb two multi-gigabyte blocks and 1536 small ones per layer.
+    /// Measured: the load reached layer 22 of 48 and ran out with 31 GB
+    /// nominally free, which is fragmentation rather than occupancy —
+    /// the same failure the image path trims after every job to avoid.
+    ///
+    /// Reading them straight into host memory removes the transit
+    /// rather than managing it.
+    pub experts_vb: Option<&'a candle_nn::var_builder::ShardedVarBuilder<'a>>,
 }
