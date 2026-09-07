@@ -419,6 +419,7 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
         &device,
         &vb,
         std::slice::from_ref(&weights),
+        None,
     )
     .expect("load the fixture through the production loader");
 

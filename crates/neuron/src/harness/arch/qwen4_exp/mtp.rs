@@ -115,6 +115,10 @@ impl MtpHead {
                 false,
                 quant,
                 &mtp.pp("layers").pp(0),
+                // The MTP head is not on the serving path (#313), so it
+                // has nothing to gain from the cache and nothing to
+                // stale it.
+                None,
             )
             .context("load mtp.layers.0")?,
             mixer: HyperConnection::load(

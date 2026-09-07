@@ -76,6 +76,7 @@ impl DecoderLayer {
         layer_idx: usize,
         quant: Option<GgmlDType>,
         vb: &ShardedVarBuilder,
+        isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
     ) -> Result<Self> {
         let layer_type = cfg
             .layer_types
@@ -94,6 +95,7 @@ impl DecoderLayer {
             cfg.ple_layers().contains(&layer_idx),
             quant,
             vb,
+            isq_cache,
         )
     }
 
@@ -110,6 +112,7 @@ impl DecoderLayer {
         with_ple: bool,
         quant: Option<GgmlDType>,
         vb: &ShardedVarBuilder,
+        isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
     ) -> Result<Self> {
         let mixer = match layer_type {
             "full_attention" => {
@@ -155,7 +158,7 @@ impl DecoderLayer {
             attn_hc: hc("attn_hyper_connection")?,
             mlp_hc: hc("mlp_hyper_connection")?,
             mixer,
-            mlp: moe::load(cfg, quant, &vb.pp("mlp"))?,
+            mlp: moe::load(cfg, quant, &vb.pp("mlp"), isq_cache)?,
             ple,
         })
     }

@@ -132,6 +132,9 @@ pub enum Job {
         /// already parsed. `None` loads at the checkpoint dtype.
         /// Archs that cannot quantise in situ ignore it.
         quant: Option<candle_core::quantized::GgmlDType>,
+        /// Where to cache the quantised weights (#322). Built on the
+        /// async side, which is the only side that can see the config.
+        isq_cache: Option<crate::harness::isq_cache::IsqCache>,
         reply: oneshot::Sender<Result<DenseLoad>>,
     },
     /// Remove the model from the slab and drop it. The `Drop` runs on

@@ -147,6 +147,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 safetensors_paths,
                 model_id,
                 quant,
+                isq_cache,
                 reply,
             } => {
                 let result = load_dense_inner(
@@ -155,6 +156,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                     &safetensors_paths,
                     &model_id,
                     quant,
+                    isq_cache.as_ref(),
                 )
                 .map(|arch| {
                     // Ask the model, once, while it is still in
@@ -940,6 +942,7 @@ fn load_dense_inner(
     safetensors_paths: &[std::path::PathBuf],
     model_id: &str,
     quant: Option<candle_core::quantized::GgmlDType>,
+    isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
 ) -> anyhow::Result<ModelArch> {
     use anyhow::Context;
     use candle_core::DType;
@@ -1060,6 +1063,7 @@ fn load_dense_inner(
                 device,
                 &sharded_vb,
                 safetensors_paths,
+                isq_cache,
             )
             .context("build qwen4_exp model")?;
             Ok(ModelArch::Qwen4Exp(Box::new(model)))
@@ -1771,11 +1775,17 @@ mod tests {
         for model_type in crate::harness::candle::DENSE_SUPPORTED_MODEL_TYPES {
             let path = dir.path().join(format!("{model_type}.json"));
             std::fs::write(&path, format!(r#"{{"model_type": "{model_type}"}}"#)).unwrap();
-            let msg =
-                match load_dense_inner(&candle_core::Device::Cpu, &path, &[], model_type, None) {
-                    Ok(_) => panic!("a bare config must not build a model"),
-                    Err(e) => format!("{e:#}"),
-                };
+            let msg = match load_dense_inner(
+                &candle_core::Device::Cpu,
+                &path,
+                &[],
+                model_type,
+                None,
+                None,
+            ) {
+                Ok(_) => panic!("a bare config must not build a model"),
+                Err(e) => format!("{e:#}"),
+            };
             assert!(
                 !msg.contains("unrouted"),
                 "`{model_type}` is in DENSE_SUPPORTED_MODEL_TYPES but load_dense_inner \

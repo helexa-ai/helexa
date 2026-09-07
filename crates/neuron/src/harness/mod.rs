@@ -9,6 +9,7 @@ pub mod context_limit;
 pub mod device_worker;
 pub mod engine;
 pub mod image;
+pub mod isq_cache;
 pub mod prefix_cache;
 pub mod preflight;
 pub mod preprocess;

@@ -60,6 +60,7 @@ pub fn load(
     cfg: &TextConfig,
     quant: Option<GgmlDType>,
     vb: &ShardedVarBuilder,
+    isq_cache: Option<&crate::harness::isq_cache::IsqCache>,
 ) -> Result<Qwen3_5MoeBlock> {
     let (h, inter) = (cfg.hidden_size, cfg.moe_intermediate_size);
     anyhow::ensure!(
@@ -78,24 +79,63 @@ pub fn load(
     );
 
     let experts_vb = vb.pp("experts");
-    let gate_up = experts_vb
-        .get((cfg.num_experts, inter * 2, h), "gate_up_proj")
-        .with_context(|| format!("load '{}/gate_up_proj'", experts_vb.prefix()))?;
-    let down = experts_vb
-        .get((cfg.num_experts, h, inter), "down_proj")
-        .with_context(|| format!("load '{}/down_proj'", experts_vb.prefix()))?;
-    check_fused_experts(&gate_up, &down, inter)?;
-    // The fused pair is the peak: 5.03 GB per layer at BF16. Quantising
-    // here and letting it drop at the end of this function is what keeps
-    // the whole 241.6 GB from ever existing.
-    let experts = match quant {
-        Some(dtype) => Experts::quantize_banked(&gate_up, &down, inter, dtype)
-            .with_context(|| format!("quantize experts to {dtype:?}"))?,
-        None => Experts::Banked {
-            gate_up,
-            down,
-            intermediate: inter,
-        },
+    // The cache key is the layer's own tensor prefix, so it cannot
+    // collide across layers and needs no separate index to be passed
+    // down alongside it.
+    let cache_key = experts_vb.prefix().replace(['.', '/'], "-");
+
+    // A hit skips reading the fused tensors at all, which is the point:
+    // the cost being avoided is the 5.03 GB read *and* the ~32 s of
+    // quantisation, not just the latter.
+    let cached =
+        match (quant, isq_cache) {
+            (Some(_), Some(cache)) => cache.load(&cache_key, vb.device()).and_then(|entries| {
+                match Experts::from_cache_entries(entries, cfg.num_experts) {
+                    Ok(e) => Some(e),
+                    Err(e) => {
+                        tracing::warn!(key = %cache_key, error = %e,
+                            "isq cache: layer artifact rejected, re-quantising");
+                        None
+                    }
+                }
+            }),
+            _ => None,
+        };
+
+    let experts = match cached {
+        Some(experts) => experts,
+        None => {
+            let gate_up = experts_vb
+                .get((cfg.num_experts, inter * 2, h), "gate_up_proj")
+                .with_context(|| format!("load '{}/gate_up_proj'", experts_vb.prefix()))?;
+            let down = experts_vb
+                .get((cfg.num_experts, h, inter), "down_proj")
+                .with_context(|| format!("load '{}/down_proj'", experts_vb.prefix()))?;
+            check_fused_experts(&gate_up, &down, inter)?;
+            // The fused pair is the peak: 5.03 GB per layer at BF16.
+            // Quantising here and letting it drop at the end of this
+            // function is what keeps the whole 241.6 GB from ever
+            // existing.
+            match quant {
+                Some(dtype) => {
+                    let experts = Experts::quantize_banked(&gate_up, &down, inter, dtype)
+                        .with_context(|| format!("quantize experts to {dtype:?}"))?;
+                    if let (Some(cache), Some(entries)) = (isq_cache, experts.cache_entries()) {
+                        let refs: Vec<(&str, &candle_core::quantized::QTensor)> = entries
+                            .iter()
+                            .map(|(n, t)| (n.as_str(), t.as_ref()))
+                            .collect();
+                        cache.store(&cache_key, &refs);
+                    }
+                    experts
+                }
+                None => Experts::Banked {
+                    gate_up,
+                    down,
+                    intermediate: inter,
+                },
+            }
+        }
     };
 
     let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {

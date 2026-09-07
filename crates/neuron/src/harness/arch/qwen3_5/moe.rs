@@ -222,6 +222,57 @@ impl Experts {
         Ok(Experts::Quantized(out))
     }
 
+    /// The quantised tensors, named for the on-disk cache (#322).
+    ///
+    /// `None` for any layout that is not quantised — there is nothing
+    /// to cache about weights that were never transformed.
+    pub(crate) fn cache_entries(&self) -> Option<Vec<(String, std::sync::Arc<QTensor>)>> {
+        let Experts::Quantized(v) = self else {
+            return None;
+        };
+        let of = |m: &QMatMul| match m {
+            QMatMul::QTensor(t) => Some(t.clone()),
+            // A dequantised-on-load QMatMul has no quantised tensor to
+            // write. `CANDLE_DEQUANTIZE_ALL` produces these; caching
+            // half a layer would be worse than caching none of it.
+            _ => None,
+        };
+        let mut out = Vec::with_capacity(v.len() * 3);
+        for (i, q) in v.iter().enumerate() {
+            out.push((format!("e{i}.gate"), of(&q.gate)?));
+            out.push((format!("e{i}.up"), of(&q.up)?));
+            out.push((format!("e{i}.down"), of(&q.down)?));
+        }
+        Some(out)
+    }
+
+    /// Rebuild from what [`Self::cache_entries`] wrote.
+    ///
+    /// Errors rather than filling gaps: a layer missing an expert is a
+    /// truncated artifact, and serving it would mean one expert of 512
+    /// quietly doing nothing.
+    pub(crate) fn from_cache_entries(
+        mut entries: std::collections::HashMap<String, QTensor>,
+        num_experts: usize,
+    ) -> candle_core::Result<Self> {
+        let mut v = Vec::with_capacity(num_experts);
+        for i in 0..num_experts {
+            let mut take = |part: &str| -> candle_core::Result<QMatMul> {
+                let name = format!("e{i}.{part}");
+                match entries.remove(&name) {
+                    Some(t) => QMatMul::from_qtensor(t),
+                    None => candle_core::bail!("cached expert layer is missing '{name}'"),
+                }
+            };
+            v.push(QuantizedExpert {
+                gate: take("gate")?,
+                up: take("up")?,
+                down: take("down")?,
+            });
+        }
+        Ok(Experts::Quantized(v))
+    }
+
     /// Expert `e` applied to the rows routed to it.
     pub(crate) fn forward_one(&self, e: usize, xs: &Tensor) -> candle_core::Result<Tensor> {
         match self {
@@ -707,6 +758,79 @@ mod tests {
     /// a tiny fixture silently cannot be quantised at all, which is the
     /// first thing that bites when this is tried on a toy model.
     ///
+    /// Experts restored from the on-disk cache compute the same
+    /// function as the ones that filled it (#322).
+    ///
+    /// The cache's whole risk is that it returns something plausible:
+    /// the model loads, it serves, and its weights are quietly not the
+    /// ones it was asked for. So this asserts the restored experts are
+    /// *bit-identical* in output, not close — there is no arithmetic
+    /// between writing and reading that could legitimately differ.
+    ///
+    /// At the checkpoint's real widths, because they are what decide
+    /// the types involved: 2560 blocks under Q4K, 640 does not and
+    /// falls back to Q5_0, so this exercises a layer whose halves are
+    /// *different* quantisation types — exactly the case a container
+    /// storing one type per file could not represent, and the reason
+    /// the artifact is GGUF.
+    #[test]
+    fn cached_experts_compute_the_same_function() {
+        let dev = Device::Cpu;
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let fresh = Experts::quantize_banked(&gate_up, &down, inter, GgmlDType::Q4K).unwrap();
+
+        let entries = fresh
+            .cache_entries()
+            .expect("quantised experts must be cacheable");
+        // The two halves really did take different types; if they had
+        // not, this test would not be covering what it claims to.
+        let dtypes: std::collections::HashSet<GgmlDType> =
+            entries.iter().map(|(_, t)| t.dtype()).collect();
+        assert!(
+            dtypes.len() > 1,
+            "expected a mix of quant types across gate/up and down, got {dtypes:?}"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache =
+            crate::harness::isq_cache::IsqCache::new(dir.path(), "test/model", Some("rev0"), "q4k")
+                .unwrap();
+        let refs: Vec<(&str, &QTensor)> = entries
+            .iter()
+            .map(|(n, t)| (n.as_str(), t.as_ref()))
+            .collect();
+        cache.store("layer-0", &refs);
+
+        let restored = Experts::from_cache_entries(
+            cache
+                .load("layer-0", &dev)
+                .expect("the artifact just written"),
+            n_experts,
+        )
+        .unwrap();
+
+        let xs = randn(&[3, hidden]);
+        for e in 0..n_experts {
+            let a: Vec<f32> = fresh
+                .forward_one(e, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
+            let b: Vec<f32> = restored
+                .forward_one(e, &xs)
+                .unwrap()
+                .flatten_all()
+                .unwrap()
+                .to_vec1()
+                .unwrap();
+            assert_eq!(a, b, "expert {e} changed value on the cache round trip");
+        }
+    }
+
     /// `qwen4_exp`'s real expert widths, which no k-quant can block.
     ///
     /// `moe_intermediate_size` is 640, so `down_proj` is `[2560, 640]`
