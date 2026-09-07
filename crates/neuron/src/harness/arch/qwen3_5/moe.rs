@@ -801,7 +801,9 @@ mod tests {
             .iter()
             .map(|(n, t)| (n.as_str(), t.as_ref()))
             .collect();
-        cache.store("layer-0", &refs);
+        cache
+            .try_store("layer-0", &refs)
+            .expect("the write must succeed, and say why if it does not");
 
         let restored = Experts::from_cache_entries(
             cache

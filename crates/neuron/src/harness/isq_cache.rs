@@ -76,18 +76,24 @@ use candle_core::quantized::{QTensor, gguf_file};
 ///    table for rows that do not divide the requested block size.
 pub const QUANTISER_VERSION: u32 = 1;
 
-/// Refuse a write that would leave the filesystem below this fraction
-/// of itself free.
+/// Refuse a write that would take more than this share of the free
+/// space.
 ///
-/// A proportion rather than a fixed size, because the cache lives
-/// wherever the weights do and that varies: `/archive3` on beast is
-/// 7.3 TB, a symlinked NVMe target might be 900 GB, and a developer's
-/// checkout is neither. Two percent of a 7 TB volume is 146 GB of
-/// headroom and of a 32 GB one is 640 MB — in both cases "do not be
-/// the reason this filesystem filled up", which is the actual rule.
-/// An artifact for one 180 B model is ~73 GB, so this is not
-/// hypothetical.
-const MIN_FREE_FRACTION: f64 = 0.02;
+/// The rule is about *the write*, not the filesystem. An earlier
+/// version required 2% of the volume to remain free, which read
+/// sensibly and was wrong in the case that matters least and happens
+/// most: on a filesystem already below that line, it refused a
+/// six-megabyte write that was in no way responsible. CI found it
+/// immediately.
+///
+/// Bounding each artifact by half the remaining space says the thing
+/// actually meant — no single artifact eats the disk — at every size,
+/// and needs to know nothing about how big the volume is. An
+/// artifact for one 180 B model is ~73 GB, so on a volume with 100 GB
+/// left it is refused and on beast's 2 TB of free `/archive3` it is
+/// not. A few megabytes is never refused, because a few megabytes is
+/// never the problem.
+const MAX_SHARE_OF_FREE: f64 = 0.5;
 
 /// A cache scoped to one (model, revision, quant, quantiser version).
 pub struct IsqCache {
@@ -164,20 +170,22 @@ impl IsqCache {
         }
     }
 
-    fn try_store(&self, key: &str, tensors: &[(&str, &QTensor)]) -> anyhow::Result<()> {
+    /// The fallible half of [`Self::store`]. Production swallows the
+    /// error because a cache must never fail a load; tests call this
+    /// instead, so that a write which quietly does not happen fails
+    /// them with its reason rather than as a later missing artifact.
+    pub(crate) fn try_store(&self, key: &str, tensors: &[(&str, &QTensor)]) -> anyhow::Result<()> {
         let bytes: usize = tensors.iter().map(|(_, t)| t.storage_size_in_bytes()).sum();
         std::fs::create_dir_all(&self.dir)?;
-        if let Some((total, free)) = capacity(&self.dir) {
-            let floor = (total as f64 * MIN_FREE_FRACTION) as u64;
-            if free.saturating_sub(bytes as u64) < floor {
-                anyhow::bail!(
-                    "writing {:.1} GiB would leave under the {:.1} GiB floor \
-                     ({:.0}% of the filesystem)",
-                    bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-                    floor as f64 / (1024.0 * 1024.0 * 1024.0),
-                    MIN_FREE_FRACTION * 100.0,
-                );
-            }
+        if let Some(free) = free_bytes(&self.dir)
+            && too_large_for(bytes as u64, free)
+        {
+            anyhow::bail!(
+                "writing {:.1} GiB would take more than {:.0}% of the {:.1} GiB free",
+                bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                MAX_SHARE_OF_FREE * 100.0,
+                free as f64 / (1024.0 * 1024.0 * 1024.0),
+            );
         }
         let final_path = self.dir.join(format!("{key}.gguf"));
         let tmp = self.dir.join(format!(".{key}.{}.tmp", std::process::id()));
@@ -194,20 +202,28 @@ impl IsqCache {
     }
 }
 
-/// `(total, free)` bytes on the filesystem holding `path`, or `None`
-/// if it cannot be determined — in which case the caller writes anyway
-/// rather than refusing on a guess.
-fn capacity(path: &Path) -> Option<(u64, u64)> {
+/// Whether a write of `bytes` takes an unreasonable share of `free`.
+///
+/// Split out from the write so the rule can be tested without needing
+/// a filesystem in a particular state — which is precisely what made
+/// the previous rule's defect invisible until CI ran it.
+fn too_large_for(bytes: u64, free: u64) -> bool {
+    bytes as f64 > free as f64 * MAX_SHARE_OF_FREE
+}
+
+/// Free bytes on the filesystem holding `path`, or `None` if it cannot
+/// be determined — in which case the caller writes anyway rather than
+/// refusing on a guess. `-P` is what guarantees one line per
+/// filesystem, so a long device name cannot wrap the fields apart.
+fn free_bytes(path: &Path) -> Option<u64> {
     let out = std::process::Command::new("df")
         .arg("-kP")
         .arg(path)
         .output()
         .ok()?;
     let text = String::from_utf8(out.stdout).ok()?;
-    let mut fields = text.lines().nth(1)?.split_whitespace();
-    let total = fields.nth(1)?.parse::<u64>().ok()?;
-    let free = fields.nth(1)?.parse::<u64>().ok()?;
-    Some((total * 1024, free * 1024))
+    let kb = text.lines().nth(1)?.split_whitespace().nth(3)?;
+    kb.parse::<u64>().ok().map(|kb| kb * 1024)
 }
 
 /// The revision an hf-hub-cached checkpoint was resolved at, taken
@@ -257,7 +273,9 @@ mod tests {
             .to_vec1()
             .unwrap();
 
-        cache.store("layer-0", &[("e0.gate", &q)]);
+        cache
+            .try_store("layer-0", &[("e0.gate", &q)])
+            .expect("the write must succeed, and say why if it does not");
         let got = cache
             .load("layer-0", &dev)
             .expect("the artifact just written");
@@ -322,6 +340,31 @@ mod tests {
             None
         );
         assert_eq!(revision_from_paths(&[]), None);
+    }
+
+    /// The space guard bounds the *write*, not the filesystem.
+    ///
+    /// The rule it replaced required a fixed share of the volume to
+    /// remain free, which refused a six-megabyte write on a disk that
+    /// was already full — punishing the write least responsible for
+    /// the state. These cases are the ones that matter: a 73 GB
+    /// artifact must not land on a volume with 100 GB left, and a few
+    /// megabytes must always be allowed, however full things are.
+    #[test]
+    fn the_space_guard_bounds_the_write_not_the_volume() {
+        let gib = 1024 * 1024 * 1024;
+
+        // A 73 GB artifact against beast's ~2 TB of free /archive3.
+        assert!(!too_large_for(73 * gib, 2000 * gib));
+        // The same artifact where it would eat most of what is left.
+        assert!(too_large_for(73 * gib, 100 * gib));
+        // Six megabytes on a nearly-full disk: never the problem.
+        assert!(!too_large_for(6 * 1024 * 1024, 200 * 1024 * 1024));
+        // Exactly half is allowed; past half is not.
+        assert!(!too_large_for(50, 100));
+        assert!(too_large_for(51, 100));
+        // And nothing is writable onto nothing.
+        assert!(too_large_for(1, 0));
     }
 
     /// A miss and a corrupt artifact are the same thing to the caller:
