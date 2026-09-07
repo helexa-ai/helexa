@@ -24,6 +24,13 @@ ap.add_argument("--out", required=True, help="fixture directory to write")
 # Seed 2 is tie-free; 0, 1 and 4 are not. See the tie check below.
 ap.add_argument("--seed", type=int, default=2)
 ap.add_argument("--tokens", type=int, default=12)
+ap.add_argument(
+    "--eos-at",
+    type=int,
+    default=None,
+    help="put an eos at this position, so the n-gram window has a segment "
+    "boundary to refuse to read across",
+)
 args = ap.parse_args()
 
 torch.manual_seed(args.seed)
@@ -50,10 +57,15 @@ with torch.no_grad():
         p.copy_(torch.empty_like(p).uniform_(-0.8, 0.8))
 
 ids = torch.randint(0, tc.vocab_size, (1, args.tokens), dtype=torch.long)
-# Keep eos out of the prompt: it starts a new n-gram segment, and the
-# first fixture should not conflate segment handling with everything
-# else. A separate fixture exercises it deliberately.
+# eos is not an ordinary token here: `_shift_right_ignore_eos` treats it
+# as a segment boundary, so an n-gram never reads across one. Placing it
+# is therefore a deliberate choice rather than something to leave to the
+# sampler — a fixture that happens to contain one is testing segment
+# handling by accident, and one that happens not to is not testing it at
+# all.
 ids[ids == tc.eos_token_id] = (tc.eos_token_id + 1) % tc.vocab_size
+if args.eos_at is not None:
+    ids[0, args.eos_at] = tc.eos_token_id
 
 # The QSA selection must not rest on a tie.
 #
