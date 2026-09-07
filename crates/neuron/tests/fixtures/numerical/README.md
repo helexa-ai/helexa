@@ -12,7 +12,8 @@ HuggingFace reference" claim to checked-in numbers.
 | `qwen3_5-0.8b-text` | Qwen/Qwen3.5-0.8B | text (>64-token prompt → chunked GDN prefill) | f32 | `text_logits_match_reference` |
 | `qwen3_5-0.8b-vision` | Qwen/Qwen3.5-0.8B | 448×448 synthetic image + prompt | f32 | `vision_tower_and_logits_match_reference` |
 | `qwen3_6-27b-text` | Qwen/Qwen3.6-27B | text | bf16 | manual (see below) |
-| `qwen4_exp-tiny` | random weights, real architecture | text, 12 tokens | f32 | `qwen4_exp_logits_match_reference` |
+| `qwen4_exp-tiny` | random weights, real architecture | text, 12 tokens, no eos | f32 | `qwen4_exp_logits_match_reference` |
+| `qwen4_exp-tiny-long` | random weights, real architecture | text, 80 tokens, eos at 37 | f32 | `qwen4_exp_long_prompt_logits_match_reference` |
 
 ## `qwen4_exp-tiny` is different, and runs in CI
 
@@ -55,6 +56,28 @@ python -m venv --system-site-packages .venv
     --config crates/neuron/tests/fixtures/numerical/qwen4_exp-tiny/config.json \
     --out crates/neuron/tests/fixtures/numerical/qwen4_exp-tiny
 ```
+
+### Why there are two cases
+
+They are not the same test at two sizes. Each reaches a path the other
+structurally cannot, and a mutation demonstrates it:
+
+- **80 tokens** puts the GatedDeltaNet layers on the *chunked* prefill
+  algorithm (#23), which engages at 64. That is a different
+  factorisation of the same recurrence, not the same code with more
+  input — which is also why the long case's bound is 1e-4 against the
+  short case's 1e-5 (observed 1.3e-5 vs 2e-6). It also gives QSA up to
+  40 blocks against a budget of 4, so selection discards nearly
+  everything instead of one block at the boundary.
+- **The eos at position 37** is a segment boundary the n-gram window
+  must refuse to read across. Making `shift_right_ignore_eos` ignore
+  segments entirely leaves the short fixture at 0.000002 — it contains
+  no eos, so there is nothing to get wrong — and moves the long one by
+  **0.67**.
+
+The short case deliberately has no eos: a fixture that happens to
+contain one is testing segment handling by accident, and would make the
+two cases redundant.
 
 ### The tie-break
 

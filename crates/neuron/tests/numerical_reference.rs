@@ -360,11 +360,49 @@ fn vision_tower_and_logits_match_reference() {
 /// against our own reading of it.
 #[test]
 fn qwen4_exp_logits_match_reference() {
+    // The recurrent GDN step and a 12-token prompt: agreement is
+    // essentially exact (observed 2e-6), so the bound sits just off the
+    // floor. At 1e-3 this passed with the fused expert's gate and up
+    // halves swapped (2.4e-4) — a bound wide enough to feel safe is
+    // wide enough to hide what it was written for.
+    qwen4_exp_case("qwen4_exp-tiny", 1e-5);
+}
+
+/// The same comparison over a prompt long enough, and shaped
+/// deliberately enough, to reach two paths the short case cannot.
+///
+/// **80 tokens** puts the GatedDeltaNet layers on the *chunked* prefill
+/// algorithm (#23), which engages at 64 and is a different
+/// implementation from the recurrent step the 12-token case exercises —
+/// the same reason the qwen3_5 fixture above is over 64 tokens. It also
+/// gives QSA up to 40 blocks against a budget of 4, so selection is
+/// discarding almost everything rather than one block at the boundary.
+///
+/// **An eos at position 37** puts a segment boundary inside the n-gram
+/// window. `_shift_right_ignore_eos` refuses to read an n-gram across
+/// one, and that logic — a cummax over eos positions, per row — is
+/// intricate enough to be worth comparing rather than reasoning about.
+/// The short case has no eos at all, on purpose: a fixture that happens
+/// to contain one tests segment handling by accident.
+#[test]
+fn qwen4_exp_long_prompt_logits_match_reference() {
+    // Looser than the short case, and for a stated reason rather than
+    // to go green: at 80 tokens the GDN layers take the chunked delta
+    // rule, which is a different *factorisation* of the same
+    // recurrence, so its f32 rounding differs from the recurrent step
+    // by construction. Observed 1.3e-5 against the 2e-6 of the short
+    // case. The bound is still four orders of magnitude below what the
+    // mutations produce — gate/up swapped moves this fixture by 2.7 —
+    // so it discriminates exactly as well.
+    qwen4_exp_case("qwen4_exp-tiny-long", 1e-4);
+}
+
+fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
     use candle_nn::var_builder::ShardedSafeTensors;
     use neuron::harness::arch::qwen4_exp::config::Config as Qwen4ExpConfig;
     use neuron::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM;
 
-    let fixture = fixture_root().join("qwen4_exp-tiny");
+    let fixture = fixture_root().join(name);
     let weights = fixture.join("model.safetensors");
     let device = Device::Cpu;
 
@@ -400,7 +438,7 @@ fn qwen4_exp_logits_match_reference() {
 
     let c = compare(&ours, &reference);
     eprintln!(
-        "qwen4_exp: max_abs={:.6} cosine={:.6} argmax ours={} ref={}",
+        "{name}: max_abs={:.6} cosine={:.6} argmax ours={} ref={}",
         c.max_abs, c.cosine, c.argmax_ours, c.argmax_ref
     );
     // On failure, break the error down by position before asserting.
@@ -409,7 +447,7 @@ fn qwen4_exp_logits_match_reference() {
     // means a discrete choice went differently (an expert, a QSA
     // block), spread means the arithmetic drifted. Finding that out
     // cost an hour the first time.
-    if c.max_abs >= 1e-5 {
+    if c.max_abs >= max_abs_bound {
         let v = cfg.text_config.vocab_size;
         for t in 0..(ours.len() / v) {
             let pc = compare(&ours[t * v..(t + 1) * v], &reference[t * v..(t + 1) * v]);
@@ -420,13 +458,10 @@ fn qwen4_exp_logits_match_reference() {
         }
     }
     assert_eq!(c.argmax_ours, c.argmax_ref, "argmax token diverged");
-    // f32 against f32 is *exact* here — observed max_abs 0.000000 — so
-    // the bound is set just off the floor rather than at a comfortable
-    // distance. That is deliberate: at 1e-3 this test still passed with
-    // the fused expert's gate and up halves read the wrong way round
-    // (max_abs 2.4e-4), which is the single error the loader's own
-    // comment warns about. A tolerance wide enough to be safe is wide
-    // enough to hide the defect it was written for.
     assert!(c.cosine > 0.999_999, "cosine {:.6} too low", c.cosine);
-    assert!(c.max_abs < 1e-5, "max abs diff {:.6} too high", c.max_abs);
+    assert!(
+        c.max_abs < max_abs_bound,
+        "max abs diff {:.6} exceeds {max_abs_bound:e}",
+        c.max_abs
+    );
 }
