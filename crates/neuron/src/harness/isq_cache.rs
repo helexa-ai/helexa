@@ -62,6 +62,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use candle_core::Device;
 use candle_core::quantized::{QTensor, gguf_file};
@@ -98,6 +99,10 @@ const MAX_SHARE_OF_FREE: f64 = 0.5;
 /// A cache scoped to one (model, revision, quant, quantiser version).
 pub struct IsqCache {
     dir: PathBuf,
+    hits: AtomicUsize,
+    misses: AtomicUsize,
+    read: AtomicU64,
+    written: AtomicU64,
 }
 
 impl IsqCache {
@@ -122,7 +127,13 @@ impl IsqCache {
             .join(safe(model_id))
             .join(safe(revision))
             .join(format!("{}-v{QUANTISER_VERSION}", safe(quant)));
-        Some(Self { dir })
+        Some(Self {
+            dir,
+            hits: AtomicUsize::new(0),
+            misses: AtomicUsize::new(0),
+            read: AtomicU64::new(0),
+            written: AtomicU64::new(0),
+        })
     }
 
     /// Read a layer's quantised tensors onto `device`.
@@ -132,10 +143,14 @@ impl IsqCache {
     /// and is rewritten by the load that follows.
     pub fn load(&self, key: &str, device: &Device) -> Option<HashMap<String, QTensor>> {
         let path = self.dir.join(format!("{key}.gguf"));
-        let mut file = std::fs::File::open(&path).ok()?;
+        let Ok(mut file) = std::fs::File::open(&path) else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+            return None;
+        };
         let content = match gguf_file::Content::read(&mut file) {
             Ok(c) => c,
             Err(e) => {
+                self.misses.fetch_add(1, Ordering::Relaxed);
                 tracing::warn!(path = %path.display(), error = %e,
                     "isq cache: unreadable artifact, re-quantising this layer");
                 return None;
@@ -149,12 +164,20 @@ impl IsqCache {
                     out.insert(name, t);
                 }
                 Err(e) => {
+                    self.misses.fetch_add(1, Ordering::Relaxed);
                     tracing::warn!(path = %path.display(), tensor = %name, error = %e,
                         "isq cache: artifact tensor failed to read, re-quantising this layer");
                     return None;
                 }
             }
         }
+        self.hits.fetch_add(1, Ordering::Relaxed);
+        self.read.fetch_add(
+            out.values()
+                .map(|t| t.storage_size_in_bytes() as u64)
+                .sum::<u64>(),
+            Ordering::Relaxed,
+        );
         Some(out)
     }
 
@@ -183,10 +206,34 @@ impl IsqCache {
             );
             return;
         }
-        if let Err(e) = self.try_store(key, tensors) {
-            tracing::warn!(dir = %self.dir.display(), key, error = %e,
-                "isq cache: could not write this layer; the load continues uncached");
+        match self.try_store(key, tensors) {
+            Ok(()) => {
+                self.written.fetch_add(bytes, Ordering::Relaxed);
+            }
+            Err(e) => tracing::warn!(dir = %self.dir.display(), key, error = %e,
+                "isq cache: could not write this layer; the load continues uncached"),
         }
+    }
+
+    /// Say, once per load, what the cache actually did.
+    ///
+    /// Without this the journal shows only that the cache was enabled,
+    /// which is the shape of problem #321 is about: every light green
+    /// and no way to tell from the outside whether the thing worked.
+    /// A load that served nothing from cache and a load that served
+    /// everything looked identical, and the difference between them is
+    /// eight minutes.
+    pub fn log_summary(&self, model_id: &str) {
+        let gib = |b: u64| b as f64 / (1024.0 * 1024.0 * 1024.0);
+        tracing::info!(
+            model = model_id,
+            dir = %self.dir.display(),
+            layers_from_cache = self.hits.load(Ordering::Relaxed),
+            layers_quantised = self.misses.load(Ordering::Relaxed),
+            read_gib = gib(self.read.load(Ordering::Relaxed)),
+            written_gib = gib(self.written.load(Ordering::Relaxed)),
+            "isq cache: load complete (#322)"
+        );
     }
 
     /// Write a layer. Nothing else — no policy, and in particular no

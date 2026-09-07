@@ -936,6 +936,24 @@ fn load_gguf_inner(
 }
 
 /// Load a dense safetensors model on the worker thread.
+/// Log the cache summary when the load leaves scope, successful or
+/// not. A load that OOMs half way is precisely when the question "how
+/// much of that was re-quantised?" is worth answering.
+fn scopeguard_summary<'a>(
+    cache: Option<&'a crate::harness::isq_cache::IsqCache>,
+    model_id: &'a str,
+) -> impl Drop + 'a {
+    struct S<'a>(Option<&'a crate::harness::isq_cache::IsqCache>, &'a str);
+    impl Drop for S<'_> {
+        fn drop(&mut self) {
+            if let Some(c) = self.0 {
+                c.log_summary(self.1);
+            }
+        }
+    }
+    S(cache, model_id)
+}
+
 fn load_dense_inner(
     device: &candle_core::Device,
     config_path: &std::path::Path,
@@ -951,6 +969,10 @@ fn load_dense_inner(
     use candle_transformers::models::qwen3 as qwen3_dense;
     use candle_transformers::models::qwen3_moe as qwen3_moe_dense;
 
+    // Report what the cache did, however the load ends: a load that
+    // fails part-way is exactly when someone wants to know how much of
+    // it was cheap.
+    let _summary = scopeguard_summary(isq_cache, model_id);
     let cfg_text = std::fs::read_to_string(config_path).context("read config.json")?;
     crate::harness::candle::check_dense_config_supported(&cfg_text, model_id)?;
     // Peek at model_type to choose the family before the typed
