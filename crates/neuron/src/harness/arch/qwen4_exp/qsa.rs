@@ -134,7 +134,13 @@ impl BlockSelector {
     /// Returns `[n_blocks]`.
     pub fn scores(&self, q: &Tensor, pooled: &Tensor) -> candle_core::Result<Tensor> {
         debug_assert_eq!(q.dims2()?, (self.n_heads, self.head_dim));
-        let per_head = q.matmul(&pooled.t()?)?.relu()?;
+        // f32 for the same reason `pool` is: this is a *selection*
+        // function. See the note there and on the batched path in
+        // `Indexer::positions_from`.
+        let per_head = q
+            .to_dtype(DType::F32)?
+            .matmul(&pooled.to_dtype(DType::F32)?.t()?)?
+            .relu()?;
         per_head.sum(0)? / (self.head_dim as f64).sqrt()
     }
 
@@ -505,15 +511,30 @@ impl Indexer {
         // in one batched matmul: every head and query shares the same
         // block keys, so fold them into the row axis rather than
         // broadcasting the keys across heads.
-        let q_rows = q.reshape((batch, self.n_heads * seq_len, self.head_dim))?;
-        let keys = blocks.squeeze(1)?.transpose(1, 2)?.contiguous()?;
+        //
+        // In f32, matching upstream, which casts both operands before
+        // the matmul (`torch.matmul(q.float(), block_key_states.float()
+        // .transpose(-1, -2))`). It is not a rounding nicety: these
+        // scores feed a top-k over as many as 65,536 blocks, and the
+        // output is the *set of positions a query may attend*. Two
+        // blocks whose f32 scores differ by less than a bf16 tick —
+        // 0.03125 near 4.0 — compare equal in bf16 and the tie-break
+        // decides instead, so bf16 does not perturb the answer, it
+        // changes which past the model sees. Same argument as `pool`,
+        // which we already got right.
+        let q_rows = q
+            .reshape((batch, self.n_heads * seq_len, self.head_dim))?
+            .to_dtype(DType::F32)?;
+        let keys = blocks
+            .squeeze(1)?
+            .transpose(1, 2)?
+            .contiguous()?
+            .to_dtype(DType::F32)?;
         let per_head = q_rows
             .matmul(&keys)?
             .reshape((batch, self.n_heads, seq_len, n_blocks))?
             .relu()?;
-        let scores = (per_head.sum(1)? / (self.head_dim as f64).sqrt())?
-            .to_dtype(DType::F32)?
-            .to_vec3::<f32>()?;
+        let scores = (per_head.sum(1)? / (self.head_dim as f64).sqrt())?.to_vec3::<f32>()?;
 
         let mut out = Vec::with_capacity(batch);
         for row in scores.iter().take(batch) {
@@ -649,6 +670,63 @@ mod tests {
     /// mean is exactly 0.25 — and so is an f32 mean cast back to bf16,
     /// because the true 0.2507 sits below the first bf16 tick above
     /// 0.25. Both mistakes land on the same wrong number, which is why
+    /// Scoring is f32 even when the cache is bf16, because it decides
+    /// *which past a query sees*, not merely by how much.
+    ///
+    /// Upstream casts both operands before the matmul
+    /// (`torch.matmul(q.float(), block_key_states.float().T)`); we did
+    /// not, and ran the matmul, the relu and the sum over heads in the
+    /// model dtype.
+    ///
+    /// The construction is the whole argument. Two blocks, four heads,
+    /// per-head contributions of 1.0 and — for one head of one block —
+    /// 1.0078125, which is 1 + 2^-7 and therefore exact in bf16. Their
+    /// sums are 4.0 and 4.0078125, and bf16's tick near 4.0 is 2^-5 =
+    /// 0.03125, so the second rounds back onto the first. The inputs
+    /// survive the dtype; the *comparison* does not. In bf16 the two
+    /// blocks tie and `select`'s index tie-break picks the wrong one,
+    /// silently, for as long as the model is served.
+    #[test]
+    fn scoring_is_f32_even_when_the_cache_is_bf16() {
+        let dev = Device::Cpu;
+        // Budget 4 over 4-wide blocks keeps exactly one block, so the
+        // comparison decides the answer rather than being absorbed by a
+        // budget large enough to take both.
+        let qsa = BlockSelector::new(4, 2, 4, 4).unwrap();
+
+        // Block 0 reads dimension 0 of each head, block 1 reads
+        // dimension 1, so the two scores are independent sums.
+        let pooled = Tensor::from_vec(vec![1.0f32, 0.0, 0.0, 1.0], (2, 2), &dev)
+            .unwrap()
+            .to_dtype(DType::BF16)
+            .unwrap();
+        let q = Tensor::from_vec(
+            vec![
+                1.0f32, 1.0, // head 0: block 0 <- 1.0, block 1 <- 1.0
+                1.0, 1.0, // head 1
+                1.0, 1.0, // head 2
+                1.0, 1.0078125, // head 3: block 1 gets the extra tick
+            ],
+            (4, 2),
+            &dev,
+        )
+        .unwrap()
+        .to_dtype(DType::BF16)
+        .unwrap();
+
+        let scores: Vec<f32> = qsa.scores(&q, &pooled).unwrap().to_vec1().unwrap();
+        assert!(
+            scores[1] > scores[0],
+            "bf16 scoring lost the distinction between the blocks: {scores:?}"
+        );
+        // And the selection that rests on it picks the right block.
+        assert_eq!(
+            qsa.select(&scores, 8).unwrap(),
+            vec![4, 5, 6, 7],
+            "the higher-scoring block should be the one kept"
+        );
+    }
+
     /// this asserts the value rather than the dtype.
     #[test]
     fn pooling_accumulates_in_f32() {
