@@ -99,20 +99,19 @@ pub fn load(
     // A hit skips reading the fused tensors at all, which is the point:
     // the cost being avoided is the 5.03 GB read *and* the ~32 s of
     // quantisation, not just the latter.
-    let cached =
-        match (quant, isq_cache) {
-            (Some(_), Some(cache)) => cache.load(&cache_key, vb.device()).and_then(|entries| {
-                match Experts::from_cache_entries(entries, cfg.num_experts) {
-                    Ok(e) => Some(e),
-                    Err(e) => {
-                        tracing::warn!(key = %cache_key, error = %e,
+    let cached = match (quant, isq_cache) {
+        (Some(_), Some(cache)) => cache.load(&cache_key, experts_onto).and_then(|entries| {
+            match Experts::from_cache_entries(entries, cfg.num_experts) {
+                Ok(e) => Some(e),
+                Err(e) => {
+                    tracing::warn!(key = %cache_key, error = %e,
                             "isq cache: layer artifact rejected, re-quantising");
-                        None
-                    }
+                    None
                 }
-            }),
-            _ => None,
-        };
+            }
+        }),
+        _ => None,
+    };
 
     let experts = match cached {
         Some(experts) => experts,

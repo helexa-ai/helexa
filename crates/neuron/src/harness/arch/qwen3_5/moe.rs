@@ -810,6 +810,51 @@ mod tests {
     /// a tiny fixture silently cannot be quantised at all, which is the
     /// first thing that bites when this is tried on a toy model.
     ///
+    /// Experts restored from cache land on the device they are asked
+    /// for, not the one the VarBuilder happens to use (#318, #322).
+    ///
+    /// This is the defect that made a host-resident load fill a 32 GB
+    /// card in 37 seconds: the fresh-quantisation path honoured the
+    /// residency target and the *cache* path did not, so 22 cached
+    /// layers at 1.42 GB each went to VRAM at about a gigabyte a
+    /// second while the code reported host residency in its logs. The
+    /// two paths produce the same experts and must place them the same
+    /// way; nothing but a test says so.
+    #[test]
+    fn cached_experts_land_where_they_are_asked_for() {
+        let dev = Device::Cpu;
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let fresh =
+            Experts::quantize_banked_onto(&gate_up, &down, inter, GgmlDType::Q4K, &dev).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        let cache =
+            crate::harness::isq_cache::IsqCache::new(dir.path(), "test/model", Some("rev0"), "q4k")
+                .unwrap();
+        let entries = fresh.cache_entries().unwrap();
+        let refs: Vec<(&str, &QTensor)> = entries
+            .iter()
+            .map(|(n, t)| (n.as_str(), t.as_ref()))
+            .collect();
+        cache.try_store("layer-0", &refs).unwrap();
+
+        let restored =
+            Experts::from_cache_entries(cache.load("layer-0", &dev).unwrap(), n_experts).unwrap();
+        let Experts::Quantized(v) = &restored else {
+            panic!("a cache load must produce quantised experts");
+        };
+        for (e, q) in v.iter().enumerate() {
+            assert!(
+                q.device()
+                    .expect("a quantised expert knows its device")
+                    .same_device(&dev),
+                "expert {e} came back on the wrong device"
+            );
+        }
+    }
+
     /// Host-resident experts compute the same function as device-
     /// resident ones (#318).
     ///
