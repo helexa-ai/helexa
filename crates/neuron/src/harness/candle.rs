@@ -1283,6 +1283,29 @@ impl ModelArch {
     }
 }
 
+/// Apply a model's `max_in_flight` override to the host's admission
+/// settings (#318).
+///
+/// A free function so the policy can be tested without constructing a
+/// harness — and so it is one place rather than the three that read
+/// the limit: the controller, and the two batch-engine gates. Those
+/// gates reading `self.admission_cfg` directly is what would have made
+/// an override that looked applied do nothing: admission would bound
+/// the model at 1 while the engine still started with 8 slots.
+fn admission_with_override(
+    host: &crate::config::AdmissionConfig,
+    model: Option<usize>,
+) -> crate::config::AdmissionConfig {
+    let mut cfg = host.clone();
+    // Zero is not "unlimited" and not "none"; it is a config that would
+    // admit nothing. Ignore it rather than serve a model that can never
+    // run a request.
+    if let Some(n) = model.filter(|n| *n > 0) {
+        cfg.max_in_flight = n;
+    }
+    cfg
+}
+
 /// Squeeze any leading singleton dims off the logits tensor so the
 /// caller gets a rank-1 `[vocab_size]` slice ready for sampling. Bails
 /// on a non-singleton leading dim (would mean a batched forward, which
@@ -2914,6 +2937,27 @@ impl CandleHarness {
     /// them match the requested quant — that case is a typo, not an ISQ
     /// request, and turning it into a silent 360 GB dense load would be
     /// a worse answer than the error.
+    /// The host's admission settings with this model's override
+    /// applied (#318).
+    ///
+    /// Only `max_in_flight` is overridable: the queue depth, the wait
+    /// deadline and the per-principal share are policies about how a
+    /// host treats its callers, and they should not vary by which
+    /// model a caller happened to ask for. How many requests a model
+    /// can actually run at once is a property of the model.
+    fn admission_for(&self, spec: &ModelSpec) -> crate::config::AdmissionConfig {
+        let cfg = admission_with_override(&self.admission_cfg, spec.max_in_flight);
+        if cfg.max_in_flight != self.admission_cfg.max_in_flight {
+            tracing::info!(
+                model = %spec.model_id,
+                host_default = self.admission_cfg.max_in_flight,
+                model_override = cfg.max_in_flight,
+                "admission: this model overrides the host's max_in_flight (#318)"
+            );
+        }
+        cfg
+    }
+
     /// The quantisation cache for this load, or `None` when the quant
     /// is unset or the checkpoint's revision cannot be identified
     /// (#322).
@@ -4133,15 +4177,19 @@ impl Harness for CandleHarness {
         let prefill_rate = Arc::new(super::context_limit::PrefillRateEma::new());
         // Batched decode engine (#98): spawned when the operator raised
         // max_in_flight above 1 on a snapshot-capable worker-path model.
+        // The *effective* limit, not the host's: a model that overrides
+        // max_in_flight down to 1 is saying it cannot use a batch, and
+        // the engine must hear that (#318).
+        let effective_max_in_flight = self.admission_for(spec).max_in_flight;
         let engine = match (&worker, arch_handle) {
             (Some(w), Some(h))
                 if snapshot_capable
-                    && self.admission_cfg.max_in_flight > 1
+                    && effective_max_in_flight > 1
                     && super::engine::batching_enabled() =>
             {
                 tracing::info!(
                     model = %spec.model_id,
-                    max_slots = self.admission_cfg.max_in_flight,
+                    max_slots = effective_max_in_flight,
                     "batched decode engine enabled (#98)"
                 );
                 Some(super::engine::EngineHandle::spawn(
@@ -4150,7 +4198,7 @@ impl Harness for CandleHarness {
                         tokenizer: tokenizer.clone(),
                         reasoning_tokens: reasoning_tokens.clone(),
                         tool_call_tokens: tool_call_tokens.clone(),
-                        max_slots: self.admission_cfg.max_in_flight,
+                        max_slots: effective_max_in_flight,
                         backend: super::engine::BackendConfig::Single {
                             worker: Arc::clone(w),
                             handle: h,
@@ -4206,7 +4254,7 @@ impl Harness for CandleHarness {
             worker,
             arch_handle,
             inference_lock,
-            admission: super::admission::AdmissionController::new(&self.admission_cfg),
+            admission: super::admission::AdmissionController::new(&self.admission_for(spec)),
             reasoning_tokens,
             tool_call_tokens,
             chat_template,
@@ -4862,7 +4910,7 @@ impl CandleHarness {
             tokenizer,
             devices: devices.clone(),
             pool: StdArc::new(TMutex::new(pool)),
-            admission: super::admission::AdmissionController::new(&self.admission_cfg),
+            admission: super::admission::AdmissionController::new(&self.admission_for(spec)),
             leader_handle,
             leader_device: leader_device.clone(),
             poisoned: AtomicBool::new(false),
@@ -4905,13 +4953,14 @@ impl CandleHarness {
         // max_in_flight above 1 on a snapshot-capable TP model. The
         // engine holds only a Weak — an idle engine never keeps an
         // unloaded model alive.
+        let effective_max_in_flight = self.admission_for(spec).max_in_flight;
         if tp_loaded.prefix_cache.is_some()
-            && self.admission_cfg.max_in_flight > 1
+            && effective_max_in_flight > 1
             && super::engine::batching_enabled()
         {
             tracing::info!(
                 model = %spec.model_id,
-                max_slots = self.admission_cfg.max_in_flight,
+                max_slots = effective_max_in_flight,
                 "batched decode engine enabled for TP model (#98)"
             );
             let handle = super::engine::EngineHandle::spawn(super::engine::EngineConfig {
@@ -4919,7 +4968,7 @@ impl CandleHarness {
                 tokenizer: tp_loaded.tokenizer.clone(),
                 reasoning_tokens: tp_loaded.reasoning_tokens.clone(),
                 tool_call_tokens: tp_loaded.tool_call_tokens.clone(),
-                max_slots: self.admission_cfg.max_in_flight,
+                max_slots: effective_max_in_flight,
                 backend: super::engine::BackendConfig::Tp {
                     tp: StdArc::downgrade(&tp_loaded),
                 },
@@ -7729,6 +7778,45 @@ fn unix_subsec_nanos() -> u64 {
 
 #[cfg(test)]
 mod tests {
+
+    /// A model may bound its own concurrency below the host's (#318).
+    ///
+    /// Capacity is a property of the model as much as the machine. A
+    /// dense model amortises its weight reads across a batch; a sparse
+    /// MoE does not, because *n* concurrent tokens select up to `10n`
+    /// distinct experts — #309 measured eight streams returning 1.73x
+    /// the decode of one — and with the experts in host memory that
+    /// runs against DDR5 instead of HBM.
+    ///
+    /// The override has to reach the batch-engine gate, not just the
+    /// admission controller. Those are separate readers of the same
+    /// number, and a model bounded at 1 while an engine starts with 8
+    /// slots is the failure this function exists to prevent.
+    #[test]
+    fn a_model_may_lower_max_in_flight_below_the_host() {
+        let host = crate::config::AdmissionConfig {
+            max_in_flight: 8,
+            ..Default::default()
+        };
+
+        assert_eq!(admission_with_override(&host, Some(1)).max_in_flight, 1);
+        assert_eq!(admission_with_override(&host, Some(4)).max_in_flight, 4);
+        // Absent means the host decides, which is every model today.
+        assert_eq!(admission_with_override(&host, None).max_in_flight, 8);
+        // A model may also ask for more than the host runs; nothing
+        // about the number is a ceiling, it is a per-model answer.
+        assert_eq!(admission_with_override(&host, Some(16)).max_in_flight, 16);
+        // Zero would admit nothing at all. Ignored rather than served.
+        assert_eq!(admission_with_override(&host, Some(0)).max_in_flight, 8);
+
+        // Nothing else moves: queue depth, the wait deadline and the
+        // per-principal share are how a host treats callers, not a
+        // property of the model they asked for.
+        let overridden = admission_with_override(&host, Some(1));
+        assert_eq!(overridden.max_queue_depth, host.max_queue_depth);
+        assert_eq!(overridden.max_wait_secs, host.max_wait_secs);
+        assert_eq!(overridden.max_per_principal, host.max_per_principal);
+    }
     use super::super::context_limit::ContextProfile;
     use super::{
         ChatCompletionRequest, ChatMessage, MessageContent, apply_effort_kwarg,

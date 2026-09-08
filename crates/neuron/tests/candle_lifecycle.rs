@@ -56,6 +56,7 @@ async fn test_candle_qwen3_load_unload_lifecycle() {
         sampling: None,
         preserve_thinking: None,
         expert_residency: None,
+        max_in_flight: None,
     };
 
     registry

@@ -404,6 +404,7 @@ mod tests {
             sampling: None,
             preserve_thinking: None,
             expert_residency: None,
+            max_in_flight: None,
         }
     }
 
