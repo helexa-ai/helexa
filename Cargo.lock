@@ -3149,6 +3149,8 @@ dependencies = [
  "image",
  "libc",
  "memmap2",
+ "metrics",
+ "metrics-exporter-prometheus",
  "minijinja",
  "minijinja-contrib",
  "rayon",

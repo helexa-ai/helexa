@@ -45,6 +45,7 @@ use super::config::{Config, TextConfig};
 use super::decoder::DecoderLayer;
 use super::hyper::HyperConnection;
 use super::ple::{MmapNGramTable, NGramHasher, NGramTable, ShardedNGramTable};
+use crate::harness::arch::phase_probe::PhaseProbe;
 use crate::harness::arch::snapshot::{KvCacheSnapshot, PleSnapshot};
 
 /// The hashed n-gram lookup, hoisted to the model because it is a
@@ -255,6 +256,7 @@ impl Qwen4ExpForCausalLM {
 
         // Four identical streams — the residual this architecture
         // carries between layers, not one.
+        let mut probe = PhaseProbe::new(&self.device);
         let x = self.embed_tokens.forward(input_ids)?;
         let mut h = x.repeat((1, 1, self.hc_count))?;
 
@@ -264,6 +266,7 @@ impl Qwen4ExpForCausalLM {
         } else {
             None
         };
+        probe.mark("embed");
 
         // Computed once: it is a function of the ids, and one layer
         // consumes it.
@@ -274,12 +277,17 @@ impl Qwen4ExpForCausalLM {
             }
             None => None,
         };
+        // The n-gram table is mapped from the checkpoint rather than
+        // resident (#310), so this phase is a host page-fault path, not
+        // device work: it is where a cold or evicted mapping shows up.
+        probe.mark("ngram");
 
         for (i, layer) in self.layers.iter_mut().enumerate() {
             h = layer
                 .forward(&h, ngram.as_ref(), mask.as_ref(), &cos, &sin, offset)
                 .with_context(|| format!("layer {i}"))?;
         }
+        probe.mark("layers");
 
         // The mixer's hc_norm is the only normalisation before the head.
         let x = self.mixer.collapse(&h)?;
@@ -292,7 +300,10 @@ impl Qwen4ExpForCausalLM {
         // them all and [`Self::logits_all_positions`] exists to be
         // compared against it.
         let l = x.dim(1)?;
-        Ok((self.lm_head.forward(&x.i((.., l - 1.., ..))?)?, h))
+        let logits = self.lm_head.forward(&x.i((.., l - 1.., ..))?)?;
+        probe.mark("head");
+        probe.emit(seq_len);
+        Ok((logits, h))
     }
 
     /// Capture every piece of per-request state at one token boundary:

@@ -1,0 +1,40 @@
+# helexa neuron scrape job — append into the `scrape_configs:` list of
+# /etc/prometheus/prometheus.yml on golgafrinchans.kosherinata.internal,
+# then reload:  curl -X POST http://localhost:26559/-/reload
+#
+# WHY A SECOND TARGET, when cortex already publishes fleet metrics.
+#
+# cortex's numbers come from polling each neuron's /health every ~10s and
+# republishing it as gauges. That is the right shape for routing decisions
+# and the wrong shape for asking where a request's time went: an EMA
+# sampled at 10s cannot see inside a one-second forward, and gauges carry
+# no distribution. The finest split cortex can express is prefill vs
+# decode.
+#
+# neuron serves /metrics on its own API port (13131) — the port is already
+# open in data/neuron-firewalld.xml for the cortex control plane, so unlike
+# the cortex scrape this needs NO new firewalld rule.
+#
+# What is here that cortex cannot give you:
+#   neuron_decode_phase_seconds{model,phase=forward|sample|emit|residual}
+#     Decode time by phase, summed per request, as a real histogram.
+#     The `_sum` series is the point — ratio a phase against the whole to
+#     see where decode goes:
+#       sum(rate(neuron_decode_phase_seconds_sum{phase="forward"}[5m]))
+#         / sum(rate(neuron_decode_phase_seconds_sum[5m]))
+#     `residual` is decode_ms minus the three measured phases, emitted as
+#     its own series so unbracketed time is visible rather than divided
+#     silently among the phases that were measured.
+#   neuron_prefill_seconds / neuron_decode_seconds  (histograms)
+#   neuron_completion_tokens_total  (the per-token denominator)
+#
+# A model whose serving path does not measure phases emits NO phase series
+# at all rather than zeros — absent means "nobody looked", not "free".
+- job_name: neuron
+  static_configs:
+    - targets:
+        - 'beast.hanzalova.internal:13131'
+        - 'benjy.hanzalova.internal:13131'
+        - 'quadbrat.hanzalova.internal:13131'
+      labels:
+        fleet: hanzalova

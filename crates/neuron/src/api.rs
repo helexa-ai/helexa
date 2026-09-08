@@ -10,6 +10,7 @@ use crate::wire::{openai_chat, openai_responses};
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::http::header;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Json};
 use axum::routing::{get, post};
@@ -43,6 +44,7 @@ pub struct NeuronState {
 /// Build the neuron API router.
 pub fn neuron_routes() -> Router<Arc<NeuronState>> {
     Router::new()
+        .route("/metrics", get(metrics_handler))
         .route("/version", get(version_handler))
         .route("/discovery", get(discovery_handler))
         .route("/health", get(health_handler))
@@ -62,6 +64,29 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
 /// probe for fleet validation and benchmark attribution.
 async fn version_handler() -> Json<cortex_core::build_info::BuildInfo> {
     Json(crate::version::build_info())
+}
+
+/// `GET /metrics` — Prometheus text format.
+///
+/// Served from the API port rather than a second listener, so a scrape
+/// target needs no extra firewall rule. A missing recorder is a 503
+/// rather than an empty 200: an empty scrape looks exactly like a
+/// healthy process with nothing to say, and would leave the fleet
+/// silently unmonitored.
+async fn metrics_handler() -> impl IntoResponse {
+    match crate::metrics::render() {
+        Some(body) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/plain; version=0.0.4")],
+            body,
+        )
+            .into_response(),
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "metrics recorder not installed",
+        )
+            .into_response(),
+    }
 }
 
 async fn discovery_handler(State(state): State<Arc<NeuronState>>) -> Json<DiscoveryResponse> {

@@ -25,6 +25,11 @@ use cortex_core::openai::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageContent,
 };
 
+// `PhaseTiming` is constructed only on the two cuda-gated streaming
+// paths (device-worker and TP), so importing it unconditionally warns
+// on a CPU-only build and clippy runs with `-D warnings`.
+#[cfg(feature = "cuda")]
+use crate::wire::PhaseTiming;
 use crate::wire::{
     FinishReason, FinishTiming, InferenceEvent, ReasoningTokenPair, ToolCallTokenPair,
     detect_reasoning_token_pair, detect_tool_call_token_pair, openai_chat as wire_chat,
@@ -3505,11 +3510,13 @@ impl CandleHarness {
                 let reasoning_tokens_inner = loaded.reasoning_tokens.clone();
                 let tool_call_tokens_inner = loaded.tool_call_tokens.clone();
                 let tool_schemas_inner = tool_schemas.clone();
+                let model_id_inner = model_id.clone();
                 tokio::spawn(
                     async move {
                         let _admit = admit;
                         let _inference_guard = loaded_for_task.inference_lock.lock().await;
                         match stream_inference_via_worker(
+                            model_id_inner,
                             worker,
                             handle,
                             tokenizer,
@@ -5322,6 +5329,9 @@ impl CandleHarness {
                 // read them; populated at the prefill→decode boundary inside.
                 let mut prefill_ms_measured: u32 = 0;
                 let mut decode_start: Option<std::time::Instant> = None;
+                let mut phase_forward = std::time::Duration::ZERO;
+                let mut phase_sample = std::time::Duration::ZERO;
+                let mut phase_emit = std::time::Duration::ZERO;
 
                 // Hoisted out of `'work` so the completion path below
                 // can report it (#269) — the reuse count is decided
@@ -5482,6 +5492,12 @@ impl CandleHarness {
                         };
                     // Decode-phase timer for the Finish prefill/decode split (#85).
                     decode_start = Some(std::time::Instant::now());
+                    // Phase split (see `PhaseTiming`). Instrumented here
+                    // as well as on the single-GPU path so a healthy
+                    // model is a control for a slow one: both archs share
+                    // this loop, this sampler and a 248,320 vocabulary,
+                    // so a phase that is cheap here and expensive there
+                    // is a property of the arch, not of the loop.
 
                     if Some(next_token) == eos_id {
                         finish_reason = FinishReason::Stop;
@@ -5568,6 +5584,7 @@ impl CandleHarness {
                         }
 
                         for index in 0..max_new.saturating_sub(1) {
+                            let t_forward = std::time::Instant::now();
                             let logits_vec = match pool
                                 .generate_step(
                                     &model_id,
@@ -5583,6 +5600,8 @@ impl CandleHarness {
                                     break 'work;
                                 }
                             };
+                            phase_forward += t_forward.elapsed();
+                            let t_sample = std::time::Instant::now();
                             let logits = match Tensor::new(logits_vec.as_slice(), &Device::Cpu) {
                                 Ok(t) => t,
                                 Err(e) => {
@@ -5611,6 +5630,11 @@ impl CandleHarness {
                                     break 'work;
                                 }
                             };
+                            phase_sample += t_sample.elapsed();
+                            // NB: this per-step VRAM query is a second
+                            // channel round-trip per token. It is charged
+                            // to neither phase, so it lands in the
+                            // residual between the three and `decode_ms`.
                             // Always await the query (even when the
                             // trace! is filtered out by RUST_LOG): the
                             // channel hop is ~tens of µs, comparable to
@@ -5630,6 +5654,7 @@ impl CandleHarness {
                                 finish_reason = FinishReason::Stop;
                                 break;
                             }
+                            let t_emit = std::time::Instant::now();
                             all_tokens.push(next_token);
                             match handle_tool_call_marker(
                                 next_token,
@@ -5711,6 +5736,7 @@ impl CandleHarness {
                                     "TP stream: decode_stream step failed"
                                 ),
                             }
+                            phase_emit += t_emit.elapsed();
                         }
                     }
                 }
@@ -5775,7 +5801,23 @@ impl CandleHarness {
                         decode_ms = decode_start
                             .map(|d| d.elapsed().as_millis() as u32)
                             .unwrap_or(0),
+                        forward_ms = phase_forward.as_millis(),
+                        sample_ms = phase_sample.as_millis(),
+                        emit_ms = phase_emit.as_millis(),
                         "chat_completion (stream): done"
+                    );
+                    crate::metrics::record_finish(
+                        &model_id,
+                        prefill_ms_measured,
+                        decode_start
+                            .map(|d| d.elapsed().as_millis() as u32)
+                            .unwrap_or(0),
+                        all_tokens.len() as u32,
+                        Some((
+                            phase_forward.as_millis() as u32,
+                            phase_sample.as_millis() as u32,
+                            phase_emit.as_millis() as u32,
+                        )),
                     );
                     let _ = tx
                         .send(InferenceEvent::Finish {
@@ -5790,6 +5832,11 @@ impl CandleHarness {
                                     .map(|d| d.elapsed().as_millis() as u32)
                                     .unwrap_or(0),
                                 prefill_tokens: prompt_len as u32,
+                                phases: Some(PhaseTiming {
+                                    forward_ms: phase_forward.as_millis() as u32,
+                                    sample_ms: phase_sample.as_millis() as u32,
+                                    emit_ms: phase_emit.as_millis() as u32,
+                                }),
                             }),
                         })
                         .await;
@@ -7236,6 +7283,9 @@ async fn run_inference_via_worker(
 #[cfg(feature = "cuda")]
 #[allow(clippy::too_many_arguments)]
 async fn stream_inference_via_worker(
+    // Owned: this runs in a spawned task, and the only other source of
+    // the model name here is the tracing span, which is not a value.
+    model_id: String,
     worker: Arc<super::device_worker::DeviceWorkerHandle>,
     handle: super::device_worker::ArchHandle,
     tokenizer: Tokenizer,
@@ -7369,6 +7419,13 @@ async fn stream_inference_via_worker(
     };
     // Decode-phase timer for the Finish prefill/decode split (#85).
     let decode_start = std::time::Instant::now();
+    // Phase split of the decode loop. Each boundary below is already a
+    // synchronisation point -- the worker hands back CPU-side logits --
+    // so this adds no device sync and measures elapsed work rather than
+    // kernel-launch time.
+    let mut phase_forward = std::time::Duration::ZERO;
+    let mut phase_sample = std::time::Duration::ZERO;
+    let mut phase_emit = std::time::Duration::ZERO;
 
     // Per-token routing. `tokenizers::DecodeStream` carries five
     // generic parameters (`M, N, PT, PP, D`) which makes naming
@@ -7475,10 +7532,14 @@ async fn stream_inference_via_worker(
     }
 
     for index in 0..max_new.saturating_sub(1) {
+        let t_forward = std::time::Instant::now();
         let logits_vec = worker
             .forward_logits(handle, vec![next_token], prompt_len + index)
             .await
             .map_err(|e| anyhow::anyhow!("decode step {index}: {e:#}"))?;
+        phase_forward += t_forward.elapsed();
+
+        let t_sample = std::time::Instant::now();
         let logits = Tensor::new(logits_vec.as_slice(), &Device::Cpu)?;
         next_token = match sample_with_penalty(
             &logits,
@@ -7498,11 +7559,15 @@ async fn stream_inference_via_worker(
                 return Err(e);
             }
         };
+        phase_sample += t_sample.elapsed();
         if Some(next_token) == eos_id {
             finish_reason = FinishReason::Stop;
             break;
         }
-        if !route_token!(next_token) {
+        let t_emit = std::time::Instant::now();
+        let routed = route_token!(next_token);
+        phase_emit += t_emit.elapsed();
+        if !routed {
             return Ok(finish_reason.as_openai_str().to_string());
         }
     }
@@ -7524,7 +7589,21 @@ async fn stream_inference_via_worker(
         finish_reason = ?finish_reason,
         prefill_ms = prefill_elapsed.as_millis(),
         decode_ms = decode_start.elapsed().as_millis(),
+        forward_ms = phase_forward.as_millis(),
+        sample_ms = phase_sample.as_millis(),
+        emit_ms = phase_emit.as_millis(),
         "chat_completion (stream): done"
+    );
+    crate::metrics::record_finish(
+        &model_id,
+        prefill_elapsed.as_millis() as u32,
+        decode_start.elapsed().as_millis() as u32,
+        all_tokens.len() as u32,
+        Some((
+            phase_forward.as_millis() as u32,
+            phase_sample.as_millis() as u32,
+            phase_emit.as_millis() as u32,
+        )),
     );
     let _ = tx
         .send(InferenceEvent::Finish {
@@ -7537,6 +7616,11 @@ async fn stream_inference_via_worker(
                 prefill_ms: prefill_elapsed.as_millis() as u32,
                 decode_ms: decode_start.elapsed().as_millis() as u32,
                 prefill_tokens: prefill_prompt_len as u32,
+                phases: Some(PhaseTiming {
+                    forward_ms: phase_forward.as_millis() as u32,
+                    sample_ms: phase_sample.as_millis() as u32,
+                    emit_ms: phase_emit.as_millis() as u32,
+                }),
             }),
         })
         .await;
@@ -7757,6 +7841,7 @@ fn run_inference_streaming(
             prefill_ms: prefill_elapsed.as_millis() as u32,
             decode_ms: decode_start.elapsed().as_millis() as u32,
             prefill_tokens: prompt_tokens.len() as u32,
+            phases: None,
         }),
     });
     Ok(())

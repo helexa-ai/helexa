@@ -4,9 +4,12 @@
 # Cockpit on that box):  curl -X POST http://localhost:26559/-/reload
 #
 # cortex runs on hanzalova.internal (10.6.0.46) and exposes ALL fleet metrics
-# on :31314 — it is the only Prometheus target in the stack (neuron has no
-# /metrics; cortex's poller already relabels everything by {node,model} /
-# {node,device}). Reaching it cross-DC (kosherinata -> hanzalova) requires the
+# on :31314; cortex's poller already relabels everything by {node,model} /
+# {node,device}. It is no longer the only target — neuron now serves its own
+# /metrics on :13131 with the per-request phase histograms cortex's ~10s
+# gauge poll cannot express (see prometheus-neuron.scrape.yml); the two are
+# complementary, not redundant.
+# Reaching cortex cross-DC (kosherinata -> hanzalova) requires the
 # firewalld rule in asset/monitoring/firewalld-cortex-metrics.sh, which opens
 # :31314 to this host's mesh IP (10.3.101.4) only.
 #

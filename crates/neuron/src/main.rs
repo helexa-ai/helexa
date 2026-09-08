@@ -220,6 +220,12 @@ async fn daemon(args: Args) -> Result<()> {
     // host look down to anything probing `/health` during pre-warm.
     // The pre-warm task runs in the background instead — `/health`
     // surfaces its progress via the activation field.
+    // Before the listener binds, so the very first scrape after a
+    // restart finds a recorder rather than a 503.
+    if let Err(e) = neuron::metrics::install() {
+        tracing::warn!(error = %e, "metrics recorder not installed; /metrics will 503");
+    }
+
     let app = api::neuron_routes().with_state(Arc::clone(&state));
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}").parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;

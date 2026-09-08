@@ -121,6 +121,41 @@ pub struct FinishTiming {
     /// the elapsed `prefill_ms` drops while this stays the full prompt
     /// length, so a high implied rate is itself the cache-hit signal.
     pub prefill_tokens: u32,
+    /// How the decode loop's wall-clock divides, when the serving path
+    /// measured it. `None` means "this path does not report phases",
+    /// which is deliberately distinct from "measured, and they were
+    /// zero" — a phase split that cannot express its own absence
+    /// invites reading an unmeasured path as an idle one.
+    pub phases: Option<PhaseTiming>,
+}
+
+/// Where a decode loop's wall-clock actually went, summed over every
+/// step of the request.
+///
+/// These are sums across steps, not a breakdown of one step, and each
+/// boundary is a point the loop already synchronises at: the forward
+/// hands back CPU-side logits, so no device synchronisation is added
+/// and the numbers are elapsed work rather than kernel-launch time.
+///
+/// The three should roughly account for `decode_ms`; a large residual
+/// is itself a finding (it is time inside the loop that none of the
+/// brackets cover).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PhaseTiming {
+    /// Submitting the step to the device worker and getting logits
+    /// back: the channel hop, the model forward, and the device-to-host
+    /// copy of the logits row. For a large vocabulary that copy is not
+    /// negligible -- 248,320 f32 is ~993 KB per step.
+    pub forward_ms: u32,
+    /// Wrapping the logits in a CPU tensor and sampling: repeat/presence
+    /// penalties plus the `LogitsProcessor`. Scales with vocabulary,
+    /// not with model size, and top-p sorts the distribution.
+    pub sample_ms: u32,
+    /// Detokenising the sampled token and handing the delta to the
+    /// consumer. **Includes backpressure**: the send awaits a bounded
+    /// channel, so a slow reader is charged here. This is emit cost,
+    /// not detokenisation cost, and the two are not separated.
+    pub emit_ms: u32,
 }
 
 /// Why a stream stopped. Stays small on purpose — anything that
