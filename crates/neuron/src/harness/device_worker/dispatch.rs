@@ -175,6 +175,16 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 // allocated tens of gigabytes first, and the evicted
                 // model waiting to be restored needs them back.
                 trim_device_pool(&state);
+                // And the same on the host, for the same reason and
+                // then one more. A load with host-resident experts
+                // (#318) churns 73,728 allocations whether it finishes
+                // or not, and a load that *fails* drops its partial
+                // model here rather than through `DropArch` — so
+                // without this, the trim on unload never runs for it.
+                // Until an hour ago every qwen4_exp load on this
+                // hardware failed part-way, which is exactly the case
+                // that would have leaked.
+                trim_host_heap("load_dense");
                 let _ = reply.send(result);
             }
             Job::DropArch { handle, reply } => {
