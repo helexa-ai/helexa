@@ -663,6 +663,7 @@ async fn finish_slot(slot: &mut Slot, reason: FinishReason, rate: &PrefillRateEm
                 prefill_ms: slot.prefill_ms,
                 decode_ms: slot.decode_start.elapsed().as_millis() as u32,
                 prefill_tokens: slot.prefill_tokens,
+                phases: None,
             },
         })
         .await;
@@ -1151,6 +1152,7 @@ mod tests {
                     prefill_ms: 6000,
                     decode_ms: 900_000,
                     prefill_tokens: 7413,
+                    phases: None,
                 },
             })
             .await

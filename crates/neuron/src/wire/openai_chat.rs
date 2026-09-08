@@ -444,6 +444,9 @@ fn usage_chunk(
                 prefill_ms: t.prefill_ms as u64,
                 decode_ms: t.decode_ms as u64,
                 prefill_tokens: t.prefill_tokens as u64,
+                forward_ms: t.phases.map(|p| p.forward_ms as u64),
+                sample_ms: t.phases.map(|p| p.sample_ms as u64),
+                emit_ms: t.phases.map(|p| p.emit_ms as u64),
             }),
         }),
         extra: serde_json::Value::Object(Default::default()),
@@ -596,6 +599,9 @@ pub async fn collect_chat_completion(
                 prefill_ms: t.prefill_ms as u64,
                 decode_ms: t.decode_ms as u64,
                 prefill_tokens: t.prefill_tokens as u64,
+                forward_ms: t.phases.map(|p| p.forward_ms as u64),
+                sample_ms: t.phases.map(|p| p.sample_ms as u64),
+                emit_ms: t.phases.map(|p| p.emit_ms as u64),
             }),
         }),
         extra: serde_json::Value::Object(Default::default()),
@@ -685,6 +691,7 @@ mod tests {
         );
     }
     use super::*;
+    use crate::wire::event::PhaseTiming;
 
     // ── Non-streaming collector (#285) ────────────────────────────
 
@@ -799,6 +806,7 @@ mod tests {
                 prefill_ms: 12,
                 decode_ms: 34,
                 prefill_tokens: 100,
+                phases: None,
             }),
         })
         .await
@@ -811,6 +819,65 @@ mod tests {
         assert_eq!(u.prompt_tokens_details.expect("details").cached_tokens, 64);
         let t = u.helexa_timing.expect("timing");
         assert_eq!((t.prefill_ms, t.decode_ms, t.prefill_tokens), (12, 34, 100));
+    }
+
+    /// The phase split must survive to the wire, and an unmeasured path
+    /// must serialise as **absent** rather than as zeros.
+    ///
+    /// That distinction is the reason the field is an `Option` at all:
+    /// a consumer reading `forward_ms: 0` off a path that never
+    /// measured would conclude the forward is free. The serialised
+    /// form is asserted, not just the struct, because
+    /// `skip_serializing_if` is what actually enforces it and a plain
+    /// field comparison cannot see it.
+    #[tokio::test]
+    async fn phase_timing_reaches_the_wire_and_absence_is_not_zero() {
+        async fn timing_json(phases: Option<PhaseTiming>) -> serde_json::Value {
+            let (tx, rx) = mpsc::channel(8);
+            tx.send(InferenceEvent::Finish {
+                reason: FinishReason::Stop,
+                prompt_tokens: 10,
+                completion_tokens: 5,
+                reasoning_tokens: 0,
+                cached_tokens: 0,
+                timing: Some(FinishTiming {
+                    prefill_ms: 12,
+                    decode_ms: 340,
+                    prefill_tokens: 10,
+                    phases,
+                }),
+            })
+            .await
+            .expect("send");
+            drop(tx);
+            let r = collect_chat_completion(rx, "id".into(), 1, "m".into())
+                .await
+                .expect("collected");
+            serde_json::to_value(r.usage.expect("usage").helexa_timing.expect("timing"))
+                .expect("serialise")
+        }
+
+        let measured = timing_json(Some(PhaseTiming {
+            forward_ms: 300,
+            sample_ms: 25,
+            emit_ms: 4,
+        }))
+        .await;
+        assert_eq!(measured["forward_ms"], 300);
+        assert_eq!(measured["sample_ms"], 25);
+        assert_eq!(measured["emit_ms"], 4);
+
+        let unmeasured = timing_json(None).await;
+        for f in ["forward_ms", "sample_ms", "emit_ms"] {
+            assert!(
+                unmeasured.get(f).is_none(),
+                "unmeasured {f} must be absent, not {:?} -- a zero here reads as \
+                 'this phase is free' rather than 'nobody measured it'",
+                unmeasured.get(f)
+            );
+        }
+        // The prefill/decode split is unconditional and must be unaffected.
+        assert_eq!(unmeasured["decode_ms"], 340);
     }
 
     /// A dropped engine slot ends the channel with no Finish. Returning
@@ -898,6 +965,7 @@ mod tests {
                 prefill_ms: 200,
                 decode_ms: 1500,
                 prefill_tokens: 128,
+                phases: None,
             }),
         })
         .await

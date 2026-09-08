@@ -210,6 +210,19 @@ pub struct HelexaTiming {
     pub prefill_ms: u64,
     pub decode_ms: u64,
     pub prefill_tokens: u64,
+    /// Decode-loop phase split, when the serving path measured it.
+    /// Absent (rather than zero) on paths that do not, so a consumer
+    /// can tell "not measured" from "measured as free". Together these
+    /// should roughly account for `decode_ms`; the residual is time in
+    /// the loop that no bracket covers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forward_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_ms: Option<u64>,
+    /// Detokenise + hand to the consumer. Includes bounded-channel
+    /// backpressure, so a slow reader is charged here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emit_ms: Option<u64>,
 }
 
 /// Sub-counts of `Usage::completion_tokens`.
