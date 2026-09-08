@@ -56,6 +56,52 @@ use crate::harness::arch::qwen3_5::rope::{RotaryEmbedding, apply_partial_rotary}
 use super::config::TextConfig as Qwen4ExpTextConfig;
 
 /// The indexer's geometry, from `config.json`.
+/// The positions one query may attend, ascending.
+///
+/// The reference derives this from the attention mask
+/// (`torch.nonzero(visible_token_indices[b, 0, q])`) and forms blocks
+/// from whichever positions survive, in order. Under a plain causal
+/// mask that is exactly `0..n`, which is worth representing without
+/// materialising: the set reaches the context window in size and is
+/// rebuilt for every query, so a `Vec` per query would cost more than
+/// the selection it feeds.
+///
+/// [`Sparse`] is the general case — left padding, ragged batches, any
+/// mask with holes. Both are handled by the same arithmetic below,
+/// which is the point: block `b` covers *set positions*
+/// `b * block_size ..`, never *absolute positions*, and those coincide
+/// only when the set is contiguous from zero.
+///
+/// [`Sparse`]: VisibleSet::Sparse
+#[derive(Debug, Clone, Copy)]
+pub enum VisibleSet<'a> {
+    /// Every position `0..n` — a plain causal mask.
+    Contiguous(usize),
+    /// Exactly these positions, ascending and without duplicates.
+    Sparse(&'a [usize]),
+}
+
+impl VisibleSet<'_> {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Contiguous(n) => *n,
+            Self::Sparse(v) => v.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// The `i`th visible position.
+    fn at(&self, i: usize) -> usize {
+        match self {
+            Self::Contiguous(_) => i,
+            Self::Sparse(v) => v[i],
+        }
+    }
+}
+
 pub struct BlockSelector {
     n_heads: usize,
     head_dim: usize,
@@ -96,9 +142,14 @@ impl BlockSelector {
 
     /// The position each block starts at — where its pooled key is
     /// RoPE'd, **not** the position it is scored against.
-    pub fn block_starts(&self, n_visible: usize) -> Vec<usize> {
-        (0..self.n_blocks(n_visible))
-            .map(|b| b * self.block_size)
+    ///
+    /// Block `b` begins at the `b * block_size`-th **visible** position,
+    /// which is `b * block_size` only when the set is contiguous from
+    /// zero. Rotating a pooled key at the wrong absolute position is
+    /// silent: the scores stay finite and the selection stays plausible.
+    pub fn block_starts(&self, visible: &VisibleSet) -> Vec<usize> {
+        (0..self.n_blocks(visible.len()))
+            .map(|b| visible.at(b * self.block_size))
             .collect()
     }
 
@@ -149,7 +200,8 @@ impl BlockSelector {
     ///
     /// Ties are broken towards the earlier block, which matters only for
     /// reproducibility — the reference's `topk` does the same.
-    pub fn select(&self, scores: &[f32], n_visible: usize) -> Result<Vec<usize>> {
+    pub fn select(&self, scores: &[f32], visible: &VisibleSet) -> Result<Vec<usize>> {
+        let n_visible = visible.len();
         let blocks = self.n_blocks(n_visible);
         ensure!(
             scores.len() == blocks,
@@ -170,15 +222,28 @@ impl BlockSelector {
             order.sort_unstable();
         }
 
+        // Indices into the visible set, not absolute positions. They
+        // coincide only when the set is contiguous from zero, and
+        // conflating them is what this issue (#324) is about.
         let tail_start = blocks * self.block_size;
         let mut positions = Vec::with_capacity(keep * self.block_size + (n_visible - tail_start));
         for b in order {
             let start = b * self.block_size;
-            positions.extend(start..start + self.block_size);
+            positions.extend((start..start + self.block_size).map(|i| visible.at(i)));
         }
         // The tail never competes for the budget. It holds the query's
         // own position.
-        positions.extend(tail_start..n_visible);
+        positions.extend((tail_start..n_visible).map(|i| visible.at(i)));
+        // Ascending is the contract `dense_mask` relies on, and it
+        // holds without sorting: `order` is ascending, `visible.at` is
+        // monotonic in its index, and the tail's indices all follow the
+        // blocks'. Asserted rather than enforced, so a future change
+        // that breaks the invariant is caught instead of hidden by a
+        // sort that makes it look fine.
+        debug_assert!(
+            positions.windows(2).all(|w| w[0] < w[1]),
+            "selected positions must be ascending and distinct: {positions:?}"
+        );
         Ok(positions)
     }
 
@@ -356,7 +421,10 @@ impl Indexer {
         total: usize,
     ) -> candle_core::Result<Tensor> {
         let b = cache.dims()[0];
-        let starts = self.selector.block_starts(total);
+        // The cache holds every past position, so the poolable set is
+        // the contiguous 0..total. When a padded or ragged batch can
+        // reach here this becomes `Sparse` of that row's live positions.
+        let starts = self.selector.block_starts(&VisibleSet::Contiguous(total));
         let mut pooled = Vec::with_capacity(b);
         for row in 0..b {
             pooled.push(self.selector.pool(&cache.i(row)?)?);
@@ -475,10 +543,20 @@ impl Indexer {
             None => k,
         };
         let total = cache.dims()[1];
+        // This equality is also what makes the visible set contiguous:
+        // every query's set is built as `Contiguous(past_len + i + 1)`,
+        // which describes the batch only while one scalar `past_len`
+        // does. A ragged or left-padded batch presents a padded `total`
+        // that no single `past_len` matches, and trips this — which is
+        // the intent, because the alternative is a selection computed
+        // against the wrong past that still looks plausible (#324).
         ensure!(
             total == past_len + seq_len,
             "indexer cache holds {total} positions but the queries start at {past_len} \
-             and run for {seq_len} — the cache and the main KV have diverged"
+             and run for {seq_len} — the cache and the main KV have diverged, or this \
+             is a ragged/padded batch whose visible set is no longer contiguous. The \
+             latter needs the set derived from the attention mask (VisibleSet::Sparse) \
+             rather than from a count (#324)."
         );
         self.key_cache = Some(cache.clone());
         Ok((q, cache))
@@ -540,12 +618,16 @@ impl Indexer {
         for row in scores.iter().take(batch) {
             let mut per_query = Vec::with_capacity(seq_len);
             for (i, all_blocks) in row.iter().enumerate().take(seq_len) {
-                let visible = past_len + i + 1;
+                // Contiguous because `model.rs` builds the causal mask
+                // itself and no padding mask reaches this arch (#324).
+                // The moment one can, this is where the row's live
+                // positions are derived from it.
+                let visible = VisibleSet::Contiguous(past_len + i + 1);
                 // Only blocks wholly behind this query exist for it.
-                let visible_blocks = self.selector.n_blocks(visible);
+                let visible_blocks = self.selector.n_blocks(visible.len());
                 per_query.push(
                     self.selector
-                        .select(&all_blocks[..visible_blocks], visible)?,
+                        .select(&all_blocks[..visible_blocks], &visible)?,
                 );
             }
             out.push(per_query);
@@ -600,6 +682,63 @@ mod tests {
         assert_eq!(qsa.block_topk() * 4, 2048);
     }
 
+    /// Blocks are formed from consecutive **visible** positions, not
+    /// consecutive absolute ones (#324).
+    ///
+    /// The reference takes `nonzero` of the mask and chunks whatever
+    /// survives, in order. With holes in the visible set the two
+    /// readings diverge completely: under the old arithmetic the query
+    /// would be handed positions 4..8, which here are not merely the
+    /// wrong block — 4, 6, 8, 9 and 10 are positions the mask forbids
+    /// it from seeing at all.
+    #[test]
+    fn blocks_are_cut_from_the_visible_set_not_the_position_axis() {
+        // block_size 4, budget 4 => one block survives the top-k.
+        let qsa = BlockSelector::new(2, 1, 4, 4).unwrap();
+        let live = [3usize, 5, 7, 11, 13, 17, 19, 23, 29];
+        let visible = VisibleSet::Sparse(&live);
+
+        assert_eq!(qsa.n_blocks(visible.len()), 2);
+        // Block 0 begins at visible[0] = 3, block 1 at visible[4] = 13.
+        assert_eq!(qsa.block_starts(&visible), vec![3, 13]);
+
+        // Score block 1 above block 0, so only block 1 is kept.
+        let got = qsa.select(&[0.1f32, 0.9], &visible).unwrap();
+        assert_eq!(
+            got,
+            vec![13, 17, 19, 23, 29],
+            "block 1 is visible[4..8], and the tail is visible[8..]"
+        );
+        // The failure this pins: index arithmetic would give 4..8 plus 8.
+        assert!(
+            !got.contains(&4) && !got.contains(&8),
+            "positions the mask forbids must never be selected: {got:?}"
+        );
+    }
+
+    /// The two representations must agree wherever both are valid.
+    ///
+    /// `Contiguous(n)` is an optimisation for the causal case, not a
+    /// different rule — if it can disagree with the explicit list of the
+    /// same positions, one of the two paths is wrong and only the
+    /// explicit one is checked against the reference.
+    #[test]
+    fn contiguous_and_sparse_agree_on_the_same_positions() {
+        let qsa = BlockSelector::new(2, 1, 4, 8).unwrap();
+        for n in [1usize, 4, 7, 8, 9, 15, 23] {
+            let explicit: Vec<usize> = (0..n).collect();
+            let scores = vec![0.5f32; qsa.n_blocks(n)];
+            let a = qsa.select(&scores, &VisibleSet::Contiguous(n)).unwrap();
+            let b = qsa.select(&scores, &VisibleSet::Sparse(&explicit)).unwrap();
+            assert_eq!(a, b, "representations disagree at n={n}");
+            assert_eq!(
+                qsa.block_starts(&VisibleSet::Contiguous(n)),
+                qsa.block_starts(&VisibleSet::Sparse(&explicit)),
+                "block starts disagree at n={n}"
+            );
+        }
+    }
+
     /// The cheapest gate in the architecture: below the budget, the
     /// selection returns every visible position, so a short prompt must
     /// be bit-comparable to dense causal attention.
@@ -609,7 +748,9 @@ mod tests {
         for n_visible in [1usize, 3, 4, 7, 2047, 2048] {
             assert!(qsa.is_dense(n_visible), "{n_visible} should be dense");
             let scores = vec![0.0f32; qsa.n_blocks(n_visible)];
-            let got = qsa.select(&scores, n_visible).unwrap();
+            let got = qsa
+                .select(&scores, &VisibleSet::Contiguous(n_visible))
+                .unwrap();
             assert_eq!(
                 got,
                 (0..n_visible).collect::<Vec<_>>(),
@@ -631,7 +772,9 @@ mod tests {
         assert_eq!(qsa.n_blocks(n_visible), 4);
         // Block 2 is worthless; with topk 3 it is the one dropped.
         let scores = [0.9f32, 0.8, 0.1, 0.7];
-        let got = qsa.select(&scores, n_visible).unwrap();
+        let got = qsa
+            .select(&scores, &VisibleSet::Contiguous(n_visible))
+            .unwrap();
         let want: Vec<usize> = (0..8).chain(12..19).collect();
         assert_eq!(got, want);
         assert!(got.contains(&(n_visible - 1)), "the query's own position");
@@ -721,7 +864,7 @@ mod tests {
         );
         // And the selection that rests on it picks the right block.
         assert_eq!(
-            qsa.select(&scores, 8).unwrap(),
+            qsa.select(&scores, &VisibleSet::Contiguous(8)).unwrap(),
             vec![4, 5, 6, 7],
             "the higher-scoring block should be the one kept"
         );
@@ -755,24 +898,26 @@ mod tests {
         let qsa = small();
         let keys = Tensor::zeros((11, 8), DType::BF16, &dev).unwrap();
         assert_eq!(qsa.pool(&keys).unwrap().dims(), &[2, 8]);
-        assert_eq!(qsa.block_starts(11), vec![0, 4]);
+        assert_eq!(qsa.block_starts(&VisibleSet::Contiguous(11)), vec![0, 4]);
 
         let short = Tensor::zeros((3, 8), DType::F32, &dev).unwrap();
         assert_eq!(qsa.pool(&short).unwrap().dims(), &[0, 8]);
-        assert!(qsa.block_starts(3).is_empty());
+        assert!(qsa.block_starts(&VisibleSet::Contiguous(3)).is_empty());
     }
 
     #[test]
     fn selection_is_ascending_and_rejects_a_wrong_score_count() {
         let qsa = small();
-        let got = qsa.select(&[0.1f32, 0.9, 0.5, 0.7, 0.2], 23).unwrap();
+        let got = qsa
+            .select(&[0.1f32, 0.9, 0.5, 0.7, 0.2], &VisibleSet::Contiguous(23))
+            .unwrap();
         assert!(got.windows(2).all(|w| w[0] < w[1]), "got {got:?}");
         // blocks 1, 3, 2 win; block 0 and 4 lose; tail 20..23 stays.
         assert_eq!(
             got,
             vec![4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 21, 22]
         );
-        assert!(qsa.select(&[0.1f32], 23).is_err());
+        assert!(qsa.select(&[0.1f32], &VisibleSet::Contiguous(23)).is_err());
     }
 
     // ---- the indexer as a layer ----
@@ -830,6 +975,61 @@ mod tests {
             &Device::Cpu,
         )
         .unwrap()
+    }
+
+    /// A cache that does not match `past_len + seq_len` is a ragged or
+    /// left-padded batch, and must fail loudly (#324).
+    ///
+    /// Every visible set is built as `Contiguous(past_len + i + 1)`, so
+    /// the moment one scalar `past_len` stops describing every row, the
+    /// selection is computed against the wrong past — and it stays
+    /// plausible, which is what makes it dangerous. The guard is only
+    /// worth having if it can fire, so this drives it directly rather
+    /// than trusting that it would.
+    #[test]
+    fn a_cache_inconsistent_with_past_len_is_refused() {
+        let (hidden_size, n_heads, head_dim) = (8, 2, 8);
+        let mut ix = indexer(hidden_size, n_heads, head_dim, 4, 4);
+        let rope = rope_for(head_dim);
+
+        // A history of 20 positions, while the step claims past_len 5:
+        // the shape a padded batch presents, where `total` is the
+        // padded maximum and no single `past_len` matches every row.
+        let stale = Tensor::zeros((1, 20, head_dim), DType::F32, &Device::Cpu).unwrap();
+        ix.restore_keys(Some(&stale));
+
+        let err = ix
+            .visible_positions(&hidden(1, 1, hidden_size, 0.7), &rope, 5)
+            .expect_err("a cache that disagrees with past_len must not be served");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("no longer contiguous") && msg.contains("324"),
+            "the error must name the contiguity assumption it protects, got: {msg}"
+        );
+    }
+
+    /// The same call with a consistent cache must be served, or the
+    /// guard above is just refusing everything.
+    #[test]
+    fn a_cache_consistent_with_past_len_is_served() {
+        let (hidden_size, n_heads, head_dim) = (8, 2, 8);
+        let mut ix = indexer(hidden_size, n_heads, head_dim, 4, 4);
+        let rope = rope_for(head_dim);
+
+        let history = Tensor::zeros((1, 5, head_dim), DType::F32, &Device::Cpu).unwrap();
+        ix.restore_keys(Some(&history));
+
+        // past_len 5 + this step's 1 == the 6 the cache will hold.
+        let got = ix
+            .visible_positions(&hidden(1, 1, hidden_size, 0.7), &rope, 5)
+            .expect("a contiguous history must still be served");
+        assert_eq!(got.len(), 1, "one batch row");
+        assert_eq!(got[0].len(), 1, "one query");
+        assert!(
+            got[0][0].iter().all(|p| *p < 6),
+            "positions must lie inside the 6-position history: {:?}",
+            got[0][0]
+        );
     }
 
     /// `index_qk_proj` is fused 4:1, not halved. With 4 query heads and
