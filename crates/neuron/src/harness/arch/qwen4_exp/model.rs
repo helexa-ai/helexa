@@ -213,6 +213,25 @@ impl Qwen4ExpForCausalLM {
 
     /// `input_ids` is `(B, T)`; `offset` is the sequence position the
     /// first of them sits at. Returns logits `(B, T, vocab)`.
+    /// Logits for **every** position, `(B, T, vocab)`.
+    ///
+    /// Not the serving path — [`Self::forward`] is, and it returns only
+    /// the last position because that is all sampling needs and all the
+    /// harness accepts. This exists because the upstream reference
+    /// returns every position, so full-model parity (#323) has to
+    /// compare every position or compare nothing.
+    ///
+    /// The two are pinned together by a test rather than by
+    /// inspection: `forward` must equal the last row of this. A
+    /// second path that is only exercised by tests is worth exactly
+    /// what proves it agrees with the first.
+    pub fn logits_all_positions(&mut self, input_ids: &Tensor, offset: usize) -> Result<Tensor> {
+        let (_, h) = self.forward_inner(input_ids, offset)?;
+        let x = self.mixer.collapse(&h)?;
+        Ok(self.lm_head.forward(&x)?)
+    }
+
+    /// Logits for the **last** position, `(B, 1, vocab)`.
     pub fn forward(&mut self, input_ids: &Tensor, offset: usize) -> Result<Tensor> {
         Ok(self.forward_inner(input_ids, offset)?.0)
     }
@@ -264,7 +283,16 @@ impl Qwen4ExpForCausalLM {
 
         // The mixer's hc_norm is the only normalisation before the head.
         let x = self.mixer.collapse(&h)?;
-        Ok((self.lm_head.forward(&x)?, h))
+        // Only the last position, `(B, 1, vocab)` — the same contract
+        // `qwen3_5` states and the harness relies on: `squeeze_to_vocab`
+        // strips leading singleton dims and refuses anything else, so a
+        // full `(B, T, vocab)` reaches it as `(T, vocab)` and is
+        // rejected. Returning every position is what a *reference*
+        // implementation does, which is why the parity fixture holds
+        // them all and [`Self::logits_all_positions`] exists to be
+        // compared against it.
+        let l = x.dim(1)?;
+        Ok((self.lm_head.forward(&x.i((.., l - 1.., ..))?)?, h))
     }
 
     /// Capture every piece of per-request state at one token boundary:
@@ -825,13 +853,24 @@ mod tests {
         let (_dir, mut model) = build();
         let ids = Tensor::from_vec(vec![5u32, 9, 3, 12, 7], (1, 5), &Device::Cpu).unwrap();
 
+        // The serving path returns the last position only, `(B, 1, V)`
+        // — the contract `qwen3_5` states and `squeeze_to_vocab`
+        // enforces.
         let logits = model.forward(&ids, 0).unwrap();
-        assert_eq!(logits.dims(), &[1, 5, 32]);
+        assert_eq!(logits.dims(), &[1, 1, 32]);
         let values: Vec<f32> = logits.flatten_all().unwrap().to_vec1().unwrap();
         assert!(
             values.iter().all(|v| v.is_finite()),
             "a wrong stream width or a dead mask row shows up as NaN"
         );
+
+        // The parity path returns every position, and both must be
+        // finite: a dead mask row shows up in one and not the other.
+        model.clear_kv_cache().unwrap();
+        let all = model.logits_all_positions(&ids, 0).unwrap();
+        assert_eq!(all.dims(), &[1, 5, 32]);
+        let values: Vec<f32> = all.flatten_all().unwrap().to_vec1().unwrap();
+        assert!(values.iter().all(|v| v.is_finite()));
     }
 
     /// A decode step continues the prefill: the caches, the rotary
