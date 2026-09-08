@@ -25,9 +25,9 @@ use cortex_core::openai::{
     ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, ChatMessage, MessageContent,
 };
 
-// `PhaseTiming` is only constructed on the device-worker streaming
-// path, which is cuda-gated -- importing it unconditionally warns on a
-// CPU-only build, and clippy runs with `-D warnings`.
+// `PhaseTiming` is constructed only on the two cuda-gated streaming
+// paths (device-worker and TP), so importing it unconditionally warns
+// on a CPU-only build and clippy runs with `-D warnings`.
 #[cfg(feature = "cuda")]
 use crate::wire::PhaseTiming;
 use crate::wire::{
@@ -3510,11 +3510,13 @@ impl CandleHarness {
                 let reasoning_tokens_inner = loaded.reasoning_tokens.clone();
                 let tool_call_tokens_inner = loaded.tool_call_tokens.clone();
                 let tool_schemas_inner = tool_schemas.clone();
+                let model_id_inner = model_id.clone();
                 tokio::spawn(
                     async move {
                         let _admit = admit;
                         let _inference_guard = loaded_for_task.inference_lock.lock().await;
                         match stream_inference_via_worker(
+                            model_id_inner,
                             worker,
                             handle,
                             tokenizer,
@@ -7281,6 +7283,9 @@ async fn run_inference_via_worker(
 #[cfg(feature = "cuda")]
 #[allow(clippy::too_many_arguments)]
 async fn stream_inference_via_worker(
+    // Owned: this runs in a spawned task, and the only other source of
+    // the model name here is the tracing span, which is not a value.
+    model_id: String,
     worker: Arc<super::device_worker::DeviceWorkerHandle>,
     handle: super::device_worker::ArchHandle,
     tokenizer: Tokenizer,
@@ -7590,7 +7595,7 @@ async fn stream_inference_via_worker(
         "chat_completion (stream): done"
     );
     crate::metrics::record_finish(
-        model_id,
+        &model_id,
         prefill_elapsed.as_millis() as u32,
         decode_start.elapsed().as_millis() as u32,
         all_tokens.len() as u32,
