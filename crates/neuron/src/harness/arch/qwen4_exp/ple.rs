@@ -685,10 +685,35 @@ impl PleBlock {
             Tensor::cat(&[&pad, &prepended], 2)?
         });
 
-        // Pad both sides by the full reach, then keep the left-aligned
-        // window: output t sees inputs t - j*dilation only.
-        let out = prepended.conv1d(&self.conv1d_weight, reach, 1, self.dilation, wide)?;
-        let out = candle_nn::ops::silu(&out.narrow(2, 0, prep_len)?)?;
+        // Written as `kernel_size` shifted broadcast multiplies rather
+        // than a `conv1d` with `groups = wide`. candle decomposes a
+        // grouped convolution into one single-group call per group plus
+        // a `groups`-way concat, so the depthwise form costs O(wide)
+        // kernel launches — ~40k of them for the 10240-wide stream here,
+        // which dominates the whole forward pass. This form is O(kernel
+        // _size) launches and computes the same sum:
+        //
+        //     out[t] = sum_j w[.., j] * x[t - (kernel_size - 1 - j) * dilation]
+        //
+        // with positions left of the sequence reading as zero. Tap
+        // `kernel_size - 1` is the current position, so it always
+        // contributes and seeds the accumulator.
+        let tap = |j: usize| -> candle_core::Result<Tensor> {
+            self.conv1d_weight.narrow(2, j, 1)?.reshape((1, wide, 1))
+        };
+        let mut acc = prepended.broadcast_mul(&tap(self.kernel_size - 1)?)?;
+        for j in 0..self.kernel_size - 1 {
+            let lag = (self.kernel_size - 1 - j) * self.dilation;
+            // Every position this tap reads is left of the sequence, so
+            // it contributes only the zeros the padding would have held.
+            if lag >= prep_len {
+                continue;
+            }
+            let pad = Tensor::zeros((b, wide, lag), prepended.dtype(), prepended.device())?;
+            let shifted = Tensor::cat(&[&pad, &prepended.narrow(2, 0, prep_len - lag)?], 2)?;
+            acc = (acc + shifted.broadcast_mul(&tap(j)?)?)?;
+        }
+        let out = candle_nn::ops::silu(&acc)?;
         out.narrow(2, prep_len - l, l)?
             .transpose(1, 2)?
             .contiguous()
@@ -1050,6 +1075,59 @@ mod tests {
             );
         }
         assert_eq!(ple.left_context(), dilation);
+    }
+
+    /// Which tap reaches how far back, at the shipped `kernel_size`.
+    ///
+    /// Tap `j` must read position `t - (kernel_size - 1 - j) * dilation`,
+    /// so the weights run far-to-near and the *last* one is the current
+    /// position. Every other conv test here uses `kernel_size = 2`, where
+    /// that mapping and its reverse agree on the only non-zero lag — so
+    /// none of them can see a transposed tap order. The shipped config is
+    /// `kernel_size = 4`, where the four lags are 9, 6, 3 and 0: a single
+    /// impulse with four distinct weights lands each tap in its own
+    /// position, and reversing the order swaps the 9 and 3 responses.
+    #[test]
+    fn conv_taps_run_far_to_near_across_the_full_kernel() {
+        let dev = Device::Cpu;
+        let (wide, dilation, kernel_size) = (1, 3, 4);
+        // Far to near: w[0] reaches 9 back, w[3] is the current position.
+        let conv_w =
+            Tensor::from_vec(vec![1.0f32, 2.0, 3.0, 4.0], (wide, 1, kernel_size), &dev).unwrap();
+        let mut ple = block(1, 1, kernel_size, dilation, eye(1), eye(1), conv_w);
+
+        let mut impulse = vec![0.0f32; 10];
+        impulse[0] = 1.0;
+        let x = Tensor::from_vec(impulse, (1, 10, wide), &dev).unwrap();
+        let got: Vec<f32> = ple
+            .short_conv(&x)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+
+        let silu = |v: f32| v / (1.0 + (-v).exp());
+        // Weight 4 at lag 0, 3 at lag 3, 2 at lag 6, 1 at lag 9.
+        let want = [
+            silu(4.0),
+            0.0,
+            0.0,
+            silu(3.0),
+            0.0,
+            0.0,
+            silu(2.0),
+            0.0,
+            0.0,
+            silu(1.0),
+        ];
+        for (i, (g, w)) in got.iter().zip(want.iter()).enumerate() {
+            assert!(
+                (g - w).abs() < 1e-5,
+                "position {i}: got {got:?} want {want:?}"
+            );
+        }
+        assert_eq!(ple.left_context(), (kernel_size - 1) * dilation);
     }
 
     /// Decoding one token at a time must give the same answer as running
