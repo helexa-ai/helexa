@@ -6,10 +6,18 @@ bench UI shows.
 
 ## Topology
 
-- **cortex** runs on `hanzalova.internal` (10.6.0.46) and is the **only**
-  Prometheus target — it exposes every `cortex_*` metric on `:31314`, already
-  labelled by `{node,model}` / `{node,device}` from its neuron poller. neuron
-  has no `/metrics` endpoint.
+- **cortex** runs on `hanzalova.internal` (10.6.0.46) and exposes every
+  `cortex_*` metric on `:31314`, already labelled by `{node,model}` /
+  `{node,device}` from its neuron poller. This is the fleet-shaped view:
+  who is loaded where, how busy, how much VRAM.
+- **neuron** additionally serves `/metrics` on its own API port
+  (`:13131`) on each GPU host. This is the request-shaped view — where a
+  request's time actually went, as histograms rather than polled gauges.
+  It exists because cortex's numbers are a ~10s poll of `/health`
+  republished as gauges, which cannot see inside a one-second forward and
+  carries no distribution. Scrape job: `prometheus-neuron.scrape.yml`.
+  **No firewalld rule needed** — 13131 is already open for the control
+  plane (`data/neuron-firewalld.xml`).
 - **Prometheus + Grafana** run on `golgafrinchans.kosherinata.internal` as
   podman quadlets. Host ports (from the registered band — 9090 is Cockpit,
   3000 was avoided): **Prometheus `:26559`** (container config bind-mounted at

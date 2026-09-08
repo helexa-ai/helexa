@@ -5804,6 +5804,19 @@ impl CandleHarness {
                         emit_ms = phase_emit.as_millis(),
                         "chat_completion (stream): done"
                     );
+                    crate::metrics::record_finish(
+                        &model_id,
+                        prefill_ms_measured,
+                        decode_start
+                            .map(|d| d.elapsed().as_millis() as u32)
+                            .unwrap_or(0),
+                        all_tokens.len() as u32,
+                        Some((
+                            phase_forward.as_millis() as u32,
+                            phase_sample.as_millis() as u32,
+                            phase_emit.as_millis() as u32,
+                        )),
+                    );
                     let _ = tx
                         .send(InferenceEvent::Finish {
                             reason: finish_reason,
@@ -7575,6 +7588,17 @@ async fn stream_inference_via_worker(
         sample_ms = phase_sample.as_millis(),
         emit_ms = phase_emit.as_millis(),
         "chat_completion (stream): done"
+    );
+    crate::metrics::record_finish(
+        model_id,
+        prefill_elapsed.as_millis() as u32,
+        decode_start.elapsed().as_millis() as u32,
+        all_tokens.len() as u32,
+        Some((
+            phase_forward.as_millis() as u32,
+            phase_sample.as_millis() as u32,
+            phase_emit.as_millis() as u32,
+        )),
     );
     let _ = tx
         .send(InferenceEvent::Finish {

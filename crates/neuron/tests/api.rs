@@ -100,6 +100,49 @@ async fn test_version_endpoint() {
 }
 
 #[tokio::test]
+async fn test_metrics_endpoint_serves_prometheus_text() {
+    // The recorder is process-wide and other tests in this binary may
+    // have installed it already; either way the route must answer, and
+    // must never answer 200-with-empty-body (indistinguishable from a
+    // healthy process reporting nothing).
+    let _ = neuron::metrics::install();
+    neuron::metrics::record_finish("probe-model", 100, 1000, 64, Some((900, 50, 10)));
+    let url = spawn_neuron(fake_discovery()).await;
+
+    let resp = reqwest::Client::new()
+        .get(format!("{url}/metrics"))
+        .send()
+        .await
+        .expect("request should succeed");
+
+    assert_eq!(resp.status(), 200);
+    let ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default()
+        .to_string();
+    assert!(
+        ct.starts_with("text/plain"),
+        "Prometheus needs a text/plain scrape, got {ct:?}"
+    );
+
+    let body = resp.text().await.expect("body");
+    // The exporter renders only metrics that carry samples -- a
+    // `describe_*` on its own produces nothing -- so the scrape has to
+    // be checked after a recorded request, which is also the path that
+    // actually matters: record here, readable there.
+    assert!(
+        body.contains("neuron_decode_phase_seconds"),
+        "a recorded request must appear in the scrape:\n{body}"
+    );
+    assert!(
+        body.contains(r#"phase="forward""#) && body.contains(r#"phase="residual""#),
+        "phase labels must survive to the scrape:\n{body}"
+    );
+}
+
+#[tokio::test]
 async fn test_health_endpoint() {
     let url = spawn_neuron(fake_discovery()).await;
 
