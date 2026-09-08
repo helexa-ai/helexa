@@ -432,7 +432,11 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
     let ids = expected["input_ids"].to_dtype(DType::U32).unwrap();
     let reference: Vec<f32> = expected["logits"].flatten_all().unwrap().to_vec1().unwrap();
 
-    let logits = model.forward(&ids, 0).expect("forward");
+    // Every position, because that is what the reference returns and
+    // what makes a per-position breakdown possible at all.
+    let logits = model
+        .logits_all_positions(&ids, 0)
+        .expect("all-position logits");
     let ours: Vec<f32> = logits
         .to_dtype(DType::F32)
         .unwrap()
@@ -468,5 +472,47 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
         c.max_abs < max_abs_bound,
         "max abs diff {:.6} exceeds {max_abs_bound:e}",
         c.max_abs
+    );
+
+    // The serving path returns only the last position, `(B, 1, vocab)`
+    // — a different shape from what was just compared, and the
+    // difference is not cosmetic: `squeeze_to_vocab` strips leading
+    // singleton dims and rejects the rest, so a model returning every
+    // position loads fine and then faults on its first token with
+    // "logits expected to start with a singleton dim". That is exactly
+    // what happened on beast, after a 16-minute load, because this
+    // test flattened both sides and a flattened `[1,12,32]` and
+    // `[12,32]` are the same 384 numbers.
+    //
+    // So: assert the shape, and assert the two paths agree.
+    // The caches advanced during the call above; a second forward at
+    // offset 0 would find the indexer holding twice the positions it
+    // expects. Clearing is what a real second request does.
+    model
+        .clear_kv_cache()
+        .expect("clear between the two forwards");
+    let serving = model.forward(&ids, 0).expect("serving forward");
+    let (b, t, v) = serving.dims3().expect("serving logits are rank 3");
+    assert_eq!(
+        (b, t),
+        (1, 1),
+        "the serving path must return one position, got {:?}",
+        serving.dims()
+    );
+    let last: Vec<f32> = serving.flatten_all().unwrap().to_vec1().unwrap();
+    let expected_last = &ours[ours.len() - v..];
+    // Close, not identical: the serving path slices to one position
+    // *before* `lm_head`, so its matmul is `[1,1,h] x [h,V]` where the
+    // other is `[1,T,h] x [h,V]`. Same arithmetic, different
+    // accumulation order, ~1e-7 apart. Demanding bit-equality here
+    // would be asserting something about BLAS rather than about us.
+    let worst = last
+        .iter()
+        .zip(expected_last)
+        .map(|(a, b)| (a - b).abs())
+        .fold(0f32, f32::max);
+    assert!(
+        worst < 1e-5,
+        "the serving path disagrees with the last position of the full logits by {worst:e}"
     );
 }
