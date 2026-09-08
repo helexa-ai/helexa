@@ -420,6 +420,26 @@ impl MmapNGramTable {
             // defend against.
             let map = unsafe { memmap2::Mmap::map(&file) }
                 .with_context(|| format!("mmap {}", path.display()))?;
+            // Every access through this mapping is a 320-byte row picked
+            // by a hash: sixteen unrelated rows per token, out of
+            // 320,001,536. The kernel's default readahead assumes
+            // sequential access and faults a whole window per touch,
+            // which is pure amplification here -- and this table is
+            // 95 GiB against a host that is also holding the routed
+            // experts (#318) in RAM, so every wasted page evicts one
+            // that a later gather wanted.
+            //
+            // Advisory: a failure changes performance, never
+            // correctness, so it is logged rather than propagated. A
+            // kernel or filesystem that ignores MADV_RANDOM simply
+            // leaves the previous behaviour in place.
+            if let Err(e) = map.advise(memmap2::Advice::Random) {
+                tracing::debug!(
+                    file = %path.display(),
+                    error = %e,
+                    "ple: MADV_RANDOM refused; readahead stays on for this mapping"
+                );
+            }
             let (header_len, meta) =
                 safetensors::SafeTensors::read_metadata(&map).map_err(|e| {
                     anyhow::anyhow!("read safetensors metadata from {}: {e}", path.display())
