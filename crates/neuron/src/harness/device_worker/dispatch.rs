@@ -198,6 +198,9 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 // modality asked for it.
                 if was_present {
                     trim_device_pool(&state);
+                    // The experts may have been in host memory, and
+                    // dropping them is not the same as giving them back.
+                    trim_host_heap("drop_arch");
                 }
                 tracing::debug!(
                     device_index,
@@ -938,6 +941,52 @@ fn load_gguf_inner(
 }
 
 /// Load a dense safetensors model on the worker thread.
+/// Return freed heap to the operating system, and say how much.
+///
+/// The host-side counterpart to [`trim_device_pool`], and it exists
+/// for the same reason on the other side of the bus. Host-resident
+/// experts (#318) are ~1.4 MB per allocation, 1,536 per layer, 73,728
+/// for the model. glibc raises its mmap threshold adaptively as it
+/// observes frees of mmap'd blocks — up to 32 MB — so once it has
+/// grown past our allocation size the rest come from the arena and are
+/// never returned. Dropping the model frees them and RSS does not
+/// move.
+///
+/// Measured on beast: 64.6 GB of anonymous memory still resident ten
+/// minutes after the model was unloaded, on a host with 123 GB. The
+/// next load needing another 68 GB would take the node out, which is a
+/// worse failure than any VRAM exhaustion — it is not one model that
+/// stops, it is the machine.
+///
+/// Reports the delta because a trim that silently does nothing is the
+/// failure mode worth catching, and this session has shipped that bug
+/// twice already.
+fn trim_host_heap(context: &str) {
+    let rss = || -> Option<u64> {
+        let status = std::fs::read_to_string("/proc/self/status").ok()?;
+        let line = status.lines().find(|l| l.starts_with("VmRSS:"))?;
+        line.split_whitespace().nth(1)?.parse::<u64>().ok()
+    };
+    let before = rss();
+    // SAFETY: `malloc_trim` takes no pointers and has no preconditions
+    // beyond being linked against glibc, which the gate below ensures.
+    #[cfg(target_env = "gnu")]
+    let released = unsafe { libc::malloc_trim(0) } == 1;
+    #[cfg(not(target_env = "gnu"))]
+    let released = false;
+    match (before, rss()) {
+        (Some(b), Some(a)) => tracing::info!(
+            context,
+            released,
+            before_gib = b as f64 / (1024.0 * 1024.0),
+            after_gib = a as f64 / (1024.0 * 1024.0),
+            freed_gib = b.saturating_sub(a) as f64 / (1024.0 * 1024.0),
+            "host heap trimmed (#318)"
+        ),
+        _ => tracing::info!(context, released, "host heap trimmed (#318)"),
+    }
+}
+
 /// Log the cache summary when the load leaves scope, successful or
 /// not. A load that OOMs half way is precisely when the question "how
 /// much of that was re-quantised?" is worth answering.
