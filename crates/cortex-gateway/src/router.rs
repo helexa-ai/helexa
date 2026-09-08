@@ -550,6 +550,7 @@ async fn profile_to_spec(
         // depends on its VRAM, and cortex routes to several. The neuron
         // decides from its own config.
         expert_residency: None,
+        max_in_flight: None,
     }
 }
 

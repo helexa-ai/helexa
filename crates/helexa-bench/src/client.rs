@@ -222,6 +222,7 @@ impl TargetClient {
             // report where the experts were placed (#318), so a
             // reconstructed spec cannot carry it either.
             expert_residency: None,
+            max_in_flight: None,
         })
     }
 

@@ -195,6 +195,27 @@ pub struct ModelSpec {
     /// exists to inform.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expert_residency: Option<ExpertResidency>,
+
+    /// Concurrent running requests for *this* model, overriding the
+    /// host's `[harness.candle.admission] max_in_flight`.
+    ///
+    /// Capacity is a property of the model as much as the host. A
+    /// device-resident dense model amortises its weight reads across a
+    /// batch almost perfectly, which is why beast runs 8. A sparse MoE
+    /// does not: *n* concurrent tokens select up to `10n` distinct
+    /// experts, so expert traffic scales close to linearly with the
+    /// batch — #309 measured eight concurrent streams returning only
+    /// **1.73×** the total decode throughput of one, with the experts
+    /// still on the device. With them in host memory behind DDR5 the
+    /// same effect runs against a bus an order of magnitude slower.
+    ///
+    /// So a host that serves both wants different answers for each,
+    /// and the load spec is where per-model operator decisions already
+    /// travel (`sampling`, `preserve_thinking`).
+    ///
+    /// `None` takes the host's setting, which is every model today.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_in_flight: Option<usize>,
 }
 
 /// Where a sparse MoE's routed experts are held (#318).

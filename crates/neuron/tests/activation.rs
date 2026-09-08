@@ -32,6 +32,7 @@ async fn test_load_default_models_skips_unknown_harness() {
             sampling: None,
             preserve_thinking: None,
             expert_residency: None,
+            max_in_flight: None,
         },
         ModelSpec {
             model_id: "model-b".into(),
@@ -42,6 +43,7 @@ async fn test_load_default_models_skips_unknown_harness() {
             sampling: None,
             preserve_thinking: None,
             expert_residency: None,
+            max_in_flight: None,
         },
     ];
 
@@ -104,6 +106,7 @@ async fn test_load_default_models_skipped_on_driver_mismatch() {
         sampling: None,
         preserve_thinking: None,
         expert_residency: None,
+        max_in_flight: None,
     }];
     let activation = ActivationTracker::new(&specs);
     let reason = "host NVIDIA driver/library mismatch (userspace NVML 580.159 vs loaded \
@@ -208,6 +211,7 @@ fn qwen_spec() -> ModelSpec {
         sampling: None,
         preserve_thinking: None,
         expert_residency: None,
+        max_in_flight: None,
     }
 }
 
