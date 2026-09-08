@@ -262,6 +262,14 @@ impl Experts {
         Ok(Experts::Quantized(out))
     }
 
+    /// Where the routed experts live, when that is knowable (#318).
+    pub(crate) fn device(&self) -> Option<Device> {
+        match self {
+            Experts::Quantized(v) => v.first().and_then(QuantizedExpert::device),
+            _ => None,
+        }
+    }
+
     /// The quantised tensors, named for the on-disk cache (#322).
     ///
     /// `None` for any layout that is not quantised — there is nothing
@@ -515,6 +523,9 @@ impl Module for Qwen3_5MoeBlock {
         let (b, l, hidden) = xs.dims3()?;
         let xs_flat = xs.reshape(((), hidden))?;
 
+        // Routing stays where the activations are: it is one small
+        // matmul against `gate` and a host-side top-k, and the router
+        // is device-resident even when the experts are not.
         let (tokens_for, weights_for) = route_scatter(
             &self.gate,
             &xs_flat,
@@ -523,19 +534,51 @@ impl Module for Qwen3_5MoeBlock {
             self.norm_topk_prob,
         )?;
 
-        let mut ys = xs_flat.zeros_like()?;
+        // Cross to the experts once for the whole layer, not once per
+        // expert (#318). With host-resident experts the old shape was
+        // 10 round trips per layer and 480 per token; this is one in
+        // and one out. `to_device` is a clone when they already match,
+        // so a device-resident model pays nothing.
+        //
+        // The measurement this was written against says the transfers
+        // were never the dominant cost — see `expert_ms` below — but
+        // one crossing per layer is the right shape regardless of what
+        // dominates.
+        let home = self.experts.device();
+        let off_device = home.is_some();
+        let routed_dev = home.unwrap_or_else(|| xs.device().clone());
+        let xs_routed = xs_flat.to_device(&routed_dev)?;
+
+        let started = std::time::Instant::now();
+        let mut ys = xs_routed.zeros_like()?;
         for e in 0..self.experts.len() {
             if tokens_for[e].is_empty() {
                 continue;
             }
-            let rows = Tensor::new(tokens_for[e].as_slice(), xs.device())?;
-            let picked = xs_flat.index_select(&rows, 0)?;
+            let rows = Tensor::new(tokens_for[e].as_slice(), &routed_dev)?;
+            let picked = xs_routed.index_select(&rows, 0)?;
             let out = self.experts.forward_one(e, &picked)?;
-            let w = Tensor::new(weights_for[e].as_slice(), xs.device())?
+            let w = Tensor::new(weights_for[e].as_slice(), &routed_dev)?
                 .to_dtype(out.dtype())?
                 .reshape(((), 1))?;
             ys = ys.index_add(&rows, &out.broadcast_mul(&w)?, 0)?;
         }
+        // Where the time actually goes, per layer, when the experts are
+        // not on the device. Logged at trace so a normal load is
+        // unaffected; `NEURON_EXPERT_TIMING=1` is what a measurement
+        // run sets. Without this the only figure available is
+        // end-to-end tok/s, which cannot distinguish "the transfers are
+        // slow" from "the CPU matmul is slow" — and those have opposite
+        // fixes.
+        if off_device && std::env::var("NEURON_EXPERT_TIMING").is_ok() {
+            tracing::info!(
+                expert_ms = started.elapsed().as_secs_f64() * 1e3,
+                rows = xs_routed.dims()[0],
+                active = tokens_for.iter().filter(|t| !t.is_empty()).count(),
+                "moe: routed experts (#318)"
+            );
+        }
+        let mut ys = ys.to_device(xs.device())?;
 
         if let (Some(shared), Some(gate)) = (&self.shared_expert, &self.shared_expert_gate) {
             let mix = candle_nn::ops::sigmoid(&gate.forward(&xs_flat)?)?;
