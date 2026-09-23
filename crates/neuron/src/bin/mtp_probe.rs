@@ -79,6 +79,11 @@ struct Args {
     /// measuring on a replayed session instead.
     #[arg(long)]
     prompt_file: Option<PathBuf>,
+    /// Prefill chunk size. The mask for a one-shot prefill is L x L —
+    /// 2.5 GB at 25k tokens — so the probe chunks like the serving path
+    /// does.
+    #[arg(long, default_value_t = 512)]
+    prefill_chunk: usize,
     /// Timed-but-discarded rounds before measurement starts.
     #[arg(long, default_value_t = 3)]
     warmup: usize,
@@ -159,6 +164,59 @@ fn causal_mask(l: usize, offset: usize, dtype: DType, dev: &Device) -> Result<Te
     Ok(Tensor::from_vec(data, (1, 1, l, total), dev)?.to_dtype(dtype)?)
 }
 
+/// Walk the prompt through target and head, in chunks.
+///
+/// Two reasons this is chunked rather than one forward: the causal mask
+/// is `L x L` — 2.5 GB at 25k tokens, which OOMs a 12 GB card before a
+/// single weight is touched — and the serving path chunks too, so this
+/// keeps the measurement on the same shape of work.
+///
+/// The head trails the target by one token: at position `i` it takes
+/// the embedding of token `i+1` with the target's hidden state at `i`.
+/// Each chunk therefore reaches one token into the next. The final
+/// prompt position has no successor yet — the first generated token
+/// fills that slot.
+///
+/// Returns the target's logits and hidden state at the last position.
+#[allow(clippy::too_many_arguments)]
+fn prefill(
+    model: &mut Qwen3_5ForCausalLM,
+    head: &mut MtpHead,
+    rotary: &RotaryEmbedding,
+    ids: &[u32],
+    chunk: usize,
+    dtype: DType,
+    dev: &Device,
+    sync: &dyn Fn(&Device) -> Result<()>,
+) -> Result<(Tensor, Tensor)> {
+    let n = ids.len();
+    let mut last: Option<(Tensor, Tensor)> = None;
+    let mut at = 0usize;
+    while at < n {
+        let end = (at + chunk).min(n);
+        let block = Tensor::new(&ids[at..end], dev)?.unsqueeze(0)?;
+        let (logits, hidden) = model.forward_with_hidden(&block, at)?;
+        let l = end - at;
+
+        let head_end = end.min(n - 1);
+        if head_end > at {
+            let hl = head_end - at;
+            let shifted = Tensor::new(&ids[at + 1..head_end + 1], dev)?.unsqueeze(0)?;
+            let embeds = model.embed_tokens(&shifted)?;
+            let hid = hidden.i((.., ..hl, ..))?;
+            let mask = causal_mask(hl, at, dtype, dev)?;
+            let positions: Vec<usize> = (at..head_end).collect();
+            let (cos, sin) = rotary.cos_sin_at(&positions)?;
+            head.forward(&embeds, &hid, Some(&mask), &cos, &sin)?;
+        }
+
+        last = Some((logits, hidden.i((.., l - 1.., ..))?));
+        at = end;
+        sync(dev)?;
+    }
+    last.context("empty prompt")
+}
+
 struct Timings {
     target_decode_ms: f64,
     draft_step_ms: f64,
@@ -229,31 +287,23 @@ fn main() -> Result<()> {
 
     // ── prefill ─────────────────────────────────────────────────────
     let n = ids.len();
-    let input = Tensor::new(ids.as_slice(), &dev)?.unsqueeze(0)?;
     let t0 = Instant::now();
-    let (logits, hidden) = model.forward_with_hidden(&input, 0)?;
-    sync(&dev)?;
-    eprintln!("target prefill: {:.2} s", t0.elapsed().as_secs_f64());
-
-    // The head walks the prompt alongside the target: at position i it
-    // consumes the embedding of token i+1 and the target's hidden state
-    // at i, and predicts token i+2. Feeding it only the newest token
-    // would leave it attending over an empty past.
-    let shifted = Tensor::new(&ids[1..], &dev)?.unsqueeze(0)?;
-    let embeds = model.embed_tokens(&shifted)?;
-    let hidden_prefix = hidden.i((.., ..n - 1, ..))?;
-    let mask = causal_mask(n - 1, 0, dtype, &dev)?;
-    let positions: Vec<usize> = (0..n - 1).collect();
-    let (cos, sin) = rotary.cos_sin_at(&positions)?;
-    let t0 = Instant::now();
-    head.forward(&embeds, &hidden_prefix, Some(&mask), &cos, &sin)?;
-    sync(&dev)?;
-    eprintln!("head prefill: {:.2} s", t0.elapsed().as_secs_f64());
+    let (logits, hidden) = prefill(
+        &mut model,
+        &mut head,
+        &rotary,
+        &ids,
+        args.prefill_chunk,
+        dtype,
+        &dev,
+        &sync,
+    )?;
+    eprintln!("prefill ({n} tokens): {:.2} s", t0.elapsed().as_secs_f64());
 
     // ── the loop ────────────────────────────────────────────────────
     let vocab = text_cfg.vocab_size;
     let mut last_logits: Vec<f32> = logits.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
-    let mut hidden_cur = hidden.i((.., n - 1.., ..))?;
+    let mut hidden_cur = hidden;
     let mut produced: Vec<u32> = Vec::new();
     // (step at which it was drafted, the drafted tokens)
     let mut pending: Vec<(usize, Vec<u32>)> = Vec::new();
@@ -374,18 +424,18 @@ fn main() -> Result<()> {
                 .copied()
                 .chain(produced.iter().copied())
                 .collect();
-            let replay_t = Tensor::new(replay.as_slice(), &dev)?.unsqueeze(0)?;
-            let (lg, hd) = model.forward_with_hidden(&replay_t, 0)?;
+            let (lg, hd) = prefill(
+                &mut model,
+                &mut head,
+                &rotary,
+                &replay,
+                args.prefill_chunk,
+                dtype,
+                &dev,
+                &sync,
+            )?;
             last_logits = lg.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
-            let m = replay.len();
-            hidden_cur = hd.i((.., m - 1.., ..))?;
-            let sh = Tensor::new(&replay[1..], &dev)?.unsqueeze(0)?;
-            let em = model.embed_tokens(&sh)?;
-            let hp = hd.i((.., ..m - 1, ..))?;
-            let mk = causal_mask(m - 1, 0, dtype, &dev)?;
-            let ps: Vec<usize> = (0..m - 1).collect();
-            let (cc, ss) = rotary.cos_sin_at(&ps)?;
-            head.forward(&em, &hp, Some(&mk), &cc, &ss)?;
+            hidden_cur = hd;
             pending.clear();
         }
     }
