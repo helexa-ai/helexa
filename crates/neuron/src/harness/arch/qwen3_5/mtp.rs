@@ -338,9 +338,20 @@ mod tests {
     ///
     /// The speculative verify pass (#96) reads the target's own token
     /// at every drafted position, so the whole scheme rests on those
-    /// logits being the ones the model would have produced anyway. The
-    /// two differ by one slice, and this pins that they differ by
-    /// nothing else: same tokens, same offset, last row bit-identical.
+    /// logits being the ones the model would have produced anyway.
+    ///
+    /// Agreement is to a tolerance, not bit-for-bit, and the reason is
+    /// worth recording: `forward` slices the last position *before* the
+    /// LM head and multiplies `(1, 1, H) x (H, vocab)`, while
+    /// `forward_multi` multiplies `(1, L, H) x (H, vocab)` and slices
+    /// after. Different GEMM shapes accumulate in a different order, so
+    /// the results differ in the last ULP or two — on this fixture,
+    /// 0.0016435327 against 0.0016435329. An exact assertion passed on
+    /// one CPU's BLAS blocking and failed on another's, which is the
+    /// only thing it was really testing.
+    ///
+    /// What matters for acceptance is that the argmax agrees, so that
+    /// is asserted too: a verify pass compares tokens, not floats.
     #[test]
     fn forward_multi_agrees_with_forward_at_the_last_position() {
         use super::super::{Config, Qwen3_5ForCausalLM};
@@ -427,10 +438,28 @@ mod tests {
         assert_eq!(single.dims(), &[1, 1, vocab]);
         let single: Vec<f32> = single.flatten_all().unwrap().to_vec1().unwrap();
 
+        let max_diff = last_of_multi
+            .iter()
+            .zip(single.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0f32, f32::max);
+        assert!(
+            max_diff < 1e-5,
+            "forward_multi's last row must match what forward returns \
+             (max abs diff {max_diff:e}): {last_of_multi:?} vs {single:?}"
+        );
+
+        let argmax = |v: &[f32]| {
+            v.iter()
+                .enumerate()
+                .max_by(|a, b| a.1.partial_cmp(b.1).expect("finite logits"))
+                .map(|(i, _)| i)
+                .expect("non-empty")
+        };
         assert_eq!(
-            last_of_multi, single,
-            "the last row of forward_multi is what forward returns; they differ by a slice \
-             and must differ by nothing else"
+            argmax(&last_of_multi),
+            argmax(&single),
+            "the verify pass compares tokens; the argmax must agree"
         );
     }
 }
