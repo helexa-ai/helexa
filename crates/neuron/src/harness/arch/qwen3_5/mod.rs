@@ -894,6 +894,20 @@ impl Qwen3_5ForCausalLM {
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
+    /// Logits at **every** position: `(B, L, vocab)`.
+    ///
+    /// [`Self::forward`] slices the last position off before the LM
+    /// head, which is what a plain decode step wants. Speculative
+    /// verification (#96) wants the opposite: the target forwards the
+    /// drafted block in one pass and needs its own token at each
+    /// position to compare against the draft. The forward already
+    /// computes all of them — chunked prefill relies on it — so this
+    /// only declines to throw them away.
+    pub fn forward_multi(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        let hidden = self.base.forward(input, offset)?;
+        hidden.apply(&self.lm_head)
+    }
+
     /// Like [`Self::forward`], but also returns the hidden state the
     /// logits were produced from — `(B, L, hidden)`, post-final-norm,
     /// every position.

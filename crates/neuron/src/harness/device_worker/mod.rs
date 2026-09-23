@@ -578,6 +578,40 @@ impl DeviceWorkerHandle {
         }
     }
 
+    /// Multi-position forward (#96): logits at every position of
+    /// `tokens`, one CPU `[vocab]` row each. Same no-device-tensor
+    /// contract as [`Self::forward_logits`]; the speculative verify
+    /// pass reads the target's token at each drafted position.
+    pub async fn forward_logits_multi(
+        &self,
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<Vec<f32>>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::ForwardLogitsMulti {
+                handle,
+                tokens,
+                offset,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     /// One lockstep batched decode step (#98): row i's next token at
     /// position `prefix_lens[i] + step`. Returns one CPU `[vocab]`
     /// logits row per batch row, ready for per-slot sampling — same

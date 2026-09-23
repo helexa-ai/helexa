@@ -1167,6 +1167,18 @@ impl ModelArch {
         }
     }
 
+    /// Logits at every position of a multi-token forward: `(B, L,
+    /// vocab)`. The speculative verify pass (#96) reads the target's
+    /// own token at each drafted position; `squeeze_to_vocab` is
+    /// deliberately not applied, as it would collapse the L axis this
+    /// exists to keep.
+    pub fn forward_multi(&mut self, input: &Tensor, offset: usize) -> Result<Tensor> {
+        match self {
+            ModelArch::Qwen3_5Dense(m) => Ok(m.forward_multi(input, offset)?),
+            _ => anyhow::bail!("forward_multi: architecture has no multi-position logits support"),
+        }
+    }
+
     /// Padding mask for a batched decode step — see
     /// `Qwen3_5Model::batch_decode_mask`.
     pub fn batch_decode_mask(

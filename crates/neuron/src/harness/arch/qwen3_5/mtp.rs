@@ -332,4 +332,105 @@ mod tests {
             "the reversed reading is what this test exists to catch: {reversed:?}"
         );
     }
+
+    /// `forward_multi` must agree with `forward` at the position they
+    /// share.
+    ///
+    /// The speculative verify pass (#96) reads the target's own token
+    /// at every drafted position, so the whole scheme rests on those
+    /// logits being the ones the model would have produced anyway. The
+    /// two differ by one slice, and this pins that they differ by
+    /// nothing else: same tokens, same offset, last row bit-identical.
+    #[test]
+    fn forward_multi_agrees_with_forward_at_the_last_position() {
+        use super::super::{Config, Qwen3_5ForCausalLM};
+        use candle_core::IndexOp;
+
+        let (h, inter, heads, kv, head_dim, vocab) =
+            (8usize, 16usize, 2usize, 1usize, 4usize, 32usize);
+        let dev = Device::Cpu;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut t: HashMap<String, Tensor> = HashMap::new();
+        let zeros = |shape: &[usize]| Tensor::zeros(shape, DType::F32, &dev).unwrap();
+        let randn = |shape: &[usize]| Tensor::randn(0f32, 0.1f32, shape, &dev).unwrap();
+        t.insert("model.embed_tokens.weight".into(), randn(&[vocab, h]));
+        t.insert("lm_head.weight".into(), randn(&[vocab, h]));
+        t.insert("model.norm.weight".into(), zeros(&[h]));
+        let l = "model.layers.0";
+        t.insert(format!("{l}.input_layernorm.weight"), zeros(&[h]));
+        t.insert(format!("{l}.post_attention_layernorm.weight"), zeros(&[h]));
+        t.insert(
+            format!("{l}.self_attn.q_proj.weight"),
+            randn(&[2 * heads * head_dim, h]),
+        );
+        t.insert(
+            format!("{l}.self_attn.k_proj.weight"),
+            randn(&[kv * head_dim, h]),
+        );
+        t.insert(
+            format!("{l}.self_attn.v_proj.weight"),
+            randn(&[kv * head_dim, h]),
+        );
+        t.insert(
+            format!("{l}.self_attn.o_proj.weight"),
+            randn(&[h, heads * head_dim]),
+        );
+        t.insert(format!("{l}.self_attn.q_norm.weight"), zeros(&[head_dim]));
+        t.insert(format!("{l}.self_attn.k_norm.weight"), zeros(&[head_dim]));
+        t.insert(format!("{l}.mlp.gate_proj.weight"), randn(&[inter, h]));
+        t.insert(format!("{l}.mlp.up_proj.weight"), randn(&[inter, h]));
+        t.insert(format!("{l}.mlp.down_proj.weight"), randn(&[h, inter]));
+        let path = dir.path().join("model.safetensors");
+        candle_core::safetensors::save(&t, &path).expect("write tiny checkpoint");
+        // SAFETY: mmaps a file this test just wrote and owns.
+        let vb = unsafe {
+            candle_nn::var_builder::ShardedSafeTensors::var_builder(
+                std::slice::from_ref(&path),
+                DType::F32,
+                &dev,
+            )
+        }
+        .expect("build ShardedVarBuilder");
+
+        let raw = format!(
+            r#"{{
+                "model_type": "qwen3_next",
+                "vocab_size": {vocab}, "hidden_size": {h}, "intermediate_size": {inter},
+                "num_hidden_layers": 1, "num_attention_heads": {heads},
+                "num_key_value_heads": {kv}, "head_dim": {head_dim},
+                "max_position_embeddings": 64, "rms_norm_eps": 1e-6,
+                "attn_output_gate": true,
+                "layer_types": ["full_attention"]
+            }}"#
+        );
+        let cfg = Config::from_config_json(&raw).expect("parse tiny config");
+        let mut model = Qwen3_5ForCausalLM::new(cfg, vb).expect("load tiny checkpoint");
+
+        let input = Tensor::new(&[1u32, 5, 9, 2], &dev)
+            .unwrap()
+            .unsqueeze(0)
+            .unwrap();
+        let multi = model.forward_multi(&input, 0).expect("forward_multi");
+        assert_eq!(multi.dims(), &[1, 4, vocab], "one logits row per position");
+        let last_of_multi: Vec<f32> = multi.i((0, 3, ..)).unwrap().to_vec1().unwrap();
+        // A head that returned the same row L times would satisfy the
+        // comparison below without carrying per-position information,
+        // which is the whole point of the pass.
+        let first_of_multi: Vec<f32> = multi.i((0, 0, ..)).unwrap().to_vec1().unwrap();
+        assert_ne!(
+            first_of_multi, last_of_multi,
+            "positions must carry distinct logits, not a repeated row"
+        );
+
+        model.clear_kv_cache();
+        let single = model.forward(&input, 0).expect("forward");
+        assert_eq!(single.dims(), &[1, 1, vocab]);
+        let single: Vec<f32> = single.flatten_all().unwrap().to_vec1().unwrap();
+
+        assert_eq!(
+            last_of_multi, single,
+            "the last row of forward_multi is what forward returns; they differ by a slice \
+             and must differ by nothing else"
+        );
+    }
 }
