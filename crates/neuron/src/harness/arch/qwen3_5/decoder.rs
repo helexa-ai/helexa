@@ -77,7 +77,25 @@ impl Qwen3_5DecoderLayer {
                     cfg.layer_types.len()
                 )
             })?;
+        Self::load_typed(cfg, rotary, layer_type, cfg.layer_uses_moe(layer_idx), vb)
+    }
 
+    /// Load a layer whose flavour is stated rather than looked up.
+    ///
+    /// The MTP head's layer (#96) sits at `mtp.layers.0`, outside the
+    /// `layer_types` list that indexes the target's own layers — asking
+    /// that list about it would answer for a target layer that happens
+    /// to share the index. The checkpoint says what it is: plain
+    /// `self_attn.{q,k,v,o}_proj` with `q_norm`/`k_norm`, and a dense
+    /// `mlp`, i.e. full attention without MoE, whatever the target
+    /// layer at index 0 happens to be.
+    pub fn load_typed(
+        cfg: &TextConfig,
+        rotary: Arc<RotaryEmbedding>,
+        layer_type: &str,
+        use_moe: bool,
+        vb: &ShardedVarBuilder,
+    ) -> Result<Self> {
         let attention = match layer_type {
             "full_attention" => {
                 AttentionKind::Full(Qwen3_5Attention::load(cfg, rotary, &vb.pp("self_attn"))?)
@@ -86,12 +104,12 @@ impl Qwen3_5DecoderLayer {
                 AttentionKind::Linear(GatedDeltaNet::load(cfg, &vb.pp("linear_attn"))?)
             }
             other => anyhow::bail!(
-                "unknown layer_type '{other}' for layer {layer_idx} (expected \
-                 'full_attention' or 'linear_attention')"
+                "unknown layer_type '{other}' (expected 'full_attention' or \
+                 'linear_attention')"
             ),
         };
 
-        let mlp = if cfg.layer_uses_moe(layer_idx) {
+        let mlp = if use_moe {
             MlpKind::Moe(Qwen3_5MoeBlock::load(cfg, &vb.pp("mlp"))?)
         } else {
             MlpKind::Dense(Qwen3_5MLP::load(cfg, &vb.pp("mlp"))?)

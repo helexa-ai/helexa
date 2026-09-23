@@ -322,6 +322,15 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 }
                 let _ = reply.send(result);
             }
+            Job::ForwardLogitsMulti {
+                handle,
+                tokens,
+                offset,
+                reply,
+            } => {
+                let result = forward_logits_multi(&mut state, handle, &tokens, offset);
+                let _ = reply.send(result);
+            }
             Job::ForwardLogitsBatch {
                 handle,
                 tokens,
@@ -1575,6 +1584,40 @@ fn extract_kv_rows(
 /// on the worker's device, derives per-row positions and the padding
 /// mask, and copies each row's logits back to CPU — same
 /// "tensors never escape the worker" contract as `forward_logits`.
+/// Logits at every position of a multi-token forward (#96).
+///
+/// The tensors stay on the worker thread; only CPU rows cross back, one
+/// per position. At K+1 = 5 positions and a 248k vocabulary that is
+/// ~5 MB a round — acceptable while this is a measurement path, and the
+/// first thing to replace with a device-side argmax if the draft/verify
+/// loop ever runs on it in production.
+fn forward_logits_multi(
+    state: &mut DeviceWorkerState,
+    handle: ArchHandle,
+    tokens: &[u32],
+    offset: usize,
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    use candle_core::{DType, Tensor};
+
+    anyhow::ensure!(!tokens.is_empty(), "ForwardLogitsMulti: empty token slice");
+    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
+    let arch = state
+        .models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("ForwardLogitsMulti: no model for handle {}", handle.0))?;
+
+    // (1, L, vocab) → one CPU row per position.
+    let logits = arch.forward_multi(&input, offset)?.to_dtype(DType::F32)?;
+    let (_, positions, vocab) = logits.dims3()?;
+    anyhow::ensure!(
+        positions == tokens.len(),
+        "ForwardLogitsMulti: model returned {positions} rows for {} tokens",
+        tokens.len()
+    );
+    let flat: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+    Ok(flat.chunks(vocab).map(<[f32]>::to_vec).collect())
+}
+
 fn forward_logits_batch(
     state: &mut DeviceWorkerState,
     handle: ArchHandle,
@@ -1769,6 +1812,9 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(Err(err()));
         }
         Job::AssembleKvBatch { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::ForwardLogitsMulti { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogitsBatch { reply, .. } => {

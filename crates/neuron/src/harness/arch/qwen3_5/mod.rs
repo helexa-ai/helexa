@@ -77,6 +77,7 @@ pub mod full_attn;
 pub mod linear_attn;
 pub mod mlp;
 pub mod moe;
+pub mod mtp;
 pub mod rmsnorm;
 pub mod rope;
 pub mod vision;
@@ -225,6 +226,16 @@ pub struct TextConfig {
     /// pointwise after softmax+matmul.
     #[serde(default)]
     pub attn_output_gate: bool,
+    /// Multi-token-prediction head depth (#96). `1` on the checkpoints
+    /// that ship one (`Qwen3.8-27B`, `Qwen3.5-0.8B`); absent or `0`
+    /// means the weights carry no `mtp.*` tensors.
+    #[serde(default)]
+    pub mtp_num_hidden_layers: usize,
+    /// Whether the MTP head has its own embedding table. `false` on
+    /// every checkpoint seen so far, which is why the head costs only
+    /// its own layer and not a second vocabulary-sized matrix.
+    #[serde(default)]
+    pub mtp_use_dedicated_embeddings: bool,
 
     /// One entry per decoder layer; values are `"full_attention"` or
     /// `"linear_attention"`. Length must equal `num_hidden_layers`.
@@ -881,6 +892,46 @@ impl Qwen3_5ForCausalLM {
         let (_, l) = input.dims2()?;
         let hidden = self.base.forward(input, offset)?;
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
+    }
+
+    /// Logits at **every** position: `(B, L, vocab)`.
+    ///
+    /// [`Self::forward`] slices the last position off before the LM
+    /// head, which is what a plain decode step wants. Speculative
+    /// verification (#96) wants the opposite: the target forwards the
+    /// drafted block in one pass and needs its own token at each
+    /// position to compare against the draft. The forward already
+    /// computes all of them — chunked prefill relies on it — so this
+    /// only declines to throw them away.
+    pub fn forward_multi(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        let hidden = self.base.forward(input, offset)?;
+        hidden.apply(&self.lm_head)
+    }
+
+    /// Like [`Self::forward`], but also returns the hidden state the
+    /// logits were produced from — `(B, L, hidden)`, post-final-norm,
+    /// every position.
+    ///
+    /// The MTP head (#96) consumes exactly this tensor: vLLM's
+    /// `Qwen3NextModel::forward` returns `self.norm(...)` and its
+    /// runner hands that to the draft head. Kept beside `forward` so
+    /// the two cannot drift about which hidden state that is.
+    pub fn forward_with_hidden(
+        &mut self,
+        input: &Tensor,
+        offset: usize,
+    ) -> candle_core::Result<(Tensor, Tensor)> {
+        let (_, l) = input.dims2()?;
+        let hidden = self.base.forward(input, offset)?;
+        let logits = hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)?;
+        Ok((logits, hidden))
+    }
+
+    /// The token embedding the MTP head fuses with the hidden state.
+    /// The head has none of its own (`mtp_use_dedicated_embeddings` is
+    /// false on every checkpoint seen), so it borrows the target's.
+    pub fn embed_tokens(&self, input: &Tensor) -> candle_core::Result<Tensor> {
+        self.base.embed_tokens.forward(input)
     }
 
     /// Lockstep batched decode step (#98): `(B, 1)` input, per-row

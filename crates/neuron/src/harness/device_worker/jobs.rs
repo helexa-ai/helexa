@@ -225,6 +225,19 @@ pub enum Job {
     /// values `AssembleKvBatch` was built from) and replies one CPU
     /// `[vocab]` logits row per batch row, ready for per-slot
     /// sampling on the async side.
+    /// Logits at every position of a multi-token forward (#96).
+    ///
+    /// `ForwardLogits` returns one `[vocab]` row because a decode step
+    /// only has one. A speculative verify pass forwards K+1 tokens and
+    /// needs the target's token at each of them, so this returns one
+    /// row per position — `Vec<Vec<f32>>`, like `ForwardLogitsBatch`,
+    /// but indexed by position rather than by batch row.
+    ForwardLogitsMulti {
+        handle: ArchHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        reply: oneshot::Sender<Result<Vec<Vec<f32>>>>,
+    },
     ForwardLogitsBatch {
         handle: ArchHandle,
         tokens: Vec<u32>,
