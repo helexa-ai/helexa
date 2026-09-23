@@ -927,6 +927,13 @@ impl Qwen3_5ForCausalLM {
         Ok((logits, hidden))
     }
 
+    /// Apply the LM head to a hidden state. The MTP head has none of
+    /// its own (#96) — draft and target logits come from this same
+    /// projection, which is what makes their distributions comparable.
+    pub fn lm_head(&self, hidden: &Tensor) -> candle_core::Result<Tensor> {
+        hidden.apply(&self.lm_head)
+    }
+
     /// The token embedding the MTP head fuses with the hidden state.
     /// The head has none of its own (`mtp_use_dedicated_embeddings` is
     /// false on every checkpoint seen), so it borrows the target's.

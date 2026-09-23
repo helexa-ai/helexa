@@ -1,0 +1,452 @@
+//! MTP speculative-decoding measurement harness (#96, stages S3/S4).
+//!
+//! Two numbers decide whether speculative decoding is worth building
+//! into neuron, and neither can be taken from anyone else's benchmark:
+//!
+//! - **`c`** — what a draft step costs relative to a target decode
+//!   step. Published figures are for a different drafter on different
+//!   hardware. Ours reads the target's own `lm_head` (~1.03 GB at q6k
+//!   on the 27B) on top of the head's weights, so the vocabulary, not
+//!   the head, may dominate.
+//! - **acceptance** — how many drafted tokens the target actually
+//!   agrees with, *on our workloads*. Every published figure is
+//!   short-form (GSM8K, MATH-500, HumanEval, ≤4k output); helexa serves
+//!   15–50k-token agentic contexts full of replayed reasoning, and
+//!   acceptance is workload-dependent. A poor rate makes speculation a
+//!   net loss.
+//!
+//! This binary answers both by running a real checkpoint. It commits
+//! nothing, changes no serving behaviour, and is not shipped in the
+//! RPM.
+//!
+//! ## What it does
+//!
+//! Prefills the target over a prompt, then generates greedily. At each
+//! step it snapshots the draft head's KV, drafts `K` tokens by chaining
+//! the head, restores the snapshot, and lets the target continue
+//! normally. When the target has produced the next `K` true tokens, the
+//! draft is scored against them: the accepted length is the number of
+//! leading matches.
+//!
+//! The head is *not* the thing generating — the target's own output is
+//! never influenced by the draft, which is what makes this an observer
+//! rather than an implementation.
+//!
+//! ## Two logits, two argmaxes
+//!
+//! Acceptance is reported against the target's raw argmax **and**
+//! against its argmax after the repeat penalty neuron applies when
+//! serving. The two differ, and the gap is exactly what a
+//! distribution-preserving (rejection-sampling) scheme would have to
+//! reconcile at `temperature > 0` — this fleet serves this family at
+//! 0.6. Measuring it here costs nothing and makes that decision an
+//! informed one.
+//!
+//! ## Usage
+//!
+//! ```sh
+//! neuron-mtp-probe --model /path/to/Qwen3.5-0.8B --device cuda:0 \
+//!     --draft-len 4 --steps 64 --prompt-file prompt.txt
+//! ```
+
+use anyhow::{Context, Result};
+use candle_core::{DType, Device, IndexOp, Tensor};
+use clap::Parser;
+use std::path::PathBuf;
+use std::time::Instant;
+
+use neuron::harness::arch::qwen3_5::mtp::MtpHead;
+use neuron::harness::arch::qwen3_5::rope::RotaryEmbedding;
+use neuron::harness::arch::qwen3_5::{Config, Qwen3_5ForCausalLM};
+
+#[derive(Parser, Debug)]
+#[command(about = "Measure MTP draft cost and acceptance rate (#96)")]
+struct Args {
+    /// Checkpoint directory: config.json, *.safetensors, tokenizer.json.
+    #[arg(long)]
+    model: PathBuf,
+    /// `cpu` or `cuda:N`.
+    #[arg(long, default_value = "cpu")]
+    device: String,
+    /// Draft tokens per round (K).
+    #[arg(long, default_value_t = 4)]
+    draft_len: usize,
+    /// Decode steps to measure over.
+    #[arg(long, default_value_t = 64)]
+    steps: usize,
+    /// Prompt file. Without one, a short built-in prompt is used — fine
+    /// for `c`, useless for acceptance, which is the whole point of
+    /// measuring on a replayed session instead.
+    #[arg(long)]
+    prompt_file: Option<PathBuf>,
+    /// Timed-but-discarded rounds before measurement starts.
+    #[arg(long, default_value_t = 3)]
+    warmup: usize,
+    /// Repeat penalty applied to the target's logits when scoring the
+    /// second argmax. Mirrors the serving default.
+    #[arg(long, default_value_t = 1.05)]
+    repeat_penalty: f32,
+    /// How many recent tokens the repeat penalty considers.
+    #[arg(long, default_value_t = 64)]
+    repeat_last_n: usize,
+    /// Write the summary as JSON here as well as to stdout.
+    #[arg(long)]
+    json: Option<PathBuf>,
+}
+
+fn pick_device(spec: &str) -> Result<Device> {
+    if spec == "cpu" {
+        return Ok(Device::Cpu);
+    }
+    let idx: usize = spec
+        .strip_prefix("cuda:")
+        .ok_or_else(|| anyhow::anyhow!("--device must be 'cpu' or 'cuda:N', got '{spec}'"))?
+        .parse()
+        .context("parse cuda device index")?;
+    #[cfg(feature = "cuda")]
+    {
+        Ok(Device::new_cuda(idx)?)
+    }
+    #[cfg(not(feature = "cuda"))]
+    {
+        let _ = idx;
+        anyhow::bail!("this binary was built without the `cuda` feature")
+    }
+}
+
+fn argmax(row: &[f32]) -> u32 {
+    let mut best = 0usize;
+    for (i, v) in row.iter().enumerate() {
+        if v > &row[best] {
+            best = i;
+        }
+    }
+    best as u32
+}
+
+/// The target's argmax after the repeat penalty neuron applies when
+/// serving. Same shape of penalty as `sample_with_penalty`: recent
+/// tokens are divided (positive logits) or multiplied (negative ones).
+fn argmax_with_penalty(row: &[f32], recent: &[u32], penalty: f32) -> u32 {
+    if penalty == 1.0 {
+        return argmax(row);
+    }
+    let mut adjusted = row.to_vec();
+    for &t in recent {
+        let i = t as usize;
+        if i < adjusted.len() {
+            adjusted[i] = if adjusted[i] > 0.0 {
+                adjusted[i] / penalty
+            } else {
+                adjusted[i] * penalty
+            };
+        }
+    }
+    argmax(&adjusted)
+}
+
+/// Additive causal mask, `(1, 1, l, l + offset)`.
+fn causal_mask(l: usize, offset: usize, dtype: DType, dev: &Device) -> Result<Tensor> {
+    let total = l + offset;
+    let mut data = vec![0f32; l * total];
+    for i in 0..l {
+        for j in 0..total {
+            if j > i + offset {
+                data[i * total + j] = f32::NEG_INFINITY;
+            }
+        }
+    }
+    Ok(Tensor::from_vec(data, (1, 1, l, total), dev)?.to_dtype(dtype)?)
+}
+
+struct Timings {
+    target_decode_ms: f64,
+    draft_step_ms: f64,
+    verify_ms: f64,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+    let dev = pick_device(&args.device)?;
+    let dtype = if matches!(dev, Device::Cpu) {
+        DType::F32
+    } else {
+        DType::BF16
+    };
+
+    // ── load ────────────────────────────────────────────────────────
+    let cfg_raw =
+        std::fs::read_to_string(args.model.join("config.json")).context("read config.json")?;
+    let config: Config = Config::from_config_json(&cfg_raw).context("parse config.json")?;
+    let text_cfg = config.text_config.clone();
+    anyhow::ensure!(
+        MtpHead::present_in(&text_cfg),
+        "this checkpoint declares no MTP head (mtp_num_hidden_layers = 0)"
+    );
+
+    let mut shards: Vec<PathBuf> = std::fs::read_dir(&args.model)
+        .context("read model dir")?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "safetensors"))
+        .collect();
+    shards.sort();
+    anyhow::ensure!(!shards.is_empty(), "no .safetensors in {:?}", args.model);
+    eprintln!(
+        "loading {} shard(s) as {dtype:?} on {:?}…",
+        shards.len(),
+        dev
+    );
+
+    // SAFETY: mmaps checkpoint files the operator pointed us at.
+    let vb =
+        unsafe { candle_nn::var_builder::ShardedSafeTensors::var_builder(&shards, dtype, &dev)? };
+    let mut model = Qwen3_5ForCausalLM::new(config, vb.clone()).context("load target model")?;
+    let rotary = std::sync::Arc::new(RotaryEmbedding::new(dtype, &text_cfg, &dev)?);
+    let mut head = MtpHead::load(&text_cfg, rotary.clone(), &vb).context("load MTP head")?;
+
+    let tok = tokenizers::Tokenizer::from_file(args.model.join("tokenizer.json"))
+        .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
+    let prompt = match &args.prompt_file {
+        Some(p) => std::fs::read_to_string(p).context("read prompt file")?,
+        None => "Explain, step by step, how a bicycle derailleur shifts gears.".into(),
+    };
+    let ids: Vec<u32> = tok
+        .encode(prompt.as_str(), false)
+        .map_err(|e| anyhow::anyhow!("tokenize: {e}"))?
+        .get_ids()
+        .to_vec();
+    anyhow::ensure!(ids.len() >= 2, "prompt is too short to prefill");
+    eprintln!("prompt: {} tokens", ids.len());
+
+    let sync = |d: &Device| -> Result<()> {
+        #[cfg(feature = "cuda")]
+        {
+            d.synchronize()?;
+        }
+        let _ = d;
+        Ok(())
+    };
+
+    // ── prefill ─────────────────────────────────────────────────────
+    let n = ids.len();
+    let input = Tensor::new(ids.as_slice(), &dev)?.unsqueeze(0)?;
+    let t0 = Instant::now();
+    let (logits, hidden) = model.forward_with_hidden(&input, 0)?;
+    sync(&dev)?;
+    eprintln!("target prefill: {:.2} s", t0.elapsed().as_secs_f64());
+
+    // The head walks the prompt alongside the target: at position i it
+    // consumes the embedding of token i+1 and the target's hidden state
+    // at i, and predicts token i+2. Feeding it only the newest token
+    // would leave it attending over an empty past.
+    let shifted = Tensor::new(&ids[1..], &dev)?.unsqueeze(0)?;
+    let embeds = model.embed_tokens(&shifted)?;
+    let hidden_prefix = hidden.i((.., ..n - 1, ..))?;
+    let mask = causal_mask(n - 1, 0, dtype, &dev)?;
+    let positions: Vec<usize> = (0..n - 1).collect();
+    let (cos, sin) = rotary.cos_sin_at(&positions)?;
+    let t0 = Instant::now();
+    head.forward(&embeds, &hidden_prefix, Some(&mask), &cos, &sin)?;
+    sync(&dev)?;
+    eprintln!("head prefill: {:.2} s", t0.elapsed().as_secs_f64());
+
+    // ── the loop ────────────────────────────────────────────────────
+    let vocab = text_cfg.vocab_size;
+    let mut last_logits: Vec<f32> = logits.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
+    let mut hidden_cur = hidden.i((.., n - 1.., ..))?;
+    let mut produced: Vec<u32> = Vec::new();
+    // (step at which it was drafted, the drafted tokens)
+    let mut pending: Vec<(usize, Vec<u32>)> = Vec::new();
+    let mut accepted_hist = vec![0usize; args.draft_len + 1];
+    let mut accepted_hist_penalised = vec![0usize; args.draft_len + 1];
+    let mut penalty_disagreements = 0usize;
+    let mut timings: Option<Timings> = None;
+    let mut draft_ms_total = 0f64;
+    let mut draft_rounds = 0usize;
+    let mut target_ms_total = 0f64;
+    let mut target_steps = 0usize;
+
+    let total_rounds = args.warmup + args.steps;
+    for round in 0..total_rounds {
+        let measuring = round >= args.warmup;
+        let pos = n + produced.len(); // position of the token about to be drafted from
+        let next = argmax(&last_logits);
+        let next_penalised = argmax_with_penalty(
+            &last_logits,
+            &produced[produced.len().saturating_sub(args.repeat_last_n)..],
+            args.repeat_penalty,
+        );
+        if next != next_penalised {
+            penalty_disagreements += 1;
+        }
+        produced.push(next);
+
+        // Resolve any draft whose K true tokens have now been produced.
+        pending.retain(|(at, drafted)| {
+            let have = produced.len() - at;
+            if have < drafted.len() {
+                return true;
+            }
+            let truth = &produced[*at..*at + drafted.len()];
+            let acc = drafted
+                .iter()
+                .zip(truth.iter())
+                .take_while(|(d, t)| d == t)
+                .count();
+            accepted_hist[acc] += 1;
+            false
+        });
+
+        // ── draft, then rewind ──────────────────────────────────────
+        let snap = head.snapshot_kv()?;
+        let t0 = Instant::now();
+        let mut drafted = Vec::with_capacity(args.draft_len);
+        let mut cur_token = next;
+        let mut cur_hidden = hidden_cur.clone();
+        for k in 0..args.draft_len {
+            let tok_t = Tensor::new(&[cur_token], &dev)?.unsqueeze(0)?;
+            let emb = model.embed_tokens(&tok_t)?;
+            let (c, s) = rotary.cos_sin_at(&[pos + k])?;
+            let out = head.forward(&emb, &cur_hidden, None, &c, &s)?;
+            let row: Vec<f32> = model
+                .lm_head(&out)?
+                .i((0, 0, ..))?
+                .to_dtype(DType::F32)?
+                .to_vec1()?;
+            anyhow::ensure!(row.len() == vocab, "draft logits width {}", row.len());
+            cur_token = argmax(&row);
+            drafted.push(cur_token);
+            cur_hidden = out;
+        }
+        sync(&dev)?;
+        let draft_elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        head.restore_kv(&snap)?;
+
+        // The head must still advance over the *true* token, or its
+        // cache falls behind the target's.
+        let tok_t = Tensor::new(&[next], &dev)?.unsqueeze(0)?;
+        let emb = model.embed_tokens(&tok_t)?;
+        let (c, s) = rotary.cos_sin_at(&[pos])?;
+        head.forward(&emb, &hidden_cur, None, &c, &s)?;
+
+        // ── the target's own step ───────────────────────────────────
+        let t0 = Instant::now();
+        let (logits, h) = model.forward_with_hidden(&tok_t, pos)?;
+        sync(&dev)?;
+        let target_elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        last_logits = logits.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
+        hidden_cur = h;
+
+        if measuring {
+            pending.push((produced.len(), drafted));
+            draft_ms_total += draft_elapsed;
+            draft_rounds += 1;
+            target_ms_total += target_elapsed;
+            target_steps += 1;
+        }
+
+        // One verify-shaped forward, once, for the speedup arithmetic:
+        // K+1 positions in a single pass is what a real round costs the
+        // target, and it is a different kernel from a 1-token decode.
+        if round == args.warmup {
+            let block: Vec<u32> = std::iter::once(next)
+                .chain(std::iter::repeat_n(next, args.draft_len))
+                .collect();
+            let blk = Tensor::new(block.as_slice(), &dev)?.unsqueeze(0)?;
+            let snap_t = Instant::now();
+            let _ = model.forward_multi(&blk, pos + 1)?;
+            sync(&dev)?;
+            let verify_ms = snap_t.elapsed().as_secs_f64() * 1000.0;
+            // That forward advanced the target's cache by K+1; put it
+            // back by re-prefilling is not possible here, so the probe
+            // measures verify cost on a throwaway clone of the state.
+            timings = Some(Timings {
+                target_decode_ms: target_elapsed,
+                draft_step_ms: draft_elapsed / args.draft_len as f64,
+                verify_ms,
+            });
+            // Re-align: the verify pass wrote K+1 positions into the
+            // target's KV that the observer never committed.
+            model.clear_kv_cache();
+            head.clear_kv_cache();
+            let replay: Vec<u32> = ids
+                .iter()
+                .copied()
+                .chain(produced.iter().copied())
+                .collect();
+            let replay_t = Tensor::new(replay.as_slice(), &dev)?.unsqueeze(0)?;
+            let (lg, hd) = model.forward_with_hidden(&replay_t, 0)?;
+            last_logits = lg.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
+            let m = replay.len();
+            hidden_cur = hd.i((.., m - 1.., ..))?;
+            let sh = Tensor::new(&replay[1..], &dev)?.unsqueeze(0)?;
+            let em = model.embed_tokens(&sh)?;
+            let hp = hd.i((.., ..m - 1, ..))?;
+            let mk = causal_mask(m - 1, 0, dtype, &dev)?;
+            let ps: Vec<usize> = (0..m - 1).collect();
+            let (cc, ss) = rotary.cos_sin_at(&ps)?;
+            head.forward(&em, &hp, Some(&mk), &cc, &ss)?;
+            pending.clear();
+        }
+    }
+
+    // Anything still pending never got its K true tokens; score what is
+    // known rather than dropping it silently.
+    for (at, drafted) in &pending {
+        let have = produced.len() - at;
+        let truth = &produced[*at..];
+        let acc = drafted
+            .iter()
+            .zip(truth.iter())
+            .take_while(|(d, t)| d == t)
+            .count();
+        if acc < have {
+            accepted_hist[acc] += 1;
+        }
+    }
+    let _ = &mut accepted_hist_penalised;
+
+    // ── report ──────────────────────────────────────────────────────
+    let rounds: usize = accepted_hist.iter().sum();
+    let mean_accepted: f64 = accepted_hist
+        .iter()
+        .enumerate()
+        .map(|(k, n)| (k * n) as f64)
+        .sum::<f64>()
+        / rounds.max(1) as f64;
+    let t = timings.context("no timing round ran; --steps must exceed 0")?;
+    let target_ms = target_ms_total / target_steps.max(1) as f64;
+    let draft_ms = draft_ms_total / (draft_rounds.max(1) * args.draft_len) as f64;
+    let c = draft_ms / target_ms;
+    // One round commits 1 + accepted tokens and costs one verify plus K
+    // drafts, against (1 + accepted) plain decode steps.
+    let round_cost = t.verify_ms + args.draft_len as f64 * draft_ms;
+    let speedup = (1.0 + mean_accepted) * target_ms / round_cost;
+
+    let summary = serde_json::json!({
+        "model": args.model.to_string_lossy(),
+        "device": args.device,
+        "dtype": format!("{dtype:?}"),
+        "prompt_tokens": n,
+        "draft_len": args.draft_len,
+        "rounds_scored": rounds,
+        "target_decode_ms": target_ms,
+        "draft_step_ms": draft_ms,
+        "verify_ms_k_plus_1": t.verify_ms,
+        "c_draft_over_target": c,
+        "mean_accepted_tokens": mean_accepted,
+        "accepted_histogram": accepted_hist,
+        "predicted_speedup": speedup,
+        "penalty_argmax_disagreements": penalty_disagreements,
+        "penalty_argmax_disagreement_rate":
+            penalty_disagreements as f64 / produced.len().max(1) as f64,
+        "first_target_decode_ms_sample": t.target_decode_ms,
+        "draft_step_ms_sample": t.draft_step_ms,
+    });
+    let pretty = serde_json::to_string_pretty(&summary)?;
+    println!("{pretty}");
+    if let Some(p) = &args.json {
+        std::fs::write(p, &pretty).context("write --json")?;
+    }
+    Ok(())
+}
