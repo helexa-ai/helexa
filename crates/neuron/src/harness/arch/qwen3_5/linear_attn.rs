@@ -1391,6 +1391,8 @@ mod tests {
         let (b, l) = (1, 3);
         let cfg = TextConfig {
             vocab_size: 100,
+            mtp_num_hidden_layers: 0,
+            mtp_use_dedicated_embeddings: false,
             hidden_size: 16,
             intermediate_size: 32,
             num_hidden_layers: 1,

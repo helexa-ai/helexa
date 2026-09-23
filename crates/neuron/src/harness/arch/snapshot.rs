@@ -391,6 +391,8 @@ mod tests {
     fn tiny_config() -> TextConfig {
         TextConfig {
             vocab_size: 32,
+            mtp_num_hidden_layers: 0,
+            mtp_use_dedicated_embeddings: false,
             hidden_size: 16,
             intermediate_size: 32,
             num_hidden_layers: 2,
