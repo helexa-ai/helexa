@@ -219,9 +219,6 @@ pub fn request_to_chat(req: ResponsesRequest) -> Result<ChatCompletionRequest, T
         }
     }
 
-    // Only the newest turn's thinking is context; the rest is noise.
-    prune_stale_reasoning(&mut messages);
-
     // Carry the caller's extension fields across the hop (#277).
     //
     // This used to start from an empty map and insert exactly one key,
@@ -453,54 +450,6 @@ fn merge_tool_call_into(prev: &mut ChatMessage, msg: &mut ChatMessage) -> bool {
         }
     }
     true
-}
-
-/// Keep replayed reasoning on the most recent assistant turn only.
-///
-/// #277 restored the round-trip, and then over-corrected: a client that
-/// replays every turn verbatim — which is what an agentic harness does —
-/// had the model's entire thinking history rendered back into the
-/// prompt, because Qwen3.8's template defaults `preserve_thinking` to
-/// true. Measured on a live session: **62% of the assistant content
-/// being replayed was prior think blocks** (95,311 characters of
-/// thinking against 467 characters of actual output), and the model's
-/// per-turn reasoning collapsed to tens of tokens while it made
-/// increasingly shallow passes at the task.
-///
-/// Reasoning models are trained on histories that carry *final content*,
-/// not the deliberation behind it — Qwen's own multi-turn convention
-/// strips prior think blocks. But the newest block is different: when a
-/// turn was cut off mid-thought and the caller says "continue", that
-/// thinking is the work being resumed, which is what #277 exists to
-/// preserve.
-///
-/// So: newest assistant turn keeps its reasoning, everything older
-/// loses it. Note the template's own `preserve_thinking: false` is
-/// exactly backwards for this — it keeps thinking on turns *after* the
-/// last user message (the agentic case, where it is noise) and drops it
-/// on turns *before* (the continuation case, where it is the point).
-fn prune_stale_reasoning(messages: &mut [ChatMessage]) {
-    let newest = messages
-        .iter()
-        .rposition(|m| m.role == "assistant" && m.extra.get("reasoning_content").is_some());
-    let Some(newest) = newest else { return };
-    let mut dropped = 0usize;
-    for (i, m) in messages.iter_mut().enumerate() {
-        if i == newest || m.role != "assistant" {
-            continue;
-        }
-        if let Some(obj) = m.extra.as_object_mut()
-            && obj.remove("reasoning_content").is_some()
-        {
-            dropped += 1;
-        }
-    }
-    if dropped > 0 {
-        tracing::debug!(
-            dropped,
-            "responses: replaying reasoning for the newest assistant turn only"
-        );
-    }
 }
 
 /// The text of a replayed reasoning item, under either spelling.
@@ -1934,14 +1883,28 @@ mod tests {
         );
     }
 
-    /// An agentic harness replays every turn verbatim. Rendering all of
-    /// that thinking back into the prompt made the context mostly
-    /// self-quotation — 62% of replayed assistant content on a live
-    /// session — and the model started making shallow passes. Only the
-    /// newest turn's reasoning is context; the rest is noise the model
-    /// was never trained to read.
+    /// Prior-turn reasoning reaches the model; the model's own chat
+    /// template decides what to do with it (#329).
+    ///
+    /// The translator used to keep reasoning on the newest assistant
+    /// turn and delete it from the rest. That was a third policy, owned
+    /// by us, that no model vendor implements: every vendor's rule is
+    /// tool-loop aware (keep thinking within the current tool-calling
+    /// episode, drop it across user turns), which is exactly what
+    /// Qwen's `last_query_index` does and what Anthropic requires
+    /// inside a tool-use turn.
+    ///
+    /// It also made the prompt non-append-only: the block the model
+    /// generated into the KV cache was deleted on the next turn, so
+    /// turn N's token sequence was no longer a prefix of turn N+1's.
+    /// Measured across the change on a live fleet, prefix-cache reuse
+    /// on this surface went 53.9% -> 0.5%.
+    ///
+    /// Policy now lives where it is expressible: the template, through
+    /// `chat_template_kwargs.preserve_thinking`, with precedence
+    /// request > operator > the template's own default.
     #[test]
-    fn only_the_newest_turns_reasoning_is_replayed() {
+    fn prior_turn_reasoning_is_left_for_the_template_to_judge() {
         let raw = r#"{
             "model": "Qwen/Qwen3.8-27B",
             "input": [
@@ -1962,10 +1925,9 @@ mod tests {
             .collect();
         assert_eq!(
             carried,
-            ["newer plan"],
-            "older turns must keep their content but lose their thinking"
+            ["old plan", "newer plan"],
+            "every replayed turn's thinking must survive translation"
         );
-        // The turns themselves survive — only the thinking is pruned.
         assert_eq!(
             chat.messages
                 .iter()
@@ -1975,8 +1937,29 @@ mod tests {
         );
     }
 
-    /// The continuation case still works: a turn cut off mid-thought is
-    /// the newest assistant turn, so its reasoning is what survives.
+    /// The caller's own policy still reaches the template unaltered —
+    /// this is the toggle #329 specifies, and the one a client can
+    /// actually set (pi sends it verbatim via `samplingParams`).
+    #[test]
+    fn a_callers_preserve_thinking_reaches_the_template_kwargs() {
+        let raw = r#"{
+            "model": "Qwen/Qwen3.8-27B",
+            "input": [{"type": "message", "role": "user", "content": "hi"}],
+            "chat_template_kwargs": {"preserve_thinking": false}
+        }"#;
+        let req: ResponsesRequest = serde_json::from_str(raw).expect("parse");
+        let chat = request_to_chat(req).expect("translate");
+        assert_eq!(
+            chat.extra
+                .get("chat_template_kwargs")
+                .and_then(|k| k.get("preserve_thinking")),
+            Some(&serde_json::Value::Bool(false))
+        );
+    }
+
+    /// The continuation case (#277): a turn cut off mid-thought is
+    /// replayed as reasoning with no assistant turn after it, and that
+    /// thinking — the work being resumed — must reach the model.
     #[test]
     fn a_truncated_turn_keeps_its_reasoning_through_a_continue() {
         let raw = r#"{
