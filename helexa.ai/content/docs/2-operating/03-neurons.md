@@ -358,6 +358,20 @@ Whether narrowing replay *helps* the model is unmeasured. Set it in both
 `/v1/models` and logged at load so a session can be attributed to the
 arm it ran under.
 
+A caller can override it per request with
+`chat_template_kwargs.preserve_thinking`, on `/v1/chat/completions` and
+`/v1/responses` alike — precedence is request > operator > template
+default.
+
+The setting also decides whether a multi-turn prompt is append-only, and
+therefore whether the prefix cache can work at all. Replay is
+byte-stable: the think block the model generated is re-rendered
+unchanged, so turn N's tokens stay a prefix of turn N+1's. Anything that
+deletes a prior turn's reasoning rewrites the middle of the prompt and
+invalidates the cache from that point. Measured on this fleet when the
+Responses path pruned prior reasoning unconditionally, reuse fell from
+53.9% to 0.5% and stayed there (#329).
+
 **`reasoning_budget.answer_reserve_tokens`** (default `4096`) holds back
 part of the caller's output budget for the answer:
 
