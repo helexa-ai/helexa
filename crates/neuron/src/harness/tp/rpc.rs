@@ -78,6 +78,18 @@ pub enum WorkerRequest {
     /// same op. The leader does *not* receive logits back over RPC; it
     /// runs its own rank-0 forward in parallel and uses its own logits
     /// for sampling.
+    /// Multi-position forward (#96): like `GenerateStep`, but every
+    /// rank keeps the logits at *all* `tokens.len()` positions rather
+    /// than the last. The collectives are identical, so the ranks stay
+    /// in lockstep; only the leader's logits are read. Worker replies
+    /// with `GenerateStepOk`.
+    GenerateStepMulti {
+        model_id: String,
+        /// Identical on every rank, as for `GenerateStep`.
+        tokens: Vec<u32>,
+        offset: usize,
+    },
+
     GenerateStep {
         model_id: String,
         /// Input token ids for this step. For prefill, the whole prompt;

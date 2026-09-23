@@ -154,6 +154,26 @@ impl MtpHead {
         Ok(self.norm.forward(&x)?)
     }
 
+    /// Capture the draft layer's KV cache.
+    ///
+    /// Drafting advances the head over tokens that may be rejected, so
+    /// anything that drafts speculatively has to be able to put the
+    /// cache back. One full-attention layer is ~2 KiB/token/card, so
+    /// this is cheap next to the target's — which is why the observer
+    /// (#96 S4) can snapshot around every draft without distorting what
+    /// it measures.
+    pub fn snapshot_kv(&self) -> candle_core::Result<super::super::snapshot::LayerKvSnapshot> {
+        self.layer.snapshot_kv()
+    }
+
+    /// Put the draft layer's KV cache back, undoing a speculative walk.
+    pub fn restore_kv(
+        &mut self,
+        snap: &super::super::snapshot::LayerKvSnapshot,
+    ) -> candle_core::Result<()> {
+        self.layer.restore_kv(snap)
+    }
+
     /// Drop the draft layer's KV cache. Independent of the target's.
     pub fn clear_kv_cache(&mut self) {
         self.layer.clear_kv_cache();

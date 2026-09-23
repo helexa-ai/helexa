@@ -12,6 +12,14 @@ path = "src/lib.rs"
 name = "neuron"
 path = "src/main.rs"
 
+# Measurement harness for the MTP speculative-decoding stages (#96).
+# Not shipped in the RPM: it loads a checkpoint directly and reports
+# numbers, and exists so the go/no-go gate is a measurement rather than
+# an argument.
+[[bin]]
+name = "neuron-mtp-probe"
+path = "src/bin/mtp_probe.rs"
+
 [features]
 default = []
 # Enables CUDA acceleration in candle and the cudarc/nccl bindings the

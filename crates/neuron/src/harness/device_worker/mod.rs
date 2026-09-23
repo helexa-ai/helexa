@@ -968,6 +968,137 @@ impl DeviceWorkerHandle {
     /// logits as `Vec<f32>` ready for sampling. The caller is
     /// responsible for fan-out / drain of the subprocess workers
     /// concurrently with this call.
+    /// Load the MTP draft head onto the leader's TP model (#96).
+    #[cfg(feature = "cuda")]
+    pub async fn tp_load_mtp_head(
+        &self,
+        handle: TpHandle,
+        config_json: String,
+        safetensors_paths: Vec<String>,
+    ) -> Result<(), WorkerError> {
+        self.tp_mtp_job(|reply| Job::TpLoadMtpHead {
+            handle,
+            config_json,
+            safetensors_paths,
+            reply,
+        })
+        .await
+    }
+
+    /// Walk the leader's draft head over a prompt chunk (#96).
+    #[cfg(feature = "cuda")]
+    pub async fn tp_mtp_prefill_chunk(
+        &self,
+        handle: TpHandle,
+        shifted: Vec<u32>,
+        start_pos: usize,
+    ) -> Result<(), WorkerError> {
+        self.tp_mtp_job(|reply| Job::TpMtpPrefillChunk {
+            handle,
+            shifted,
+            start_pos,
+            reply,
+        })
+        .await
+    }
+
+    /// Draft `k` tokens on the leader, rewinding the head afterwards
+    /// (#96). Commits nothing.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_mtp_draft(
+        &self,
+        handle: TpHandle,
+        first_token: u32,
+        start_pos: usize,
+        k: usize,
+    ) -> Result<Vec<u32>, WorkerError> {
+        self.tp_mtp_job(|reply| Job::TpMtpDraft {
+            handle,
+            first_token,
+            start_pos,
+            k,
+            reply,
+        })
+        .await
+    }
+
+    /// Advance the leader's draft head over one committed token (#96).
+    #[cfg(feature = "cuda")]
+    pub async fn tp_mtp_advance(
+        &self,
+        handle: TpHandle,
+        token: u32,
+        pos: usize,
+    ) -> Result<(), WorkerError> {
+        self.tp_mtp_job(|reply| Job::TpMtpAdvance {
+            handle,
+            token,
+            pos,
+            reply,
+        })
+        .await
+    }
+
+    /// Shared submit/await for the leader-only draft-head jobs (#96):
+    /// same poison check and channel handling as every other job, in
+    /// one place because these four differ only in their payload.
+    #[cfg(feature = "cuda")]
+    async fn tp_mtp_job<T>(
+        &self,
+        build: impl FnOnce(oneshot::Sender<anyhow::Result<T>>) -> Job,
+    ) -> Result<T, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(build(reply_tx))
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// TP mirror of [`Self::forward_logits_multi`] (#96): one CPU
+    /// `[vocab]` row per position from the leader's shard.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_forward_logits_multi(
+        &self,
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<Vec<f32>>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpForwardLogitsMulti {
+                handle,
+                tokens,
+                offset,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     #[cfg(feature = "cuda")]
     pub async fn tp_forward_logits(
         &self,
