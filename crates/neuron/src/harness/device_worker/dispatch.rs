@@ -608,6 +608,16 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let _ = reply.send(result);
             }
             #[cfg(feature = "cuda")]
+            Job::TpForwardLogitsMulti {
+                handle,
+                tokens,
+                offset,
+                reply,
+            } => {
+                let result = tp_forward_logits_multi(&mut state, handle, &tokens, offset);
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
             Job::TpForwardLogitsWithImages {
                 handle,
                 tokens,
@@ -1314,6 +1324,41 @@ fn tp_forward_logits(
     Ok(values)
 }
 
+/// TP mirror of [`forward_logits_multi`] on the leader's shard (#96).
+/// The caller has already fanned the matching `GenerateStepMulti` out
+/// to the subprocess ranks; the `AllReduce` collectives inside this
+/// forward block until they arrive.
+#[cfg(feature = "cuda")]
+fn tp_forward_logits_multi(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    tokens: &[u32],
+    offset: usize,
+) -> anyhow::Result<Vec<Vec<f32>>> {
+    use candle_core::{DType, Tensor};
+
+    anyhow::ensure!(
+        !tokens.is_empty(),
+        "TpForwardLogitsMulti: empty token slice"
+    );
+    let input = Tensor::new(tokens, &state.device)?.unsqueeze(0)?;
+    let model = state
+        .tp_models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("TpForwardLogitsMulti: no model for handle {}", handle.0))?;
+
+    // (1, L, vocab) → one CPU row per position.
+    let logits = model.forward_multi(&input, offset)?.to_dtype(DType::F32)?;
+    let (_, positions, vocab) = logits.dims3()?;
+    anyhow::ensure!(
+        positions == tokens.len(),
+        "TpForwardLogitsMulti: model returned {positions} rows for {} tokens",
+        tokens.len()
+    );
+    let flat: Vec<f32> = logits.flatten_all()?.to_vec1()?;
+    Ok(flat.chunks(vocab).map(<[f32]>::to_vec).collect())
+}
+
 /// TP-equivalent of [`forward_logits_batch`] on the leader's shard
 /// (#98). The caller has already fanned the matching
 /// `GenerateStepBatch` out to the subprocess ranks.
@@ -1891,6 +1936,10 @@ fn drain_poisoned(job: Job, device_index: u32) {
             // Bookkeeping-only — unit reply so eviction never wedges
             // on a poisoned worker (same shape as DropKvSnapshot).
             let _ = reply.send(());
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpForwardLogitsMulti { reply, .. } => {
+            let _ = reply.send(Err(err()));
         }
         #[cfg(feature = "cuda")]
         Job::TpForwardLogits { reply, .. } => {

@@ -394,6 +394,17 @@ pub enum Job {
     /// without holding a device tensor. The caller is also
     /// responsible for fan-out to subprocess ranks and drain — only
     /// the leader's forward moves into the worker thread.
+    /// TP mirror of `ForwardLogitsMulti` (#96): logits at every
+    /// position of a multi-token forward on the leader's shard. The
+    /// caller has already fanned the matching `GenerateStepMulti` out
+    /// to the subprocess ranks, whose collectives this one waits on.
+    #[cfg(feature = "cuda")]
+    TpForwardLogitsMulti {
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+        reply: oneshot::Sender<Result<Vec<Vec<f32>>>>,
+    },
     #[cfg(feature = "cuda")]
     TpForwardLogits {
         handle: TpHandle,

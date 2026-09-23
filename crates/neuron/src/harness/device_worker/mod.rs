@@ -968,6 +968,39 @@ impl DeviceWorkerHandle {
     /// logits as `Vec<f32>` ready for sampling. The caller is
     /// responsible for fan-out / drain of the subprocess workers
     /// concurrently with this call.
+    /// TP mirror of [`Self::forward_logits_multi`] (#96): one CPU
+    /// `[vocab]` row per position from the leader's shard.
+    #[cfg(feature = "cuda")]
+    pub async fn tp_forward_logits_multi(
+        &self,
+        handle: TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<Vec<f32>>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::TpForwardLogitsMulti {
+                handle,
+                tokens,
+                offset,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
     #[cfg(feature = "cuda")]
     pub async fn tp_forward_logits(
         &self,

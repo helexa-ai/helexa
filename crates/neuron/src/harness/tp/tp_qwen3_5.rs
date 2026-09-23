@@ -2006,6 +2006,23 @@ impl TpQwen3_5ForCausalLM {
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
+    /// Logits at **every** position: `(B, L, vocab)`.
+    ///
+    /// The TP mirror of `Qwen3_5ForCausalLM::forward_multi` (#96). A
+    /// speculative verify pass forwards the drafted block in one pass
+    /// and needs the target's own token at each drafted position;
+    /// [`Self::forward`] slices the last one off before the LM head.
+    ///
+    /// Every rank runs this, because the row-parallel `o_proj` and the
+    /// MLP's `down_proj` issue `AllReduce` collectives that only
+    /// complete when all ranks arrive. The leader's copy is the one
+    /// whose logits are read — `lm_head` is replicated, so rank 0's
+    /// answer is the whole answer.
+    pub fn forward_multi(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
+        let hidden = self.base.forward(input, offset)?;
+        hidden.apply(&self.lm_head)
+    }
+
     /// Lockstep batched decode step (#98): `(B, 1)` input, per-row
     /// positions, padding mask from
     /// [`TpQwen3_5Model::batch_decode_mask`]. Returns `(B, 1, vocab)`.

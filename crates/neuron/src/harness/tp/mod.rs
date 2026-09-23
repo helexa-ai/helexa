@@ -67,6 +67,22 @@ impl TpLeaderModel {
         }
     }
 
+    /// Logits at every position (#96). Only the `qwen3_5` arch has a
+    /// multi-position path; the older dense `qwen3` arch says so rather
+    /// than silently returning the last row.
+    pub fn forward_multi(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            TpLeaderModel::Qwen3_5(m) => m.forward_multi(input, offset),
+            TpLeaderModel::Qwen3(_) => Err(candle_core::Error::Msg(
+                "forward_multi: the tp qwen3 arch has no multi-position logits path".into(),
+            )),
+        }
+    }
+
     /// Chunked image prefill on rank 0. Only the vision-capable
     /// `qwen3_5` arch supports it; the dense `qwen3` arch has no tower.
     pub fn prefill_with_images_chunked(
@@ -989,6 +1005,112 @@ impl WorkerPool {
                 } else {
                     Err(anyhow::Error::new(e).context(format!(
                         "GenerateStep: leader forward failed and workers also failed: {}",
+                        worker_errors.join("; ")
+                    )))
+                }
+            }
+        }
+    }
+
+    /// Multi-position forward across every rank (#96).
+    ///
+    /// Same fan-out / leader-forward / always-drain shape as
+    /// [`Self::generate_step`], and for the same reason: the
+    /// row-parallel `AllReduce`s only complete when every rank has
+    /// issued them, and a leader error must still drain the workers or
+    /// the stale replies poison the next request.
+    ///
+    /// Returns one `[vocab]` row per position from the leader's rank-0
+    /// shard, which is the whole answer because `lm_head` is
+    /// replicated.
+    #[cfg(feature = "cuda")]
+    pub async fn generate_step_multi(
+        &mut self,
+        model_id: &str,
+        leader_handle: super::device_worker::TpHandle,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> Result<Vec<Vec<f32>>> {
+        let step_start = std::time::Instant::now();
+        let tokens_len = tokens.len();
+        tracing::debug!(
+            model = %model_id,
+            tokens = tokens_len,
+            offset,
+            "WorkerPool::generate_step_multi: fan-out"
+        );
+        for w in &mut self.workers {
+            w.send_only(&WorkerRequest::GenerateStepMulti {
+                model_id: model_id.to_string(),
+                tokens: tokens.clone(),
+                offset,
+            })
+            .await?;
+        }
+
+        let leader_start = std::time::Instant::now();
+        let timeout = tp_step_timeout();
+        let leader_fut = self
+            .leader_worker
+            .tp_forward_logits_multi(leader_handle, tokens, offset);
+        let leader_result = match tokio::time::timeout(timeout, leader_fut).await {
+            Ok(r) => r,
+            Err(_elapsed) => {
+                self.watchdog_abort_leader_comm(model_id, timeout.as_secs());
+                anyhow::bail!(
+                    "tp watchdog: leader multi-position forward exceeded {}s deadline; \
+                     aborted wedged NCCL comm — model will auto-recover",
+                    timeout.as_secs()
+                );
+            }
+        };
+        let leader_ok = leader_result.is_ok();
+        if !leader_ok {
+            let detail = leader_result
+                .as_ref()
+                .err()
+                .map(|e| format!("{e:#}"))
+                .unwrap_or_default();
+            tracing::warn!(
+                model = %model_id,
+                tokens = tokens_len,
+                offset,
+                leader_ms = leader_start.elapsed().as_millis(),
+                error = %detail,
+                "WorkerPool::generate_step_multi: leader forward failed"
+            );
+        }
+
+        let worker_errors = drain_workers(&mut self.workers, |r| match r {
+            WorkerResponse::GenerateStepOk => Ok(()),
+            WorkerResponse::Error { kind, message } => Err(format!("[{kind}]: {message}")),
+            other => Err(format!("expected GenerateStepOk, got {other:?}")),
+        })
+        .await;
+        tracing::debug!(
+            model = %model_id,
+            errors = worker_errors.len(),
+            total_ms = step_start.elapsed().as_millis(),
+            "WorkerPool::generate_step_multi: workers drained"
+        );
+
+        match leader_result {
+            Ok(values) => {
+                if worker_errors.is_empty() {
+                    Ok(values)
+                } else {
+                    anyhow::bail!(
+                        "GenerateStepMulti: leader succeeded but workers failed: {}",
+                        worker_errors.join("; ")
+                    )
+                }
+            }
+            Err(e) => {
+                if worker_errors.is_empty() {
+                    Err(anyhow::Error::new(e).context("GenerateStepMulti: leader forward failed"))
+                } else {
+                    Err(anyhow::Error::new(e).context(format!(
+                        "GenerateStepMulti: leader forward failed and workers also failed: {}",
                         worker_errors.join("; ")
                     )))
                 }

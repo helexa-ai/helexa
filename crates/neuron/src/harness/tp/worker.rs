@@ -52,6 +52,21 @@ impl WorkerModel {
         }
     }
 
+    /// Logits at every position (#96). This rank discards them; what
+    /// matters is the identical collective sequence.
+    fn forward_multi(
+        &mut self,
+        input: &candle_core::Tensor,
+        offset: usize,
+    ) -> candle_core::Result<candle_core::Tensor> {
+        match self {
+            WorkerModel::Qwen3_5(m) => m.forward_multi(input, offset),
+            WorkerModel::Qwen3(_) => Err(candle_core::Error::Msg(
+                "forward_multi: the tp qwen3 arch has no multi-position logits path".into(),
+            )),
+        }
+    }
+
     /// Chunked image prefill on this rank. Only the vision-capable
     /// `qwen3_5` arch has a replicated tower; the dense `qwen3` arch
     /// errors. The returned logits are discarded by the caller (the
@@ -269,6 +284,11 @@ impl WorkerState {
                 tokens,
                 offset,
             } => self.handle_generate_step(&model_id, tokens, offset),
+            WorkerRequest::GenerateStepMulti {
+                model_id,
+                tokens,
+                offset,
+            } => self.handle_generate_step_multi(&model_id, tokens, offset),
             WorkerRequest::GenerateStepWithImages {
                 model_id,
                 tokens,
@@ -591,6 +611,80 @@ impl WorkerState {
         WorkerResponse::Error {
             kind: "cuda_feature_not_enabled".into(),
             message: "GenerateStep requires --features cuda".into(),
+        }
+    }
+
+    /// Multi-position forward (#96). Identical collectives to
+    /// `handle_generate_step` — the only difference is that the model
+    /// keeps every position's logits instead of the last. This rank
+    /// discards them either way; what matters is that it issues the
+    /// same `AllReduce` sequence, or the leader's forward never
+    /// completes.
+    #[cfg(feature = "cuda")]
+    fn handle_generate_step_multi(
+        &mut self,
+        model_id: &str,
+        tokens: Vec<u32>,
+        offset: usize,
+    ) -> WorkerResponse {
+        use candle_core::Tensor;
+
+        let Some(model) = self.models.get_mut(model_id) else {
+            return WorkerResponse::Error {
+                kind: "model_not_loaded".into(),
+                message: format!("model '{model_id}' not loaded on rank {}", self.config.rank),
+            };
+        };
+        let device = model.device().clone();
+        let input = match Tensor::new(tokens.as_slice(), &device).and_then(|t| t.unsqueeze(0)) {
+            Ok(t) => t,
+            Err(e) => {
+                return WorkerResponse::Error {
+                    kind: "forward_failed".into(),
+                    message: format!("build input tensor: {e}"),
+                };
+            }
+        };
+        let start = std::time::Instant::now();
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            tokens = tokens.len(),
+            offset,
+            "worker GenerateStepMulti: forward starting"
+        );
+        if let Err(e) = model.forward_multi(&input, offset) {
+            tracing::warn!(
+                rank = self.config.rank,
+                model = %model_id,
+                elapsed_ms = start.elapsed().as_millis(),
+                error = %e,
+                "worker GenerateStepMulti: forward failed"
+            );
+            return WorkerResponse::Error {
+                kind: "forward_failed".into(),
+                message: format!("TP multi-position forward: {e}"),
+            };
+        }
+        tracing::debug!(
+            rank = self.config.rank,
+            model = %model_id,
+            elapsed_ms = start.elapsed().as_millis(),
+            "worker GenerateStepMulti: forward done"
+        );
+        WorkerResponse::GenerateStepOk
+    }
+
+    #[cfg(not(feature = "cuda"))]
+    fn handle_generate_step_multi(
+        &mut self,
+        _model_id: &str,
+        _tokens: Vec<u32>,
+        _offset: usize,
+    ) -> WorkerResponse {
+        WorkerResponse::Error {
+            kind: "cuda_feature_not_enabled".into(),
+            message: "GenerateStepMulti requires --features cuda".into(),
         }
     }
 
