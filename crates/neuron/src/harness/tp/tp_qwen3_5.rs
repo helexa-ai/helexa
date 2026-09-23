@@ -1881,6 +1881,27 @@ impl TpQwen3_5Model {
     }
 }
 
+/// Additive causal mask for the draft head, `(1, 1, l, l + offset)`.
+/// The head keeps its own KV, so its mask is built from its own
+/// position count rather than the target's.
+fn mtp_causal_mask(
+    l: usize,
+    offset: usize,
+    dtype: DType,
+    dev: &Device,
+) -> candle_core::Result<Tensor> {
+    let total = l + offset;
+    let mut data = vec![0f32; l * total];
+    for i in 0..l {
+        for j in 0..total {
+            if j > i + offset {
+                data[i * total + j] = f32::NEG_INFINITY;
+            }
+        }
+    }
+    Tensor::from_vec(data, (1, 1, l, total), dev)?.to_dtype(dtype)
+}
+
 pub struct TpQwen3_5ForCausalLM {
     base: TpQwen3_5Model,
     lm_head: super::tp_linear::MaybeQuantLinear,
@@ -1894,6 +1915,23 @@ pub struct TpQwen3_5ForCausalLM {
     /// `<|image_pad|>` sentinel id (mirrors `Config::image_token_id`);
     /// the splice target for `forward_with_vision`.
     image_token_id: Option<u32>,
+    /// The MTP draft head (#96), on the **leader only**.
+    ///
+    /// Unsharded, unlike every other weight here, and that is correct
+    /// rather than lazy: after each row-parallel `AllReduce` every rank
+    /// holds the *same* hidden state, and `lm_head` is replicated. So a
+    /// head fed the leader's hidden produces exactly what a sharded one
+    /// would, with no collectives — which also means drafting cannot
+    /// wedge the ranks, since the other ranks are not in it.
+    ///
+    /// `None` on the subprocess ranks and on any load that did not ask
+    /// for it. Loaded by [`Self::load_mtp_head`], never by `load`.
+    mtp: Option<crate::harness::arch::qwen3_5::mtp::MtpHead>,
+    /// The last forward's hidden state, `(1, L, hidden)` — what the
+    /// draft head consumes. Kept because the head runs *after* the
+    /// target's step, outside the collective, so it cannot recompute
+    /// it. One `Arc` clone per forward; no copy.
+    last_hidden: Option<Tensor>,
 }
 
 /// Load the replicated vision tower from the unsharded `model.visual.*`
@@ -1944,6 +1982,8 @@ impl TpQwen3_5ForCausalLM {
             lm_head,
             vision,
             image_token_id,
+            mtp: None,
+            last_hidden: None,
         };
         log_construction_complete(cfg, rank, world_size, quant, model.device());
         Ok(model)
@@ -1969,6 +2009,8 @@ impl TpQwen3_5ForCausalLM {
             lm_head,
             vision,
             image_token_id,
+            mtp: None,
+            last_hidden: None,
         };
         log_construction_complete(cfg, rank, world_size, quant, model.device());
         Ok(model)
@@ -2003,6 +2045,7 @@ impl TpQwen3_5ForCausalLM {
     pub fn forward(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
         let (_, l) = input.dims2()?;
         let hidden = self.base.forward(input, offset)?;
+        self.last_hidden = Some(hidden.clone());
         hidden.i((.., l - 1.., ..))?.apply(&self.lm_head)
     }
 
@@ -2018,8 +2061,182 @@ impl TpQwen3_5ForCausalLM {
     /// complete when all ranks arrive. The leader's copy is the one
     /// whose logits are read — `lm_head` is replicated, so rank 0's
     /// answer is the whole answer.
+    /// Load the MTP draft head onto this rank, unsharded (#96).
+    ///
+    /// Only the leader should call this. See the `mtp` field for why an
+    /// unsharded head is numerically right; the practical consequence
+    /// is that drafting issues no collectives and therefore cannot
+    /// leave the other ranks waiting.
+    pub fn load_mtp_head(&mut self, cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<()> {
+        let head = crate::harness::arch::qwen3_5::mtp::MtpHead::load(
+            cfg,
+            Arc::clone(&self.base.rotary),
+            vb,
+        )
+        .context("load mtp head on the tp leader")?;
+        self.mtp = Some(head);
+        Ok(())
+    }
+
+    /// Whether this rank carries a draft head.
+    pub fn has_mtp(&self) -> bool {
+        self.mtp.is_some()
+    }
+
+    /// Walk the draft head over a prompt chunk, using the hidden state
+    /// the target's forward just produced.
+    ///
+    /// The head trails the target by one token: at position `i` it
+    /// consumes the embedding of token `i+1` with the target's hidden
+    /// state at `i`. `shifted` is therefore the chunk's tokens moved
+    /// one left, and must be one shorter than the retained hidden block
+    /// unless the caller has the next chunk's first token.
+    pub fn mtp_prefill_chunk(&mut self, shifted: &[u32], start_pos: usize) -> Result<()> {
+        let hidden = self
+            .last_hidden
+            .as_ref()
+            .context("mtp_prefill_chunk: no hidden state retained; run the target forward first")?
+            .clone();
+        let l = shifted.len();
+        anyhow::ensure!(l > 0, "mtp_prefill_chunk: empty chunk");
+        let (_, have, _) = hidden.dims3()?;
+        anyhow::ensure!(
+            have >= l,
+            "mtp_prefill_chunk: {l} tokens against {have} retained hidden positions"
+        );
+        let device = self.base.device.clone();
+        let dtype = self.base.dtype;
+        let rotary = Arc::clone(&self.base.rotary);
+        let tokens = Tensor::new(shifted, &device)?.unsqueeze(0)?;
+        let embeds = self.base.embed_tokens.forward(&tokens)?;
+        let hid = hidden.i((.., ..l, ..))?;
+        let mask = mtp_causal_mask(l, start_pos, dtype, &device)?;
+        let positions: Vec<usize> = (start_pos..start_pos + l).collect();
+        let (cos, sin) = rotary.cos_sin_at(&positions)?;
+        let head = self
+            .mtp
+            .as_mut()
+            .context("mtp_prefill_chunk: no draft head on this rank")?;
+        head.forward(&embeds, &hid, Some(&mask), &cos, &sin)?;
+        Ok(())
+    }
+
+    /// Draft `k` tokens, then put the head's cache back.
+    ///
+    /// The head is walked over tokens that may be rejected, so the
+    /// snapshot/restore pair around the chain is what keeps this an
+    /// observation rather than a commitment. Returns the drafted token
+    /// ids, argmax-sampled through the target's own (replicated)
+    /// `lm_head`.
+    pub fn mtp_draft(&mut self, first_token: u32, start_pos: usize, k: usize) -> Result<Vec<u32>> {
+        anyhow::ensure!(k > 0, "mtp_draft: k must be positive");
+        let mut hidden = self
+            .last_hidden
+            .as_ref()
+            .context("mtp_draft: no hidden state retained; run the target forward first")?
+            .clone();
+        let (_, have, _) = hidden.dims3()?;
+        if have > 1 {
+            hidden = hidden.i((.., have - 1.., ..))?;
+        }
+        let device = self.base.device.clone();
+        let rotary = Arc::clone(&self.base.rotary);
+
+        let snap = {
+            let head = self
+                .mtp
+                .as_ref()
+                .context("mtp_draft: no draft head on this rank")?;
+            head.snapshot_kv()?
+        };
+
+        let mut drafted = Vec::with_capacity(k);
+        let mut token = first_token;
+        let mut cur = hidden;
+        let mut err: Option<anyhow::Error> = None;
+        for step in 0..k {
+            let ids = match Tensor::new(&[token], &device).and_then(|t| t.unsqueeze(0)) {
+                Ok(t) => t,
+                Err(e) => {
+                    err = Some(e.into());
+                    break;
+                }
+            };
+            let out = (|| -> Result<Tensor> {
+                let embeds = self.base.embed_tokens.forward(&ids)?;
+                let (cos, sin) = rotary.cos_sin_at(&[start_pos + step])?;
+                let head = self
+                    .mtp
+                    .as_mut()
+                    .context("mtp_draft: no draft head on this rank")?;
+                head.forward(&embeds, &cur, None, &cos, &sin)
+            })();
+            let out = match out {
+                Ok(t) => t,
+                Err(e) => {
+                    err = Some(e);
+                    break;
+                }
+            };
+            let next = match self.lm_head.forward(&out).and_then(|logits| {
+                logits
+                    .i((0, 0, ..))?
+                    .to_dtype(DType::F32)?
+                    .argmax(candle_core::D::Minus1)?
+                    .to_scalar::<u32>()
+            }) {
+                Ok(t) => t,
+                Err(e) => {
+                    err = Some(e.into());
+                    break;
+                }
+            };
+            drafted.push(next);
+            token = next;
+            cur = out;
+        }
+
+        // Restore even when a step failed: a half-walked head is worse
+        // than no draft, because every later round inherits it.
+        if let Some(head) = self.mtp.as_mut() {
+            head.restore_kv(&snap)?;
+        }
+        match err {
+            Some(e) => Err(e),
+            None => Ok(drafted),
+        }
+    }
+
+    /// Walk the head over one token the target actually committed, so
+    /// its cache stays level with the target's.
+    pub fn mtp_advance(&mut self, token: u32, pos: usize) -> Result<()> {
+        let hidden = self
+            .last_hidden
+            .as_ref()
+            .context("mtp_advance: no hidden state retained")?
+            .clone();
+        let (_, have, _) = hidden.dims3()?;
+        let hidden = if have > 1 {
+            hidden.i((.., have - 1.., ..))?
+        } else {
+            hidden
+        };
+        let device = self.base.device.clone();
+        let rotary = Arc::clone(&self.base.rotary);
+        let ids = Tensor::new(&[token], &device)?.unsqueeze(0)?;
+        let embeds = self.base.embed_tokens.forward(&ids)?;
+        let (cos, sin) = rotary.cos_sin_at(&[pos])?;
+        let head = self
+            .mtp
+            .as_mut()
+            .context("mtp_advance: no draft head on this rank")?;
+        head.forward(&embeds, &hidden, None, &cos, &sin)?;
+        Ok(())
+    }
+
     pub fn forward_multi(&mut self, input: &Tensor, offset: usize) -> candle_core::Result<Tensor> {
         let hidden = self.base.forward(input, offset)?;
+        self.last_hidden = Some(hidden.clone());
         hidden.apply(&self.lm_head)
     }
 

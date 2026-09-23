@@ -394,6 +394,48 @@ pub enum Job {
     /// without holding a device tensor. The caller is also
     /// responsible for fan-out to subprocess ranks and drain — only
     /// the leader's forward moves into the worker thread.
+    /// Load the MTP draft head onto the leader's TP model (#96).
+    ///
+    /// Leader-only and deliberately not part of `TpLoadShard`: the
+    /// subprocess ranks have no use for a head they never run, and an
+    /// unsharded head on every rank would cost 810 MB each to sit idle.
+    #[cfg(feature = "cuda")]
+    TpLoadMtpHead {
+        handle: TpHandle,
+        config_json: String,
+        safetensors_paths: Vec<String>,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// Walk the leader's draft head over a prompt chunk (#96), using
+    /// the hidden state the target's forward just produced.
+    #[cfg(feature = "cuda")]
+    TpMtpPrefillChunk {
+        handle: TpHandle,
+        /// The chunk's tokens shifted one left — the head trails the
+        /// target by a token.
+        shifted: Vec<u32>,
+        start_pos: usize,
+        reply: oneshot::Sender<Result<()>>,
+    },
+    /// Draft `k` tokens on the leader and put the head's cache back
+    /// (#96). Commits nothing: the snapshot/restore pair lives inside
+    /// the job so a caller cannot forget it.
+    #[cfg(feature = "cuda")]
+    TpMtpDraft {
+        handle: TpHandle,
+        first_token: u32,
+        start_pos: usize,
+        k: usize,
+        reply: oneshot::Sender<Result<Vec<u32>>>,
+    },
+    /// Advance the leader's draft head over one committed token (#96).
+    #[cfg(feature = "cuda")]
+    TpMtpAdvance {
+        handle: TpHandle,
+        token: u32,
+        pos: usize,
+        reply: oneshot::Sender<Result<()>>,
+    },
     /// TP mirror of `ForwardLogitsMulti` (#96): logits at every
     /// position of a multi-token forward on the leader's shard. The
     /// caller has already fanned the matching `GenerateStepMulti` out

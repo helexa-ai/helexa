@@ -94,6 +94,21 @@ struct Args {
     /// How many recent tokens the repeat penalty considers.
     #[arg(long, default_value_t = 64)]
     repeat_last_n: usize,
+    /// Tensor-parallel degree. 1 loads the model on one card; 2+ uses
+    /// the worker pool, which is the only way to reach a model too big
+    /// for a single GPU — the 27B is 54 GB in bf16 and the single-GPU
+    /// path is bf16-only.
+    #[arg(long, default_value_t = 1)]
+    tensor_parallel: u32,
+    /// Quantisation for the TP load (`q6k`, `q8_0`, …). Only the TP
+    /// loader applies it.
+    #[arg(long)]
+    quant: Option<String>,
+    /// The binary the worker ranks are spawned from. Defaults to
+    /// `neuron` beside this executable — the probe itself does not
+    /// implement `--worker`.
+    #[arg(long)]
+    worker_binary: Option<PathBuf>,
     /// Write the summary as JSON here as well as to stdout.
     #[arg(long)]
     json: Option<PathBuf>,
@@ -223,8 +238,12 @@ struct Timings {
     verify_ms: f64,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let args = Args::parse();
+    if args.tensor_parallel > 1 {
+        return run_tp(args).await;
+    }
     let dev = pick_device(&args.device)?;
     let dtype = if matches!(dev, Device::Cpu) {
         DType::F32
@@ -499,4 +518,245 @@ fn main() -> Result<()> {
         std::fs::write(p, &pretty).context("write --json")?;
     }
     Ok(())
+}
+
+/// Tensor-parallel measurement (#96).
+///
+/// The only route to the 27B: 54 GB in bf16 does not fit one 5090, and
+/// quantisation is reachable only through the TP loader. The shape
+/// mirrors the single-GPU path — prefill, then draft-and-rewind at each
+/// decode step — with two differences:
+///
+/// - the target's step fans out to every rank, because the row-parallel
+///   `AllReduce`s only complete when all of them arrive;
+/// - the draft head is unsharded on the leader, so drafting issues no
+///   collectives at all and cannot leave a rank waiting.
+#[cfg(feature = "cuda")]
+async fn run_tp(args: Args) -> Result<()> {
+    use neuron::harness::device_worker::DeviceWorkerHandle;
+    use neuron::harness::tp::WorkerPool;
+
+    let cfg_raw =
+        std::fs::read_to_string(args.model.join("config.json")).context("read config.json")?;
+    let config: Config = Config::from_config_json(&cfg_raw).context("parse config.json")?;
+    let text_cfg = config.text_config.clone();
+    anyhow::ensure!(
+        MtpHead::present_in(&text_cfg),
+        "this checkpoint declares no MTP head (mtp_num_hidden_layers = 0)"
+    );
+
+    let mut shards: Vec<PathBuf> = std::fs::read_dir(&args.model)
+        .context("read model dir")?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "safetensors"))
+        .collect();
+    shards.sort();
+    anyhow::ensure!(!shards.is_empty(), "no .safetensors in {:?}", args.model);
+
+    let worker_bin = match &args.worker_binary {
+        Some(p) => p.clone(),
+        None => std::env::current_exe()
+            .context("resolve current_exe")?
+            .parent()
+            .context("executable has no parent directory")?
+            .join("neuron"),
+    };
+    anyhow::ensure!(
+        worker_bin.exists(),
+        "worker binary {worker_bin:?} not found — build `neuron` beside this probe, \
+         or pass --worker-binary"
+    );
+
+    let devices: Vec<u32> = (0..args.tensor_parallel).collect();
+    eprintln!(
+        "tp-{}: spawning workers from {worker_bin:?} on devices {devices:?}…",
+        args.tensor_parallel
+    );
+    let leader = DeviceWorkerHandle::spawn(devices[0])?;
+    let mut pool =
+        WorkerPool::spawn(&worker_bin, args.tensor_parallel, &devices, leader.clone()).await?;
+    pool.init_nccl(devices[0]).await?;
+
+    let leader_device = Device::new_cuda(devices[0] as usize)?;
+    let model_id = "mtp-probe";
+    let t0 = Instant::now();
+    let handle = pool
+        .load_dense_shard(
+            model_id,
+            &cfg_raw,
+            &shards,
+            &leader_device,
+            DType::BF16,
+            args.quant.clone(),
+        )
+        .await?;
+    eprintln!("shards loaded: {:.1} s", t0.elapsed().as_secs_f64());
+
+    let shard_strs: Vec<String> = shards
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
+    leader
+        .tp_load_mtp_head(handle, cfg_raw.clone(), shard_strs)
+        .await?;
+    eprintln!("draft head loaded on the leader");
+
+    let tok = tokenizers::Tokenizer::from_file(args.model.join("tokenizer.json"))
+        .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
+    let prompt = match &args.prompt_file {
+        Some(p) => std::fs::read_to_string(p).context("read prompt file")?,
+        None => "Explain, step by step, how a bicycle derailleur shifts gears.".into(),
+    };
+    let ids: Vec<u32> = tok
+        .encode(prompt.as_str(), false)
+        .map_err(|e| anyhow::anyhow!("tokenize: {e}"))?
+        .get_ids()
+        .to_vec();
+    let n = ids.len();
+    anyhow::ensure!(n >= 2, "prompt is too short to prefill");
+    eprintln!("prompt: {n} tokens");
+
+    // ── prefill, chunked, target then head ──────────────────────────
+    let t0 = Instant::now();
+    let mut last_logits: Vec<f32> = Vec::new();
+    let mut at = 0usize;
+    while at < n {
+        let end = (at + args.prefill_chunk).min(n);
+        last_logits = pool
+            .generate_step(model_id, handle, ids[at..end].to_vec(), at)
+            .await?;
+        let head_end = end.min(n - 1);
+        if head_end > at {
+            leader
+                .tp_mtp_prefill_chunk(handle, ids[at + 1..head_end + 1].to_vec(), at)
+                .await?;
+        }
+        at = end;
+    }
+    eprintln!("prefill ({n} tokens): {:.1} s", t0.elapsed().as_secs_f64());
+
+    // ── draft / verify observation ──────────────────────────────────
+    let mut produced: Vec<u32> = Vec::new();
+    let mut pending: Vec<(usize, Vec<u32>)> = Vec::new();
+    let mut accepted_hist = vec![0usize; args.draft_len + 1];
+    let mut penalty_disagreements = 0usize;
+    let mut draft_ms_total = 0f64;
+    let mut target_ms_total = 0f64;
+    let mut measured = 0usize;
+    let mut verify_ms = 0f64;
+
+    for round in 0..args.warmup + args.steps {
+        let measuring = round >= args.warmup;
+        let pos = n + produced.len();
+        let next = argmax(&last_logits);
+        let next_penalised = argmax_with_penalty(
+            &last_logits,
+            &produced[produced.len().saturating_sub(args.repeat_last_n)..],
+            args.repeat_penalty,
+        );
+        if next != next_penalised {
+            penalty_disagreements += 1;
+        }
+        produced.push(next);
+
+        pending.retain(|(start, drafted)| {
+            if produced.len() - start < drafted.len() {
+                return true;
+            }
+            let truth = &produced[*start..*start + drafted.len()];
+            let acc = drafted
+                .iter()
+                .zip(truth.iter())
+                .take_while(|(d, t)| d == t)
+                .count();
+            accepted_hist[acc] += 1;
+            false
+        });
+
+        let t0 = Instant::now();
+        let drafted = leader
+            .tp_mtp_draft(handle, next, pos, args.draft_len)
+            .await?;
+        let draft_elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+        leader.tp_mtp_advance(handle, next, pos).await?;
+
+        let t0 = Instant::now();
+        last_logits = pool
+            .generate_step(model_id, handle, vec![next], pos)
+            .await?;
+        let target_elapsed = t0.elapsed().as_secs_f64() * 1000.0;
+
+        if round == args.warmup {
+            // One verify-shaped forward for the round-cost arithmetic.
+            // It advances the target's cache by K+1, so the rounds after
+            // it are discarded: `pending` is cleared and the loop
+            // re-syncs on the next real step.
+            let block: Vec<u32> = std::iter::repeat_n(next, args.draft_len + 1).collect();
+            let t0 = Instant::now();
+            let _ = pool
+                .generate_step_multi(model_id, handle, block, pos + 1)
+                .await?;
+            verify_ms = t0.elapsed().as_secs_f64() * 1000.0;
+            pool.clear_kv_cache(model_id, handle).await?;
+            pending.clear();
+            produced.clear();
+            let mut at = 0usize;
+            while at < n {
+                let end = (at + args.prefill_chunk).min(n);
+                last_logits = pool
+                    .generate_step(model_id, handle, ids[at..end].to_vec(), at)
+                    .await?;
+                at = end;
+            }
+            continue;
+        }
+
+        if measuring {
+            pending.push((produced.len(), drafted));
+            draft_ms_total += draft_elapsed;
+            target_ms_total += target_elapsed;
+            measured += 1;
+        }
+    }
+
+    let rounds: usize = accepted_hist.iter().sum();
+    let mean_accepted: f64 = accepted_hist
+        .iter()
+        .enumerate()
+        .map(|(k, c)| (k * c) as f64)
+        .sum::<f64>()
+        / rounds.max(1) as f64;
+    let target_ms = target_ms_total / measured.max(1) as f64;
+    let draft_ms = draft_ms_total / (measured.max(1) * args.draft_len) as f64;
+    let round_cost = verify_ms + args.draft_len as f64 * draft_ms;
+    let summary = serde_json::json!({
+        "model": args.model.to_string_lossy(),
+        "tensor_parallel": args.tensor_parallel,
+        "quant": args.quant,
+        "prompt_tokens": n,
+        "draft_len": args.draft_len,
+        "rounds_scored": rounds,
+        "target_decode_ms": target_ms,
+        "draft_step_ms": draft_ms,
+        "verify_ms_k_plus_1": verify_ms,
+        "c_draft_over_target": draft_ms / target_ms,
+        "mean_accepted_tokens": mean_accepted,
+        "accepted_histogram": accepted_hist,
+        "predicted_speedup": (1.0 + mean_accepted) * target_ms / round_cost,
+        "penalty_argmax_disagreements": penalty_disagreements,
+        "penalty_argmax_disagreement_rate":
+            penalty_disagreements as f64 / produced.len().max(1) as f64,
+    });
+    let pretty = serde_json::to_string_pretty(&summary)?;
+    println!("{pretty}");
+    if let Some(p) = &args.json {
+        std::fs::write(p, &pretty).context("write --json")?;
+    }
+    pool.unload_model(model_id).await?;
+    Ok(())
+}
+
+#[cfg(not(feature = "cuda"))]
+async fn run_tp(_args: Args) -> Result<()> {
+    anyhow::bail!("--tensor-parallel > 1 requires a build with the `cuda` feature")
 }

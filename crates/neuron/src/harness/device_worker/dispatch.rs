@@ -608,6 +608,51 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 let _ = reply.send(result);
             }
             #[cfg(feature = "cuda")]
+            Job::TpLoadMtpHead {
+                handle,
+                config_json,
+                safetensors_paths,
+                reply,
+            } => {
+                let result = tp_load_mtp_head(&mut state, handle, &config_json, &safetensors_paths);
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpMtpPrefillChunk {
+                handle,
+                shifted,
+                start_pos,
+                reply,
+            } => {
+                let result = tp_mtp(&mut state, handle, |m| {
+                    m.mtp_prefill_chunk(&shifted, start_pos)
+                });
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpMtpDraft {
+                handle,
+                first_token,
+                start_pos,
+                k,
+                reply,
+            } => {
+                let result = tp_mtp(&mut state, handle, |m| {
+                    m.mtp_draft(first_token, start_pos, k)
+                });
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
+            Job::TpMtpAdvance {
+                handle,
+                token,
+                pos,
+                reply,
+            } => {
+                let result = tp_mtp(&mut state, handle, |m| m.mtp_advance(token, pos));
+                let _ = reply.send(result);
+            }
+            #[cfg(feature = "cuda")]
             Job::TpForwardLogitsMulti {
                 handle,
                 tokens,
@@ -1324,6 +1369,50 @@ fn tp_forward_logits(
     Ok(values)
 }
 
+/// Run something on the leader's TP draft head (#96).
+///
+/// The head only exists on the `qwen3_5` arch and only on a model that
+/// was asked to load one, so both misses are reported rather than
+/// silently skipped.
+#[cfg(feature = "cuda")]
+fn tp_mtp<T>(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    f: impl FnOnce(&mut super::super::tp::tp_qwen3_5::TpQwen3_5ForCausalLM) -> anyhow::Result<T>,
+) -> anyhow::Result<T> {
+    let model = state
+        .tp_models
+        .get_mut(&handle)
+        .ok_or_else(|| anyhow::anyhow!("tp mtp: no model for handle {}", handle.0))?;
+    match &mut **model {
+        super::super::tp::TpLeaderModel::Qwen3_5(m) => f(m),
+        super::super::tp::TpLeaderModel::Qwen3(_) => {
+            anyhow::bail!("tp mtp: the qwen3 arch ships no MTP head")
+        }
+    }
+}
+
+/// Load the draft head onto the leader's TP model (#96).
+#[cfg(feature = "cuda")]
+fn tp_load_mtp_head(
+    state: &mut DeviceWorkerState,
+    handle: TpHandle,
+    config_json: &str,
+    safetensors_paths: &[String],
+) -> anyhow::Result<()> {
+    use candle_core::DType;
+
+    let cfg = super::super::tp::tp_qwen3_5::Config::from_config_json(config_json)
+        .context("tp mtp: parse config.json")?;
+    let paths: Vec<std::path::PathBuf> = safetensors_paths.iter().map(Into::into).collect();
+    let device = state.device.clone();
+    // SAFETY: the same checkpoint files the shard load already mmapped.
+    let vb = unsafe {
+        candle_nn::var_builder::ShardedSafeTensors::var_builder(&paths, DType::BF16, &device)?
+    };
+    tp_mtp(state, handle, |m| m.load_mtp_head(&cfg.text_config, &vb))
+}
+
 /// TP mirror of [`forward_logits_multi`] on the leader's shard (#96).
 /// The caller has already fanned the matching `GenerateStepMulti` out
 /// to the subprocess ranks; the `AllReduce` collectives inside this
@@ -1936,6 +2025,22 @@ fn drain_poisoned(job: Job, device_index: u32) {
             // Bookkeeping-only — unit reply so eviction never wedges
             // on a poisoned worker (same shape as DropKvSnapshot).
             let _ = reply.send(());
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpLoadMtpHead { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpMtpPrefillChunk { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpMtpDraft { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        #[cfg(feature = "cuda")]
+        Job::TpMtpAdvance { reply, .. } => {
+            let _ = reply.send(Err(err()));
         }
         #[cfg(feature = "cuda")]
         Job::TpForwardLogitsMulti { reply, .. } => {
