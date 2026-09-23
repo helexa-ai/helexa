@@ -109,6 +109,12 @@ struct Args {
     /// implement `--worker`.
     #[arg(long)]
     worker_binary: Option<PathBuf>,
+    /// How many verify-shaped forwards to time after the measurement
+    /// loop. A single sample moved 57.3 -> 50.1 ms between otherwise
+    /// identical runs — ±7 ms on a 45 ms baseline, enough to move the
+    /// predicted speedup across the gate on its own.
+    #[arg(long, default_value_t = 9)]
+    verify_samples: usize,
     /// Write the summary as JSON here as well as to stdout.
     #[arg(long)]
     json: Option<PathBuf>,
@@ -232,12 +238,6 @@ fn prefill(
     last.context("empty prompt")
 }
 
-struct Timings {
-    target_decode_ms: f64,
-    draft_step_ms: f64,
-    verify_ms: f64,
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -329,7 +329,6 @@ async fn main() -> Result<()> {
     let mut accepted_hist = vec![0usize; args.draft_len + 1];
     let mut accepted_hist_penalised = vec![0usize; args.draft_len + 1];
     let mut penalty_disagreements = 0usize;
-    let mut timings: Option<Timings> = None;
     let mut draft_ms_total = 0f64;
     let mut draft_rounds = 0usize;
     let mut target_ms_total = 0f64;
@@ -413,50 +412,6 @@ async fn main() -> Result<()> {
             target_ms_total += target_elapsed;
             target_steps += 1;
         }
-
-        // One verify-shaped forward, once, for the speedup arithmetic:
-        // K+1 positions in a single pass is what a real round costs the
-        // target, and it is a different kernel from a 1-token decode.
-        if round == args.warmup {
-            let block: Vec<u32> = std::iter::once(next)
-                .chain(std::iter::repeat_n(next, args.draft_len))
-                .collect();
-            let blk = Tensor::new(block.as_slice(), &dev)?.unsqueeze(0)?;
-            let snap_t = Instant::now();
-            let _ = model.forward_multi(&blk, pos + 1)?;
-            sync(&dev)?;
-            let verify_ms = snap_t.elapsed().as_secs_f64() * 1000.0;
-            // That forward advanced the target's cache by K+1; put it
-            // back by re-prefilling is not possible here, so the probe
-            // measures verify cost on a throwaway clone of the state.
-            timings = Some(Timings {
-                target_decode_ms: target_elapsed,
-                draft_step_ms: draft_elapsed / args.draft_len as f64,
-                verify_ms,
-            });
-            // Re-align: the verify pass wrote K+1 positions into the
-            // target's KV that the observer never committed.
-            model.clear_kv_cache();
-            head.clear_kv_cache();
-            let replay: Vec<u32> = ids
-                .iter()
-                .copied()
-                .chain(produced.iter().copied())
-                .collect();
-            let (lg, hd) = prefill(
-                &mut model,
-                &mut head,
-                &rotary,
-                &replay,
-                args.prefill_chunk,
-                dtype,
-                &dev,
-                &sync,
-            )?;
-            last_logits = lg.i((0, 0, ..))?.to_dtype(DType::F32)?.to_vec1()?;
-            hidden_cur = hd;
-            pending.clear();
-        }
     }
 
     // Anything still pending never got its K true tokens; score what is
@@ -475,6 +430,24 @@ async fn main() -> Result<()> {
     }
     let _ = &mut accepted_hist_penalised;
 
+    // ── verify cost, sampled ────────────────────────────────────────
+    //
+    // Timed after the loop because each sample advances the target's
+    // cache by K+1 positions — harmless once measuring is done, and it
+    // spares the loop the re-prefill that undoing one sample required.
+    let mut verify_samples = Vec::with_capacity(args.verify_samples);
+    for i in 0..args.verify_samples {
+        let block: Vec<u32> = std::iter::repeat_n(produced[0], args.draft_len + 1).collect();
+        let blk = Tensor::new(block.as_slice(), &dev)?.unsqueeze(0)?;
+        let at = n + produced.len() + i * (args.draft_len + 1);
+        let t0 = Instant::now();
+        let _ = model.forward_multi(&blk, at)?;
+        sync(&dev)?;
+        verify_samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+    }
+    verify_samples.sort_by(f64::total_cmp);
+    let verify_ms = verify_samples[verify_samples.len() / 2];
+
     // ── report ──────────────────────────────────────────────────────
     let rounds: usize = accepted_hist.iter().sum();
     let mean_accepted: f64 = accepted_hist
@@ -483,13 +456,12 @@ async fn main() -> Result<()> {
         .map(|(k, n)| (k * n) as f64)
         .sum::<f64>()
         / rounds.max(1) as f64;
-    let t = timings.context("no timing round ran; --steps must exceed 0")?;
     let target_ms = target_ms_total / target_steps.max(1) as f64;
     let draft_ms = draft_ms_total / (draft_rounds.max(1) * args.draft_len) as f64;
     let c = draft_ms / target_ms;
     // One round commits 1 + accepted tokens and costs one verify plus K
     // drafts, against (1 + accepted) plain decode steps.
-    let round_cost = t.verify_ms + args.draft_len as f64 * draft_ms;
+    let round_cost = verify_ms + args.draft_len as f64 * draft_ms;
     let speedup = (1.0 + mean_accepted) * target_ms / round_cost;
 
     let summary = serde_json::json!({
@@ -501,7 +473,10 @@ async fn main() -> Result<()> {
         "rounds_scored": rounds,
         "target_decode_ms": target_ms,
         "draft_step_ms": draft_ms,
-        "verify_ms_k_plus_1": t.verify_ms,
+        "verify_ms_k_plus_1": verify_ms,
+        "verify_ms_min": verify_samples.first(),
+        "verify_ms_max": verify_samples.last(),
+        "verify_sample_count": verify_samples.len(),
         "c_draft_over_target": c,
         "mean_accepted_tokens": mean_accepted,
         "accepted_histogram": accepted_hist,
@@ -509,8 +484,6 @@ async fn main() -> Result<()> {
         "penalty_argmax_disagreements": penalty_disagreements,
         "penalty_argmax_disagreement_rate":
             penalty_disagreements as f64 / produced.len().max(1) as f64,
-        "first_target_decode_ms_sample": t.target_decode_ms,
-        "draft_step_ms_sample": t.draft_step_ms,
     });
     let pretty = serde_json::to_string_pretty(&summary)?;
     println!("{pretty}");
@@ -643,7 +616,6 @@ async fn run_tp(args: Args) -> Result<()> {
     let mut draft_ms_total = 0f64;
     let mut target_ms_total = 0f64;
     let mut measured = 0usize;
-    let mut verify_ms = 0f64;
 
     for round in 0..args.warmup + args.steps {
         let measuring = round >= args.warmup;
@@ -686,31 +658,6 @@ async fn run_tp(args: Args) -> Result<()> {
             .await?;
         let target_elapsed = t0.elapsed().as_secs_f64() * 1000.0;
 
-        if round == args.warmup {
-            // One verify-shaped forward for the round-cost arithmetic.
-            // It advances the target's cache by K+1, so the rounds after
-            // it are discarded: `pending` is cleared and the loop
-            // re-syncs on the next real step.
-            let block: Vec<u32> = std::iter::repeat_n(next, args.draft_len + 1).collect();
-            let t0 = Instant::now();
-            let _ = pool
-                .generate_step_multi(model_id, handle, block, pos + 1)
-                .await?;
-            verify_ms = t0.elapsed().as_secs_f64() * 1000.0;
-            pool.clear_kv_cache(model_id, handle).await?;
-            pending.clear();
-            produced.clear();
-            let mut at = 0usize;
-            while at < n {
-                let end = (at + args.prefill_chunk).min(n);
-                last_logits = pool
-                    .generate_step(model_id, handle, ids[at..end].to_vec(), at)
-                    .await?;
-                at = end;
-            }
-            continue;
-        }
-
         if measuring {
             pending.push((produced.len(), drafted));
             draft_ms_total += draft_elapsed;
@@ -718,6 +665,24 @@ async fn run_tp(args: Args) -> Result<()> {
             measured += 1;
         }
     }
+
+    // ── verify cost, sampled ────────────────────────────────────────
+    //
+    // After the loop, because each sample advances the target's cache by
+    // K+1. One sample was not enough: it moved 57.3 -> 50.1 ms between
+    // otherwise identical runs, wide enough to decide the gate by itself.
+    let mut verify_samples = Vec::with_capacity(args.verify_samples);
+    for i in 0..args.verify_samples {
+        let block: Vec<u32> = std::iter::repeat_n(produced[0], args.draft_len + 1).collect();
+        let at = n + produced.len() + i * (args.draft_len + 1);
+        let t0 = Instant::now();
+        let _ = pool
+            .generate_step_multi(model_id, handle, block, at)
+            .await?;
+        verify_samples.push(t0.elapsed().as_secs_f64() * 1000.0);
+    }
+    verify_samples.sort_by(f64::total_cmp);
+    let verify_ms = verify_samples[verify_samples.len() / 2];
 
     let rounds: usize = accepted_hist.iter().sum();
     let mean_accepted: f64 = accepted_hist
@@ -739,6 +704,9 @@ async fn run_tp(args: Args) -> Result<()> {
         "target_decode_ms": target_ms,
         "draft_step_ms": draft_ms,
         "verify_ms_k_plus_1": verify_ms,
+        "verify_ms_min": verify_samples.first(),
+        "verify_ms_max": verify_samples.last(),
+        "verify_sample_count": verify_samples.len(),
         "c_draft_over_target": draft_ms / target_ms,
         "mean_accepted_tokens": mean_accepted,
         "accepted_histogram": accepted_hist,
