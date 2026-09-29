@@ -15,10 +15,10 @@
 //!    summary features of the (uncalibrated) answer distribution.
 
 use anyhow::Result;
-use candle_core::{DType, Module, Tensor};
+use candle_core::{DType, Tensor};
 use candle_nn::{Embedding, LayerNorm, Linear, VarBuilder};
 
-use super::backbone::scaled_attention;
+use super::backbone::{project, scaled_attention};
 
 /// PyTorch's `LayerNorm` default.
 const TORCH_LN_EPS: f64 = 1e-5;
@@ -39,11 +39,12 @@ impl HeadLayer {
         // `nn.TransformerEncoder` is built with `nhead = max(1, d // 64)`
         // and `dim_feedforward = 4 * d`.
         let n_heads = (d / 64).max(1);
+        let f32_vb = vb.clone().set_dtype(DType::F32);
         Ok(Self {
-            norm1: candle_nn::layer_norm(d, TORCH_LN_EPS, vb.pp("norm1"))?,
+            norm1: candle_nn::layer_norm(d, TORCH_LN_EPS, f32_vb.pp("norm1"))?,
             in_proj: linear_torch_mha_in_proj(d, vb.pp("self_attn"))?,
             out_proj: candle_nn::linear(d, d, vb.pp("self_attn.out_proj"))?,
-            norm2: candle_nn::layer_norm(d, TORCH_LN_EPS, vb.pp("norm2"))?,
+            norm2: candle_nn::layer_norm(d, TORCH_LN_EPS, f32_vb.pp("norm2"))?,
             linear1: candle_nn::linear(d, 4 * d, vb.pp("linear1"))?,
             linear2: candle_nn::linear(4 * d, d, vb.pp("linear2"))?,
             n_heads,
@@ -51,11 +52,11 @@ impl HeadLayer {
         })
     }
 
-    fn forward(&self, xs: &Tensor, key_mask: &Tensor) -> Result<Tensor> {
+    /// `xs` is the f32 residual stream; projections run in the weights'
+    /// dtype and join it back in f32, as under autocast.
+    fn forward(&self, xs: &Tensor, key_mask: Option<&Tensor>) -> Result<Tensor> {
         let (b, l, d) = xs.dims3()?;
-        let qkv = xs
-            .apply(&self.norm1)?
-            .apply(&self.in_proj)?
+        let qkv = project(&self.in_proj, &xs.apply(&self.norm1)?)?
             .reshape((b, l, 3, self.n_heads, self.head_dim))?
             .permute((2, 0, 3, 1, 4))?;
         let q = qkv.get(0)?.contiguous()?;
@@ -64,12 +65,27 @@ impl HeadLayer {
         let ctx = scaled_attention(&q, &k, &v, key_mask, self.head_dim)?
             .transpose(1, 2)?
             .reshape((b, l, d))?;
-        let xs = (xs + ctx.apply(&self.out_proj)?)?;
-        let ff = xs
-            .apply(&self.norm2)?
-            .apply(&self.linear1)?
+        let xs = (xs + ctx.apply(&self.out_proj)?.to_dtype(DType::F32)?)?;
+        let ff = project(&self.linear1, &xs.apply(&self.norm2)?)?
             .relu()?
-            .apply(&self.linear2)?;
+            .apply(&self.linear2)?
+            .to_dtype(DType::F32)?;
+        Ok((xs + ff)?)
+    }
+
+    /// The flash path over a packed `(total, d)` f32 stream.
+    #[cfg(feature = "flash-attn")]
+    fn forward_packed(&self, xs: &Tensor, packed: &super::backbone::Packed) -> Result<Tensor> {
+        use super::backbone::{flash_attention, split_qkv};
+        let (t, d) = xs.dims2()?;
+        let qkv = project(&self.in_proj, &xs.apply(&self.norm1)?)?;
+        let (q, k, v) = split_qkv(&qkv, self.n_heads, self.head_dim)?;
+        let ctx = flash_attention(&q, &k, &v, packed, None)?.reshape((t, d))?;
+        let xs = (xs + ctx.apply(&self.out_proj)?.to_dtype(DType::F32)?)?;
+        let ff = project(&self.linear1, &xs.apply(&self.norm2)?)?
+            .relu()?
+            .apply(&self.linear2)?
+            .to_dtype(DType::F32)?;
         Ok((xs + ff)?)
     }
 }
@@ -95,14 +111,17 @@ pub struct DecisionHead {
 
 impl DecisionHead {
     /// `vb` is the checkpoint root; the head's tensors are top-level.
+    /// Linear weights load in `vb`'s dtype; the type embedding and norms
+    /// in f32.
     pub fn load(vb: VarBuilder, d: usize, head_layers: usize, n_act: usize) -> Result<Self> {
         let layers = (0..head_layers)
             .map(|i| HeadLayer::load(vb.pp(format!("head.layers.{i}")), d))
             .collect::<Result<Vec<_>>>()?;
+        let f32_vb = vb.clone().set_dtype(DType::F32);
         Ok(Self {
-            type_emb: candle_nn::embedding(3, d, vb.pp("type_emb"))?,
+            type_emb: candle_nn::embedding(3, d, f32_vb.pp("type_emb"))?,
             layers,
-            scorer_norm: candle_nn::layer_norm(d, TORCH_LN_EPS, vb.pp("scorer.0"))?,
+            scorer_norm: candle_nn::layer_norm(d, TORCH_LN_EPS, f32_vb.pp("scorer.0"))?,
             scorer_fc: candle_nn::linear(d, d, vb.pp("scorer.1"))?,
             scorer_out: candle_nn::linear(d, 1, vb.pp("scorer.3"))?,
             act_fc: candle_nn::linear(d + 4, 256, vb.pp("act_head.0"))?,
@@ -112,7 +131,12 @@ impl DecisionHead {
 
     /// Type embedding plus the transformer layers. `h` is the encoder
     /// output `(b, l, d)`, `qtype` is `(b,)` u32.
-    pub fn contextualise(&self, h: &Tensor, qtype: &Tensor, key_mask: &Tensor) -> Result<Tensor> {
+    pub fn contextualise(
+        &self,
+        h: &Tensor,
+        qtype: &Tensor,
+        key_mask: Option<&Tensor>,
+    ) -> Result<Tensor> {
         let mut h = h.broadcast_add(&qtype.apply(&self.type_emb)?.unsqueeze(1)?)?;
         for layer in &self.layers {
             h = layer.forward(&h, key_mask)?;
@@ -120,11 +144,25 @@ impl DecisionHead {
         Ok(h)
     }
 
+    /// The flash path: `h` is the packed encoder output `(total, d)` and
+    /// `qtype` the per-token question type `(total,)` u32.
+    #[cfg(feature = "flash-attn")]
+    pub fn contextualise_packed(
+        &self,
+        h: &Tensor,
+        qtype: &Tensor,
+        packed: &super::backbone::Packed,
+    ) -> Result<Tensor> {
+        let mut h = (h + qtype.apply(&self.type_emb)?)?;
+        for layer in &self.layers {
+            h = layer.forward_packed(&h, packed)?;
+        }
+        Ok(h)
+    }
+
     /// Score gathered marker states `(b, k, d)` → `(b, k)` f32 logits.
     pub fn score(&self, markers: &Tensor) -> Result<Tensor> {
-        let x = markers
-            .apply(&self.scorer_norm)?
-            .apply(&self.scorer_fc)?
+        let x = project(&self.scorer_fc, &markers.apply(&self.scorer_norm)?)?
             .gelu_erf()?
             .apply(&self.scorer_out)?;
         Ok(x.squeeze(2)?.to_dtype(DType::F32)?)
@@ -134,7 +172,9 @@ impl DecisionHead {
     /// `(b, d)` and the four answer-distribution features `(b, 4)`.
     pub fn act(&self, pooled: &Tensor, feats: &Tensor) -> Result<Tensor> {
         let x = Tensor::cat(&[pooled, &feats.to_dtype(pooled.dtype())?], 1)?;
-        let x = self.act_fc.forward(&x)?.gelu_erf()?.apply(&self.act_out)?;
+        let x = project(&self.act_fc, &x)?
+            .gelu_erf()?
+            .apply(&self.act_out)?;
         Ok(x.to_dtype(DType::F32)?)
     }
 }

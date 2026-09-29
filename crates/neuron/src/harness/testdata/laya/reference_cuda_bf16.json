@@ -1,0 +1,5610 @@
+{
+ "header": {
+  "laya_version": "0.3.21",
+  "torch_version": "2.14.0+cu130",
+  "device": "cuda",
+  "dtype": "autocast-bf16",
+  "checkpoints": {
+   "english": {
+    "repo": "convaiinnovations/laya",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 512,
+     "head_max_len": 192,
+     "temperature": [
+      1.6369030475616455,
+      1.2514300346374512,
+      1.983399510383606
+     ],
+     "temperature_by_options": {
+      "choice:3-5": 1.7601518630981445,
+      "choice:6-10": 1.0000158548355103,
+      "score:3-5": 1.2514300346374512,
+      "noul:2": 1.983399510383606,
+      "choice:11+": 0.10058280825614929,
+      "choice:2": 1.9063563346862793
+     }
+    },
+    "special_ids": {
+     "cls": 50281,
+     "sep": 50282,
+     "mask": 50284,
+     "pad": 50283
+    }
+   },
+   "multilingual": {
+    "repo": "convaiinnovations/laya/multilingual",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 1024,
+     "head_max_len": 256,
+     "temperature": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "temperature_by_options": {}
+    },
+    "special_ids": {
+     "cls": 2,
+     "sep": 1,
+     "mask": 4,
+     "pad": 0
+    }
+   },
+   "typed-decisions": {
+    "repo": "convaiinnovations/laya/typed-decisions",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 1024,
+     "head_max_len": 256,
+     "temperature": [
+      1.0148024559020996,
+      1.0374259948730469,
+      1.0575125217437744
+     ],
+     "temperature_by_options": {
+      "choice:3-5": 1.7601518630981445,
+      "choice:6-10": 1.0000158548355103,
+      "score:3-5": 1.2514300346374512,
+      "noul:2": 1.983399510383606,
+      "choice:11+": 0.10058280825614929,
+      "choice:2": 1.9063563346862793
+     }
+    },
+    "special_ids": {
+     "cls": 50281,
+     "sep": 50282,
+     "mask": 50284,
+     "pad": 50283
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "name": "choice_basic",
+   "request": {
+    "state": "I was charged twice this month, I want my money back",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "billing": "billing and refunds",
+       "tech": "login and app issues",
+       "other": "everything else"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      2285,
+      32,
+      50282,
+      50284,
+      33484,
+      27,
+      33484,
+      285,
+      1275,
+      41748,
+      50284,
+      13817,
+      27,
+      16164,
+      285,
+      622,
+      3374,
+      50284,
+      643,
+      27,
+      3253,
+      2010,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      8,
+      15,
+      22
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      4.71875,
+      -1.2109375,
+      -2.546875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.9519,
+       "tech": 0.0328,
+       "other": 0.0153
+      },
+      "confidence": 0.797,
+      "answer_confidence": 0.9519,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 41,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "score_basic",
+   "request": {
+    "state": "This is the THIRD time I've asked. Fix it today or I'm cancelling.",
+    "questions": {
+     "urgency": {
+      "type": "score",
+      "instructions": "How urgent?",
+      "criteria": [
+       "calm",
+       "firm",
+       "angry",
+       "furious"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "urgency",
+     "input_ids": [
+      50281,
+      18891,
+      1953,
+      27,
+      1359,
+      21007,
+      32,
+      50282,
+      50284,
+      1268,
+      470,
+      27,
+      11874,
+      50284,
+      1268,
+      337,
+      27,
+      5882,
+      50284,
+      1268,
+      374,
+      27,
+      11790,
+      50284,
+      1268,
+      495,
+      27,
+      32986,
+      50282,
+      1552,
+      310,
+      253,
+      4392,
+      46000,
+      673,
+      309,
+      1849,
+      2546,
+      15,
+      22360,
+      352,
+      3063,
+      390,
+      309,
+      1353,
+      476,
+      68,
+      3485,
+      15,
+      50282
+     ],
+     "markers": [
+      8,
+      13,
+      18,
+      23
+     ],
+     "qtype": 1,
+     "options": {
+      "options": 4,
+      "options_distinct": 4,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -0.1513671875,
+      2.828125,
+      2.578125,
+      1.828125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "urgency": {
+      "type": "score",
+      "score": 1.6886,
+      "legend": {
+       "0": "calm",
+       "1": "firm",
+       "2": "angry",
+       "3": "furious"
+      },
+      "probabilities": {
+       "0": 0.0392,
+       "1": 0.4235,
+       "2": 0.3468,
+       "3": 0.1905
+      },
+      "confidence": 0.1532,
+      "answer_confidence": 0.4235,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 50,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "noul_default_criteria",
+   "request": {
+    "state": "Please refund the duplicate charge on my card.",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      253,
+      7731,
+      7004,
+      323,
+      247,
+      23005,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      7845,
+      23005,
+      253,
+      21036,
+      4179,
+      327,
+      619,
+      3120,
+      15,
+      50282
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -2.296875,
+      1.1640625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.8513,
+      "confidence": 0.8513,
+      "answer_confidence": 0.8513,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 43,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "noul_custom_criteria_and_labels",
+   "request": {
+    "state": "Can you reset my password? I'm locked out.",
+    "questions": {
+     "locked": {
+      "type": "noul",
+      "instructions": "Is the user locked out of their account?",
+      "criteria": {
+       "true": "the user cannot sign in",
+       "false": "the user can sign in"
+      },
+      "labels": {
+       "true": "locked",
+       "false": "not locked"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "locked",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      253,
+      2608,
+      12623,
+      562,
+      273,
+      616,
+      2395,
+      32,
+      50282,
+      50284,
+      417,
+      12623,
+      27,
+      253,
+      2608,
+      476,
+      861,
+      275,
+      50284,
+      12623,
+      27,
+      253,
+      2608,
+      2550,
+      861,
+      275,
+      50282,
+      5804,
+      368,
+      14932,
+      619,
+      9868,
+      32,
+      309,
+      1353,
+      12623,
+      562,
+      15,
+      50282
+     ],
+     "markers": [
+      15,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -0.408203125,
+      2.203125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "locked": {
+      "type": "noul",
+      "noul": 0.7886,
+      "confidence": 0.7886,
+      "answer_confidence": 0.7886,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 45,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "multi_question",
+   "request": {
+    "state": "I was charged twice this month, I want my money back",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "billing": "billing and refunds",
+       "tech": "login and app issues",
+       "other": "everything else"
+      }
+     },
+     "urgency": {
+      "type": "score",
+      "instructions": "How urgent?",
+      "criteria": [
+       "calm",
+       "firm",
+       "angry",
+       "furious"
+      ]
+     },
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     },
+     "tone": {
+      "type": "choice",
+      "instructions": "Tone?",
+      "criteria": [
+       "polite",
+       "rude",
+       "neutral"
+      ]
+     },
+     "spam": {
+      "type": "noul",
+      "instructions": "Is this spam?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      2285,
+      32,
+      50282,
+      50284,
+      33484,
+      27,
+      33484,
+      285,
+      1275,
+      41748,
+      50284,
+      13817,
+      27,
+      16164,
+      285,
+      622,
+      3374,
+      50284,
+      643,
+      27,
+      3253,
+      2010,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      8,
+      15,
+      22
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      4.71875,
+      -1.1875,
+      -2.546875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "qid": "urgency",
+     "input_ids": [
+      50281,
+      18891,
+      1953,
+      27,
+      1359,
+      21007,
+      32,
+      50282,
+      50284,
+      1268,
+      470,
+      27,
+      11874,
+      50284,
+      1268,
+      337,
+      27,
+      5882,
+      50284,
+      1268,
+      374,
+      27,
+      11790,
+      50284,
+      1268,
+      495,
+      27,
+      32986,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      8,
+      13,
+      18,
+      23
+     ],
+     "qtype": 1,
+     "options": {
+      "options": 4,
+      "options_distinct": 4,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -0.62890625,
+      2.921875,
+      2.875,
+      1.7421875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "qid": "refund",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      253,
+      7731,
+      7004,
+      323,
+      247,
+      23005,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -3.78125,
+      1.6015625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "qid": "tone",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      308,
+      531,
+      32,
+      50282,
+      50284,
+      30405,
+      50284,
+      30446,
+      50284,
+      9238,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      8,
+      10,
+      12
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -0.59375,
+      -0.09814453125,
+      -0.1416015625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "qid": "spam",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      436,
+      29296,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      10,
+      20
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -1.1875,
+      0.91015625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.9515,
+       "tech": 0.0332,
+       "other": 0.0153
+      },
+      "confidence": 0.7957,
+      "answer_confidence": 0.9515,
+      "action": {
+       "act_probability": 1.0
+      }
+     },
+     "urgency": {
+      "type": "score",
+      "score": 1.6983,
+      "legend": {
+       "0": "calm",
+       "1": "firm",
+       "2": "angry",
+       "3": "furious"
+      },
+      "probabilities": {
+       "0": 0.0243,
+       "1": 0.4147,
+       "2": 0.3995,
+       "3": 0.1616
+      },
+      "confidence": 0.1947,
+      "answer_confidence": 0.4147,
+      "action": {
+       "act_probability": 1.0
+      }
+     },
+     "refund": {
+      "type": "noul",
+      "noul": 0.9378,
+      "confidence": 0.9378,
+      "answer_confidence": 0.9378,
+      "action": {
+       "act_probability": 1.0
+      }
+     },
+     "tone": {
+      "type": "choice",
+      "choice": "rude",
+      "probabilities": {
+       "polite": 0.2764,
+       "rude": 0.3663,
+       "neutral": 0.3573
+      },
+      "confidence": 0.0069,
+      "answer_confidence": 0.3663,
+      "action": {
+       "act_probability": 1.0
+      }
+     },
+     "spam": {
+      "type": "noul",
+      "noul": 0.7422,
+      "confidence": 0.7422,
+      "answer_confidence": 0.7422,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 199,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "choice_2",
+   "request": {
+    "state": "The app crashes when I open settings.",
+    "questions": {
+     "kind": {
+      "type": "choice",
+      "instructions": "Bug or feature request?",
+      "criteria": {
+       "bug": "",
+       "feature": ""
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "kind",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      32134,
+      390,
+      4735,
+      2748,
+      32,
+      50282,
+      50284,
+      7505,
+      50284,
+      4735,
+      50282,
+      510,
+      622,
+      29212,
+      672,
+      309,
+      1527,
+      7533,
+      15,
+      50282
+     ],
+     "markers": [
+      10,
+      12
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      4.5625,
+      -3.125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "kind": {
+      "type": "choice",
+      "choice": "bug",
+      "probabilities": {
+       "bug": 0.9826,
+       "feature": 0.0174
+      },
+      "confidence": 0.8733,
+      "answer_confidence": 0.9826,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 24,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "choice_6_10",
+   "request": {
+    "state": "My parcel arrived damaged and the box was crushed.",
+    "questions": {
+     "topic": {
+      "type": "choice",
+      "instructions": "Topic?",
+      "criteria": [
+       "billing",
+       "shipping",
+       "damage",
+       "returns",
+       "account",
+       "privacy",
+       "other"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "topic",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      308,
+      6361,
+      32,
+      50282,
+      50284,
+      33484,
+      50284,
+      15076,
+      50284,
+      4723,
+      50284,
+      6548,
+      50284,
+      2395,
+      50284,
+      11068,
+      50284,
+      643,
+      50282,
+      3220,
+      32975,
+      7244,
+      13572,
+      285,
+      253,
+      3817,
+      369,
+      24983,
+      15,
+      50282
+     ],
+     "markers": [
+      8,
+      10,
+      12,
+      14,
+      16,
+      18,
+      20
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 7,
+      "options_distinct": 7,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -4.4375,
+      4.9375,
+      8.0,
+      -0.228515625,
+      -4.25,
+      -3.96875,
+      -1.4609375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "topic": {
+      "type": "choice",
+      "choice": "damage",
+      "probabilities": {
+       "billing": 0.0,
+       "shipping": 0.0447,
+       "damage": 0.955,
+       "returns": 0.0003,
+       "account": 0.0,
+       "privacy": 0.0,
+       "other": 0.0001
+      },
+      "confidence": 0.9045,
+      "answer_confidence": 0.955,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 34,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "choice_11_plus_clamped_temperature",
+   "request": {
+    "state": "I'd like to change the delivery address on order 5521.",
+    "questions": {
+     "intent": {
+      "type": "choice",
+      "instructions": "Intent?",
+      "criteria": [
+       "cancel_order",
+       "change_address",
+       "track_order",
+       "refund",
+       "exchange",
+       "complaint",
+       "compliment",
+       "billing_question",
+       "account_access",
+       "product_question",
+       "other",
+       "unsubscribe"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "intent",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      30659,
+      32,
+      50282,
+      50284,
+      14002,
+      64,
+      2621,
+      50284,
+      1818,
+      64,
+      12025,
+      50284,
+      3540,
+      64,
+      2621,
+      50284,
+      23005,
+      50284,
+      6431,
+      50284,
+      5833,
+      50284,
+      25639,
+      50284,
+      33484,
+      64,
+      19751,
+      50284,
+      2395,
+      64,
+      10773,
+      50284,
+      1885,
+      64,
+      19751,
+      50284,
+      643,
+      50284,
+      440,
+      31473,
+      50282,
+      42,
+      1871,
+      751,
+      281,
+      1818,
+      253,
+      6742,
+      2953,
+      327,
+      1340,
+      7288,
+      1797,
+      15,
+      50282
+     ],
+     "markers": [
+      7,
+      11,
+      15,
+      19,
+      21,
+      23,
+      25,
+      27,
+      31,
+      35,
+      39,
+      41
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 12,
+      "options_distinct": 12,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -3.6875,
+      6.5,
+      -3.71875,
+      -2.4375,
+      -3.25,
+      -4.1875,
+      -3.921875,
+      -1.59375,
+      -3.9375,
+      -2.96875,
+      -1.40625,
+      -4.09375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "intent": {
+      "type": "choice",
+      "choice": "change_address",
+      "probabilities": {
+       "cancel_order": 0.0,
+       "change_address": 1.0,
+       "track_order": 0.0,
+       "refund": 0.0,
+       "exchange": 0.0,
+       "complaint": 0.0,
+       "compliment": 0.0,
+       "billing_question": 0.0,
+       "account_access": 0.0,
+       "product_question": 0.0,
+       "other": 0.0,
+       "unsubscribe": 0.0
+      },
+      "confidence": 1.0,
+      "answer_confidence": 1.0,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 59,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "score_more_than_5_levels",
+   "request": {
+    "state": "The product is fine, does what it says, nothing special.",
+    "questions": {
+     "rating": {
+      "type": "score",
+      "instructions": "Star rating?",
+      "criteria": [
+       "zero",
+       "one",
+       "two",
+       "three",
+       "four",
+       "five",
+       "six"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "rating",
+     "input_ids": [
+      50281,
+      18891,
+      1953,
+      27,
+      8141,
+      13716,
+      32,
+      50282,
+      50284,
+      1268,
+      470,
+      27,
+      5058,
+      50284,
+      1268,
+      337,
+      27,
+      581,
+      50284,
+      1268,
+      374,
+      27,
+      767,
+      50284,
+      1268,
+      495,
+      27,
+      1264,
+      50284,
+      1268,
+      577,
+      27,
+      1740,
+      50284,
+      1268,
+      608,
+      27,
+      2620,
+      50284,
+      1268,
+      721,
+      27,
+      2800,
+      50282,
+      510,
+      1885,
+      310,
+      4030,
+      13,
+      1057,
+      752,
+      352,
+      2296,
+      13,
+      2717,
+      2714,
+      15,
+      50282
+     ],
+     "markers": [
+      8,
+      13,
+      18,
+      23,
+      28,
+      33,
+      38
+     ],
+     "qtype": 1,
+     "options": {
+      "options": 7,
+      "options_distinct": 7,
+      "tokens_per_option": null
+     },
+     "logits": [
+      1.21875,
+      2.921875,
+      2.21875,
+      -0.32421875,
+      -2.34375,
+      -3.328125,
+      -2.5
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "rating": {
+      "type": "score",
+      "score": 1.3102,
+      "legend": {
+       "0": "zero",
+       "1": "one",
+       "2": "two",
+       "3": "three",
+       "4": "four",
+       "5": "five",
+       "6": "six"
+      },
+      "probabilities": {
+       "0": 0.1324,
+       "1": 0.5165,
+       "2": 0.2945,
+       "3": 0.0386,
+       "4": 0.0077,
+       "5": 0.0035,
+       "6": 0.0068
+      },
+      "confidence": 0.3907,
+      "answer_confidence": 0.5165,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 58,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "structured_criteria",
+   "request": {
+    "state": {
+     "subject": "Invoice overdue",
+     "body": "Payment for INV-77 is 30 days late.",
+     "priority": 2
+    },
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": {
+       "task": "route",
+       "detail": "pick one"
+      },
+      "criteria": {
+       "finance": {
+        "desc": "money",
+        "sla_h": 24
+       },
+       "support": [
+        "tickets",
+        "bugs"
+       ],
+       "sales": 7
+      }
+     },
+     "overdue": {
+      "type": "noul",
+      "instructions": "Is a payment overdue?",
+      "criteria": {
+       "true": {
+        "why": "late"
+       }
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      17579,
+      14605,
+      1381,
+      346,
+      25966,
+      995,
+      346,
+      20119,
+      1381,
+      346,
+      29397,
+      581,
+      986,
+      50282,
+      50284,
+      15065,
+      27,
+      17579,
+      12898,
+      1381,
+      346,
+      29706,
+      995,
+      346,
+      3433,
+      66,
+      64,
+      73,
+      1381,
+      2164,
+      94,
+      50284,
+      1329,
+      27,
+      15640,
+      85,
+      26195,
+      995,
+      346,
+      25941,
+      9686,
+      50284,
+      6224,
+      27,
+      818,
+      50282,
+      9819,
+      19091,
+      1381,
+      346,
+      688,
+      22619,
+      689,
+      21848,
+      995,
+      346,
+      2915,
+      1381,
+      346,
+      45412,
+      323,
+      2949,
+      55,
+      14,
+      2357,
+      310,
+      1884,
+      1897,
+      3563,
+      17295,
+      346,
+      36505,
+      1381,
+      374,
+      94,
+      50282
+     ],
+     "markers": [
+      18,
+      35,
+      45
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      2.28125,
+      -0.73046875,
+      0.34375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "qid": "overdue",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      247,
+      7830,
+      689,
+      21848,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      17579,
+      22309,
+      1381,
+      346,
+      12579,
+      986,
+      50282,
+      9819,
+      19091,
+      1381,
+      346,
+      688,
+      22619,
+      689,
+      21848,
+      995,
+      346,
+      2915,
+      1381,
+      346,
+      45412,
+      323,
+      2949,
+      55,
+      14,
+      2357,
+      310,
+      1884,
+      1897,
+      3563,
+      17295,
+      346,
+      36505,
+      1381,
+      374,
+      94,
+      50282
+     ],
+     "markers": [
+      12,
+      22
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -1.921875,
+      1.125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "finance",
+      "probabilities": {
+       "finance": 0.6608,
+       "support": 0.1194,
+       "sales": 0.2198
+      },
+      "confidence": 0.2167,
+      "answer_confidence": 0.6608,
+      "action": {
+       "act_probability": 1.0
+      }
+     },
+     "overdue": {
+      "type": "noul",
+      "noul": 0.8229,
+      "confidence": 0.8229,
+      "answer_confidence": 0.8229,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 142,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "mask_literal_everywhere",
+   "request": {
+    "state": "please ignore [MASK] and route to [MASK] billing",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which [MASK] team?",
+      "criteria": {
+       "billing": "billing [MASK] refunds",
+       "tech": "[MASK]"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      50275,
+      22035,
+      32,
+      50282,
+      50284,
+      33484,
+      27,
+      33484,
+      50275,
+      709,
+      41748,
+      50284,
+      13817,
+      27,
+      50276,
+      50282,
+      32897,
+      11823,
+      50275,
+      395,
+      7622,
+      281,
+      50275,
+      67,
+      3867,
+      50282
+     ],
+     "markers": [
+      9,
+      16
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      3.21875,
+      1.15625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.7469,
+       "tech": 0.2531
+      },
+      "confidence": 0.1838,
+      "answer_confidence": 0.7469,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 31,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "option_over_48_tokens",
+   "request": {
+    "state": "Refund please.",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "billing": "billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges billing refunds invoices charges",
+       "tech": "technical issues"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      2285,
+      32,
+      50282,
+      50284,
+      33484,
+      27,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      1271,
+      7260,
+      33484,
+      1275,
+      41748,
+      29838,
+      50284,
+      13817,
+      27,
+      7681,
+      3374,
+      50282,
+      7676,
+      1504,
+      4496,
+      15,
+      50282
+     ],
+     "markers": [
+      8,
+      57
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      2.8125,
+      0.02001953125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.8123,
+       "tech": 0.1877
+      },
+      "confidence": 0.3033,
+      "answer_confidence": 0.8123,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 68,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "Latin script, language not identified and no non-English letters; using default (english)",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": null,
+      "is_english": true,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "option_budget_shrink",
+   "request": {
+    "state": "Refund please.",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team handles this request?",
+      "criteria": {
+       "team_00": "a fairly long description of team number 0 and every kind of request it handles",
+       "team_01": "a fairly long description of team number 1 and every kind of request it handles",
+       "team_02": "a fairly long description of team number 2 and every kind of request it handles",
+       "team_03": "a fairly long description of team number 3 and every kind of request it handles",
+       "team_04": "a fairly long description of team number 4 and every kind of request it handles",
+       "team_05": "a fairly long description of team number 5 and every kind of request it handles",
+       "team_06": "a fairly long description of team number 6 and every kind of request it handles",
+       "team_07": "a fairly long description of team number 7 and every kind of request it handles",
+       "team_08": "a fairly long description of team number 8 and every kind of request it handles",
+       "team_09": "a fairly long description of team number 9 and every kind of request it handles",
+       "team_10": "a fairly long description of team number 10 and every kind of request it handles",
+       "team_11": "a fairly long description of team number 11 and every kind of request it handles",
+       "team_12": "a fairly long description of team number 12 and every kind of request it handles",
+       "team_13": "a fairly long description of team number 13 and every kind of request it handles",
+       "team_14": "a fairly long description of team number 14 and every kind of request it handles",
+       "team_15": "a fairly long description of team number 15 and every kind of request it handles",
+       "team_16": "a fairly long description of team number 16 and every kind of request it handles",
+       "team_17": "a fairly long description of team number 17 and every kind of request it handles",
+       "team_18": "a fairly long description of team number 18 and every kind of request it handles",
+       "team_19": "a fairly long description of team number 19 and every kind of request it handles"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      2285,
+      22139,
+      436,
+      2748,
+      32,
+      50282,
+      50284,
+      2285,
+      64,
+      361,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      520,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2640,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2941,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2125,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1762,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      3071,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2922,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2904,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      2693,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      740,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      883,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      805,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1012,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1047,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1010,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1036,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1166,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      1093,
+      27,
+      247,
+      9648,
+      1048,
+      50284,
+      2285,
+      64,
+      746,
+      27,
+      247,
+      9648,
+      1048,
+      50282,
+      7676,
+      1504,
+      4496,
+      15,
+      50282
+     ],
+     "markers": [
+      11,
+      19,
+      27,
+      35,
+      43,
+      51,
+      59,
+      67,
+      75,
+      83,
+      91,
+      99,
+      107,
+      115,
+      123,
+      131,
+      139,
+      147,
+      155,
+      163
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 20,
+      "options_distinct": 20,
+      "tokens_per_option": 8
+     },
+     "logits": [
+      1.25,
+      1.2890625,
+      0.7421875,
+      0.0274658203125,
+      0.1728515625,
+      0.59375,
+      0.4296875,
+      0.08984375,
+      0.416015625,
+      0.78515625,
+      0.46484375,
+      0.1298828125,
+      0.08984375,
+      0.09765625,
+      0.353515625,
+      -0.026123046875,
+      -0.330078125,
+      -0.125,
+      -0.024169921875,
+      0.78125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "team_01",
+      "probabilities": {
+       "team_00": 0.1952,
+       "team_01": 0.211,
+       "team_02": 0.0707,
+       "team_03": 0.0169,
+       "team_04": 0.0226,
+       "team_05": 0.0525,
+       "team_06": 0.0378,
+       "team_07": 0.0192,
+       "team_08": 0.0368,
+       "team_09": 0.077,
+       "team_10": 0.0406,
+       "team_11": 0.0208,
+       "team_12": 0.0192,
+       "team_13": 0.0195,
+       "team_14": 0.0325,
+       "team_15": 0.0152,
+       "team_16": 0.0083,
+       "team_17": 0.0125,
+       "team_18": 0.0153,
+       "team_19": 0.0764
+      },
+      "confidence": 0.1469,
+      "answer_confidence": 0.211,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 177,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "Latin script, language not identified and no non-English letters; using default (english)",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": null,
+      "is_english": true,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "collapsed_options",
+   "request": {
+    "state": "Refund please.",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which?",
+      "criteria": [
+       "customer billing question about product line one",
+       "customer billing question about product line two"
+      ]
+     }
+    },
+    "head_max_len": 24
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      32,
+      50282,
+      50284,
+      7731,
+      33484,
+      1953,
+      50284,
+      7731,
+      33484,
+      1953,
+      50282,
+      7676,
+      1504,
+      4496,
+      15,
+      50282
+     ],
+     "markers": [
+      7,
+      11
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 2,
+      "options_distinct": 1,
+      "tokens_per_option": 4
+     },
+     "logits": [
+      1.375,
+      1.2109375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "customer billing question about product line one",
+      "probabilities": {
+       "customer billing question about product line one": 0.5215,
+       "customer billing question about product line two": 0.4785
+      },
+      "confidence": 0.0013,
+      "answer_confidence": 0.5215,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 21,
+     "output_tokens": 0,
+     "options": {
+      "queue": {
+       "total": 2,
+       "distinct": 1,
+       "tokens_per_option": 4
+      }
+     }
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "Latin script, language not identified and no non-English letters; using default (english)",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": null,
+      "is_english": true,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "instruction_truncation",
+   "request": {
+    "state": "Refund please.",
+    "questions": {
+     "q": {
+      "type": "noul",
+      "instructions": "Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back Decide whether the customer is asking for money back"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "q",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      7659,
+      504,
+      1880,
+      253,
+      7731,
+      310,
+      7004,
+      323,
+      2583,
+      896,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      7676,
+      1504,
+      4496,
+      15,
+      50282
+     ],
+     "markers": [
+      176,
+      186
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -1.2265625,
+      0.953125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "q": {
+      "type": "noul",
+      "noul": 0.7501,
+      "confidence": 0.7501,
+      "answer_confidence": 0.7501,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 200,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "Latin script, language not identified and no non-English letters; using default (english)",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": null,
+      "is_english": true,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "state_right_truncated",
+   "request": {
+    "state": "Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. ",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is this about an invoice?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      436,
+      670,
+      271,
+      45156,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      12092,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      50282
+     ],
+     "markers": [
+      12,
+      22
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -3.21875,
+      1.34375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.9089,
+      "confidence": 0.9089,
+      "answer_confidence": 0.9089,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 512,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "state_left_truncated_conversation",
+   "request": {
+    "state": [
+     {
+      "role": "user",
+      "content": "turn 0: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 1: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 2: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 3: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 4: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 5: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 6: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 7: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 8: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 9: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 10: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "turn 11: Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before mo"
+     },
+     {
+      "role": "user",
+      "content": "actually, just cancel my subscription"
+     }
+    ],
+    "questions": {
+     "cancel": {
+      "type": "noul",
+      "instructions": "Does the user want to cancel?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "cancel",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      9876,
+      253,
+      2608,
+      971,
+      281,
+      14002,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      577,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      608,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      721,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      818,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      854,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      898,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      884,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      14077,
+      1903,
+      27,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      5497,
+      4982,
+      17579,
+      14337,
+      1381,
+      346,
+      4537,
+      995,
+      346,
+      6071,
+      1381,
+      346,
+      35264,
+      13,
+      816,
+      14002,
+      619,
+      21729,
+      986,
+      62,
+      50282
+     ],
+     "markers": [
+      13,
+      23
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      3.640625,
+      0.0303955078125
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "cancel": {
+      "type": "noul",
+      "noul": 0.1394,
+      "confidence": 0.8606,
+      "answer_confidence": 0.8606,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 512,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "budget_overrides",
+   "request": {
+    "state": "Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. Hello team, following up on the invoice discrepancy from last quarter. The amounts on INV-2291 and INV-2307 do not match the purchase order, and our finance department needs a corrected copy before month end. ",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": [
+       "finance",
+       "support",
+       "sales"
+      ]
+     }
+    },
+    "max_len": 128,
+    "head_max_len": 64
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      50281,
+      22122,
+      1953,
+      27,
+      6758,
+      2285,
+      32,
+      50282,
+      50284,
+      15065,
+      50284,
+      1329,
+      50284,
+      6224,
+      50282,
+      12092,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      4739,
+      285,
+      2949,
+      55,
+      14,
+      17569,
+      24,
+      513,
+      417,
+      3761,
+      253,
+      7471,
+      1340,
+      13,
+      285,
+      776,
+      15065,
+      7811,
+      3198,
+      247,
+      15045,
+      3491,
+      1078,
+      1770,
+      990,
+      15,
+      24387,
+      2285,
+      13,
+      1563,
+      598,
+      327,
+      253,
+      45156,
+      26210,
+      432,
+      1390,
+      7150,
+      15,
+      380,
+      8322,
+      327,
+      2949,
+      55,
+      14,
+      1423,
+      50282
+     ],
+     "markers": [
+      8,
+      10,
+      12
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      2.234375,
+      0.66015625,
+      -0.60546875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "finance",
+      "probabilities": {
+       "finance": 0.6219,
+       "support": 0.2543,
+       "sales": 0.1239
+      },
+      "confidence": 0.1787,
+      "answer_confidence": 0.6219,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 128,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "json_state_non_ascii",
+   "request": {
+    "state": {
+     "from": "Zoë",
+     "text": "Die Rechnung ist falsch — bitte korrigieren. 请尽快处理"
+    },
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": [
+       "billing",
+       "tech",
+       "other"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      2,
+      6241,
+      2872,
+      235292,
+      12236,
+      2970,
+      235336,
+      1,
+      4,
+      54972,
+      4,
+      2400,
+      4,
+      1156,
+      1,
+      19946,
+      2273,
+      1192,
+      664,
+      17222,
+      235979,
+      824,
+      664,
+      1082,
+      1192,
+      664,
+      6721,
+      114045,
+      2641,
+      116677,
+      2062,
+      48273,
+      12663,
+      4554,
+      10916,
+      235265,
+      140095,
+      166479,
+      20570,
+      12990,
+      1
+     ],
+     "markers": [
+      8,
+      10,
+      12
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      1.921875,
+      -2.296875,
+      -0.9140625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.9316,
+       "tech": 0.0137,
+       "other": 0.0547
+      },
+      "confidence": 0.7418,
+      "answer_confidence": 0.9316,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 41,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "Latin script but language looks like 'de', not English",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 0.8863636363636364,
+       "han": 0.11363636363636363
+      },
+      "language": "de",
+      "is_english": false,
+      "language_undecided": false,
+      "diacritic_rate": 0.0185,
+      "non_latin_fraction": 0.1136,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_devanagari",
+   "request": {
+    "state": "मुझे इस महीने दो बार शुल्क लिया गया, मुझे पैसे वापस चाहिए",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": {
+       "billing": "billing and refunds",
+       "tech": "login and app issues",
+       "other": "everything else"
+      }
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      2,
+      6241,
+      2872,
+      235292,
+      12236,
+      2970,
+      235336,
+      1,
+      4,
+      54972,
+      235292,
+      54972,
+      578,
+      85869,
+      4,
+      2400,
+      235292,
+      12138,
+      578,
+      1059,
+      5004,
+      4,
+      1156,
+      235292,
+      4553,
+      1354,
+      1,
+      146909,
+      22163,
+      4745,
+      17293,
+      9396,
+      51484,
+      99744,
+      144905,
+      228834,
+      158850,
+      44370,
+      235269,
+      146909,
+      4587,
+      54026,
+      195109,
+      235533,
+      108466,
+      1
+     ],
+     "markers": [
+      8,
+      14,
+      21
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      2.9375,
+      -2.296875,
+      -1.5234375
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.9834,
+       "tech": 0.0052,
+       "other": 0.0114
+      },
+      "confidence": 0.9137,
+      "answer_confidence": 0.9834,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 46,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "non-Latin script (devanagari, 100% of letters); the English checkpoint cannot read it",
+     "detection": {
+      "script": "devanagari",
+      "script_profile": {
+       "devanagari": 1.0
+      },
+      "language": null,
+      "is_english": false,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 1.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_khmer",
+   "request": {
+    "state": "ខ្ញុំត្រូវបានគិតប្រាក់ពីរដងក្នុងខែនេះ ខ្ញុំចង់បានប្រាក់វិញ",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      2,
+      552,
+      6311,
+      2872,
+      235292,
+      2125,
+      573,
+      6650,
+      11275,
+      604,
+      476,
+      19745,
+      235336,
+      1,
+      4,
+      1566,
+      235292,
+      793,
+      235269,
+      573,
+      6218,
+      1721,
+      780,
+      3385,
+      4,
+      1382,
+      235292,
+      7778,
+      235269,
+      573,
+      6218,
+      12723,
+      1,
+      235248,
+      243106,
+      239532,
+      244362,
+      241997,
+      242257,
+      241202,
+      176345,
+      242926,
+      242536,
+      241020,
+      239773,
+      239928,
+      242797,
+      241842,
+      241202,
+      241020,
+      176345,
+      239773,
+      240620,
+      242340,
+      242243,
+      242058,
+      240175,
+      242553,
+      241294,
+      240620,
+      239532,
+      239928,
+      241997,
+      241294,
+      243106,
+      243580,
+      239928,
+      242843,
+      243980,
+      235248,
+      243106,
+      239532,
+      244362,
+      241997,
+      242257,
+      242820,
+      241294,
+      242340,
+      241020,
+      239773,
+      239928,
+      241020,
+      176345,
+      239773,
+      240620,
+      242340,
+      242536,
+      241842,
+      244362,
+      1
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      1.0546875,
+      0.50390625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.3657,
+      "confidence": 0.6343,
+      "answer_confidence": 0.6343,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 90,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "non-Latin script (khmer, 100% of letters); the English checkpoint cannot read it",
+     "detection": {
+      "script": "khmer",
+      "script_profile": {
+       "khmer": 1.0
+      },
+      "language": null,
+      "is_english": false,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 1.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_cjk",
+   "request": {
+    "state": "这个月我被扣了两次钱，我要退款",
+    "questions": {
+     "urgency": {
+      "type": "score",
+      "instructions": "How urgent?",
+      "criteria": [
+       "calm",
+       "firm",
+       "angry",
+       "furious"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "urgency",
+     "input_ids": [
+      2,
+      7716,
+      2872,
+      235292,
+      2250,
+      34722,
+      235336,
+      1,
+      4,
+      2403,
+      235248,
+      235276,
+      235292,
+      15142,
+      4,
+      2403,
+      235248,
+      235274,
+      235292,
+      7650,
+      4,
+      2403,
+      235248,
+      235284,
+      235292,
+      19456,
+      4,
+      2403,
+      235248,
+      235304,
+      235292,
+      59276,
+      1,
+      156149,
+      235612,
+      235509,
+      235936,
+      238498,
+      116599,
+      235847,
+      236911,
+      235365,
+      60943,
+      186612,
+      1
+     ],
+     "markers": [
+      8,
+      14,
+      20,
+      26
+     ],
+     "qtype": 1,
+     "options": {
+      "options": 4,
+      "options_distinct": 4,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -1.796875,
+      0.1435546875,
+      -0.53515625,
+      -2.140625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "urgency": {
+      "type": "score",
+      "score": 1.3237,
+      "legend": {
+       "0": "calm",
+       "1": "firm",
+       "2": "angry",
+       "3": "furious"
+      },
+      "probabilities": {
+       "0": 0.082,
+       "1": 0.5705,
+       "2": 0.2894,
+       "3": 0.0581
+      },
+      "confidence": 0.243,
+      "answer_confidence": 0.5705,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 45,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "non-Latin script (han, 100% of letters); the English checkpoint cannot read it",
+     "detection": {
+      "script": "han",
+      "script_profile": {
+       "han": 1.0
+      },
+      "language": null,
+      "is_english": false,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 1.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_arabic",
+   "request": {
+    "state": "تم خصم المبلغ مرتين هذا الشهر، أريد استرداد أموالي",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      2,
+      552,
+      6311,
+      2872,
+      235292,
+      2125,
+      573,
+      6650,
+      11275,
+      604,
+      476,
+      19745,
+      235336,
+      1,
+      4,
+      1566,
+      235292,
+      793,
+      235269,
+      573,
+      6218,
+      1721,
+      780,
+      3385,
+      4,
+      1382,
+      235292,
+      7778,
+      235269,
+      573,
+      6218,
+      12723,
+      1,
+      22129,
+      66948,
+      235359,
+      3651,
+      90272,
+      70834,
+      3869,
+      24008,
+      203600,
+      235567,
+      3176,
+      54655,
+      5846,
+      5277,
+      3390,
+      35843,
+      139945,
+      1
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -2.90625,
+      0.498046875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.9678,
+      "confidence": 0.9678,
+      "answer_confidence": 0.9678,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 51,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "non-Latin script (arabic, 100% of letters); the English checkpoint cannot read it",
+     "detection": {
+      "script": "arabic",
+      "script_profile": {
+       "arabic": 1.0
+      },
+      "language": null,
+      "is_english": false,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 1.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_latin_non_english",
+   "request": {
+    "state": "Me han cobrado dos veces este mes y quiero que me devuelvan el dinero",
+    "questions": {
+     "queue": {
+      "type": "choice",
+      "instructions": "Which team?",
+      "criteria": [
+       "billing",
+       "tech",
+       "other"
+      ]
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "queue",
+     "input_ids": [
+      2,
+      6241,
+      2872,
+      235292,
+      12236,
+      2970,
+      235336,
+      1,
+      4,
+      54972,
+      4,
+      2400,
+      4,
+      1156,
+      1,
+      1842,
+      4790,
+      910,
+      58772,
+      3834,
+      22160,
+      4004,
+      3752,
+      597,
+      40997,
+      907,
+      682,
+      4586,
+      2825,
+      1890,
+      822,
+      28401,
+      1
+     ],
+     "markers": [
+      8,
+      10,
+      12
+     ],
+     "qtype": 0,
+     "options": {
+      "options": 3,
+      "options_distinct": 3,
+      "tokens_per_option": null
+     },
+     "logits": [
+      0.2080078125,
+      -2.515625,
+      -0.13671875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "queue": {
+      "type": "choice",
+      "choice": "billing",
+      "probabilities": {
+       "billing": 0.5637,
+       "tech": 0.037,
+       "other": 0.3993
+      },
+      "confidence": 0.2612,
+      "answer_confidence": 0.5637,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 33,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "Latin script but language looks like 'es', not English",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "es",
+      "is_english": false,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "ml_mixed_script",
+   "request": {
+    "state": "Order #5521 — 注文をキャンセルしたいです. Please help.",
+    "questions": {
+     "cancel": {
+      "type": "noul",
+      "instructions": "Does the user want to cancel?"
+     }
+    }
+   },
+   "items": [
+    {
+     "qid": "cancel",
+     "input_ids": [
+      2,
+      552,
+      6311,
+      2872,
+      235292,
+      11188,
+      573,
+      2425,
+      1938,
+      577,
+      12459,
+      235336,
+      1,
+      4,
+      1566,
+      235292,
+      793,
+      235269,
+      573,
+      6218,
+      1721,
+      780,
+      3385,
+      4,
+      1382,
+      235292,
+      7778,
+      235269,
+      573,
+      6218,
+      12723,
+      1,
+      8798,
+      1700,
+      235308,
+      235308,
+      235284,
+      235274,
+      2062,
+      231293,
+      235432,
+      182129,
+      30503,
+      2297,
+      235265,
+      5651,
+      1707,
+      235265,
+      1
+     ],
+     "markers": [
+      13,
+      23
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -5.28125,
+      0.66015625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "cancel": {
+      "type": "noul",
+      "noul": 0.9974,
+      "confidence": 0.9974,
+      "answer_confidence": 0.9974,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 49,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "non-Latin script (kana, 46% of letters); the English checkpoint cannot read it",
+     "detection": {
+      "script": "kana",
+      "script_profile": {
+       "latin": 0.5357142857142857,
+       "han": 0.07142857142857142,
+       "kana": 0.39285714285714285
+      },
+      "language": null,
+      "is_english": false,
+      "language_undecided": true,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.4643,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "model_pinned_multilingual",
+   "request": {
+    "state": "I was charged twice this month, I want my money back",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    },
+    "model": "multilingual"
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      2,
+      552,
+      6311,
+      2872,
+      235292,
+      2125,
+      573,
+      6650,
+      11275,
+      604,
+      476,
+      19745,
+      235336,
+      1,
+      4,
+      1566,
+      235292,
+      793,
+      235269,
+      573,
+      6218,
+      1721,
+      780,
+      3385,
+      4,
+      1382,
+      235292,
+      7778,
+      235269,
+      573,
+      6218,
+      12723,
+      1,
+      590,
+      729,
+      12497,
+      11594,
+      736,
+      2514,
+      235269,
+      590,
+      1938,
+      970,
+      3370,
+      1355,
+      1
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -3.609375,
+      0.69921875
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.9867,
+      "confidence": 0.9867,
+      "answer_confidence": 0.9867,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 46,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "multilingual",
+     "repo": "convaiinnovations/laya/multilingual",
+     "reason": "explicit model='multilingual'",
+     "detection": null,
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "model_pinned_typed_decisions",
+   "request": {
+    "state": "I was charged twice this month, I want my money back",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    },
+    "model": "typed-decisions"
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      253,
+      7731,
+      7004,
+      323,
+      247,
+      23005,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -1.9140625,
+      0.28515625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.7519,
+      "confidence": 0.7519,
+      "answer_confidence": 0.7519,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 46,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "typed-decisions",
+     "repo": "convaiinnovations/laya/typed-decisions",
+     "reason": "explicit model='typed-decisions'",
+     "detection": null,
+     "workflow": null
+    }
+   }
+  },
+  {
+   "name": "model_foreign_name_routes_by_default",
+   "request": {
+    "state": "I was charged twice this month, I want my money back",
+    "questions": {
+     "refund": {
+      "type": "noul",
+      "instructions": "Is the customer asking for a refund?"
+     }
+    },
+    "model": "jev-1"
+   },
+   "items": [
+    {
+     "qid": "refund",
+     "input_ids": [
+      50281,
+      79,
+      3941,
+      1953,
+      27,
+      1680,
+      253,
+      7731,
+      7004,
+      323,
+      247,
+      23005,
+      32,
+      50282,
+      50284,
+      3221,
+      27,
+      642,
+      13,
+      253,
+      3908,
+      1057,
+      417,
+      2186,
+      50284,
+      2032,
+      27,
+      4754,
+      13,
+      253,
+      3908,
+      6556,
+      50282,
+      42,
+      369,
+      6636,
+      7019,
+      436,
+      1770,
+      13,
+      309,
+      971,
+      619,
+      2583,
+      896,
+      50282
+     ],
+     "markers": [
+      14,
+      24
+     ],
+     "qtype": 2,
+     "options": {
+      "options": 2,
+      "options_distinct": 2,
+      "tokens_per_option": null
+     },
+     "logits": [
+      -3.765625,
+      1.6015625
+     ],
+     "act": [
+      1.0,
+      0.0
+     ]
+    }
+   ],
+   "response": {
+    "model": "laya-rl-agent",
+    "answers": {
+     "refund": {
+      "type": "noul",
+      "noul": 0.9374,
+      "confidence": 0.9374,
+      "answer_confidence": 0.9374,
+      "action": {
+       "act_probability": 1.0
+      }
+     }
+    },
+    "usage": {
+     "input_tokens": 46,
+     "output_tokens": 0
+    },
+    "routing": {
+     "model": "english",
+     "repo": "convaiinnovations/laya",
+     "reason": "English Latin text",
+     "detection": {
+      "script": "latin",
+      "script_profile": {
+       "latin": 1.0
+      },
+      "language": "en",
+      "is_english": true,
+      "language_undecided": false,
+      "diacritic_rate": 0.0,
+      "non_latin_fraction": 0.0,
+      "mixed_segment": null
+     },
+     "workflow": null
+    }
+   }
+  }
+ ]
+}
