@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod build_info;
 pub mod catalogue;
 pub mod config;
+pub mod decisions;
 pub mod discovery;
 pub mod entitlements;
 pub mod error_envelope;
