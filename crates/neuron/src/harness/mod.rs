@@ -6,6 +6,7 @@ pub mod candle;
 pub mod capability;
 pub mod chat_template;
 pub mod context_limit;
+pub mod decision;
 pub mod device_worker;
 pub mod engine;
 pub mod image;
