@@ -239,6 +239,35 @@ fn budget_error_to_envelope(err: BudgetError) -> OpenAiError {
     }
 }
 
+/// Sequence cap assumed for a decision request that does not set
+/// `max_len`: the largest default any shipped Laya checkpoint uses.
+const DECISION_DEFAULT_MAX_LEN: u64 = 1024;
+
+/// The ceiling a decision request may raise `max_len` to (Laya's own
+/// server caps the budget at the same value).
+const DECISION_MAX_LEN_CAP: u64 = 8192;
+
+/// Upper-bound input tokens for a `/v1/systemone` request (#338/#340).
+///
+/// A decision model encodes one sequence per question, each at most
+/// `max_len` tokens, and bills input tokens only — so questions ×
+/// `max_len` is a true ceiling, not an estimate. The node reports the
+/// exact count in `usage.input_tokens` and settle corrects to it.
+pub fn decision_reservation_tokens(body: &[u8]) -> u64 {
+    let v: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
+    let questions = match v.get("questions") {
+        Some(serde_json::Value::Object(m)) => m.len() as u64,
+        Some(serde_json::Value::Array(a)) => a.len() as u64,
+        _ => 1,
+    };
+    let max_len = v
+        .get("max_len")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DECISION_DEFAULT_MAX_LEN)
+        .min(DECISION_MAX_LEN_CAP);
+    questions.max(1).saturating_mul(max_len.max(1))
+}
+
 /// Upper-bound tokens to reserve for a request (#52): an over-estimate of
 /// the prompt plus the maximum output. `advertised_output` is the model's
 /// `limit.output` (#62), used when the request omits `max_(completion_)tokens`.
@@ -270,6 +299,33 @@ fn estimate_prompt_tokens(body: &[u8]) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decision_reservation_is_questions_times_sequence_cap() {
+        let body = br#"{"state":"x","questions":{"a":{},"b":{},"c":{}}}"#;
+        assert_eq!(
+            decision_reservation_tokens(body),
+            3 * DECISION_DEFAULT_MAX_LEN
+        );
+        let body = br#"{"state":"x","questions":{"a":{},"b":{}},"max_len":256}"#;
+        assert_eq!(decision_reservation_tokens(body), 512);
+    }
+
+    #[test]
+    fn decision_reservation_caps_a_raised_max_len() {
+        let body = br#"{"questions":{"a":{}},"max_len":1000000}"#;
+        assert_eq!(decision_reservation_tokens(body), DECISION_MAX_LEN_CAP);
+    }
+
+    #[test]
+    fn decision_reservation_never_zero() {
+        assert_eq!(
+            decision_reservation_tokens(b"not json"),
+            DECISION_DEFAULT_MAX_LEN
+        );
+        let body = br#"{"questions":{},"max_len":0}"#;
+        assert_eq!(decision_reservation_tokens(body), 1);
+    }
 
     #[test]
     fn requested_max_output_prefers_max_completion_tokens() {

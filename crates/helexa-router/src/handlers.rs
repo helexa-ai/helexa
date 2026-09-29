@@ -14,6 +14,7 @@ pub fn api_routes() -> Router<Arc<RouterState>> {
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
         .route("/v1/images/generations", post(images_generations))
+        .route("/v1/systemone", post(systemone))
         .route("/v1/responses", post(responses))
         .route("/v1/messages", post(messages))
         .route("/v1/models", get(list_models))
@@ -61,6 +62,17 @@ async fn images_generations(
     body: Bytes,
 ) -> Response {
     dispatch::dispatch(&state, "/v1/images/generations", headers, body).await
+}
+
+/// `POST /v1/systemone` (#338): typed decisions (TypeSafe Jev wire
+/// protocol) from a decision model. Unlike the other paths an unknown or
+/// missing `model` is not a 404 — see [`dispatch::dispatch_decision`].
+async fn systemone(
+    State(state): State<Arc<RouterState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    dispatch::dispatch_decision(&state, "/v1/systemone", headers, body).await
 }
 
 async fn messages(

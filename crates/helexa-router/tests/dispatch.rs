@@ -14,7 +14,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use cortex_core::node::CortexModelEntry;
 use helexa_router::config::{CortexEndpoint, RouterConfig};
-use helexa_router::dispatch::{Selection, dispatch, select_cortexes};
+use helexa_router::dispatch::{Selection, dispatch, dispatch_decision, select_cortexes};
 use helexa_router::state::{CortexTopology, RouterState};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -87,6 +87,7 @@ async fn mock_handler(State(m): State<MockCortex>, headers: HeaderMap, body: Byt
 async fn spawn_cortex(mock: MockCortex) -> String {
     let app = Router::new()
         .route("/v1/chat/completions", post(mock_handler))
+        .route("/v1/systemone", post(mock_handler))
         .with_state(mock);
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -348,4 +349,76 @@ async fn ranking_prefers_loaded_then_region_then_headroom() {
     };
     let names: Vec<&str> = order.iter().map(|e| e.name.as_str()).collect();
     assert_eq!(names, vec!["warm-eu", "warm-us", "cold-eu"]);
+}
+
+// ── /v1/systemone default-model fallback (#338) ──────────────────────
+
+/// Router state with c1 serving MODEL, and `helexa/one` pointing at it
+/// when `with_default` is set.
+async fn decision_state(with_default: bool) -> RouterState {
+    let url = spawn_cortex(ok_cortex("c1")).await;
+    let mut state = state_with(vec![ep("c1", &url, None)], None);
+    if with_default {
+        state.aliases.insert(
+            cortex_core::catalogue::DECISION_DEFAULT_ALIAS.to_string(),
+            MODEL.to_string(),
+        );
+    }
+    set_topology(&state, "c1", true, true, true, 2).await;
+    state
+}
+
+#[tokio::test]
+async fn decision_foreign_model_selects_default_and_keeps_body_model() {
+    // A Jev client names its own service. Capacity is chosen for the
+    // default decision model, and the client's `model` is forwarded
+    // untouched for cortex (and the node) to interpret.
+    let state = decision_state(true).await;
+    let body = Bytes::from_static(b"{\"model\":\"jev-1\",\"questions\":{}}");
+    let resp = dispatch_decision(&state, "/v1/systemone", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["served_by"], "c1");
+    assert_eq!(body["model_seen"], "jev-1");
+}
+
+#[tokio::test]
+async fn decision_missing_model_selects_default() {
+    let state = decision_state(true).await;
+    let body = Bytes::from_static(b"{\"questions\":{}}");
+    let resp = dispatch_decision(&state, "/v1/systemone", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["served_by"], "c1");
+    assert_eq!(body["model_seen"], "");
+}
+
+#[tokio::test]
+async fn decision_default_alias_is_rewritten_like_any_alias() {
+    let state = decision_state(true).await;
+    let body = Bytes::from_static(b"{\"model\":\"helexa/one\",\"questions\":{}}");
+    let resp = dispatch_decision(&state, "/v1/systemone", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["model_seen"], MODEL);
+}
+
+#[tokio::test]
+async fn decision_unknown_model_without_default_is_404() {
+    let state = decision_state(false).await;
+    let body = Bytes::from_static(b"{\"model\":\"jev-1\",\"questions\":{}}");
+    let resp = dispatch_decision(&state, "/v1/systemone", HeaderMap::new(), body).await;
+    let (status, body) = body_json(resp).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(body["error"]["code"], "model_not_found");
+}
+
+#[tokio::test]
+async fn chat_unknown_model_does_not_take_the_decision_fallback() {
+    // The fallback is scoped to the decision endpoint.
+    let state = decision_state(true).await;
+    let body = Bytes::from_static(b"{\"model\":\"jev-1\",\"stream\":false}");
+    let resp = dispatch(&state, "/v1/chat/completions", HeaderMap::new(), body).await;
+    let (status, _) = body_json(resp).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

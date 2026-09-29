@@ -24,6 +24,7 @@ pub fn api_routes() -> Router<Arc<CortexState>> {
         .route("/v1/completions", post(completions))
         .route("/v1/responses", post(responses))
         .route("/v1/images/generations", post(images_generations))
+        .route("/v1/systemone", post(systemone))
         .route("/v1/models", get(list_models))
         .route("/v1/messages", post(anthropic_messages))
         .route("/health", get(health))
@@ -341,6 +342,192 @@ async fn images_generations(
             axum::http::header::CONTENT_TYPE,
             axum::http::HeaderValue::from_static("application/json"),
         );
+    }
+    response
+        .body(axum::body::Body::from(resp_bytes))
+        .unwrap_or_else(|_| {
+            error_response(500, "api_error", "response_build_failed", "internal error")
+        })
+}
+
+/// `POST /v1/systemone` — typed decisions (TypeSafe Jev wire protocol)
+/// from a decision model such as Laya (#338).
+///
+/// Routing differs from the other inference paths in one way: a
+/// missing or unknown `model` resolves to
+/// [`DECISION_DEFAULT_ALIAS`](cortex_core::catalogue::DECISION_DEFAULT_ALIAS)
+/// instead of 404ing, because Jev clients name their own service there.
+/// A `model` that *does* resolve — an alias, or a model this fleet
+/// knows — routes as usual, so asking a text model for a decision
+/// reaches neuron and gets its `wrong_modality` answer rather than a
+/// silent substitution.
+///
+/// The body is forwarded untouched (its `model` may pin a checkpoint
+/// inside the served family); the routed model travels in
+/// [`DECISION_MODEL_HEADER`](cortex_core::catalogue::DECISION_MODEL_HEADER).
+///
+/// Metered like Jev: input tokens only. The reservation is the exact
+/// upper bound — questions × the sequence cap — and settles to
+/// `usage.input_tokens` from the response.
+async fn systemone(
+    State(fleet): State<Arc<CortexState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    use cortex_core::catalogue::{DECISION_DEFAULT_ALIAS, DECISION_MODEL_HEADER};
+
+    log_inbound("systemone", "/v1/systemone", &body);
+    let requested = extract_model(&body);
+    let route = match requested.as_deref() {
+        Some(model) => match router::resolve(&fleet, model).await {
+            Err(router::RouteError::ModelNotFound(_)) => {
+                tracing::debug!(
+                    requested = model,
+                    default = DECISION_DEFAULT_ALIAS,
+                    "unknown decision model; using the default"
+                );
+                router::resolve(&fleet, DECISION_DEFAULT_ALIAS).await
+            }
+            other => other,
+        },
+        None => router::resolve(&fleet, DECISION_DEFAULT_ALIAS).await,
+    };
+    let route = match route {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(
+                handler = "systemone",
+                requested = requested.as_deref().unwrap_or("<none>"),
+                error = %e,
+                "route resolve failed"
+            );
+            return route_error_response(&e);
+        }
+    };
+
+    touch_model(&fleet, &route.node_name, &route.resolved_model_id).await;
+
+    let labels = [
+        ("model", route.resolved_model_id.clone()),
+        ("node", route.node_name.clone()),
+    ];
+    metrics::counter!("cortex_requests_total", &labels).increment(1);
+    metrics::counter!("cortex_decision_requests_total", &labels).increment(1);
+    if route.cold_start {
+        metrics::counter!("cortex_cold_starts_total", &labels).increment(1);
+    }
+
+    let principal = crate::metering::principal_from_headers(&headers);
+    let bound = crate::metering::decision_reservation_tokens(&body);
+    let guard = match &principal {
+        Some(principal) => {
+            match crate::metering::reserve_or_reject(
+                Arc::clone(&fleet.entitlements),
+                principal,
+                bound,
+            )
+            .await
+            {
+                Ok(guard) => Some(guard),
+                Err(env) => return crate::error::envelope_response(env),
+            }
+        }
+        None => None,
+    };
+
+    let mut forward_headers = strip_hop_headers(&headers);
+    match axum::http::HeaderValue::from_str(&route.resolved_model_id) {
+        Ok(v) => {
+            forward_headers.insert(DECISION_MODEL_HEADER, v);
+        }
+        Err(_) => {
+            // A model id that is not a valid header value cannot have
+            // come from the catalogue or a neuron's model list.
+            return error_response(500, "api_error", "invalid_model_id", "internal error");
+        }
+    }
+
+    let url = format!("{}/v1/systemone", route.endpoint);
+    let start = Instant::now();
+    let upstream = fleet
+        .http_client
+        .post(&url)
+        .headers(forward_headers)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await;
+    let upstream = match upstream {
+        Ok(r) => r,
+        Err(e) => {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            tracing::warn!(node = %route.node_name, url = %url, error = %e, "systemone proxy failed");
+            return error_response(
+                502,
+                "api_error",
+                "upstream_unreachable",
+                "failed to reach the serving node",
+            );
+        }
+    };
+    let status = upstream.status();
+    let passthrough: Vec<(axum::http::HeaderName, axum::http::HeaderValue)> = upstream
+        .headers()
+        .iter()
+        .filter(|(n, _)| {
+            matches!(
+                n.as_str(),
+                "server-timing" | "x-inference-time-ms" | "retry-after"
+            )
+        })
+        .map(|(n, v)| (n.clone(), v.clone()))
+        .collect();
+    let resp_bytes = match upstream.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+            tracing::warn!(node = %route.node_name, error = %e, "systemone response read failed");
+            return error_response(
+                502,
+                "api_error",
+                "upstream_read_failed",
+                "failed to read the serving node's response",
+            );
+        }
+    };
+    metrics::histogram!("cortex_request_duration_seconds", &labels)
+        .record(start.elapsed().as_secs_f64());
+
+    if status.is_success() {
+        let input_tokens = serde_json::from_slice::<Value>(&resp_bytes)
+            .ok()
+            .and_then(|v| v.get("usage")?.get("input_tokens")?.as_u64());
+        if let Some(n) = input_tokens {
+            metrics::counter!("cortex_decision_input_tokens_total", &labels).increment(n);
+        }
+        if let (Some(principal), Some(guard)) = (principal, guard) {
+            // No usage block means the node answered outside the
+            // contract; settle at the reserved bound rather than free.
+            let spent = input_tokens.unwrap_or_else(|| {
+                tracing::warn!(node = %route.node_name, "systemone response carried no usage");
+                bound
+            });
+            crate::metering::record_spend(&principal, spent, 0);
+            fleet
+                .served_usage
+                .add(&principal.account_id, &principal.key_id, spent);
+            guard.settle(spent);
+        }
+    } else {
+        metrics::counter!("cortex_request_errors_total", &labels).increment(1);
+        // guard drops here -> reservation released, no spend recorded.
+    }
+
+    let mut response = axum::response::Response::builder()
+        .status(status)
+        .header(axum::http::header::CONTENT_TYPE, "application/json");
+    for (name, value) in passthrough {
+        response = response.header(name, value);
     }
     response
         .body(axum::body::Body::from(resp_bytes))
