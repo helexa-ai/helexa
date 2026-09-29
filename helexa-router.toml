@@ -28,6 +28,9 @@ region = "eu-central"
 [aliases]
 "helexa/small" = "Qwen/Qwen3-8B"
 "helexa/balanced" = "Qwen/Qwen3.8-27B"
+# System-One decisions (#333). Also the model /v1/systemone falls back
+# to when a request names none or names a service no operator serves.
+"helexa/one" = "convaiinnovations/laya"
 
 # hanzalova operator cortex, plaintext over the WireGuard mesh (the mesh
 # is the trust boundary; no TLS pin needed for http://).
