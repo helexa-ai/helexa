@@ -7,9 +7,10 @@
 # ─────────────────────────────────────────────────────────────────────
 # neuron.toml for quadbrat.hanzalova.internal
 #
-# 1x RTX 3060 (12 GB) — small / quantised tier. Pre-warms Qwen3-1.7B
-# (bf16, ~4 GB), leaving ~7 GB for KV cache so long contexts on a small
-# model still have plenty of room.
+# 1x RTX 3060 (12 GB). Resident: Laya, the System-One decision model
+# (#333, ~2.3 GB bf16 for its three checkpoints). It replaced the
+# Qwen3-1.7B pre-warm (operator decision 2026-09-29, #341); the 1.7B is
+# still cold-loadable beside it for helexa/small.
 #
 # Synced to /etc/neuron/neuron.toml by script/infra-setup.sh.
 
@@ -21,9 +22,20 @@ name = "candle"
 [harness.candle]
 
 [[default_models]]
-model_id = "Qwen/Qwen3-1.7B"
+model_id = "convaiinnovations/laya"
 harness = "candle"
 devices = [0]
+
+# A decision request is one forward of tens of milliseconds (36 ms for
+# one question over a 512-token state, 162 ms for five), so a one-slot
+# queue of 8 rejects ordinary bursts. Admit
+# several at once -- the device worker still runs forwards one at a
+# time -- and let a deep, short-deadline queue absorb the rest. Applies
+# to every model on this host, including a cold-loaded helexa/small.
+[harness.candle.admission]
+max_in_flight = 4
+max_queue_depth = 64
+max_wait_secs = 10
 
 # Text-to-image (#204): the 12 GB tier serves the q8_0-quantized DiT
 # (8.7 GB resident incl. VAE). Ceiling is 768² — naive f32 attention

@@ -167,6 +167,28 @@ min_device_vram_mb = 4000
 cost.input = 0.015
 cost.output = 0.06
 
+# System-One decisions (#333): Laya, a 421M non-autoregressive decision
+# model (ModernBERT encoder + option-scoring head) served on
+# /v1/systemone. One repo, three checkpoints -- English at the root,
+# multilingual/ and typed-decisions/ beside it -- all resident (~2.3 GB
+# bf16) so neuron can route each request by language. Not a text model:
+# chat endpoints answer it with wrong_modality.
+#
+# Resident on quadbrat, replacing the Qwen3-1.7B pre-warm (operator
+# decision 2026-09-29, #341); pinned there so a cold-loaded helexa/small
+# can share the card but never evict it. Metered like TypeSafe Jev,
+# input tokens only (every question re-encodes the state, and each
+# encoded token counts), at Jev's published $0.042 per million.
+[[models]]
+id = "convaiinnovations/laya"
+harness = "candle"
+vram_mb = 3500
+min_devices = 1
+min_device_vram_mb = 4000
+pinned_on = ["quadbrat"]
+cost.input = 0.042
+cost.output = 0.0
+
 # -- Tier aliases ------------------------------------------------------------
 # Clients can request inference against an alias and cortex transparently
 # routes to the concrete model id below. Useful so client code can pick a
@@ -177,6 +199,10 @@ cost.output = 0.06
 "helexa/balanced" = "Qwen/Qwen3-8B"
 "helexa/large" = "Qwen/Qwen3.8-27B"
 "helexa/image" = "Tongyi-MAI/Z-Image-Turbo"
+# The System-One decision class: the default /v1/systemone resolves to
+# for a request with no model, or one naming a service this fleet does
+# not serve (a Jev client's own model name).
+"helexa/one" = "convaiinnovations/laya"
 
 # Text-to-image (#197/#203): Z-Image-Turbo, 6B S3-DiT + Qwen3-4B text
 # encoder (runs on host CPU by default — see [harness.candle.image] in
