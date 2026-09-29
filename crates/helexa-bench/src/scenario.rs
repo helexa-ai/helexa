@@ -153,15 +153,27 @@ pub trait Scenario: Send + Sync {
     fn prompt_size(&self) -> u32;
 
     /// Whether this scenario should run against the given model. The
-    /// default runs against everything except image-generation models
-    /// (a chat request at an image model is a 422 `wrong_modality`);
-    /// modality-specific scenarios override this.
+    /// default runs against chat models only: an image-generation model
+    /// or a decision model (#333) answers a chat request with a 422
+    /// `wrong_modality`. Modality-specific scenarios override this.
     fn applies_to(&self, model: &ModelInfo) -> bool {
-        !model.capabilities.iter().any(|c| c == "image")
+        serves_chat(model)
     }
 
     /// Issue one shaped request and measure it.
     async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics>;
+}
+
+/// Capabilities that mark a model as serving an endpoint other than
+/// chat completions.
+const NON_CHAT_MODALITIES: [&str; 2] = ["image", "decision"];
+
+/// Whether a model answers `/v1/chat/completions`.
+pub fn serves_chat(model: &ModelInfo) -> bool {
+    !model
+        .capabilities
+        .iter()
+        .any(|c| NON_CHAT_MODALITIES.contains(&c.as_str()))
 }
 
 /// Fixed-seed image-latency scenario (#203): one 9-step generation at a
@@ -882,6 +894,34 @@ async fn stream_and_measure_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn model(capabilities: &[&str]) -> ModelInfo {
+        serde_json::from_value(serde_json::json!({
+            "id": "m",
+            "harness": "candle",
+            "status": "loaded",
+            "devices": [0],
+            "vram_used_mb": null,
+            "capabilities": capabilities,
+        }))
+        .expect("model info")
+    }
+
+    /// Chat scenarios skip every model that answers chat with
+    /// `wrong_modality`: image generators and decision models alike.
+    #[test]
+    fn chat_scenarios_skip_image_and_decision_models() {
+        assert!(serves_chat(&model(&[])));
+        assert!(serves_chat(&model(&["text", "vision"])));
+        assert!(!serves_chat(&model(&["image"])));
+        assert!(!serves_chat(&model(&["decision"])));
+        let image = ImageLatencyScenario {
+            id: "image:512".into(),
+            side_px: 512,
+        };
+        assert!(image.applies_to(&model(&["image"])));
+        assert!(!image.applies_to(&model(&["decision"])));
+    }
 
     /// A burst must report server-side phase timing, or `queue_wait_ms`
     /// (TTFT minus server prefill, #85) cannot be computed for the very
