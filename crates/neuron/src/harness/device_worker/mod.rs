@@ -51,7 +51,7 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "cuda")]
 pub use jobs::TpHandle;
-pub use jobs::{ArchHandle, DenseLoad, ImageHandle, Job, KvSnapshotId};
+pub use jobs::{ArchHandle, DecisionHandle, DenseLoad, ImageHandle, Job, KvSnapshotId};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -324,6 +324,85 @@ impl DeviceWorkerHandle {
                 handle,
                 params,
                 max_dim,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Load one Laya checkpoint directory (#336) on the worker thread.
+    /// Returns the handle and the dtype the weights were loaded in.
+    pub async fn load_decision(
+        &self,
+        dir: std::path::PathBuf,
+        model_id: String,
+        dtype: candle_core::DType,
+    ) -> Result<(DecisionHandle, candle_core::DType), WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::LoadDecision {
+                dir,
+                model_id,
+                dtype,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop the decision model for `handle` on the worker thread. Same
+    /// poison-tolerant contract as [`Self::drop_arch`].
+    pub async fn drop_decision(&self, handle: DecisionHandle) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropDecision {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        reply_rx.await.map_err(|_| WorkerError::Gone {
+            device_index: self.device_index,
+        })
+    }
+
+    /// Score one batch of assembled questions (#336). The reply is
+    /// CPU-side scores; no device tensor crosses back.
+    pub async fn decide(
+        &self,
+        handle: DecisionHandle,
+        batch: crate::harness::arch::laya::DecisionBatch,
+    ) -> Result<Vec<crate::harness::arch::laya::DecisionRow>, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::Decide {
+                handle,
+                batch,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {
