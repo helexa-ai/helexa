@@ -1,0 +1,347 @@
+{
+ "header": {
+  "laya_version": "0.3.21",
+  "torch_version": "2.14.0+cu130",
+  "device": "cpu",
+  "dtype": "float32",
+  "checkpoints": {
+   "english": {
+    "repo": "convaiinnovations/laya",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 512,
+     "head_max_len": 192,
+     "temperature": [
+      1.6369030475616455,
+      1.2514300346374512,
+      1.983399510383606
+     ],
+     "temperature_by_options": {
+      "choice:3-5": 1.7601518630981445,
+      "choice:6-10": 1.0000158548355103,
+      "score:3-5": 1.2514300346374512,
+      "noul:2": 1.983399510383606,
+      "choice:11+": 0.10058280825614929,
+      "choice:2": 1.9063563346862793
+     }
+    },
+    "special_ids": {
+     "cls": 50281,
+     "sep": 50282,
+     "mask": 50284,
+     "pad": 50283
+    }
+   },
+   "multilingual": {
+    "repo": "convaiinnovations/laya/multilingual",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 1024,
+     "head_max_len": 256,
+     "temperature": [
+      1.0,
+      1.0,
+      1.0
+     ],
+     "temperature_by_options": {}
+    },
+    "special_ids": {
+     "cls": 2,
+     "sep": 1,
+     "mask": 4,
+     "pad": 0
+    }
+   },
+   "typed-decisions": {
+    "repo": "convaiinnovations/laya/typed-decisions",
+    "revision": "55cf4c4ebb4ebe31b2550e8bdf3bd21b99753851",
+    "cfg": {
+     "max_len": 1024,
+     "head_max_len": 256,
+     "temperature": [
+      1.0148024559020996,
+      1.0374259948730469,
+      1.0575125217437744
+     ],
+     "temperature_by_options": {
+      "choice:3-5": 1.7601518630981445,
+      "choice:6-10": 1.0000158548355103,
+      "score:3-5": 1.2514300346374512,
+      "noul:2": 1.983399510383606,
+      "choice:11+": 0.10058280825614929,
+      "choice:2": 1.9063563346862793
+     }
+    },
+    "special_ids": {
+     "cls": 50281,
+     "sep": 50282,
+     "mask": 50284,
+     "pad": 50283
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "state": "I was charged twice this month, I want my money back",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": "en",
+    "is_english": true,
+    "language_undecided": false,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "Me han cobrado dos veces este mes",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": "es",
+    "is_english": false,
+    "language_undecided": false,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "Die Rechnung ist falsch, bitte korrigieren",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": "de",
+    "is_english": false,
+    "language_undecided": false,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "Je voudrais annuler ma commande",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": "fr",
+    "is_english": false,
+    "language_undecided": false,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "मुझे पैसे वापस चाहिए",
+   "analysis": {
+    "script": "devanagari",
+    "script_profile": {
+     "devanagari": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "ខ្ញុំចង់បានប្រាក់វិញ",
+   "analysis": {
+    "script": "khmer",
+    "script_profile": {
+     "khmer": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "这个月我被扣了两次钱",
+   "analysis": {
+    "script": "han",
+    "script_profile": {
+     "han": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "注文をキャンセルしたいです",
+   "analysis": {
+    "script": "kana",
+    "script_profile": {
+     "han": 0.15384615384615385,
+     "kana": 0.8461538461538461
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "تم خصم المبلغ مرتين",
+   "analysis": {
+    "script": "arabic",
+    "script_profile": {
+     "arabic": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "Мне дважды списали деньги",
+   "analysis": {
+    "script": "cyrillic",
+    "script_profile": {
+     "cyrillic": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 1.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "Order #5521 — 注文をキャンセルしたいです. Please help.",
+   "analysis": {
+    "script": "kana",
+    "script_profile": {
+     "latin": 0.5357142857142857,
+     "han": 0.07142857142857142,
+     "kana": 0.39285714285714285
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.4643,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "ok",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": null,
+    "is_english": true,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "",
+   "analysis": {
+    "script": "unknown",
+    "script_profile": {},
+    "language": null,
+    "is_english": true,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "12345 67890",
+   "analysis": {
+    "script": "unknown",
+    "script_profile": {},
+    "language": null,
+    "is_english": true,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": "café résumé naïve",
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": null,
+    "is_english": false,
+    "language_undecided": true,
+    "diacritic_rate": 0.2353,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": {
+    "subject": "Invoice",
+    "body": "Bitte zahlen Sie bis Freitag"
+   },
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": null,
+    "is_english": true,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  },
+  {
+   "state": [
+    "hello",
+    "bonjour",
+    "hola"
+   ],
+   "analysis": {
+    "script": "latin",
+    "script_profile": {
+     "latin": 1.0
+    },
+    "language": null,
+    "is_english": true,
+    "language_undecided": true,
+    "diacritic_rate": 0.0,
+    "non_latin_fraction": 0.0,
+    "mixed_segment": null
+   }
+  }
+ ]
+}
