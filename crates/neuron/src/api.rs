@@ -189,6 +189,7 @@ fn preflight_kind(err: &PreflightError) -> &'static str {
         PreflightError::EmptyRepo { .. } => "empty_repo",
         PreflightError::TpRequiresSafetensors { .. } => "tp_requires_safetensors",
         PreflightError::QuantNotFound { .. } => "quant_not_found",
+        PreflightError::Unsupported { .. } => "unsupported_load_option",
     }
 }
 

@@ -54,6 +54,11 @@ pub enum SourceFormat {
     /// Takes precedence over the safetensors sniff because diffusers
     /// repos also contain `.safetensors` shards (in subdirs).
     Diffusers,
+    /// A Laya decision-model checkpoint (#336): `rl_agent_config.json`
+    /// plus `encoder/config.json` at the root, no top-level
+    /// `config.json`. Served by the decision path — single device,
+    /// unquantized. Takes precedence over the safetensors sniff.
+    DecisionModel,
 }
 
 /// Output of `preflight` for a load that can proceed. Carries the
@@ -115,6 +120,12 @@ pub enum PreflightError {
         available: Vec<String>,
         nearest: Option<String>,
     },
+
+    /// The repo's format cannot be served with an option the spec
+    /// asked for (e.g. `tensor_parallel` or `quant` on a decision
+    /// model). `reason` says which and what to set instead.
+    #[error("cannot load '{model_id}' as requested: {reason}")]
+    Unsupported { model_id: String, reason: String },
 }
 
 /// Run the placement check.
@@ -230,6 +241,24 @@ pub async fn preflight(
         // The architecture compatibility check stays where it is —
         // `check_dense_config_supported` runs once `config.json` is
         // on disk, since it needs the parsed JSON.
+        // Decision models (#336) load unquantized on one device.
+        (SourceFormat::DecisionModel, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
+            model_id: source_id.to_string(),
+            reason: format!(
+                "decision models load on a single device; tensor_parallel={tp} is not supported"
+            ),
+        }),
+        (SourceFormat::DecisionModel, _, Some(q)) => Err(PreflightError::Unsupported {
+            model_id: source_id.to_string(),
+            reason: format!("decision models load unquantized; remove quant={q:?}"),
+        }),
+        (SourceFormat::DecisionModel, _, None) => Ok(PlacementPlan {
+            model_id: source_id.to_string(),
+            format: format.clone(),
+            tp_size,
+            picked_quant_file: None,
+        }),
+
         (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
             Ok(PlacementPlan {
                 model_id: source_id.to_string(),
@@ -295,6 +324,9 @@ pub fn classify(filenames: &[&str]) -> SourceFormat {
     if crate::harness::image::is_diffusers_layout(filenames) {
         return SourceFormat::Diffusers;
     }
+    if is_decision_layout(filenames) {
+        return SourceFormat::DecisionModel;
+    }
     let mut gguf_quants: Vec<String> = filenames
         .iter()
         .filter(|f| f.to_lowercase().ends_with(".gguf"))
@@ -316,6 +348,16 @@ pub fn classify(filenames: &[&str]) -> SourceFormat {
         },
         (false, true) => SourceFormat::Empty,
     }
+}
+
+/// A Laya decision checkpoint at the repo root: its decision config and
+/// its encoder config, with no top-level `config.json` (a causal LM
+/// that happened to ship a file with the same name still classifies as
+/// a text model).
+pub fn is_decision_layout(filenames: &[&str]) -> bool {
+    filenames.contains(&"rl_agent_config.json")
+        && filenames.contains(&"encoder/config.json")
+        && !filenames.contains(&"config.json")
 }
 
 /// Mirror of the quant-matching logic in `candle.rs::resolve_files` so
@@ -651,6 +693,20 @@ mod tests {
                 tp_size,
                 picked_quant_file: None,
             }),
+            (SourceFormat::DecisionModel, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!("decision models load on a single device; tensor_parallel={tp}"),
+            }),
+            (SourceFormat::DecisionModel, _, Some(q)) => Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!("decision models load unquantized; remove quant={q:?}"),
+            }),
+            (SourceFormat::DecisionModel, _, None) => Ok(PlacementPlan {
+                model_id: source_id.to_string(),
+                format: format.clone(),
+                tp_size,
+                picked_quant_file: None,
+            }),
             (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
                 Ok(PlacementPlan {
                     model_id: source_id.to_string(),
@@ -672,6 +728,66 @@ mod tests {
             "vae/diffusion_pytorch_model.safetensors",
         ];
         assert_eq!(classify(&files), SourceFormat::Diffusers);
+    }
+
+    /// The released `convaiinnovations/laya` listing: the English
+    /// checkpoint at the root, two more in subfolders, and no root
+    /// `config.json`.
+    const LAYA_FILES: [&str; 12] = [
+        "README.md",
+        "rl_agent_config.json",
+        "encoder/config.json",
+        "model.safetensors",
+        "tokenizer/tokenizer.json",
+        "tokenizer/tokenizer_config.json",
+        "multilingual/rl_agent_config.json",
+        "multilingual/encoder/config.json",
+        "multilingual/model.safetensors",
+        "typed-decisions/rl_agent_config.json",
+        "typed-decisions/encoder/config.json",
+        "typed-decisions/model.safetensors",
+    ];
+
+    #[test]
+    fn classify_laya_layout() {
+        assert_eq!(classify(&LAYA_FILES), SourceFormat::DecisionModel);
+        // A causal LM that also ships an rl config is still a text model.
+        let lm = [
+            "config.json",
+            "rl_agent_config.json",
+            "encoder/config.json",
+            "model.safetensors",
+        ];
+        assert!(matches!(
+            classify(&lm),
+            SourceFormat::DenseSafetensors { .. }
+        ));
+    }
+
+    #[test]
+    fn feasibility_decision_model() {
+        let fmt = classify(&LAYA_FILES);
+        let plan = decide(
+            &spec("convaiinnovations/laya", None, None),
+            &fmt,
+            &LAYA_FILES,
+        )
+        .expect("single-device unquantized decision load should pass");
+        assert_eq!(plan.format, SourceFormat::DecisionModel);
+        let err = decide(
+            &spec("convaiinnovations/laya", Some(2), None),
+            &fmt,
+            &LAYA_FILES,
+        )
+        .expect_err("tp>1 must be refused");
+        assert!(matches!(err, PreflightError::Unsupported { .. }));
+        let err = decide(
+            &spec("convaiinnovations/laya", None, Some("q8_0")),
+            &fmt,
+            &LAYA_FILES,
+        )
+        .expect_err("quant must be refused");
+        assert!(matches!(err, PreflightError::Unsupported { .. }));
     }
 
     #[test]

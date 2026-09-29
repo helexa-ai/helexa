@@ -1,0 +1,16 @@
+{
+ "encoder": "tiny-modernbert",
+ "head_layers": 2,
+ "max_len": 64,
+ "head_max_len": 24,
+ "act_costs": {
+  "escalate": 0.5
+ },
+ "amp_dtype": "bf16",
+ "temperature": [
+  1.0,
+  1.0,
+  1.0
+ ],
+ "temperature_by_options": {}
+}
