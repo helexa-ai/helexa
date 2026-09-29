@@ -107,6 +107,27 @@ pub const DEFAULT_RESIDENCY_PRIORITY: u32 = 100;
 /// grant on its own.
 pub const PINNED_RESIDENCY_PRIORITY: u32 = 1000;
 
+/// The alias a `/v1/systemone` decision request routes to when its
+/// `model` is absent or names nothing this fleet serves.
+///
+/// Decision clients written against TypeSafe's Jev API send a `model`
+/// naming *their* service (e.g. `jev-1`), and Laya's own server treats
+/// any unrecognised value as "let the router choose". Every hop of the
+/// serving chain applies the same rule, scoped to the decision endpoint
+/// only — a chat request for an unknown model is still a 404. The
+/// operator points the alias at a decision model in `[aliases]`.
+pub const DECISION_DEFAULT_ALIAS: &str = "helexa/one";
+
+/// Header carrying the concrete decision model a request was routed to.
+///
+/// A decision request's `model` field can name a checkpoint *inside* a
+/// served model family (`multilingual`, `typed-decisions`) or a foreign
+/// service, so the gateway forwards the body untouched and states the
+/// routing outcome here instead of rewriting `model`. The serving node
+/// uses it to pick the model and still reads `model` for a checkpoint
+/// pin.
+pub const DECISION_MODEL_HEADER: &str = "x-helexa-decision-model";
+
 /// The full model catalogue.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ModelCatalogue {

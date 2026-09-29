@@ -149,25 +149,81 @@ pub async fn dispatch(
 
     let candidates = match select_cortexes(state, &model).await {
         Selection::Candidates(c) => c,
-        Selection::UnknownModel => {
-            return envelope_response(
-                OpenAiError::new(
-                    404,
-                    "invalid_request_error",
-                    "model_not_found",
-                    format!("no operator serves model '{model}'"),
-                )
-                .with_param("model"),
-            );
-        }
-        Selection::NoReachableCapacity => {
-            return envelope_response(OpenAiError::service_unavailable(
-                format!("model '{model}' is temporarily unavailable on all operators"),
-                Some(RETRY_AFTER_SECS),
-            ));
-        }
+        other => return selection_error(other, &model),
     };
+    forward(state, path, headers, body, &model, candidates).await
+}
 
+/// Proxy a `/v1/systemone` decision request (#338).
+///
+/// Same as [`dispatch`], except that a missing `model`, or one no
+/// operator serves, selects capacity for
+/// [`DECISION_DEFAULT_ALIAS`](cortex_core::catalogue::DECISION_DEFAULT_ALIAS)
+/// instead of 404ing: decision clients written against the Jev API name
+/// their own service in `model`. The body is forwarded with the client's
+/// `model` intact — cortex applies the same fallback and the serving node
+/// may read it as a checkpoint pin.
+pub async fn dispatch_decision(
+    state: &RouterState,
+    path: &str,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    use cortex_core::catalogue::DECISION_DEFAULT_ALIAS;
+
+    let requested = extract_model(&body);
+    let (mut model, body) = match requested.as_deref() {
+        Some(m) => match state.aliases.get(m) {
+            Some(real) => {
+                tracing::debug!(alias = m, model = %real, "resolving tier alias");
+                (real.clone(), rewrite_model_in_body(&body, real))
+            }
+            None => (m.to_string(), body),
+        },
+        None => (DECISION_DEFAULT_ALIAS.to_string(), body),
+    };
+    let mut selection = select_cortexes(state, &model).await;
+    if selection == Selection::UnknownModel
+        && let Some(default) = state.aliases.get(DECISION_DEFAULT_ALIAS)
+    {
+        tracing::debug!(requested = %model, default = %default, "unknown decision model; using the default");
+        model = default.clone();
+        selection = select_cortexes(state, &model).await;
+    }
+    match selection {
+        Selection::Candidates(c) => forward(state, path, headers, body, &model, c).await,
+        other => selection_error(other, &model),
+    }
+}
+
+/// The #63 envelope for a selection that produced no candidates.
+fn selection_error(selection: Selection, model: &str) -> Response {
+    match selection {
+        Selection::Candidates(_) | Selection::UnknownModel => envelope_response(
+            OpenAiError::new(
+                404,
+                "invalid_request_error",
+                "model_not_found",
+                format!("no operator serves model '{model}'"),
+            )
+            .with_param("model"),
+        ),
+        Selection::NoReachableCapacity => envelope_response(OpenAiError::service_unavailable(
+            format!("model '{model}' is temporarily unavailable on all operators"),
+            Some(RETRY_AFTER_SECS),
+        )),
+    }
+}
+
+/// Try `candidates` in order, failing over only on transport errors.
+async fn forward(
+    state: &RouterState,
+    path: &str,
+    headers: HeaderMap,
+    body: Bytes,
+    model: &str,
+    candidates: Vec<CortexEndpoint>,
+) -> Response {
     // Try candidates in order, failing over only on transport errors. A
     // genuine HTTP response (any status — including cortex's #63 429/400)
     // is returned verbatim and never retried away.
