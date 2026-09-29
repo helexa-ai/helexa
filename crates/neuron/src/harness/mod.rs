@@ -12,6 +12,7 @@ pub mod device_worker;
 pub mod engine;
 pub mod image;
 pub mod isq_cache;
+pub mod lang_detect;
 pub mod prefix_cache;
 pub mod preflight;
 pub mod preprocess;

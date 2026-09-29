@@ -76,6 +76,12 @@ toml.workspace = true
 # transitively via candle-core.
 rayon = "1"
 
+# Unicode tables for the decision-model language detector (#339), which
+# must classify characters exactly as Python's `str.isalpha` / `re` and
+# `unicodedata.combining` do. Both already in the tree via tokenizers.
+unicode-normalization = "0.1"
+unicode-properties = "0.1"
+
 # candle for in-process inference. CUDA support is gated behind the
 # crate's `cuda` feature (default off) so the workspace builds on
 # non-CUDA hosts and CI runners.
