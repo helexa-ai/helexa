@@ -970,7 +970,24 @@ pub struct SystemOneResponse {
     pub usage: DecisionUsage,
     /// Which checkpoint answered and why.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub routing: Option<serde_json::Value>,
+    pub routing: Option<DecisionRouting>,
+}
+
+/// The `routing` block of a decision response: which checkpoint of the
+/// served family answered, and why. Field order follows the reference.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DecisionRouting {
+    /// The checkpoint's routing name (`english`, `multilingual`,
+    /// `typed-decisions`).
+    pub model: String,
+    /// `<repo>` for the root checkpoint, `<repo>/<subfolder>` otherwise.
+    pub repo: String,
+    pub reason: String,
+    /// The language/script analysis the choice was made on; `None` when
+    /// the caller pinned the checkpoint.
+    pub detection: Option<Json>,
+    /// The typed-decisions workflow the question ids match, when one does.
+    pub workflow: Option<String>,
 }
 
 #[cfg(test)]

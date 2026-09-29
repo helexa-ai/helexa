@@ -141,7 +141,7 @@ pub fn shape(
 pub fn response(
     answers: OrderedMap<DecisionAnswer>,
     usage: DecisionUsage,
-    routing: Option<serde_json::Value>,
+    routing: Option<cortex_core::decisions::DecisionRouting>,
 ) -> SystemOneResponse {
     SystemOneResponse {
         model: DECISION_MODEL_NAME.to_string(),

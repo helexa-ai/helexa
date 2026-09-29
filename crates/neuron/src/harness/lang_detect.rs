@@ -41,16 +41,15 @@
 //! The reference's lookbehind regex for identifiers has no equivalent in
 //! the `regex` crate and is a hand-written scanner here.
 //!
-//! One thing this module cannot fix on its own: for a JSON object state,
-//! the order of its values decides which text is read first (and so what
-//! falls inside the 4000-character window). Python keeps insertion order;
-//! a `serde_json::Value` built without the `preserve_order` feature
-//! iterates keys sorted. The callers' JSON must keep order for results to
-//! match the reference on multi-field states.
+//! For a JSON object state the order of its values decides which text is
+//! read first (and so what falls inside the 4000-character window).
+//! Python keeps insertion order, so the state is taken as a
+//! [`Json`](cortex_core::decisions::Json), which does too; a
+//! `serde_json::Value` would iterate keys sorted.
 
+use cortex_core::decisions::Json;
 use serde::Serialize;
 use serde::ser::SerializeMap;
-use serde_json::Value;
 use unicode_normalization::char::canonical_combining_class;
 use unicode_properties::{GeneralCategory, UnicodeGeneralCategory};
 
@@ -116,7 +115,7 @@ fn serialize_profile<S: serde::Serializer>(
 /// String values are what get read; object keys are ignored (they are
 /// usually English field names). When a state has several strings, one
 /// non-English value is enough to make it non-English.
-pub fn analyse(state: &Value) -> Analysis {
+pub fn analyse(state: &Json) -> Analysis {
     let leaves = iter_text(state);
     let mut result = analyse_text(&state_text(&leaves, MAX_CHARS));
     if result.script == "latin" && result.is_english {
@@ -134,7 +133,7 @@ pub fn analyse(state: &Value) -> Analysis {
     // A plain string was just read whole. A structured state can still
     // hide a message past the segment cap, or in a script the word lists
     // do not name.
-    if matches!(state, Value::String(_) | Value::Null) || !result.is_english {
+    if matches!(state, Json::String(_) | Json::Null) || !result.is_english {
         return result;
     }
     let mut best_n: i64 = -1;
@@ -162,7 +161,7 @@ pub fn analyse(state: &Value) -> Analysis {
 }
 
 /// True when the English checkpoint can be expected to read this state.
-pub fn is_english(state: &Value) -> bool {
+pub fn is_english(state: &Json) -> bool {
     analyse(state).is_english
 }
 
@@ -259,20 +258,22 @@ fn chars_of(s: &str) -> Vec<char> {
 // ── flattening a state ───────────────────────────────────────────────
 
 /// The string leaves of a state, in order (`_iter_text`).
-fn iter_text(state: &Value) -> Vec<String> {
+fn iter_text(state: &Json) -> Vec<String> {
     let mut out = Vec::new();
     collect_leaves(state, 0, &mut out);
     out
 }
 
-fn collect_leaves(v: &Value, depth: usize, out: &mut Vec<String>) {
+fn collect_leaves(v: &Json, depth: usize, out: &mut Vec<String>) {
     if depth > MAX_DEPTH {
         return;
     }
     match v {
-        Value::String(s) => out.push(s.clone()),
-        Value::Object(m) => m.values().for_each(|x| collect_leaves(x, depth + 1, out)),
-        Value::Array(a) => a.iter().for_each(|x| collect_leaves(x, depth + 1, out)),
+        Json::String(s) => out.push(s.clone()),
+        Json::Object(m) => m
+            .iter()
+            .for_each(|(_, x)| collect_leaves(x, depth + 1, out)),
+        Json::Array(a) => a.iter().for_each(|x| collect_leaves(x, depth + 1, out)),
         _ => {}
     }
 }
@@ -1038,7 +1039,13 @@ const NON_EN_DIACRITICS: &str =
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    /// The corpus is read with `serde_json` (its states were recorded with
+    /// sorted keys, so nothing is lost); the detector takes a [`Json`].
+    fn j(v: &Value) -> Json {
+        Json::parse(v.to_string().as_bytes()).expect("corpus state is valid JSON")
+    }
 
     /// `laya.lang.analyse` over the corpus `script/laya-lang-reference.py`
     /// records: every script range, each function-word language accented
@@ -1118,7 +1125,10 @@ mod tests {
         let mut failures = Vec::new();
         for (i, case) in cases.iter().enumerate() {
             let state = &case["state"];
-            let leaves: Vec<Value> = iter_text(state).into_iter().map(Value::String).collect();
+            let leaves: Vec<Value> = iter_text(&j(state))
+                .into_iter()
+                .map(Value::String)
+                .collect();
             if case["leaves"].as_array() != Some(&leaves) {
                 failures.push(format!("#{i} leaves differ for {state}"));
                 continue;
@@ -1133,7 +1143,7 @@ mod tests {
                     failures.push(format!("#{i} words differ for {state}"));
                 }
             }
-            let d = diff(case, &analyse(state));
+            let d = diff(case, &analyse(&j(state)));
             if !d.is_empty() {
                 failures.push(format!("#{i} {state}: {}", d.join("; ")));
             }
@@ -1152,11 +1162,19 @@ mod tests {
         );
     }
 
+    /// An object state's values are read in the order the client sent
+    /// them, as Python's dict keeps them, not sorted by key.
+    #[test]
+    fn object_leaves_keep_request_order() {
+        let state = Json::parse(br#"{"zeta": "first", "alpha": "second"}"#).unwrap();
+        assert_eq!(iter_text(&state), ["first", "second"]);
+    }
+
     #[test]
     fn serialises_with_the_reference_field_order() {
-        let a = analyse(&json!(
+        let a = analyse(&j(&json!(
             "Please refund the duplicate charge, it was billed twice."
-        ));
+        )));
         let s = serde_json::to_string(&a).unwrap();
         let keys = [
             "\"script\"",

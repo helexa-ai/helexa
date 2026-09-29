@@ -30,9 +30,13 @@
 
 pub mod config;
 pub mod question;
+pub mod route;
 pub mod sequence;
 pub mod shape;
 pub mod tokenizer;
+
+#[cfg(test)]
+mod handler_tests;
 
 pub use config::DecisionConfig;
 pub use cortex_core::decisions::DecisionRequestError;

@@ -19,14 +19,16 @@ use std::sync::atomic::AtomicBool;
 
 use anyhow::{Context, Result};
 use candle_core::DType;
-use tokenizers::Tokenizer;
 
 use super::arch::laya::{CheckpointConfig, DecisionBatch, DecisionRow, LayaModel};
+use super::decision::{DecisionConfig, DecisionTokenizer};
 use super::device_worker::{DecisionHandle, DeviceWorkerHandle};
 use cortex_core::harness::ModelSpec;
 
-/// Name of the checkpoint at the repo root.
-pub const ROOT_CHECKPOINT: &str = "root";
+/// Routing name of the checkpoint at the repo root. A released Laya
+/// family's root is its English checkpoint, and upstream routes to it
+/// under that name.
+pub const ROOT_CHECKPOINT: &str = super::decision::route::ENGLISH;
 
 /// Where one checkpoint's weights live and how to reach them.
 enum Backend {
@@ -50,10 +52,14 @@ pub struct CheckpointFiles {
 }
 
 pub struct DecisionCheckpoint {
-    /// [`ROOT_CHECKPOINT`] or the subfolder name.
+    /// The checkpoint's routing name: [`ROOT_CHECKPOINT`] for the repo
+    /// root, else its subfolder (`multilingual`, `typed-decisions`).
     pub name: String,
     pub config: CheckpointConfig,
-    pub tokenizer: Tokenizer,
+    /// Budgets and fitted temperatures from `rl_agent_config.json`, as
+    /// the prompt builder and calibration read them.
+    pub calibration: DecisionConfig,
+    pub tokenizer: DecisionTokenizer,
     /// Precision the weights were loaded in.
     pub dtype: DType,
     backend: Backend,
@@ -69,8 +75,17 @@ impl DecisionCheckpoint {
         worker: Option<Arc<DeviceWorkerHandle>>,
     ) -> Result<Self> {
         let config = CheckpointConfig::from_dir(&files.dir)?;
-        let tokenizer = Tokenizer::from_file(&files.tokenizer)
-            .map_err(|e| anyhow::anyhow!("load tokenizer {}: {e}", files.tokenizer.display()))?;
+        let calibration_path = files.dir.join("rl_agent_config.json");
+        let calibration = DecisionConfig::from_json(
+            &std::fs::read_to_string(&calibration_path)
+                .with_context(|| format!("read {}", calibration_path.display()))?,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let tokenizer_dir = files
+            .tokenizer
+            .parent()
+            .context("tokenizer.json has no parent directory")?;
+        let tokenizer = DecisionTokenizer::from_dir(tokenizer_dir)?;
         let (dtype, backend) = match worker {
             Some(worker) => {
                 let wanted = device_dtype(config.laya.amp_dtype.as_deref());
@@ -93,6 +108,7 @@ impl DecisionCheckpoint {
         Ok(Self {
             name,
             config,
+            calibration,
             tokenizer,
             dtype,
             backend,

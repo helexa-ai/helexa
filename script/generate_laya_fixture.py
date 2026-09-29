@@ -100,13 +100,20 @@ rl_cfg = {
 with open(os.path.join(args.out, "rl_agent_config.json"), "w") as f:
     json.dump(rl_cfg, f, indent=1)
 # A placeholder: the fixture is scored on token ids, but a checkpoint
-# directory is loaded with its tokenizer, so one must exist.
+# directory is loaded with its tokenizer, so one must exist. It carries
+# the special tokens a decision tokenizer is looked up by, with [PAD] at
+# the encoder's pad_token_id (0).
 with open(os.path.join(args.out, "tokenizer.json"), "w") as f:
     json.dump({"version": "1.0", "truncation": None, "padding": None, "added_tokens": [],
                "normalizer": None, "pre_tokenizer": {"type": "Whitespace"},
                "post_processor": None, "decoder": None,
-               "model": {"type": "WordLevel", "vocab": {"[UNK]": 0, "a": 1, "b": 2},
+               "model": {"type": "WordLevel",
+                         "vocab": {"[PAD]": 0, "[UNK]": 1, "[CLS]": 2, "[SEP]": 3, "[MASK]": 4,
+                                   "a": 5, "b": 6},
                          "unk_token": "[UNK]"}}, f)
+with open(os.path.join(args.out, "tokenizer_config.json"), "w") as f:
+    json.dump({"cls_token": "[CLS]", "sep_token": "[SEP]", "mask_token": "[MASK]",
+               "pad_token": "[PAD]", "unk_token": "[UNK]"}, f, indent=1)
 
 state = {k: v.detach().contiguous().float() for k, v in model.state_dict().items()}
 save_file(state, os.path.join(args.out, "model.safetensors"))

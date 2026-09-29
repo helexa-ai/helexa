@@ -55,6 +55,7 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/{model_id}/capabilities", get(model_capabilities))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/images/generations", post(images_generations))
+        .route("/v1/systemone", post(systemone))
         .route("/v1/responses", post(responses))
 }
 
@@ -667,6 +668,83 @@ async fn images_generations(
         }
         Err(e) => inference_error_response(e),
     }
+}
+
+/// `POST /v1/systemone` (#338): typed decisions over the TypeSafe Jev
+/// wire protocol, from a loaded decision model (Laya). Parsing and the
+/// transport-level limits happen here; routing, validation, admission,
+/// scoring and shaping in `CandleHarness::systemone`.
+///
+/// Errors carry the #63 envelope *and* the reference server's top-level
+/// `detail` string, so OpenAI-style and Jev/laya clients both read them.
+async fn systemone(
+    State(state): State<Arc<NeuronState>>,
+    headers: axum::http::HeaderMap,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    use crate::harness::candle::SystemOneError;
+    use cortex_core::decisions::{SystemOneRequest, limits};
+
+    let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
+        return decision_error_response(503, "candle harness not enabled on this neuron");
+    };
+    if body.len() > limits::MAX_BODY_BYTES {
+        return decision_error_response(413, "request body too large");
+    }
+    let request = match SystemOneRequest::parse(&body, limits::DEFAULT_MAX_TOKEN_BUDGET) {
+        Ok(r) => r,
+        Err(e) => return decision_error_response(e.status, &e.detail),
+    };
+    let served = headers
+        .get(cortex_core::catalogue::DECISION_MODEL_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let principal = principal_key(&headers);
+
+    let started = std::time::Instant::now();
+    match candle
+        .systemone(served.as_deref(), request, principal.as_deref())
+        .await
+    {
+        Ok(response) => {
+            let ms = started.elapsed().as_secs_f64() * 1e3;
+            let mut out = Json(response).into_response();
+            for (name, value) in [
+                ("server-timing", format!("inference;dur={ms:.2}")),
+                ("x-inference-time-ms", format!("{ms:.2}")),
+            ] {
+                if let Ok(v) = axum::http::HeaderValue::from_str(&value) {
+                    out.headers_mut().insert(name, v);
+                }
+            }
+            out
+        }
+        Err(SystemOneError::Request(e)) => decision_error_response(e.status, &e.detail),
+        Err(SystemOneError::Inference(e)) => {
+            tracing::warn!(error = %e, "systemone request failed");
+            inference_error_response(e)
+        }
+    }
+}
+
+/// A rejected decision request: the #63 envelope, plus the `detail` field
+/// the reference (FastAPI) server answers with.
+fn decision_error_response(status: u16, detail: &str) -> axum::response::Response {
+    use cortex_core::error_envelope::OpenAiError;
+    let (kind, code) = match status {
+        404 => ("invalid_request_error", "model_not_found"),
+        413 => ("invalid_request_error", "request_too_large"),
+        422 => ("invalid_request_error", "invalid_decision_request"),
+        400..=499 => ("invalid_request_error", "invalid_request"),
+        _ => ("api_error", "service_unavailable"),
+    };
+    let env = OpenAiError::new(status, kind, code, detail.to_string());
+    let mut body = env.body();
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("detail".into(), json!(detail));
+    }
+    let status = StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_REQUEST);
+    (status, Json(body)).into_response()
 }
 
 fn finish_reason_from_str(s: &str) -> crate::wire::FinishReason {
