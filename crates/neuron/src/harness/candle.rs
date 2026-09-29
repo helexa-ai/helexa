@@ -143,6 +143,9 @@ pub enum LoadedHandle {
     Tp(Arc<TpLoadedModel>),
     /// Z-Image text-to-image pipeline (#198).
     Image(Arc<LoadedImageModel>),
+    /// Laya decision model (#336): typed questions in, calibrated
+    /// option scores out, no text generation.
+    Decision(Arc<super::decision_model::LoadedDecisionModel>),
 }
 
 impl LoadedHandle {
@@ -152,6 +155,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.model_id,
             LoadedHandle::Image(m) => &m.model_id,
+            LoadedHandle::Decision(m) => &m.model_id,
         }
     }
 
@@ -162,6 +166,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.spec,
             LoadedHandle::Image(m) => &m.spec,
+            LoadedHandle::Decision(m) => &m.spec,
         }
     }
 
@@ -171,6 +176,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.devices.clone(),
             LoadedHandle::Image(m) => m.devices.clone(),
+            LoadedHandle::Decision(m) => m.devices.clone(),
         }
     }
 
@@ -184,6 +190,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.poisoned.load(Ordering::Acquire),
             LoadedHandle::Image(m) => m.poisoned.load(Ordering::Acquire),
+            LoadedHandle::Decision(m) => m.poisoned.load(Ordering::Acquire),
         }
     }
 
@@ -195,6 +202,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.in_flight(), m.admission.queue_depth()),
             LoadedHandle::Image(m) => (m.admission.in_flight(), m.admission.queue_depth()),
+            LoadedHandle::Decision(m) => (m.admission.in_flight(), m.admission.queue_depth()),
         }
     }
 
@@ -207,6 +215,9 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
             LoadedHandle::Image(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+            LoadedHandle::Decision(m) => {
+                (m.admission.max_in_flight(), m.admission.max_queue_depth())
+            }
         }
     }
 
@@ -230,6 +241,10 @@ impl LoadedHandle {
                 m.admission.anon_in_flight(),
                 m.admission.anon_max_in_flight(),
             ),
+            LoadedHandle::Decision(m) => (
+                m.admission.anon_in_flight(),
+                m.admission.anon_max_in_flight(),
+            ),
         }
     }
 
@@ -240,6 +255,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.close(),
             LoadedHandle::Image(m) => m.admission.close(),
+            LoadedHandle::Decision(m) => m.admission.close(),
         }
     }
 
@@ -251,6 +267,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.rejections(),
             LoadedHandle::Image(m) => m.admission.rejections(),
+            LoadedHandle::Decision(m) => m.admission.rejections(),
         }
     }
 
@@ -262,6 +279,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.admission,
             LoadedHandle::Image(m) => &m.admission,
+            LoadedHandle::Decision(m) => &m.admission,
         };
         (admission.kv_budget_mb(), admission.kv_available_mb())
     }
@@ -275,7 +293,7 @@ impl LoadedHandle {
             LoadedHandle::Tp(m) => &m.prefill_rate,
             // Image models have no token throughput; steps/sec lives in
             // the per-request timing instead.
-            LoadedHandle::Image(_) => return (0.0, 0.0),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return (0.0, 0.0),
         };
         (ema.get().unwrap_or(0.0), ema.decode().unwrap_or(0.0))
     }
@@ -287,12 +305,15 @@ impl LoadedHandle {
         if matches!(self, LoadedHandle::Image(_)) {
             return vec!["image".to_string()];
         }
+        if matches!(self, LoadedHandle::Decision(_)) {
+            return vec!["decision".to_string()];
+        }
         let mut caps = vec!["text".to_string()];
         let has_vision = match self {
             LoadedHandle::Single(m) => m.has_vision,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.has_vision,
-            LoadedHandle::Image(_) => unreachable!("handled above"),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => unreachable!("handled above"),
         };
         if has_vision {
             caps.push("vision".to_string());
@@ -338,7 +359,7 @@ impl LoadedHandle {
             LoadedHandle::Tp(m) => (m.last_free_mb.load(Ordering::Acquire), m.context_profile),
             // Image generation has its own VRAM path and no prefill
             // floor, so this check would say nothing useful about it.
-            LoadedHandle::Image(_) => return None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return None,
         };
         // `0` is the CPU-load and missing-worker sentinel — the same one
         // `check_vram` skips on. Nothing to assert either way.
@@ -419,7 +440,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.tool_call_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.tool_call_tokens.is_some(),
-            LoadedHandle::Image(_) => false,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => false,
         }
     }
 
@@ -430,7 +451,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.reasoning_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_tokens.is_some(),
-            LoadedHandle::Image(_) => false,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => false,
         }
     }
 
@@ -441,7 +462,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.preserve_thinking,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.preserve_thinking,
-            LoadedHandle::Image(_) => None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => None,
         }
     }
 
@@ -451,7 +472,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.reasoning_efforts.clone(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_efforts.clone(),
-            LoadedHandle::Image(_) => Default::default(),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => Default::default(),
         }
     }
 
@@ -477,7 +498,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.query_vram_tightest_free_mb().await,
             // No context-limit derivation for image models; nothing to cache.
-            LoadedHandle::Image(_) => return,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return,
         };
         // Don't clobber a good cached value with a transient `0`
         // (worker gone/poisoned sentinel).
@@ -486,7 +507,7 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => m.last_free_mb.store(free, Ordering::Release),
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => m.last_free_mb.store(free, Ordering::Release),
-                LoadedHandle::Image(_) => {}
+                LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {}
             }
         }
     }
@@ -515,7 +536,7 @@ impl LoadedHandle {
                 m.prefill_rate.get(),
             ),
             // Token limits are meaningless for image generation.
-            LoadedHandle::Image(_) => return None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return None,
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
         // The KV budget admission will actually grant. Advertising past
@@ -525,7 +546,9 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.admission.kv_budget_mb(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.kv_budget_mb(),
-            LoadedHandle::Image(_) => unreachable!("derived_limit returned above"),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
+                unreachable!("derived_limit returned above")
+            }
         };
         let limit = super::context_limit::derive_limit(
             &profile,
@@ -544,7 +567,9 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => &m.derived_input_cap,
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => &m.derived_input_cap,
-                LoadedHandle::Image(_) => unreachable!("derived_limit returned above"),
+                LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
+                    unreachable!("derived_limit returned above")
+                }
             };
             cap.store(input, Ordering::Release);
         }
@@ -3282,7 +3307,7 @@ impl CandleHarness {
             LoadedHandle::Tp(m) => {
                 return self.inference_tp_stream(m, request, principal, wire).await;
             }
-            LoadedHandle::Image(_) => {
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
                 return Err(InferenceError::WrongModality {
                     model_id: request.model.clone(),
                 });
@@ -4001,6 +4026,11 @@ impl Harness for CandleHarness {
         if matches!(plan.format, super::preflight::SourceFormat::Diffusers) {
             return self.load_image_model(spec, &source_id).await;
         }
+        // Laya decision models (#336) take the decision path: one
+        // device, unquantized (preflight rejected tp>1 and quant).
+        if matches!(plan.format, super::preflight::SourceFormat::DecisionModel) {
+            return self.load_decision_model(spec, &source_id).await;
+        }
 
         let tp_size = spec.tensor_parallel.unwrap_or(1);
         if tp_size > 1 {
@@ -4367,6 +4397,11 @@ impl Harness for CandleHarness {
                     );
                 }
             }
+            LoadedHandle::Decision(dm) => {
+                // Each checkpoint's weights drop on the thread that owns
+                // them (the device worker, for a CUDA load).
+                dm.release().await;
+            }
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(tp) => {
                 // Try to recover the inner TpLoadedModel so we can move
@@ -4541,6 +4576,101 @@ impl CandleHarness {
         Ok(())
     }
 
+    /// Load a Laya decision model (#336): resolve the checkpoint's files,
+    /// build it on the device worker (or the CPU), and register it with
+    /// `capabilities: ["decision"]`.
+    ///
+    /// Only the repo-root checkpoint is loaded. A repo can carry more in
+    /// subfolders (`multilingual/`, `typed-decisions/`); which of those a
+    /// model serves, and how requests are routed between them, is a
+    /// separate decision (#339) — [`Self::resolve_decision_files`]
+    /// already takes the subfolder.
+    async fn load_decision_model(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<()> {
+        let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
+        let device = Self::pick_device(&devices)?;
+        #[cfg(feature = "cuda")]
+        let worker = if matches!(device, Device::Cuda(_)) {
+            Some(self.ensure_device_worker(devices[0]).await?)
+        } else {
+            None
+        };
+        // CPU build: always the CPU backend. Correct, but at hundreds of
+        // milliseconds per question it is a fallback, not a serving tier.
+        #[cfg(not(feature = "cuda"))]
+        let worker = {
+            let _ = &device;
+            None
+        };
+
+        let files = self.resolve_decision_files(source_id, None).await?;
+        let checkpoint = super::decision_model::DecisionCheckpoint::load(
+            super::decision_model::ROOT_CHECKPOINT.to_string(),
+            files,
+            &spec.model_id,
+            worker,
+        )
+        .await?;
+        let dtype = checkpoint.dtype;
+
+        let loaded = super::decision_model::LoadedDecisionModel {
+            model_id: spec.model_id.clone(),
+            spec: spec.clone(),
+            devices,
+            checkpoints: vec![checkpoint],
+            poisoned: Arc::new(AtomicBool::new(false)),
+            admission: crate::harness::admission::AdmissionController::new(&self.admission_cfg),
+        };
+        let mut models = self.models.write().await;
+        models.insert(
+            spec.model_id.clone(),
+            LoadedHandle::Decision(Arc::new(loaded)),
+        );
+        tracing::info!(model = %spec.model_id, dtype = ?dtype, "decision model loaded");
+        Ok(())
+    }
+
+    /// Fetch one Laya checkpoint's files through hf-hub: the repo root
+    /// for `subfolder = None`, else that subfolder. Only the files the
+    /// checkpoint needs are fetched, not the whole repo.
+    async fn resolve_decision_files(
+        &self,
+        source_id: &cortex_core::source::ModelSourceId,
+        subfolder: Option<&str>,
+    ) -> Result<super::decision_model::CheckpointFiles> {
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let repo = api.model(source_id.repo_path());
+        let display_id = source_id.to_string();
+        let prefix = subfolder.map(|s| format!("{s}/")).unwrap_or_default();
+        let mut fetched = Vec::new();
+        for file in [
+            "rl_agent_config.json",
+            "encoder/config.json",
+            "model.safetensors",
+            "tokenizer/tokenizer.json",
+        ] {
+            let path = format!("{prefix}{file}");
+            fetched.push(
+                repo.get(&path)
+                    .await
+                    .with_context(|| format!("fetch {path} from {display_id}"))?,
+            );
+        }
+        // hf-hub materialises a snapshot as a directory tree mirroring
+        // the repo, so the checkpoint directory is where its config sits.
+        let dir = fetched[0]
+            .parent()
+            .context("checkpoint config has no parent directory")?
+            .to_path_buf();
+        Ok(super::decision_model::CheckpointFiles {
+            dir,
+            tokenizer: fetched[3].clone(),
+        })
+    }
+
     /// Resolve a diffusers-layout Z-Image repo into local component
     /// paths, downloading through hf-hub as needed. Verifies the
     /// pipeline class before fetching multi-GB weight shards.
@@ -4651,6 +4781,28 @@ impl CandleHarness {
                     .with_context(|| format!("fetch {dir}/{stem}.safetensors from {display_id}"))?;
                 Ok(vec![p])
             }
+        }
+    }
+
+    /// The loaded decision model `model_id` (#336), for the
+    /// `/v1/systemone` handler: it takes the admission permit, scores
+    /// through [`super::decision_model::DecisionCheckpoint::decide`],
+    /// and shapes the answers. A model of another kind is a
+    /// `WrongModality`, as for images.
+    pub async fn decision_model(
+        &self,
+        model_id: &str,
+    ) -> Result<Arc<super::decision_model::LoadedDecisionModel>, InferenceError> {
+        let handle = {
+            let models = self.models.read().await;
+            models.get(model_id).cloned()
+        };
+        match handle {
+            Some(LoadedHandle::Decision(m)) => Ok(m),
+            Some(_) => Err(InferenceError::WrongModality {
+                model_id: model_id.to_string(),
+            }),
+            None => Err(InferenceError::ModelNotLoaded(model_id.to_string())),
         }
     }
 

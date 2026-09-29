@@ -13,12 +13,13 @@
 //! ARCH model state in this state slab will gain a companion
 //! `tp_models: HashMap<TpHandle, Box<TpLeaderModel>>`.
 
+use crate::harness::arch::laya::LayaModel;
 use crate::harness::arch::snapshot::KvCacheSnapshot;
 use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
 use crate::harness::device_worker::jobs::{
-    ArchHandle, DenseLoad, ImageHandle, ImageInput, Job, KvSnapshotId,
+    ArchHandle, DecisionHandle, DenseLoad, ImageHandle, ImageInput, Job, KvSnapshotId,
 };
 use crate::harness::image::ZImagePipeline;
 #[cfg(feature = "cuda")]
@@ -65,6 +66,11 @@ struct DeviceWorkerState {
     image_models: HashMap<ImageHandle, Box<ZImagePipeline>>,
     /// Counter for minting fresh `ImageHandle`s.
     next_image_handle: u64,
+    /// Laya decision-model slab (#336). Same lifecycle discipline as
+    /// `image_models`, in its own namespace.
+    decision_models: HashMap<DecisionHandle, Box<LayaModel>>,
+    /// Counter for minting fresh `DecisionHandle`s.
+    next_decision_handle: u64,
     /// Leader's NCCL state. Populated by `Job::NcclInit`; the
     /// underlying `Comm`'s libnccl handle lives bound to this thread
     /// for its entire lifetime. Subprocess workers maintain their own
@@ -751,6 +757,62 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 trim_device_pool(&state);
                 let _ = reply.send(result);
             }
+            Job::LoadDecision {
+                dir,
+                model_id,
+                dtype,
+                reply,
+            } => {
+                let dtype = if state.device.is_cpu() {
+                    candle_core::DType::F32
+                } else {
+                    dtype
+                };
+                let result = LayaModel::load(&dir, &state.device, dtype)
+                    .with_context(|| format!("load laya checkpoint {}", dir.display()))
+                    .map(|model| {
+                        let handle = DecisionHandle(state.next_decision_handle);
+                        state.next_decision_handle = state.next_decision_handle.wrapping_add(1);
+                        state.decision_models.insert(handle, Box::new(model));
+                        tracing::info!(
+                            device_index,
+                            model_id,
+                            checkpoint = %dir.display(),
+                            handle = handle.0,
+                            "device worker: decision model loaded"
+                        );
+                        (handle, dtype)
+                    });
+                trim_device_pool(&state);
+                let _ = reply.send(result);
+            }
+            Job::DropDecision { handle, reply } => {
+                let removed = state.decision_models.remove(&handle);
+                let was_present = removed.is_some();
+                // Explicit drop on this thread, as for DropArch/DropImage.
+                drop(removed);
+                if was_present {
+                    trim_device_pool(&state);
+                }
+                tracing::debug!(
+                    device_index,
+                    handle = handle.0,
+                    was_present,
+                    "device worker: decision model dropped"
+                );
+                let _ = reply.send(());
+            }
+            Job::Decide {
+                handle,
+                batch,
+                reply,
+            } => {
+                let result = match state.decision_models.get(&handle) {
+                    Some(model) => model.forward(&batch),
+                    None => Err(anyhow::anyhow!("no decision model for handle {}", handle.0)),
+                };
+                let _ = reply.send(result);
+            }
             Job::Shutdown => unreachable!("Shutdown should break above"),
         }
     }
@@ -823,6 +885,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_kv_snapshot_id: 1,
             image_models: HashMap::new(),
             next_image_handle: 1,
+            decision_models: HashMap::new(),
+            next_decision_handle: 1,
             nccl: NcclState::new(),
             tp_models: HashMap::new(),
             next_tp_handle: 1,
@@ -841,6 +905,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_kv_snapshot_id: 1,
             image_models: HashMap::new(),
             next_image_handle: 1,
+            decision_models: HashMap::new(),
+            next_decision_handle: 1,
             nccl: NcclState::new(),
         }
     }
@@ -1967,6 +2033,15 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(());
         }
         Job::GenerateImage { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::LoadDecision { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::DropDecision { reply, .. } => {
+            let _ = reply.send(());
+        }
+        Job::Decide { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogitsWithImages { reply, .. } => {

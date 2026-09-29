@@ -59,6 +59,15 @@ pub struct TpHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ImageHandle(pub u64);
 
+/// Opaque handle to a Laya decision model ([`LayaModel`]) stored in the
+/// worker thread's decision slab (#336). Same discipline as
+/// [`ImageHandle`]: construction, every forward and `Drop` happen on the
+/// worker thread, and `Job::DropDecision` is the only way to release it.
+///
+/// [`LayaModel`]: crate::harness::arch::laya::LayaModel
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DecisionHandle(pub u64);
+
 /// Opaque handle to a prefix-cache snapshot (#11) stored worker-side
 /// next to the model slab. Scoped to the `ArchHandle` it was captured
 /// from — `Job::DropArch` drops every snapshot under its handle. The
@@ -548,6 +557,33 @@ pub enum Job {
         /// Resolution ceiling from config, enforced again worker-side.
         max_dim: usize,
         reply: oneshot::Sender<Result<crate::harness::image::ImageGenResult>>,
+    },
+    /// Load one Laya checkpoint directory (#336) — the repo root or one
+    /// of its subfolders, already on local disk — into the decision
+    /// slab. File resolution (hf-hub) happens on the async side.
+    ///
+    /// `dtype` is the precision wanted on a GPU; a worker whose device
+    /// is the CPU loads in f32 instead (the CPU backend has no bf16
+    /// matmul). The reply carries the dtype actually used.
+    LoadDecision {
+        dir: PathBuf,
+        model_id: String,
+        dtype: candle_core::DType,
+        reply: oneshot::Sender<Result<(DecisionHandle, candle_core::DType)>>,
+    },
+    /// Remove a decision model from the slab and drop it on the worker
+    /// thread. Mirrors `DropArch` / `DropImage`.
+    DropDecision {
+        handle: DecisionHandle,
+        reply: oneshot::Sender<()>,
+    },
+    /// Score one batch of assembled questions (#336). One job per
+    /// request: the whole batch is a single encoder forward, and the
+    /// reply is CPU-side scores — no device tensor crosses back.
+    Decide {
+        handle: DecisionHandle,
+        batch: crate::harness::arch::laya::DecisionBatch,
+        reply: oneshot::Sender<Result<Vec<crate::harness::arch::laya::DecisionRow>>>,
     },
     /// Tell the worker to break its dispatch loop and exit. Any jobs
     /// queued after this in the channel reply `Err` to their oneshot

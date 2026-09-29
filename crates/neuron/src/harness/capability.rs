@@ -57,6 +57,9 @@ pub fn classify_files(
 ) -> Vec<String> {
     match preflight::classify(filenames) {
         SourceFormat::Diffusers => vec!["image".to_string()],
+        // A decision model answers typed questions (`/v1/systemone`);
+        // it generates no text, so it must not claim "text".
+        SourceFormat::DecisionModel => vec!["decision".to_string()],
         // A repo with no recognised weights (tokenizer-only, or an empty
         // entry) is not servable, so claiming "text" would be a lie of
         // the same kind this module exists to remove.
@@ -98,6 +101,22 @@ mod tests {
         assert_eq!(
             classify_files(&files, || panic!("config must not be read for diffusers")),
             vec!["image".to_string()]
+        );
+    }
+
+    #[test]
+    fn laya_repo_is_a_decision_model() {
+        let files = [
+            "rl_agent_config.json",
+            "encoder/config.json",
+            "model.safetensors",
+            "tokenizer/tokenizer.json",
+        ];
+        assert_eq!(
+            classify_files(&files, || panic!(
+                "config must not be read for a decision model"
+            )),
+            vec!["decision".to_string()]
         );
     }
 
