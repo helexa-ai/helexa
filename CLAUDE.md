@@ -1143,3 +1143,103 @@ constructors on the MoE and MLP.
   budget matches a naive oracle — are closed.
 - **MTP (#313), vision (#314), quantisation and rollout (#315)** are
   untouched.
+
+## 2026-09-29 addendum: System-One decisions (Laya, epic #333)
+
+A third modality beside text and images: **typed decisions**.
+`convaiinnovations/laya` is a 421M non-autoregressive decision model, a
+ModernBERT encoder plus an option-scoring head. It answers `choice` /
+`score` / `noul` questions over a *state* in one encoder forward, with
+calibrated probabilities, on the TypeSafe Jev wire protocol:
+`POST /v1/systemone`. It never generates text. Resident on quadbrat's
+3060 since #351, replacing the Qwen3-1.7B pre-warm.
+
+**The reference is the `laya` pip SDK** (`common.py`, `agent.py`,
+`router.py`, `serve.py`), **not** the `rl_common.py` in the model repo,
+which has diverged. Fixtures recorded from SDK 0.3.21 at model revision
+`55cf4c4e` live in `crates/neuron/src/harness/testdata/laya/`:
+- `reference.json`: 28 cases, f32 CPU.
+- `reference_cuda_bf16.json`: the SDK's own GPU bf16 run, the envelope
+  our bf16 is judged against.
+- `lang_corpus.json`: 924 detector cases.
+
+Recorders are `script/laya-reference.py` and `script/laya-lang-reference.py`.
+
+**Where it lives:**
+- `cortex-core/src/decisions.rs`: wire types, and `Json`, an
+  order-preserving, correctly rounded, `json.loads`-compatible value.
+  Request data must not go through `serde_json::Value`: the workspace
+  has no `preserve_order`, and without `float_roundtrip` serde_json
+  misreads floats (`…445` → `…443`). Key order changes token ids and
+  what the language detector reads.
+- `neuron/src/harness/decision/`: question validation, sequence
+  assembly under every budget rule, calibration in numpy's float32
+  order, answer shaping, and `route.rs` (checkpoint choice, ported from
+  upstream `Router._route`, reason strings included).
+- `neuron/src/harness/lang_detect.rs`: the script/language detector.
+  Python-semantics Unicode classes: `[^\W\d_]` never matches a combining
+  mark.
+- `neuron/src/harness/arch/laya/`: the engine. The ModernBERT backbone
+  is **vendored**, because candle's only runs in f32.
+- `decision_model.rs`, plus `CandleHarness::systemone` in `candle.rs`.
+
+**One repo, three checkpoints:** English at the root, `multilingual/`
+and `typed-decisions/`, all resident. Precedence: a `model` pin (a
+checkpoint name, an alias, or a published id such as
+`convaiinnovations/laya-multilingual`), else the detected script and
+language, else English. The English checkpoint collapses outside
+English (Khmer: 0.000 accuracy at 0.952 confidence upstream), so
+language routing is correctness, not polish.
+
+**Surface semantics:**
+- On this endpoint only, a missing or unknown `model` resolves to
+  **`helexa/one`** at every hop, because Jev clients send their own
+  service's name (`jev-1`).
+- The body is never rewritten, since `model` may be a checkpoint pin;
+  the routed model travels in `x-helexa-decision-model`.
+- Metering follows Jev: **input tokens only**. That is the sum of
+  encoded sequence lengths, and the state is encoded once per question.
+  Reserved as questions × `max_len`, settled to `usage.input_tokens`,
+  priced at $0.042/M.
+- Errors carry the #63 envelope plus FastAPI's `detail`.
+
+**GPU performance (3060, #337).** Laya needs the ampere flavour's
+`flash-attn` (enabled in #350; `NEURON_FLASH_ATTN=0` rolls back). What
+the profile found:
+- candle's `LayerNorm` only fuses when a bias exists, and ModernBERT's
+  norms have none: six kernels per norm, about 25% of GPU time. Fixed
+  with an explicit zero bias.
+- Mask add and scale over the full score tensor. Elided when nothing is
+  masked; scale folded into q.
+- Eager attention replaced by `flash_attn_varlen_windowed` over an
+  unpadded pack (sliding layers ±64).
+
+Measured, bf16: 36 ms for one question over a 512-token state (reference
+39), 32 seq/s batched. Live: 10.6 ms median at the neuron over the mesh.
+bf16 drift is autocast-style: residual, norms and attention scores stay
+in f32. Beyond that, per-case drift is chaotic; judge it by
+mean-vs-reference-envelope, not single cases.
+
+**Validation:**
+- `script/validate-decision.py <url>` replays the corpus against any
+  hop: checkpoint and usage exact, answers except on reference
+  near-ties, probabilities within a bf16 tolerance.
+- The public edge is `https://helexa.ai/v1/systemone`. It is rate-limited
+  (10 r/min per IP), so replay against the router (gallumbits:8088).
+  Neither edge is reachable from inside its own LAN (no NAT reflection;
+  hanzalova's presents the OPNsense certificate), so public probes must
+  go cross-site.
+
+**Sharp edges:**
+- **rustingface#6:** a neuron cold load of anything rf.internal hasn't
+  cached fails on a 503 to hf-hub's bounded-range size probe. A Laya
+  family member then loads *without* that checkpoint, logged but
+  silent. Warm with full GETs, then reload.
+- helexa-bench chat scenarios must gate on `serves_chat()`, which
+  excludes both `image` and `decision` models.
+
+**Open:** #353 (revision pinning, per-language temperatures, fetch
+retries, a bench `decision:` scenario, a dashboard panel,
+micro-batching); #342 (serving fine-tuned checkpoints); #352 (Z-Image on
+the ampere flash build, unrelated to Laya but enabled by the same
+flavour change).
