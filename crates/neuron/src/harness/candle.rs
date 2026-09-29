@@ -4576,15 +4576,16 @@ impl CandleHarness {
         Ok(())
     }
 
-    /// Load a Laya decision model (#336): resolve the checkpoint's files,
-    /// build it on the device worker (or the CPU), and register it with
-    /// `capabilities: ["decision"]`.
+    /// Load a Laya decision model (#336): resolve the checkpoints' files,
+    /// build them on the device worker (or the CPU), and register the
+    /// model with `capabilities: ["decision"]`.
     ///
-    /// Only the repo-root checkpoint is loaded. A repo can carry more in
-    /// subfolders (`multilingual/`, `typed-decisions/`); which of those a
-    /// model serves, and how requests are routed between them, is a
-    /// separate decision (#339) — [`Self::resolve_decision_files`]
-    /// already takes the subfolder.
+    /// The repo root is required. A released family also carries
+    /// `multilingual/` and `typed-decisions/` beside it (#339); each one
+    /// the repo has is loaded too, so the `/v1/systemone` handler can
+    /// route non-English states to the multilingual checkpoint and honour
+    /// a request that pins one. A repo without them (a single fine-tune)
+    /// serves its root alone.
     async fn load_decision_model(
         &self,
         spec: &ModelSpec,
@@ -4607,20 +4608,49 @@ impl CandleHarness {
         };
 
         let files = self.resolve_decision_files(source_id, None).await?;
-        let checkpoint = super::decision_model::DecisionCheckpoint::load(
+        let root = super::decision_model::DecisionCheckpoint::load(
             super::decision_model::ROOT_CHECKPOINT.to_string(),
             files,
             &spec.model_id,
-            worker,
+            worker.clone(),
         )
         .await?;
-        let dtype = checkpoint.dtype;
+        let dtype = root.dtype;
+        let mut checkpoints = vec![root];
+        for sub in super::decision::route::FAMILY
+            .iter()
+            .filter(|c| **c != super::decision_model::ROOT_CHECKPOINT)
+        {
+            let files = match self.resolve_decision_files(source_id, Some(sub)).await {
+                Ok(files) => files,
+                Err(e) => {
+                    tracing::info!(
+                        model = %spec.model_id,
+                        checkpoint = sub,
+                        error = %format!("{e:#}"),
+                        "decision checkpoint not available; serving without it"
+                    );
+                    continue;
+                }
+            };
+            checkpoints.push(
+                super::decision_model::DecisionCheckpoint::load(
+                    sub.to_string(),
+                    files,
+                    &spec.model_id,
+                    worker.clone(),
+                )
+                .await?,
+            );
+        }
+        let names: Vec<&str> = checkpoints.iter().map(|c| c.name.as_str()).collect();
+        tracing::info!(model = %spec.model_id, checkpoints = ?names, "decision checkpoints loaded");
 
         let loaded = super::decision_model::LoadedDecisionModel {
             model_id: spec.model_id.clone(),
             spec: spec.clone(),
             devices,
-            checkpoints: vec![checkpoint],
+            checkpoints,
             poisoned: Arc::new(AtomicBool::new(false)),
             admission: crate::harness::admission::AdmissionController::new(&self.admission_cfg),
         };
@@ -4651,6 +4681,7 @@ impl CandleHarness {
             "encoder/config.json",
             "model.safetensors",
             "tokenizer/tokenizer.json",
+            "tokenizer/tokenizer_config.json",
         ] {
             let path = format!("{prefix}{file}");
             fetched.push(
@@ -4804,6 +4835,167 @@ impl CandleHarness {
             }),
             None => Err(InferenceError::ModelNotLoaded(model_id.to_string())),
         }
+    }
+
+    /// Answer one `/v1/systemone` request (#338): pick the served decision
+    /// model and the checkpoint of it that answers, assemble the question
+    /// sequences, score them in one forward pass, and shape the answers.
+    ///
+    /// The served model is `served` when the gateway routed the request
+    /// (the `x-helexa-decision-model` header), else the model the body's
+    /// `model` names if one is loaded, else the one decision model this
+    /// node serves. The body's `model` is then read a second time, as the
+    /// reference server reads it: as an optional pin to a checkpoint of
+    /// the family (`multilingual`, `typed-decisions`, …).
+    ///
+    /// Questions are validated and tokenised before admission, so a
+    /// malformed request never takes a slot.
+    pub async fn systemone(
+        &self,
+        served: Option<&str>,
+        request: cortex_core::decisions::SystemOneRequest,
+        principal: Option<&str>,
+    ) -> Result<cortex_core::decisions::SystemOneResponse, SystemOneError> {
+        use super::decision::{self, route};
+
+        let model = match served {
+            Some(id) => self.decision_model(id).await?,
+            None => {
+                self.default_decision_model(request.model.as_deref())
+                    .await?
+            }
+        };
+        if model.poisoned.load(Ordering::Acquire) {
+            return Err(InferenceError::Other(anyhow::anyhow!(
+                "decision model '{}' is poisoned; unload and reload it",
+                model.model_id
+            ))
+            .into());
+        }
+
+        let pin = route::resolve_pin(request.model.as_deref());
+        let mut routing = route::route(&model.model_id, &request.state, &request.questions, pin);
+        let checkpoint = match model.checkpoint(Some(&routing.model)) {
+            Some(c) => c,
+            None if pin.is_some() => {
+                return Err(decision::DecisionRequestError::new(
+                    404,
+                    format!(
+                        "checkpoint '{}' is not served by '{}' on this node",
+                        routing.model, model.model_id
+                    ),
+                )
+                .into());
+            }
+            // Routed (not pinned) to a checkpoint this repo does not
+            // carry: answer with the default one, and say so.
+            None => {
+                let fallback = model.checkpoint(None).ok_or_else(|| {
+                    InferenceError::Other(anyhow::anyhow!(
+                        "decision model '{}' has no checkpoints",
+                        model.model_id
+                    ))
+                })?;
+                routing.reason = format!(
+                    "{}; the {} checkpoint is not loaded, so {} answered",
+                    routing.reason, routing.model, fallback.name
+                );
+                routing.model = fallback.name.clone();
+                routing.repo = route::repo_of(&model.model_id, &fallback.name);
+                fallback
+            }
+        };
+        let lang = route::detected_language(&routing).map(str::to_string);
+
+        let prepared = decision::prepare(
+            &request.state,
+            &request.questions,
+            &checkpoint.calibration,
+            &checkpoint.tokenizer,
+            decision::Budget {
+                max_len: request.max_len,
+                head_max_len: request.head_max_len,
+            },
+        )?;
+
+        let _permit = model.admission.enter(principal).await?;
+        let outputs: Vec<decision::RowOutput> = if prepared.rows.is_empty() {
+            Vec::new()
+        } else {
+            let batch = super::arch::laya::DecisionBatch {
+                seqs: prepared
+                    .rows
+                    .iter()
+                    .map(|r| super::arch::laya::DecisionSeq {
+                        input_ids: r.input_ids.clone(),
+                        markers: r.markers.clone(),
+                        qtype: r.qtype as u8,
+                    })
+                    .collect(),
+            };
+            checkpoint
+                .decide(batch)
+                .await
+                .map_err(|e| InferenceError::Other(anyhow::anyhow!("decision forward: {e:#}")))?
+                .into_iter()
+                .map(|row| decision::RowOutput {
+                    act_probability: row.act.first().copied().unwrap_or(0.0),
+                    logits: row.logits,
+                })
+                .collect()
+        };
+        let (answers, usage) = decision::shape(
+            &prepared,
+            &outputs,
+            &checkpoint.calibration,
+            lang.as_deref(),
+        );
+        Ok(decision::shape::response(answers, usage, Some(routing)))
+    }
+
+    /// Register an already-built decision model, bypassing the hub fetch
+    /// `load_model` does — for tests that serve local checkpoints.
+    #[cfg(test)]
+    pub(crate) async fn register_decision_model(
+        &self,
+        model: super::decision_model::LoadedDecisionModel,
+    ) {
+        self.models.write().await.insert(
+            model.model_id.clone(),
+            LoadedHandle::Decision(Arc::new(model)),
+        );
+    }
+
+    /// The decision model to serve a request no gateway routed: the one
+    /// `requested` names if it is loaded, else the only (first) loaded
+    /// decision model.
+    async fn default_decision_model(
+        &self,
+        requested: Option<&str>,
+    ) -> Result<Arc<super::decision_model::LoadedDecisionModel>, InferenceError> {
+        let models = self.models.read().await;
+        if let Some(id) = requested
+            && let Some(handle) = models.get(id)
+        {
+            return match handle {
+                LoadedHandle::Decision(m) => Ok(Arc::clone(m)),
+                _ => Err(InferenceError::WrongModality {
+                    model_id: id.to_string(),
+                }),
+            };
+        }
+        let mut decision: Vec<&Arc<super::decision_model::LoadedDecisionModel>> = models
+            .values()
+            .filter_map(|h| match h {
+                LoadedHandle::Decision(m) => Some(m),
+                _ => None,
+            })
+            .collect();
+        decision.sort_by(|a, b| a.model_id.cmp(&b.model_id));
+        decision
+            .first()
+            .map(|m| Arc::clone(m))
+            .ok_or_else(|| InferenceError::ModelNotLoaded("no decision model is loaded".into()))
     }
 
     /// Run one text-to-image generation (#198). This is the internal
@@ -6428,6 +6620,33 @@ pub enum InferenceError {
     PerPrincipalLimit { retry_after_secs: u64 },
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+/// Why a `/v1/systemone` request was not answered (#338): a request the
+/// reference server would also reject (its status and `detail` text), or
+/// a serving failure shared with the other endpoints.
+#[derive(Debug)]
+pub enum SystemOneError {
+    Request(super::decision::DecisionRequestError),
+    Inference(InferenceError),
+}
+
+impl From<super::decision::DecisionRequestError> for SystemOneError {
+    fn from(e: super::decision::DecisionRequestError) -> Self {
+        SystemOneError::Request(e)
+    }
+}
+
+impl From<InferenceError> for SystemOneError {
+    fn from(e: InferenceError) -> Self {
+        SystemOneError::Inference(e)
+    }
+}
+
+impl From<super::admission::AdmissionRejection> for SystemOneError {
+    fn from(e: super::admission::AdmissionRejection) -> Self {
+        SystemOneError::Inference(e.into())
+    }
 }
 
 impl From<super::admission::AdmissionRejection> for InferenceError {
