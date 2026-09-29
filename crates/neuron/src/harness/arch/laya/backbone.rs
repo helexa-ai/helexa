@@ -17,6 +17,13 @@
 //! masks; and `attn_norm` is required on every layer except layer 0,
 //! which ModernBERT builds as an identity.
 //!
+//! Precision follows PyTorch autocast, which is how the reference runs on
+//! a GPU: the linear layers (and so the attention inputs) run in the
+//! load dtype, while the residual stream, the embeddings and every
+//! LayerNorm stay in f32. Casting the residual stream to bf16 as well
+//! drifts the released English checkpoint's logits by ~0.25 over its 28
+//! layers; keeping it in f32 is what autocast does and costs little.
+//!
 //! Masked positions use a large *finite* negative rather than `-inf`.
 //! A padded query near the end of a short row can find every key in
 //! its sliding window padded; with `-inf` that row's softmax is NaN,
@@ -32,6 +39,13 @@ use super::config::{EncoderConfig, LayerKind};
 
 /// Additive mask value for a position that must not be attended.
 pub(crate) const MASKED: f32 = -1e9;
+
+/// Apply `lin` in its weight's dtype, casting `x` in if needed. The
+/// result stays in that dtype; callers cast back to f32 where it joins
+/// the residual stream.
+pub(crate) fn project(lin: &Linear, x: &Tensor) -> candle_core::Result<Tensor> {
+    x.to_dtype(lin.weight().dtype())?.apply(lin)
+}
 
 /// Precomputed rotary tables for one base, `(max_pos, head_dim / 2)`.
 struct Rotary {
@@ -80,17 +94,18 @@ struct Attention {
 impl Attention {
     fn forward(&self, xs: &Tensor, rotary: &Rotary, mask: &Tensor) -> Result<Tensor> {
         let (b, l, d) = xs.dims3()?;
-        let qkv = xs
-            .apply(&self.wqkv)?
+        let qkv = project(&self.wqkv, xs)?
             .reshape((b, l, 3, self.n_heads, self.head_dim))?
             .permute((2, 0, 3, 1, 4))?;
+        // Rotary in the projection dtype, as under autocast; the scores
+        // are then taken in f32 (see `scaled_attention`).
         let q = qkv.get(0)?;
         let k = qkv.get(1)?;
         let v = qkv.get(2)?.contiguous()?;
         let (q, k) = rotary.apply(&q, &k, l)?;
         let ctx = scaled_attention(&q, &k, &v, mask, self.head_dim)?;
         let ctx = ctx.transpose(1, 2)?.reshape((b, l, d))?;
-        Ok(ctx.apply(&self.wo)?)
+        Ok(ctx.apply(&self.wo)?.to_dtype(DType::F32)?)
     }
 }
 
@@ -105,9 +120,16 @@ pub(crate) fn scaled_attention(
     mask: &Tensor,
     head_dim: usize,
 ) -> Result<Tensor> {
-    let dtype = q.dtype();
+    let dtype = v.dtype();
     let scale = (head_dim as f64).powf(-0.5);
-    let scores = (q.matmul(&k.t()?)? * scale)?.to_dtype(DType::F32)?;
+    // Scores in f32 end to end: a bf16 `q kᵀ` is rounded to 8 mantissa
+    // bits before the softmax ever sees it, which on this model's
+    // logit-sized scores is most of the drift from the reference's GPU
+    // path (whose SDPA kernels keep scores in f32).
+    let scores = (q
+        .to_dtype(DType::F32)?
+        .matmul(&k.to_dtype(DType::F32)?.t()?)?
+        * scale)?;
     let probs = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(mask)?)?;
     Ok(probs.to_dtype(dtype)?.matmul(v)?)
 }
@@ -118,10 +140,13 @@ struct Mlp {
 }
 
 impl Module for Mlp {
+    /// f32 in, f32 out; the projections run in the weights' dtype.
     fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
-        let xs = xs.apply(&self.wi)?;
+        let xs = project(&self.wi, xs)?;
         let parts = xs.chunk(2, D::Minus1)?;
-        (parts[0].gelu_erf()? * &parts[1])?.apply(&self.wo)
+        (parts[0].gelu_erf()? * &parts[1])?
+            .apply(&self.wo)?
+            .to_dtype(DType::F32)
     }
 }
 
@@ -186,23 +211,31 @@ pub struct ModernBert {
 
 impl ModernBert {
     /// Load from a VarBuilder rooted at the encoder's prefix (`encoder`
-    /// in a Laya checkpoint, `model` in a stock ModernBERT one).
+    /// in a Laya checkpoint, `model` in a stock ModernBERT one). Linear
+    /// weights load in the VarBuilder's dtype; embeddings and norms in
+    /// f32.
     pub fn load(vb: VarBuilder, cfg: &EncoderConfig) -> Result<Self> {
         let d = cfg.hidden_size;
-        let embeddings =
-            candle_nn::embedding(cfg.vocab_size, d, vb.pp("embeddings").pp("tok_embeddings"))
-                .context("encoder.embeddings.tok_embeddings")?;
-        let embed_norm = candle_nn::layer_norm_no_bias(d, cfg.norm_eps, vb.pp("embeddings.norm"))?;
+        let f32_vb = vb.clone().set_dtype(DType::F32);
+        let embeddings = candle_nn::embedding(
+            cfg.vocab_size,
+            d,
+            f32_vb.pp("embeddings").pp("tok_embeddings"),
+        )
+        .context("encoder.embeddings.tok_embeddings")?;
+        let embed_norm =
+            candle_nn::layer_norm_no_bias(d, cfg.norm_eps, f32_vb.pp("embeddings.norm"))?;
         let mut layers = Vec::with_capacity(cfg.num_hidden_layers);
         for (i, kind) in cfg.layer_kinds.iter().copied().enumerate() {
             let lvb = vb.pp(format!("layers.{i}"));
+            let norm_vb = f32_vb.pp(format!("layers.{i}"));
             // ModernBERT builds layer 0's attn_norm as an identity and
             // saves nothing for it; every other layer must have one.
             let attn_norm = if lvb.contains_tensor("attn_norm.weight") {
                 Some(candle_nn::layer_norm_no_bias(
                     d,
                     cfg.norm_eps,
-                    lvb.pp("attn_norm"),
+                    norm_vb.pp("attn_norm"),
                 )?)
             } else {
                 ensure!(
@@ -219,7 +252,7 @@ impl ModernBert {
                 head_dim: cfg.head_dim(),
                 kind,
             };
-            let mlp_norm = candle_nn::layer_norm_no_bias(d, cfg.norm_eps, lvb.pp("mlp_norm"))?;
+            let mlp_norm = candle_nn::layer_norm_no_bias(d, cfg.norm_eps, norm_vb.pp("mlp_norm"))?;
             let mlp = Mlp {
                 wi: candle_nn::linear_no_bias(d, 2 * cfg.intermediate_size, lvb.pp("mlp.Wi"))?,
                 wo: candle_nn::linear_no_bias(cfg.intermediate_size, d, lvb.pp("mlp.Wo"))?,
@@ -231,16 +264,15 @@ impl ModernBert {
                 mlp,
             });
         }
-        let final_norm = candle_nn::layer_norm_no_bias(d, cfg.norm_eps, vb.pp("final_norm"))?;
+        let final_norm = candle_nn::layer_norm_no_bias(d, cfg.norm_eps, f32_vb.pp("final_norm"))?;
         let device = vb.device();
-        let dtype = vb.dtype();
         Ok(Self {
             embeddings,
             embed_norm,
             layers,
             final_norm,
-            global_rotary: Rotary::new(cfg, cfg.global_rope_theta, dtype, device)?,
-            sliding_rotary: Rotary::new(cfg, cfg.local_rope_theta, dtype, device)?,
+            global_rotary: Rotary::new(cfg, cfg.global_rope_theta, vb.dtype(), device)?,
+            sliding_rotary: Rotary::new(cfg, cfg.local_rope_theta, vb.dtype(), device)?,
             half_window: cfg.local_attention / 2,
         })
     }
@@ -249,7 +281,8 @@ impl ModernBert {
         self.half_window
     }
 
-    /// `ids` is `(b, l)` u32; returns the final hidden states `(b, l, d)`.
+    /// `ids` is `(b, l)` u32; returns the final hidden states `(b, l, d)`
+    /// in f32.
     pub fn forward(&self, ids: &Tensor, masks: &Masks) -> Result<Tensor> {
         let mut xs = ids.apply(&self.embeddings)?.apply(&self.embed_norm)?;
         for layer in &self.layers {

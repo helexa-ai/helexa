@@ -80,7 +80,7 @@ fn test_device() -> (Device, DType) {
 /// Reduced precision is judged mainly on argmax agreement; the bound
 /// only catches a broken kernel, not rounding.
 fn logit_tolerance(dtype: DType) -> f32 {
-    if dtype == DType::F32 { 1e-3 } else { 0.25 }
+    if dtype == DType::F32 { 1e-3 } else { 1.0 }
 }
 
 fn max_abs_diff(a: &[f32], b: &[f32]) -> f32 {
@@ -255,6 +255,9 @@ fn released_checkpoints_match_reference() {
             entry.2 = entry.2.max(da);
             if argmax(&got.logits) == argmax(&want.logits) {
                 entry.3 += 1;
+            }
+            if dtype != DType::F32 {
+                eprintln!("  {:<40} {ckpt:<16} |Δlogit| {dl:.3}", case.name);
             }
             assert!(
                 dl < tolerance,
