@@ -9,17 +9,27 @@
 # image modality.
 #
 # Usage:
-#   script/validate-image.sh [host] [model_id]
+#   script/validate-image.sh [host] [model_id] [quant]
 #
 # Defaults:
 #   host     = benjy.hanzalova.internal   (the v1 image placement)
 #   model_id = Tongyi-MAI/Z-Image-Turbo
+#   quant    = none (BF16). A 12 GB card needs q8_0.
+#
+# A co-resident model evicted for the probe window is restored on every
+# exit path, failures included.
 
 set -euo pipefail
 
 HOST="${1:-benjy.hanzalova.internal}"
 MODEL_ID="${2:-Tongyi-MAI/Z-Image-Turbo}"
+QUANT="${3:-}"
 BASE="http://${HOST}:13131"
+if [[ -n "${QUANT}" ]]; then
+  LOAD_JSON="{\"model_id\": \"${MODEL_ID}\", \"harness\": \"candle\", \"quant\": \"${QUANT}\"}"
+else
+  LOAD_JSON="{\"model_id\": \"${MODEL_ID}\", \"harness\": \"candle\"}"
+fi
 
 echo "==> /version"
 curl -sf -m 10 "${BASE}/version" | python3 -c 'import json,sys; b=json.load(sys.stdin); print("  ", b.get("git_sha","?")[:12], b.get("profile"), b.get("features"))'
@@ -28,26 +38,47 @@ curl -sf -m 10 "${BASE}/version" | python3 -c 'import json,sys; b=json.load(sys.
 # cortex's job. On a host whose resident text model leaves too little
 # VRAM for the DiT (benjy: 8B @ 16 GB + 14.6 GB DiT > 24 GB), evict
 # it for the probe window and restore it afterwards.
-RESTORE_JSON=""
-EVICT=$(curl -sf -m 10 "${BASE}/models" | python3 -c '
+EVICTED=()
+# Unload the probe model and restore the evicted ones however the script
+# ends: a failed generation must not leave the host without its models.
+restore() {
+  local rc=$?
+  curl -s -m 60 -X POST "${BASE}/models/unload" \
+    -H 'Content-Type: application/json' \
+    -d "{\"model_id\": \"${MODEL_ID}\"}" > /dev/null || true
+  for id in "${EVICTED[@]}"; do
+    echo "==> restoring ${id}"
+    curl -s -m 900 -X POST "${BASE}/models/load" \
+      -H 'Content-Type: application/json' \
+      -d "{\"model_id\": \"${id}\", \"harness\": \"candle\"}" \
+      || echo "   RESTORE FAILED: reload ${id} by hand"
+    echo
+  done
+  exit "${rc}"
+}
+trap restore EXIT
+
+mapfile -t RESIDENT < <(curl -sf -m 10 "${BASE}/models" | python3 -c '
 import json, sys
-models = json.load(sys.stdin)
-loaded = [m for m in models if m["status"] == "loaded" and "image" not in m.get("capabilities", [])]
-print(loaded[0]["id"] if loaded else "")
+for m in json.load(sys.stdin):
+    if m["status"] == "loaded" and "image" not in m.get("capabilities", []):
+        print(m["id"])
 ')
-if [[ -n "${EVICT}" ]]; then
-  echo "==> evicting co-resident ${EVICT} for the probe window"
+for id in "${RESIDENT[@]}"; do
+  [[ -z "${id}" ]] && continue
+  echo "==> evicting co-resident ${id} for the probe window"
   curl -sf -m 120 -X POST "${BASE}/models/unload" \
     -H 'Content-Type: application/json' \
-    -d "{\"model_id\": \"${EVICT}\"}"
+    -d "{\"model_id\": \"${id}\"}"
   echo
-  RESTORE_JSON="{\"model_id\": \"${EVICT}\", \"harness\": \"candle\"}"
-fi
+  EVICTED+=("${id}")
+done
+
 
 echo "==> load ${MODEL_ID}"
 curl -sf -m 900 -X POST "${BASE}/models/load" \
   -H 'Content-Type: application/json' \
-  -d "{\"model_id\": \"${MODEL_ID}\", \"harness\": \"candle\"}"
+  -d "${LOAD_JSON}"
 echo
 
 echo "==> capabilities"
@@ -80,20 +111,6 @@ t = usage["helexa_timing"]
 print("   512x512 ok | units={:.3f} | encode={}ms denoise={}ms decode={}ms".format(units, t["encode_ms"], t["denoise_ms"], t["decode_ms"]))
 '
 
-echo "==> unload"
-curl -sf -m 60 -X POST "${BASE}/models/unload" \
-  -H 'Content-Type: application/json' \
-  -d "{\"model_id\": \"${MODEL_ID}\"}"
-echo
-
-if [[ -n "${RESTORE_JSON}" ]]; then
-  echo "==> restoring ${EVICT}"
-  curl -sf -m 900 -X POST "${BASE}/models/load" \
-    -H 'Content-Type: application/json' \
-    -d "${RESTORE_JSON}"
-  echo
-fi
-
 echo "==> health"
 curl -sf -m 10 "${BASE}/health" > /dev/null && echo "   healthy"
-echo "PASS"
+echo "PASS (unload and restore follow)"

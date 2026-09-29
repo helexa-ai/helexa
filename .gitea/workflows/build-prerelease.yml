@@ -525,7 +525,14 @@ jobs:
             cuda_home: /usr/local/cuda-13.0
             build_jobs: 8
             nvcc_threads: 4
-            cargo_features: "cuda cudnn"
+            # flash-attn on ampere (#337): Laya's encoder runs every
+            # attention through flash_attn_varlen_windowed, matching the
+            # PyTorch reference on a 3060 (36 vs 39 ms at 512 tokens) where
+            # the eager path is 1.4-1.7x slower. This also moves the
+            # flavour's other flash-capable paths onto flash -- qwen3_5
+            # full attention and Z-Image -- which validate-neuron.sh and
+            # validate-image.sh gate. NEURON_FLASH_ATTN=0 rolls back.
+            cargo_features: "cuda cudnn flash-attn"
           - flavour: ada
             compute_cap: "89"
             runner: cuda-13.0
@@ -540,8 +547,8 @@ jobs:
             build_jobs: 8
             nvcc_threads: 4
             # flash-attn on blackwell first (#95): beast carries the
-            # agentic prefill pain; ada/ampere follow once the win is
-            # measured. NEURON_FLASH_ATTN=0 is the runtime rollback.
+            # agentic prefill pain. NEURON_FLASH_ATTN=0 is the runtime
+            # rollback.
             cargo_features: "cuda cudnn flash-attn"
     runs-on: ${{ matrix.runner }}
     env:
