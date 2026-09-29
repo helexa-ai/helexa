@@ -244,10 +244,14 @@ jobs:
             flavour: blackwell
             load_timeout: 900
             max_prompt_tokens: 131072
-          - host: benjy.hanzalova.internal
-            flavour: ada
-            load_timeout: 300
-            max_prompt_tokens: 16384
+          # benjy is out of the matrix while its boot NVMe is replaced
+          # (dead 2026-09-29): every deploy failed at SSH init against a
+          # host that is not there. Restore these four lines when it is
+          # back on the mesh.
+          # - host: benjy.hanzalova.internal
+          #   flavour: ada
+          #   load_timeout: 300
+          #   max_prompt_tokens: 16384
           - host: quadbrat.hanzalova.internal
             flavour: ampere
             load_timeout: 300
