@@ -54,7 +54,7 @@ impl HeadLayer {
 
     /// `xs` is the f32 residual stream; projections run in the weights'
     /// dtype and join it back in f32, as under autocast.
-    fn forward(&self, xs: &Tensor, key_mask: &Tensor) -> Result<Tensor> {
+    fn forward(&self, xs: &Tensor, key_mask: Option<&Tensor>) -> Result<Tensor> {
         let (b, l, d) = xs.dims3()?;
         let qkv = project(&self.in_proj, &xs.apply(&self.norm1)?)?
             .reshape((b, l, 3, self.n_heads, self.head_dim))?
@@ -65,6 +65,22 @@ impl HeadLayer {
         let ctx = scaled_attention(&q, &k, &v, key_mask, self.head_dim)?
             .transpose(1, 2)?
             .reshape((b, l, d))?;
+        let xs = (xs + ctx.apply(&self.out_proj)?.to_dtype(DType::F32)?)?;
+        let ff = project(&self.linear1, &xs.apply(&self.norm2)?)?
+            .relu()?
+            .apply(&self.linear2)?
+            .to_dtype(DType::F32)?;
+        Ok((xs + ff)?)
+    }
+
+    /// The flash path over a packed `(total, d)` f32 stream.
+    #[cfg(feature = "flash-attn")]
+    fn forward_packed(&self, xs: &Tensor, packed: &super::backbone::Packed) -> Result<Tensor> {
+        use super::backbone::{flash_attention, split_qkv};
+        let (t, d) = xs.dims2()?;
+        let qkv = project(&self.in_proj, &xs.apply(&self.norm1)?)?;
+        let (q, k, v) = split_qkv(&qkv, self.n_heads, self.head_dim)?;
+        let ctx = flash_attention(&q, &k, &v, packed, None)?.reshape((t, d))?;
         let xs = (xs + ctx.apply(&self.out_proj)?.to_dtype(DType::F32)?)?;
         let ff = project(&self.linear1, &xs.apply(&self.norm2)?)?
             .relu()?
@@ -115,10 +131,31 @@ impl DecisionHead {
 
     /// Type embedding plus the transformer layers. `h` is the encoder
     /// output `(b, l, d)`, `qtype` is `(b,)` u32.
-    pub fn contextualise(&self, h: &Tensor, qtype: &Tensor, key_mask: &Tensor) -> Result<Tensor> {
+    pub fn contextualise(
+        &self,
+        h: &Tensor,
+        qtype: &Tensor,
+        key_mask: Option<&Tensor>,
+    ) -> Result<Tensor> {
         let mut h = h.broadcast_add(&qtype.apply(&self.type_emb)?.unsqueeze(1)?)?;
         for layer in &self.layers {
             h = layer.forward(&h, key_mask)?;
+        }
+        Ok(h)
+    }
+
+    /// The flash path: `h` is the packed encoder output `(total, d)` and
+    /// `qtype` the per-token question type `(total,)` u32.
+    #[cfg(feature = "flash-attn")]
+    pub fn contextualise_packed(
+        &self,
+        h: &Tensor,
+        qtype: &Tensor,
+        packed: &super::backbone::Packed,
+    ) -> Result<Tensor> {
+        let mut h = (h + qtype.apply(&self.type_emb)?)?;
+        for layer in &self.layers {
+            h = layer.forward_packed(&h, packed)?;
         }
         Ok(h)
     }
