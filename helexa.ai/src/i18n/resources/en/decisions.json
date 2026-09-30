@@ -72,6 +72,66 @@
     "badBudget": "{{name}} must be a whole number from 1 to {{max}}.",
     "server": "“{{id}}”, from the server: {{detail}}"
   },
+  "examples": {
+    "intro": "Pick an example to load it into the editors. Nothing is sent until you press Run.",
+    "groups": {
+      "lessons": "Lessons",
+      "useCases": "Use cases",
+      "multilingual": "Multilingual"
+    },
+    "review": {
+      "title": "Satisfied or not?",
+      "blurb": "Yes/no questions. Labels rename the answer, and criteria say what counts."
+    },
+    "bugReport": {
+      "title": "Grade a bug report",
+      "blurb": "A rubric of ordered levels. The answer is the expected level, which can fall between two."
+    },
+    "helpdesk": {
+      "title": "Route a help-desk request",
+      "blurb": "Described options. They share one token budget, so long lists squeeze each other."
+    },
+    "triage": {
+      "title": "Support ticket triage",
+      "blurb": "Team, urgency and refund — three questions over one message in one request."
+    },
+    "resume": {
+      "title": "Résumé screening",
+      "blurb": "Seniority, a required skill and leadership, read from a CV."
+    },
+    "guardrails": {
+      "title": "LLM guardrails",
+      "blurb": "Spot a jailbreak attempt and judge the harm before a model answers."
+    },
+    "moderation": {
+      "title": "Content moderation",
+      "blurb": "Harsh criticism is not harassment: tell them apart."
+    },
+    "phishing": {
+      "title": "Phishing email",
+      "blurb": "A JSON state: the whole email, sender and subject included."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "The triage ticket in Devanagari script."
+    },
+    "japanese": {
+      "title": "Japanese",
+      "blurb": "The triage ticket in Japanese."
+    },
+    "arabic": {
+      "title": "Arabic",
+      "blurb": "The triage ticket in Arabic script."
+    },
+    "russian": {
+      "title": "Russian",
+      "blurb": "The triage ticket in Cyrillic script."
+    },
+    "german": {
+      "title": "German",
+      "blurb": "Latin script, but not English: routed by language, not script."
+    }
+  },
   "copy": "Copy",
   "copied": "Copied",
   "results": {

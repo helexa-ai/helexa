@@ -1,0 +1,218 @@
+{
+  "recordedAt": "2026-09-30T07:08:03.315Z",
+  "examples": {
+    "review": {
+      "hash": "225c7698f72f720d",
+      "checkpoint": "english",
+      "inputTokens": 127,
+      "answers": {
+        "satisfied": {
+          "type": "noul",
+          "p": 0.09
+        },
+        "returning": {
+          "type": "noul",
+          "p": 0.752
+        }
+      }
+    },
+    "bugReport": {
+      "hash": "ea5d47780e0651f2",
+      "checkpoint": "english",
+      "inputTokens": 160,
+      "answers": {
+        "quality": {
+          "type": "score",
+          "score": 2.21
+        }
+      }
+    },
+    "helpdesk": {
+      "hash": "b9b20d662bfd1f5b",
+      "checkpoint": "english",
+      "inputTokens": 98,
+      "answers": {
+        "department": {
+          "type": "choice",
+          "answer": "it",
+          "p": 0.908
+        }
+      }
+    },
+    "triage": {
+      "hash": "09400477e1816b76",
+      "checkpoint": "english",
+      "inputTokens": 235,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 0.972
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.896
+        },
+        "urgency": {
+          "type": "score",
+          "score": 1.558
+        }
+      }
+    },
+    "resume": {
+      "hash": "e12138c352e9aa1a",
+      "checkpoint": "english",
+      "inputTokens": 270,
+      "answers": {
+        "seniority": {
+          "type": "score",
+          "score": 1.654
+        },
+        "rust": {
+          "type": "noul",
+          "p": 0.81
+        },
+        "leadership": {
+          "type": "noul",
+          "p": 0.809
+        }
+      }
+    },
+    "guardrails": {
+      "hash": "6a54622cc613baba",
+      "checkpoint": "english",
+      "inputTokens": 235,
+      "answers": {
+        "jailbreak": {
+          "type": "noul",
+          "p": 1
+        },
+        "harm": {
+          "type": "choice",
+          "answer": "crime",
+          "p": 0.82
+        },
+        "severity": {
+          "type": "score",
+          "score": 1.857
+        }
+      }
+    },
+    "moderation": {
+      "hash": "99af3ae1c9e3419e",
+      "checkpoint": "english",
+      "inputTokens": 133,
+      "answers": {
+        "attack": {
+          "type": "noul",
+          "p": 0.259
+        },
+        "category": {
+          "type": "choice",
+          "answer": "criticism",
+          "p": 0.856
+        }
+      }
+    },
+    "phishing": {
+      "hash": "de204a0a0fd27451",
+      "checkpoint": "english",
+      "inputTokens": 388,
+      "answers": {
+        "phishing": {
+          "type": "noul",
+          "p": 0.853
+        },
+        "wants": {
+          "type": "choice",
+          "answer": "password",
+          "p": 0.665
+        },
+        "spoofed": {
+          "type": "noul",
+          "p": 0.689
+        }
+      }
+    },
+    "hindi": {
+      "hash": "adc8795809a480b6",
+      "checkpoint": "multilingual",
+      "inputTokens": 158,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 0.997
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.99
+        }
+      }
+    },
+    "japanese": {
+      "hash": "c8c8fc2c301ed4f7",
+      "checkpoint": "multilingual",
+      "inputTokens": 128,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 0.999
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.894
+        }
+      }
+    },
+    "arabic": {
+      "hash": "763eb4e84c65e3b9",
+      "checkpoint": "multilingual",
+      "inputTokens": 148,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 0.933
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.949
+        }
+      }
+    },
+    "russian": {
+      "hash": "9311636ed2dde9e0",
+      "checkpoint": "multilingual",
+      "inputTokens": 148,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 1
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.949
+        }
+      }
+    },
+    "german": {
+      "hash": "dce5a4c52b1de657",
+      "checkpoint": "multilingual",
+      "inputTokens": 130,
+      "answers": {
+        "queue": {
+          "type": "choice",
+          "answer": "billing",
+          "p": 0.996
+        },
+        "refund": {
+          "type": "noul",
+          "p": 0.943
+        }
+      }
+    }
+  }
+}
