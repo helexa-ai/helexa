@@ -35,8 +35,9 @@ function fromBase64Url(s: string): Uint8Array {
 }
 
 async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  const out = new Blob([bytes as BlobPart]).stream().pipeThrough(stream);
-  return new Uint8Array(await new Response(out).arrayBuffer());
+  const body = new Response(bytes as BodyInit).body;
+  if (!body) throw new Error("no body stream");
+  return new Uint8Array(await new Response(body.pipeThrough(stream)).arrayBuffer());
 }
 
 /** The draft as a URL fragment (`#p=1.<data>`). */

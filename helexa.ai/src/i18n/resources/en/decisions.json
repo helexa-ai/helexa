@@ -1,0 +1,74 @@
+{
+  "compose": {
+    "label": "Compose a request"
+  },
+  "state": {
+    "label": "State",
+    "mode": "State format",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "The message, ticket, document or conversation to decide about",
+    "help": {
+      "text": "Sent exactly as written.",
+      "json": "An object is sent as JSON, keys in the order written. A list is read as a conversation and trimmed from the start, so the newest turns survive."
+    }
+  },
+  "questions": {
+    "label": "Questions",
+    "format": "Format",
+    "help": "A JSON object keyed by question id. Each question has a type, instructions and — for choice and score — criteria."
+  },
+  "add": {
+    "label": "Add a question",
+    "invalidJson": "Fix the questions first: adding one would replace text that isn't a valid JSON object.",
+    "noul": {
+      "title": "Yes or no",
+      "desc": "Is a statement true? Answers with a probability."
+    },
+    "score": {
+      "title": "Rubric",
+      "desc": "Grade against ordered levels. Answers with the expected level."
+    },
+    "choice": {
+      "title": "Multiple choice",
+      "desc": "Pick one of your labelled options."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "Automatic picks a checkpoint from the language of the state. Choosing one sends every request to it, whatever the language.",
+    "auto": "Automatic (by language)",
+    "english": "English",
+    "multilingual": "Multilingual",
+    "typed-decisions": "Typed decisions"
+  },
+  "run": "Run",
+  "cancel": "Cancel",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Problems to fix",
+    "stateEmpty": "The state is empty.",
+    "stateNull": "The state can't be null.",
+    "stateJson": "The state isn't valid JSON: {{detail}} (line {{line}}, column {{column}}).",
+    "stateTooLong": "The state is longer than {{max}} characters.",
+    "questionsJson": "The questions aren't valid JSON: {{detail}} (line {{line}}, column {{column}}).",
+    "questionsNotObject": "Questions must be a JSON object keyed by question id.",
+    "noQuestions": "Add at least one question.",
+    "tooManyQuestions": "At most {{max}} questions per request.",
+    "tooManyTotal": "At most {{max}} options across all questions.",
+    "questionNotObject": "“{{id}}”: a question must be an object.",
+    "badType": "“{{id}}”: type must be choice, score or noul.",
+    "noInstructions": "“{{id}}”: instructions are missing.",
+    "labelsOnlyNoul": "“{{id}}”: labels only apply to noul questions.",
+    "choiceNeedsCriteria": "“{{id}}”: a choice needs criteria — an object of options, or a list of labels.",
+    "tooManyOptions": "“{{id}}”: at most {{max}} options.",
+    "labelNotScalar": "“{{id}}”: each label must be text, a number or true/false.",
+    "duplicateLabel": "“{{id}}”: label {{label}} appears twice (1, 1.0 and true count as the same label).",
+    "scoreNeedsLevels": "“{{id}}”: a score needs criteria as a list of levels, lowest first.",
+    "tooManyLevels": "“{{id}}”: at most {{max}} levels.",
+    "nullLevel": "“{{id}}”: a level can't be null.",
+    "noulCriteria": "“{{id}}”: noul criteria can only describe true and false.",
+    "noulLabels": "“{{id}}”: labels need different texts for true and false.",
+    "badBudget": "{{name}} must be a whole number from 1 to {{max}}."
+  }
+}
