@@ -7,6 +7,12 @@
 
 import { JsonNumber, isMap, parseOrdered, stringifyOrdered, type OJ } from "./orderedJson";
 
+/**
+ * Where snippets point: the public API, whichever host serves the page (a
+ * snippet copied from the internal mesh should still work anywhere).
+ */
+export const PUBLIC_API_BASE: string = import.meta.env.VITE_PUBLIC_API_BASE || "https://helexa.ai";
+
 export type SnippetLang = "curl" | "python" | "laya";
 export const SNIPPET_LANGS: SnippetLang[] = ["curl", "python", "laya"];
 

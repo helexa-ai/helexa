@@ -1,0 +1,23 @@
+/* Decision playground — share and code (#361). Tokens from App.css. */
+
+.hx-pg-share {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.25rem;
+}
+
+.hx-pg-code {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+    min-width: 0;
+}
+.hx-pg-code .hx-pg-pre {
+    width: 100%;
+    margin: 0;
+}
+.hx-pg-code p {
+    margin: 0;
+}

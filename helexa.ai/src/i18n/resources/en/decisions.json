@@ -132,6 +132,22 @@
       "blurb": "Latin script, but not English: routed by language, not script."
     }
   },
+  "share": {
+    "button": "Share",
+    "copied": "Link copied",
+    "tooLong": "This request is too long to share as a link. Copy the request JSON instead.",
+    "inAddressBar": "Couldn't copy automatically: the link is in the address bar."
+  },
+  "code": {
+    "language": "Language",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Fix the problems in the request to see it as code.",
+    "jev": "Any TypeSafe Jev client works unchanged: point it here. A model name this service doesn't know falls back to helexa/one.",
+    "key": "Requests without a key work within the public rate limit. For more, create an API key and set HELEXA_API_KEY.",
+    "keyLink": "Get an API key"
+  },
   "copy": "Copy",
   "copied": "Copied",
   "results": {
