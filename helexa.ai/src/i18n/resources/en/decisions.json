@@ -69,6 +69,83 @@
     "nullLevel": "“{{id}}”: a level can't be null.",
     "noulCriteria": "“{{id}}”: noul criteria can only describe true and false.",
     "noulLabels": "“{{id}}”: labels need different texts for true and false.",
-    "badBudget": "{{name}} must be a whole number from 1 to {{max}}."
+    "badBudget": "{{name}} must be a whole number from 1 to {{max}}.",
+    "server": "“{{id}}”, from the server: {{detail}}"
+  },
+  "copy": "Copy",
+  "copied": "Copied",
+  "results": {
+    "empty": "Run a request to see the answers here.",
+    "running": "Deciding…",
+    "expectedScore": "Expected level {{score}}",
+    "pTrue": "{{p}} likely true",
+    "answerConfidence": "Answer confidence",
+    "confidence": "Confidence",
+    "confidenceHelp": "Answer confidence is the probability of the chosen answer — the calibrated number to set a threshold on. Confidence measures how decided the whole distribution is (1 − normalised entropy; for yes/no, the larger probability) and can't be compared across question types.",
+    "collapsed": "Some options were cut to the same tokens to fit the budget, so the model could not tell them apart. Shorten the option texts or use fewer options."
+  },
+  "routing": {
+    "title": "Routing",
+    "detected": "Detected script: {{script}} · language: {{language}}",
+    "undecided": "undecided",
+    "scripts": "Share of letters per script",
+    "pinned": "The request named this checkpoint, so language detection was skipped."
+  },
+  "usage": {
+    "title": "Usage and timing",
+    "inputTokens": "input tokens (metered)",
+    "server": "model time",
+    "roundTrip": "round trip",
+    "ms": "{{ms}} ms",
+    "help": "Decisions are metered in input tokens. Each question is encoded together with the state, so every extra question over a long state costs that state again."
+  },
+  "raw": {
+    "request": "Request JSON",
+    "response": "Response JSON"
+  },
+  "errors": {
+    "retryIn": "You can try again in {{seconds}} s.",
+    "retryNow": "You can try again now.",
+    "rateLimitNote": "The public endpoint allows 10 requests a minute from each address. Try again in a minute.",
+    "validation": {
+      "title": "The server rejected the request",
+      "help": "Fix the problem below and run again."
+    },
+    "too_large": {
+      "title": "The request is too large",
+      "help": "It goes over one of the server's limits."
+    },
+    "rate_limited": {
+      "title": "Too many requests",
+      "help": "The service is limiting how often this address can ask."
+    },
+    "unavailable": {
+      "title": "The service is busy",
+      "help": "The model is busy or restarting."
+    },
+    "not_found": {
+      "title": "No decision model is available",
+      "help": "The service has no model that can answer this right now."
+    },
+    "server": {
+      "title": "The service failed",
+      "help": "Something went wrong on the server. Try again shortly."
+    },
+    "network": {
+      "title": "Couldn't reach the service",
+      "help": "Check your connection and try again."
+    },
+    "timeout": {
+      "title": "The request timed out",
+      "help": "No answer came back in time. Try again shortly."
+    },
+    "cancelled": {
+      "title": "Cancelled",
+      "help": "The request was stopped before it finished."
+    },
+    "bad_response": {
+      "title": "Unreadable response",
+      "help": "The service answered with something that isn't a decision."
+    }
   }
 }

@@ -9,7 +9,7 @@
 // sent; the server stays the authority and its own message is shown when
 // it disagrees.
 
-import type { QuestionType } from "./decisionClient";
+import type { DecisionError, QuestionType } from "./decisionClient";
 import {
   JsonNumber,
   JsonSyntaxError,
@@ -328,6 +328,22 @@ export function addQuestion(questionsText: string, type: QuestionType): string |
   const next: OMap = new Map(parsed);
   next.set(id, questionTemplate(type));
   return stringifyOrdered(next);
+}
+
+/**
+ * A server rejection that names a question, as an issue the compose pane
+ * shows under the questions editor — beside the question it is about,
+ * where it will be fixed. Null for anything else.
+ */
+export function issueFromError(error: DecisionError): Issue | null {
+  if (error.kind !== "validation" || error.questionId === undefined) return null;
+  const detail = error.message.replace(/^question '(?:[^'\\]|\\.)*':\s*/, "");
+  return {
+    field: "questions",
+    key: "issues.server",
+    params: { id: error.questionId, detail },
+    questionId: error.questionId,
+  };
 }
 
 /** Re-indent JSON text without reordering it; null if it does not parse. */
