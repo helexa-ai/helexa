@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Inkundla yokuzama",
+    "lead": "Buza imodeli yezinqumo imibuzo enezinhlobo mayelana nanoma yimuphi umbhalo noma i-JSON, uthole izimpendulo ezilinganisiwe ngokudlula okukodwa — ngaphandle kombhalo okhiqiziwe.",
+    "docsLink": "Isebenza kanjani",
+    "side": "Imiphumela, izibonelo nekhodi",
+    "tabs": {
+      "results": "Imiphumela",
+      "examples": "Izibonelo",
+      "code": "Ikhodi"
+    }
+  },
+  "compose": {
+    "label": "Bhala isicelo"
+  },
+  "state": {
+    "label": "Isimo",
+    "mode": "Ifomethi yesimo",
+    "text": "Umbhalo",
+    "json": "JSON",
+    "placeholder": "Umlayezo, ithikithi, idokhumenti noma ingxoxo okufanele kunqunywe ngayo",
+    "help": {
+      "text": "Kuthunyelwa ncamashi njengoba kubhaliwe.",
+      "json": "Into ithunyelwa njenge-JSON, okhiye besohlelweni ababhalwe ngalo. Uhlu lufundwa njengengxoxo futhi lufinyezwa kusukela ekuqaleni, ukuze kusale okushiwo kamuva kakhulu."
+    }
+  },
+  "questions": {
+    "label": "Imibuzo",
+    "format": "Hlela",
+    "help": "Into ye-JSON enokhiye abangama-ID emibuzo. Umbuzo ngamunye unohlobo, imiyalelo futhi — ku-choice naku-score — nemibandela."
+  },
+  "add": {
+    "label": "Engeza umbuzo",
+    "invalidJson": "Qala ulungise imibuzo: ukwengeza umbuzo kungathatha indawo yombhalo ongeyona into ye-JSON evumelekile.",
+    "noul": {
+      "title": "Yebo noma cha",
+      "desc": "Ingabe isitatimende siyiqiniso? Siphendula ngamathuba."
+    },
+    "score": {
+      "title": "Isikali sokuhlola",
+      "desc": "Sinikeza amamaki ngokwamazinga ahleliwe. Siphendula ngezinga elilindelekile."
+    },
+    "choice": {
+      "title": "Ukukhetha okuningi",
+      "desc": "Sikhetha okukodwa kokukhethwa kwakho okunamalebula."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Okuzenzakalelayo” kukhetha i-checkpoint ngokolimi lwesimo. Uma ukhetha eyodwa, zonke izicelo ziya kuyo, noma ngabe lunjani ulimi.",
+    "auto": "Okuzenzakalelayo (ngolimi)",
+    "english": "IsiNgisi",
+    "multilingual": "Izilimi eziningi",
+    "typed-decisions": "Izinqumo ezinezinhlobo"
+  },
+  "run": "Qalisa",
+  "cancel": "Khansela",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Izinkinga okufanele zilungiswe",
+    "stateEmpty": "Isimo asinalutho.",
+    "stateNull": "Isimo asikwazi ukuba yi-null.",
+    "stateJson": "Isimo akuyona i-JSON evumelekile: {{detail}} (umugqa {{line}}, ikholomu {{column}}).",
+    "stateTooLong": "Isimo side kunezinhlamvu ezingu-{{max}}.",
+    "questionsJson": "Imibuzo akuyona i-JSON evumelekile: {{detail}} (umugqa {{line}}, ikholomu {{column}}).",
+    "questionsNotObject": "Imibuzo kufanele ibe yinto ye-JSON enokhiye abangama-ID emibuzo.",
+    "noQuestions": "Engeza okungenani umbuzo owodwa.",
+    "tooManyQuestions": "Imibuzo engu-{{max}} ubuningi esicelweni ngasinye.",
+    "tooManyTotal": "Okukhethwa okungu-{{max}} ubuningi sekukonke kuyo yonke imibuzo.",
+    "questionNotObject": "“{{id}}”: umbuzo kufanele ube yinto.",
+    "badType": "“{{id}}”: i-type kufanele ibe yi-choice, score noma noul.",
+    "noInstructions": "“{{id}}”: imiyalelo ayikho.",
+    "labelsOnlyNoul": "“{{id}}”: i-labels isebenza emibuzweni ye-noul kuphela.",
+    "choiceNeedsCriteria": "“{{id}}”: umbuzo we-choice udinga imibandela — into yokukhethwa noma uhlu lwamalebula.",
+    "tooManyOptions": "“{{id}}”: okukhethwa okungu-{{max}} ubuningi.",
+    "labelNotScalar": "“{{id}}”: ilebula ngayinye kufanele ibe umbhalo, inombolo noma i-true/false.",
+    "duplicateLabel": "“{{id}}”: ilebula {{label}} ivela kabili (i-1, i-1.0 ne-true zibalwa njengelebula efanayo).",
+    "scoreNeedsLevels": "“{{id}}”: umbuzo we-score udinga imibandela njengohlu lwamazinga, kusukela kwelingezansi.",
+    "tooManyLevels": "“{{id}}”: amazinga angu-{{max}} ubuningi.",
+    "nullLevel": "“{{id}}”: izinga alikwazi ukuba yi-null.",
+    "noulCriteria": "“{{id}}”: imibandela ye-noul ingachaza i-true ne-false kuphela.",
+    "noulLabels": "“{{id}}”: i-labels idinga imibhalo ehlukene ye-true ne-false.",
+    "badBudget": "I-{{name}} kufanele ibe inombolo ephelele kusuka ku-1 kuya ku-{{max}}.",
+    "server": "“{{id}}”, ngokusho kweseva: {{detail}}"
+  },
+  "examples": {
+    "intro": "Khetha isibonelo ukuze usilayishe kubahleli. Akukho okuthunyelwayo uze uchofoze u-Qalisa.",
+    "groups": {
+      "lessons": "Izifundo",
+      "useCases": "Izimo zokusebenzisa",
+      "multilingual": "Izilimi eziningi"
+    },
+    "review": {
+      "title": "Wanelisekile noma cha?",
+      "blurb": "Imibuzo ye-yebo/cha. Amalebula aqamba kabusha impendulo, imibandela isho ukuthi yini ebalwayo."
+    },
+    "bugReport": {
+      "title": "Hlola umbiko wephutha",
+      "blurb": "Isikali samazinga ahleliwe. Impendulo yizinga elilindelekile, elingawela phakathi kwamabili."
+    },
+    "helpdesk": {
+      "title": "Dlulisela isicelo kudeski losizo",
+      "blurb": "Okukhethwa okuchaziwe. Kwabelana ngesabelomali esisodwa samathokheni, ngakho uhlu olude luyacindezelana."
+    },
+    "triage": {
+      "title": "Ukuhlunga amathikithi osizo",
+      "blurb": "Ithimba, ukuphuthuma nokubuyiselwa kwemali — imibuzo emithathu ngomlayezo owodwa esicelweni esisodwa."
+    },
+    "resume": {
+      "title": "Ukuhlola ama-CV",
+      "blurb": "Izinga lokuhlangenwe nakho, ikhono elidingekayo nobuholi, kufundwe ku-CV."
+    },
+    "guardrails": {
+      "title": "Izivikelo ze-LLM",
+      "blurb": "Bona umzamo we-jailbreak futhi uhlole umonakalo ngaphambi kokuba imodeli iphendule."
+    },
+    "moderation": {
+      "title": "Ukulawulwa kokuqukethwe",
+      "blurb": "Ukugxeka okunzima akukhona ukuhlukumeza: kuhlukanise."
+    },
+    "phishing": {
+      "title": "I-imeyili yokukhwabanisa",
+      "blurb": "Isimo se-JSON: yonke i-imeyili, nomthumeli nesihloko."
+    },
+    "hindi": {
+      "title": "IsiHindi",
+      "blurb": "Ithikithi lokuhlunga ngombhalo we-Devanagari."
+    },
+    "japanese": {
+      "title": "IsiJapane",
+      "blurb": "Ithikithi lokuhlunga ngesiJapane."
+    },
+    "arabic": {
+      "title": "Isi-Arabhu",
+      "blurb": "Ithikithi lokuhlunga ngombhalo wesi-Arabhu."
+    },
+    "russian": {
+      "title": "IsiRashiya",
+      "blurb": "Ithikithi lokuhlunga ngombhalo we-Cyrillic."
+    },
+    "german": {
+      "title": "IsiJalimane",
+      "blurb": "Umbhalo wesiLatini, kodwa hhayi isiNgisi: kudluliselwa ngolimi, hhayi ngombhalo."
+    }
+  },
+  "share": {
+    "button": "Yabelana",
+    "copied": "Isixhumanisi sikopishiwe",
+    "tooLong": "Lesi sicelo side kakhulu ukuthi sabelwane ngaso njengesixhumanisi. Esikhundleni salokho kopisha i-JSON yesicelo.",
+    "inAddressBar": "Akukwazanga ukukopisha ngokuzenzakalelayo: isixhumanisi sisebha yekheli."
+  },
+  "code": {
+    "language": "Ulimi",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "I-SDK ye-laya",
+    "fixFirst": "Lungisa izinkinga zesicelo ukuze usibone njengekhodi.",
+    "jev": "Noma iyiphi iklayenti ye-TypeSafe Jev isebenza ngaphandle koshintsho: yikhombe lapha nje. Igama lemodeli le sevisi engalazi libuyela ku-helexa/one.",
+    "key": "Izicelo ezingenakhiye zisebenza ngaphakathi komkhawulo womphakathi. Ukuze uthole okwengeziwe, dala ukhiye we-API bese usetha i-HELEXA_API_KEY.",
+    "keyLink": "Thola ukhiye we-API"
+  },
+  "copy": "Kopisha",
+  "copied": "Kukopishiwe",
+  "results": {
+    "empty": "Qalisa isicelo ukuze ubone izimpendulo lapha.",
+    "running": "Kuyanqunywa…",
+    "expectedScore": "Izinga elilindelekile {{score}}",
+    "pTrue": "Amathuba angu-{{p}} okuthi kuyiqiniso",
+    "answerConfidence": "Ukuqiniseka kwempendulo",
+    "confidence": "Ukuqiniseka",
+    "confidenceHelp": "Ukuqiniseka kwempendulo kungamathuba empendulo ekhethiwe — inombolo elinganisiwe okubekwa kuyo umkhawulo. Ukuqiniseka kukala ukuthi konke ukusabalala kucace kangakanani (1 − i-entropy ejwayelekile; ku-yebo/cha, amathuba amakhulu) futhi akuqhathaniswa phakathi kwezinhlobo zemibuzo.",
+    "collapsed": "Okunye okukhethwa kufinyezwe kwaba amathokheni afanayo ukuze kungene esabelomalini, ngakho imodeli ayikwazanga ukukuhlukanisa. Finyeza imibhalo yokukhethwa noma usebenzise okumbalwa."
+  },
+  "routing": {
+    "title": "Ukudlulisela",
+    "detected": "Umbhalo otholiwe: {{script}} · ulimi: {{language}}",
+    "undecided": "akunqunyiwe",
+    "scripts": "Isabelo sezinhlamvu ngombhalo",
+    "pinned": "Isicelo sibalule le checkpoint, ngakho ukuthola ulimi kweqiwe."
+  },
+  "usage": {
+    "title": "Ukusetshenziswa nesikhathi",
+    "inputTokens": "amathokheni okufaka (ayakhokhelwa)",
+    "server": "isikhathi semodeli",
+    "roundTrip": "isikhathi sisonke",
+    "ms": "{{ms}} ms",
+    "help": "Izinqumo zikhokhiswa ngamathokheni okufaka. Umbuzo ngamunye ufakwa ikhodi kanye nesimo, ngakho umbuzo ngamunye owengeziwe mayelana nesimo eside ubiza leso simo futhi."
+  },
+  "raw": {
+    "request": "I-JSON yesicelo",
+    "response": "I-JSON yempendulo"
+  },
+  "errors": {
+    "retryIn": "Ungaphinda uzame emva kwemizuzwana engu-{{seconds}}.",
+    "retryNow": "Ungaphinda uzame manje.",
+    "rateLimitNote": "Iphoyinti lomphakathi lamukela izicelo eziyi-10 ngomzuzu ekhelini ngalinye. Phinda uzame emva komzuzu.",
+    "validation": {
+      "title": "Iseva yenqabe isicelo",
+      "help": "Lungisa inkinga engezansi bese uqalisa futhi."
+    },
+    "too_large": {
+      "title": "Isicelo sikhulu kakhulu",
+      "help": "Seqa omunye wemikhawulo yeseva."
+    },
+    "rate_limited": {
+      "title": "Izicelo eziningi kakhulu",
+      "help": "Isevisi ikhawulela ukuthi leli kheli lingabuza kangaki."
+    },
+    "unavailable": {
+      "title": "Isevisi imatasa",
+      "help": "Imodeli imatasa noma iqala kabusha."
+    },
+    "not_found": {
+      "title": "Ayikho imodeli yezinqumo etholakalayo",
+      "help": "Okwamanje isevisi ayinayo imodeli engaphendula."
+    },
+    "server": {
+      "title": "Isevisi yehlulekile",
+      "help": "Kukhona okungahambanga kahle kuseva. Phinda uzame maduze."
+    },
+    "network": {
+      "title": "Isevisi ayifinyeleleki",
+      "help": "Hlola ukuxhumana kwakho bese uphinda uzame."
+    },
+    "timeout": {
+      "title": "Isikhathi sesicelo siphelile",
+      "help": "Impendulo ayifikanga ngesikhathi. Phinda uzame maduze."
+    },
+    "cancelled": {
+      "title": "Kukhanseliwe",
+      "help": "Isicelo simiswe ngaphambi kokuthi siqede."
+    },
+    "bad_response": {
+      "title": "Impendulo engafundeki",
+      "help": "Isevisi iphendule ngento engesona isinqumo."
+    }
+  }
+}

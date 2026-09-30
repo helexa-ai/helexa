@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Playground",
+    "lead": "Stellen Sie einem Entscheidungsmodell typisierte Fragen zu beliebigem Text oder JSON und erhalten Sie kalibrierte Antworten in einem Durchlauf – ganz ohne generierten Text.",
+    "docsLink": "So funktioniert es",
+    "side": "Ergebnisse, Beispiele und Code",
+    "tabs": {
+      "results": "Ergebnisse",
+      "examples": "Beispiele",
+      "code": "Code"
+    }
+  },
+  "compose": {
+    "label": "Anfrage verfassen"
+  },
+  "state": {
+    "label": "Zustand",
+    "mode": "Format des Zustands",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "Die Nachricht, das Ticket, das Dokument oder das Gespräch, über das entschieden werden soll",
+    "help": {
+      "text": "Wird genau so gesendet, wie er geschrieben ist.",
+      "json": "Ein Objekt wird als JSON gesendet, mit den Schlüsseln in der geschriebenen Reihenfolge. Eine Liste gilt als Gespräch und wird von vorn gekürzt, damit die neuesten Beiträge erhalten bleiben."
+    }
+  },
+  "questions": {
+    "label": "Fragen",
+    "format": "Formatieren",
+    "help": "Ein JSON-Objekt, nach Fragen-ID geordnet. Jede Frage hat einen Typ, Anweisungen und – bei choice und score – Kriterien."
+  },
+  "add": {
+    "label": "Frage hinzufügen",
+    "invalidJson": "Korrigieren Sie zuerst die Fragen: Das Hinzufügen würde Text ersetzen, der kein gültiges JSON-Objekt ist.",
+    "noul": {
+      "title": "Ja oder nein",
+      "desc": "Trifft eine Aussage zu? Antwortet mit einer Wahrscheinlichkeit."
+    },
+    "score": {
+      "title": "Bewertungsskala",
+      "desc": "Bewertet anhand geordneter Stufen. Antwortet mit der erwarteten Stufe."
+    },
+    "choice": {
+      "title": "Auswahl",
+      "desc": "Wählt eine Ihrer beschrifteten Optionen."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automatisch“ wählt den Checkpoint nach der Sprache des Zustands. Wählen Sie einen aus, gehen alle Anfragen dorthin – gleich in welcher Sprache.",
+    "auto": "Automatisch (nach Sprache)",
+    "english": "Englisch",
+    "multilingual": "Mehrsprachig",
+    "typed-decisions": "Typisierte Entscheidungen"
+  },
+  "run": "Ausführen",
+  "cancel": "Abbrechen",
+  "shortcut": "Strg+Enter",
+  "issues": {
+    "title": "Zu behebende Probleme",
+    "stateEmpty": "Der Zustand ist leer.",
+    "stateNull": "Der Zustand darf nicht null sein.",
+    "stateJson": "Der Zustand ist kein gültiges JSON: {{detail}} (Zeile {{line}}, Spalte {{column}}).",
+    "stateTooLong": "Der Zustand ist länger als {{max}} Zeichen.",
+    "questionsJson": "Die Fragen sind kein gültiges JSON: {{detail}} (Zeile {{line}}, Spalte {{column}}).",
+    "questionsNotObject": "Die Fragen müssen ein JSON-Objekt sein, nach Fragen-ID geordnet.",
+    "noQuestions": "Fügen Sie mindestens eine Frage hinzu.",
+    "tooManyQuestions": "Höchstens {{max}} Fragen pro Anfrage.",
+    "tooManyTotal": "Höchstens {{max}} Optionen über alle Fragen hinweg.",
+    "questionNotObject": "„{{id}}“: Eine Frage muss ein Objekt sein.",
+    "badType": "„{{id}}“: type muss choice, score oder noul sein.",
+    "noInstructions": "„{{id}}“: Die Anweisungen fehlen.",
+    "labelsOnlyNoul": "„{{id}}“: labels gelten nur für noul-Fragen.",
+    "choiceNeedsCriteria": "„{{id}}“: Eine choice-Frage braucht Kriterien – ein Objekt mit Optionen oder eine Liste von Bezeichnungen.",
+    "tooManyOptions": "„{{id}}“: Höchstens {{max}} Optionen.",
+    "labelNotScalar": "„{{id}}“: Jede Bezeichnung muss Text, eine Zahl oder true/false sein.",
+    "duplicateLabel": "„{{id}}“: Die Bezeichnung {{label}} kommt doppelt vor (1, 1.0 und true gelten als dieselbe).",
+    "scoreNeedsLevels": "„{{id}}“: Eine score-Frage braucht Kriterien als Liste von Stufen, die niedrigste zuerst.",
+    "tooManyLevels": "„{{id}}“: Höchstens {{max}} Stufen.",
+    "nullLevel": "„{{id}}“: Eine Stufe darf nicht null sein.",
+    "noulCriteria": "„{{id}}“: noul-Kriterien können nur true und false beschreiben.",
+    "noulLabels": "„{{id}}“: labels brauchen unterschiedliche Texte für true und false.",
+    "badBudget": "{{name}} muss eine ganze Zahl von 1 bis {{max}} sein.",
+    "server": "„{{id}}“, laut Server: {{detail}}"
+  },
+  "examples": {
+    "intro": "Wählen Sie ein Beispiel, um es in die Editoren zu laden. Gesendet wird erst, wenn Sie auf Ausführen klicken.",
+    "groups": {
+      "lessons": "Lektionen",
+      "useCases": "Anwendungsfälle",
+      "multilingual": "Mehrsprachig"
+    },
+    "review": {
+      "title": "Zufrieden oder nicht?",
+      "blurb": "Ja/Nein-Fragen. Labels benennen die Antwort um, Kriterien legen fest, was zählt."
+    },
+    "bugReport": {
+      "title": "Einen Fehlerbericht bewerten",
+      "blurb": "Eine Skala geordneter Stufen. Die Antwort ist die erwartete Stufe, die auch zwischen zwei liegen kann."
+    },
+    "helpdesk": {
+      "title": "Eine Helpdesk-Anfrage zuweisen",
+      "blurb": "Beschriebene Optionen. Sie teilen sich ein Token-Budget, lange Listen drängen sich also gegenseitig."
+    },
+    "triage": {
+      "title": "Support-Ticket-Triage",
+      "blurb": "Team, Dringlichkeit und Erstattung – drei Fragen zu einer Nachricht in einer Anfrage."
+    },
+    "resume": {
+      "title": "Lebenslauf-Screening",
+      "blurb": "Erfahrungsstufe, eine geforderte Fähigkeit und Führung, aus einem Lebenslauf gelesen."
+    },
+    "guardrails": {
+      "title": "LLM-Schutzmechanismen",
+      "blurb": "Einen Jailbreak-Versuch erkennen und den Schaden einschätzen, bevor ein Modell antwortet."
+    },
+    "moderation": {
+      "title": "Inhaltsmoderation",
+      "blurb": "Harte Kritik ist keine Belästigung: Unterscheiden Sie beides."
+    },
+    "phishing": {
+      "title": "Phishing-E-Mail",
+      "blurb": "Ein JSON-Zustand: die ganze E-Mail, mit Absender und Betreff."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Das Triage-Ticket in Devanagari-Schrift."
+    },
+    "japanese": {
+      "title": "Japanisch",
+      "blurb": "Das Triage-Ticket auf Japanisch."
+    },
+    "arabic": {
+      "title": "Arabisch",
+      "blurb": "Das Triage-Ticket in arabischer Schrift."
+    },
+    "russian": {
+      "title": "Russisch",
+      "blurb": "Das Triage-Ticket in kyrillischer Schrift."
+    },
+    "german": {
+      "title": "Deutsch",
+      "blurb": "Lateinische Schrift, aber nicht Englisch: Weitergeleitet wird nach Sprache, nicht nach Schrift."
+    }
+  },
+  "share": {
+    "button": "Teilen",
+    "copied": "Link kopiert",
+    "tooLong": "Diese Anfrage ist zu lang, um sie als Link zu teilen. Kopieren Sie stattdessen das Anfrage-JSON.",
+    "inAddressBar": "Automatisches Kopieren nicht möglich: Der Link steht in der Adressleiste."
+  },
+  "code": {
+    "language": "Sprache",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Beheben Sie die Probleme der Anfrage, um sie als Code zu sehen.",
+    "jev": "Jeder TypeSafe-Jev-Client funktioniert unverändert: Richten Sie ihn hierher. Ein Modellname, den dieser Dienst nicht kennt, fällt auf helexa/one zurück.",
+    "key": "Anfragen ohne Schlüssel funktionieren im Rahmen des öffentlichen Limits. Für mehr erstellen Sie einen API-Schlüssel und setzen HELEXA_API_KEY.",
+    "keyLink": "API-Schlüssel holen"
+  },
+  "copy": "Kopieren",
+  "copied": "Kopiert",
+  "results": {
+    "empty": "Führen Sie eine Anfrage aus, um die Antworten hier zu sehen.",
+    "running": "Wird entschieden…",
+    "expectedScore": "Erwartete Stufe {{score}}",
+    "pTrue": "{{p}} wahrscheinlich wahr",
+    "answerConfidence": "Antwortsicherheit",
+    "confidence": "Sicherheit",
+    "confidenceHelp": "Die Antwortsicherheit ist die Wahrscheinlichkeit der gewählten Antwort – die kalibrierte Zahl, auf die man einen Schwellenwert setzt. Die Sicherheit misst, wie eindeutig die ganze Verteilung ist (1 − normierte Entropie; bei Ja/Nein die größere Wahrscheinlichkeit), und ist zwischen Fragetypen nicht vergleichbar.",
+    "collapsed": "Einige Optionen wurden für das Budget auf dieselben Tokens gekürzt, sodass das Modell sie nicht unterscheiden konnte. Kürzen Sie die Optionstexte oder verwenden Sie weniger Optionen."
+  },
+  "routing": {
+    "title": "Weiterleitung",
+    "detected": "Erkannte Schrift: {{script}} · Sprache: {{language}}",
+    "undecided": "unbestimmt",
+    "scripts": "Anteil der Buchstaben je Schrift",
+    "pinned": "Die Anfrage hat diesen Checkpoint genannt, daher wurde die Spracherkennung übersprungen."
+  },
+  "usage": {
+    "title": "Verbrauch und Zeit",
+    "inputTokens": "Eingabe-Tokens (abgerechnet)",
+    "server": "Modellzeit",
+    "roundTrip": "Gesamtdauer",
+    "ms": "{{ms}} ms",
+    "help": "Entscheidungen werden nach Eingabe-Tokens abgerechnet. Jede Frage wird zusammen mit dem Zustand kodiert, jede weitere Frage zu einem langen Zustand kostet diesen Zustand also erneut."
+  },
+  "raw": {
+    "request": "Anfrage-JSON",
+    "response": "Antwort-JSON"
+  },
+  "errors": {
+    "retryIn": "Sie können es in {{seconds}} s erneut versuchen.",
+    "retryNow": "Sie können es jetzt erneut versuchen.",
+    "rateLimitNote": "Der öffentliche Endpunkt erlaubt 10 Anfragen pro Minute je Adresse. Versuchen Sie es in einer Minute erneut.",
+    "validation": {
+      "title": "Der Server hat die Anfrage abgelehnt",
+      "help": "Beheben Sie das Problem unten und führen Sie sie erneut aus."
+    },
+    "too_large": {
+      "title": "Die Anfrage ist zu groß",
+      "help": "Sie überschreitet eine der Grenzen des Servers."
+    },
+    "rate_limited": {
+      "title": "Zu viele Anfragen",
+      "help": "Der Dienst begrenzt, wie oft diese Adresse fragen darf."
+    },
+    "unavailable": {
+      "title": "Der Dienst ist ausgelastet",
+      "help": "Das Modell ist ausgelastet oder startet neu."
+    },
+    "not_found": {
+      "title": "Kein Entscheidungsmodell verfügbar",
+      "help": "Der Dienst hat gerade kein Modell, das dies beantworten kann."
+    },
+    "server": {
+      "title": "Der Dienst ist fehlgeschlagen",
+      "help": "Auf dem Server ist etwas schiefgegangen. Versuchen Sie es gleich noch einmal."
+    },
+    "network": {
+      "title": "Dienst nicht erreichbar",
+      "help": "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+    },
+    "timeout": {
+      "title": "Zeitüberschreitung der Anfrage",
+      "help": "Es kam nicht rechtzeitig eine Antwort. Versuchen Sie es gleich noch einmal."
+    },
+    "cancelled": {
+      "title": "Abgebrochen",
+      "help": "Die Anfrage wurde gestoppt, bevor sie fertig war."
+    },
+    "bad_response": {
+      "title": "Unlesbare Antwort",
+      "help": "Der Dienst hat mit etwas geantwortet, das keine Entscheidung ist."
+    }
+  }
+}

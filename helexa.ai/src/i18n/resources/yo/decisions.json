@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Pápá ìdánwò",
+    "lead": "Béèrè àwọn ìbéèrè onírú lọ́wọ́ àwòṣe ìpinnu nípa ọ̀rọ̀ tàbí JSON èyíkéyìí, kí o sì gba àwọn ìdáhùn tí a ṣe ìwọ̀n wọn ní ìgbésẹ̀ kan ṣoṣo — láìsí ọ̀rọ̀ tí a ṣẹ̀dá.",
+    "docsLink": "Bí ó ṣe ń ṣiṣẹ́",
+    "side": "Àbájáde, àpẹẹrẹ àti kóòdù",
+    "tabs": {
+      "results": "Àbájáde",
+      "examples": "Àpẹẹrẹ",
+      "code": "Kóòdù"
+    }
+  },
+  "compose": {
+    "label": "Kọ ìbéèrè"
+  },
+  "state": {
+    "label": "Ipò",
+    "mode": "Ìgbékalẹ̀ ipò",
+    "text": "Ọ̀rọ̀",
+    "json": "JSON",
+    "placeholder": "Ìfiránṣẹ́, tíkẹ́ẹ̀tì, ìwé tàbí ìjíròrò tí a ó ṣe ìpinnu lé lórí",
+    "help": {
+      "text": "A ó fi ránṣẹ́ gẹ́gẹ́ bí a ṣe kọ ọ́ gan-an.",
+      "json": "A ó fi ohun kan ránṣẹ́ gẹ́gẹ́ bí JSON, pẹ̀lú àwọn kọ́kọ́rọ́ ní ètò tí a kọ wọ́n. A ó ka àtòjọ gẹ́gẹ́ bí ìjíròrò, a ó sì gé e kúrú láti ìbẹ̀rẹ̀, kí àwọn ọ̀rọ̀ tuntun jù lè kù."
+    }
+  },
+  "questions": {
+    "label": "Àwọn ìbéèrè",
+    "format": "Ṣètò",
+    "help": "Ohun JSON kan tí àwọn kọ́kọ́rọ́ rẹ̀ jẹ́ àmì ìdánimọ̀ ìbéèrè. Ìbéèrè kọ̀ọ̀kan ní irú, ìtọ́ni àti — fún choice àti score — àwọn òṣùwọ̀n."
+  },
+  "add": {
+    "label": "Ṣàfikún ìbéèrè",
+    "invalidJson": "Kọ́kọ́ ṣàtúnṣe àwọn ìbéèrè: fífi ọ̀kan kún un yóò rọ́pò ọ̀rọ̀ tí kì í ṣe ohun JSON tó tọ́.",
+    "noul": {
+      "title": "Bẹ́ẹ̀ni tàbí bẹ́ẹ̀kọ́",
+      "desc": "Ṣé gbólóhùn kan jẹ́ òótọ́? Ó ń fi àǹfààní dáhùn."
+    },
+    "score": {
+      "title": "Òṣùwọ̀n ìgbéléwọ̀n",
+      "desc": "Ó ń fún ní máàkì gẹ́gẹ́ bí ìpele tí a tò. Ó ń fi ìpele tí a retí dáhùn."
+    },
+    "choice": {
+      "title": "Àṣàyàn púpọ̀",
+      "desc": "Ó ń yan ọ̀kan nínú àwọn àṣàyàn rẹ tí o fi àmì sí."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Aládàáṣe” ń yan checkpoint gẹ́gẹ́ bí èdè ipò náà. Tí o bá yan ọ̀kan, gbogbo ìbéèrè ni yóò lọ sí i, èdè yòówù kó jẹ́.",
+    "auto": "Aládàáṣe (gẹ́gẹ́ bí èdè)",
+    "english": "Gẹ̀ẹ́sì",
+    "multilingual": "Onírúurú èdè",
+    "typed-decisions": "Ìpinnu onírú"
+  },
+  "run": "Ṣiṣẹ́",
+  "cancel": "Fagilé",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Àwọn ìṣòro láti ṣàtúnṣe",
+    "stateEmpty": "Ipò náà ṣófo.",
+    "stateNull": "Ipò kò lè jẹ́ null.",
+    "stateJson": "Ipò náà kì í ṣe JSON tó tọ́: {{detail}} (ìlà {{line}}, ọ̀wọ̀n {{column}}).",
+    "stateTooLong": "Ipò náà gùn ju ẹ̀yà ọ̀rọ̀ {{max}} lọ.",
+    "questionsJson": "Àwọn ìbéèrè náà kì í ṣe JSON tó tọ́: {{detail}} (ìlà {{line}}, ọ̀wọ̀n {{column}}).",
+    "questionsNotObject": "Àwọn ìbéèrè gbọ́dọ̀ jẹ́ ohun JSON tí àwọn kọ́kọ́rọ́ rẹ̀ jẹ́ àmì ìdánimọ̀ ìbéèrè.",
+    "noQuestions": "Ṣàfikún ìbéèrè kan ó kéré tán.",
+    "tooManyQuestions": "Ìbéèrè {{max}} ní ọ̀pọ̀jù fún ìbéèrè kọ̀ọ̀kan.",
+    "tooManyTotal": "Àṣàyàn {{max}} ní ọ̀pọ̀jù lápapọ̀ ní gbogbo ìbéèrè.",
+    "questionNotObject": "“{{id}}”: ìbéèrè gbọ́dọ̀ jẹ́ ohun kan.",
+    "badType": "“{{id}}”: type gbọ́dọ̀ jẹ́ choice, score tàbí noul.",
+    "noInstructions": "“{{id}}”: ìtọ́ni kò sí.",
+    "labelsOnlyNoul": "“{{id}}”: labels kan ìbéèrè noul nìkan.",
+    "choiceNeedsCriteria": "“{{id}}”: ìbéèrè choice nílò òṣùwọ̀n — ohun àwọn àṣàyàn tàbí àtòjọ àmì.",
+    "tooManyOptions": "“{{id}}”: àṣàyàn {{max}} ní ọ̀pọ̀jù.",
+    "labelNotScalar": "“{{id}}”: àmì kọ̀ọ̀kan gbọ́dọ̀ jẹ́ ọ̀rọ̀, nọ́mbà tàbí true/false.",
+    "duplicateLabel": "“{{id}}”: àmì {{label}} farahàn lẹ́ẹ̀mejì (1, 1.0 àti true jẹ́ àmì kan náà).",
+    "scoreNeedsLevels": "“{{id}}”: ìbéèrè score nílò òṣùwọ̀n gẹ́gẹ́ bí àtòjọ ìpele, láti èyí tó kéré jù.",
+    "tooManyLevels": "“{{id}}”: ìpele {{max}} ní ọ̀pọ̀jù.",
+    "nullLevel": "“{{id}}”: ìpele kò lè jẹ́ null.",
+    "noulCriteria": "“{{id}}”: òṣùwọ̀n noul lè ṣàpèjúwe true àti false nìkan.",
+    "noulLabels": "“{{id}}”: labels nílò ọ̀rọ̀ tó yàtọ̀ fún true àti false.",
+    "badBudget": "{{name}} gbọ́dọ̀ jẹ́ nọ́mbà odidi láti 1 sí {{max}}.",
+    "server": "“{{id}}”, gẹ́gẹ́ bí sáfà ti sọ: {{detail}}"
+  },
+  "examples": {
+    "intro": "Yan àpẹẹrẹ kan láti gbé e sínú àwọn olóòtú. Kò sí ohun tí a ó fi ránṣẹ́ títí tí o fi tẹ Ṣiṣẹ́.",
+    "groups": {
+      "lessons": "Ẹ̀kọ́",
+      "useCases": "Ìlò",
+      "multilingual": "Onírúurú èdè"
+    },
+    "review": {
+      "title": "Ṣé ó tẹ́ ẹ lọ́rùn?",
+      "blurb": "Ìbéèrè bẹ́ẹ̀ni/bẹ́ẹ̀kọ́. Àwọn àmì ń tún ìdáhùn sọ lórúkọ, àwọn òṣùwọ̀n ń sọ ohun tó ṣe pàtàkì."
+    },
+    "bugReport": {
+      "title": "Ṣe ìgbéléwọ̀n ìròyìn àṣìṣe",
+      "blurb": "Òṣùwọ̀n ìpele tí a tò. Ìdáhùn ni ìpele tí a retí, tí ó lè bọ́ sáàárín méjì."
+    },
+    "helpdesk": {
+      "title": "Darí ìbéèrè sí ẹ̀ka ìrànlọ́wọ́",
+      "blurb": "Àṣàyàn tí a ṣàpèjúwe. Wọ́n ń pín ìnáwó token kan, nítorí náà àtòjọ gígùn ń há ara wọn mọ́."
+    },
+    "triage": {
+      "title": "Ìtòlẹ́sẹẹsẹ tíkẹ́ẹ̀tì ìrànlọ́wọ́",
+      "blurb": "Ẹgbẹ́, ìkánjú àti dídá owó padà — ìbéèrè mẹ́ta nípa ìfiránṣẹ́ kan nínú ìbéèrè kan."
+    },
+    "resume": {
+      "title": "Ìṣàyẹ̀wò CV",
+      "blurb": "Ìpele ìrírí, ọgbọ́n tí a nílò àti aṣáájú, tí a kà láti inú CV."
+    },
+    "guardrails": {
+      "title": "Ààbò fún LLM",
+      "blurb": "Ṣàwárí ìgbìyànjú jailbreak kí o sì ṣe ìgbéléwọ̀n ìpalára kí àwòṣe tó dáhùn."
+    },
+    "moderation": {
+      "title": "Ìṣàkóso àkóónú",
+      "blurb": "Àríwísí líle kì í ṣe ìyọlẹ́nu: ya wọ́n sọ́tọ̀."
+    },
+    "phishing": {
+      "title": "Ímeèlì ẹ̀tàn",
+      "blurb": "Ipò JSON: gbogbo ímeèlì náà, pẹ̀lú olùfiránṣẹ́ àti àkọlé."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Tíkẹ́ẹ̀tì ìtòlẹ́sẹẹsẹ ní ìkọ̀wé Devanagari."
+    },
+    "japanese": {
+      "title": "Èdè Japan",
+      "blurb": "Tíkẹ́ẹ̀tì ìtòlẹ́sẹẹsẹ ní èdè Japan."
+    },
+    "arabic": {
+      "title": "Lárúbáwá",
+      "blurb": "Tíkẹ́ẹ̀tì ìtòlẹ́sẹẹsẹ ní ìkọ̀wé Lárúbáwá."
+    },
+    "russian": {
+      "title": "Èdè Rọ́ṣíà",
+      "blurb": "Tíkẹ́ẹ̀tì ìtòlẹ́sẹẹsẹ ní ìkọ̀wé Cyrillic."
+    },
+    "german": {
+      "title": "Èdè Jámánì",
+      "blurb": "Ìkọ̀wé Látìn, ṣùgbọ́n kì í ṣe Gẹ̀ẹ́sì: a ń darí rẹ̀ gẹ́gẹ́ bí èdè, kì í ṣe ìkọ̀wé."
+    }
+  },
+  "share": {
+    "button": "Pín",
+    "copied": "A ti ṣe ẹ̀dà ìjápọ̀",
+    "tooLong": "Ìbéèrè yìí ti gùn jù láti pín gẹ́gẹ́ bí ìjápọ̀. Dípò bẹ́ẹ̀, ṣe ẹ̀dà JSON ìbéèrè náà.",
+    "inAddressBar": "A kò lè ṣe ẹ̀dà láìfọwọ́kàn: ìjápọ̀ wà nínú ọ̀pá àdírẹ́sì."
+  },
+  "code": {
+    "language": "Èdè",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Ṣàtúnṣe àwọn ìṣòro ìbéèrè náà láti rí i gẹ́gẹ́ bí kóòdù.",
+    "jev": "Oníbàárà TypeSafe Jev èyíkéyìí ń ṣiṣẹ́ láìyípadà: kàn darí rẹ̀ síbí. Orúkọ àwòṣe tí iṣẹ́ yìí kò mọ̀ yóò padà sí helexa/one.",
+    "key": "Àwọn ìbéèrè láìsí kọ́kọ́rọ́ ń ṣiṣẹ́ láàárín ààlà gbogbogbòò. Fún púpọ̀ sí i, ṣẹ̀dá kọ́kọ́rọ́ API kí o sì ṣètò HELEXA_API_KEY.",
+    "keyLink": "Gba kọ́kọ́rọ́ API"
+  },
+  "copy": "Ṣe ẹ̀dà",
+  "copied": "A ti ṣe ẹ̀dà",
+  "results": {
+    "empty": "Ṣiṣẹ́ ìbéèrè kan láti rí àwọn ìdáhùn níbí.",
+    "running": "À ń ṣe ìpinnu…",
+    "expectedScore": "Ìpele tí a retí {{score}}",
+    "pTrue": "Àǹfààní {{p}} pé ó jẹ́ òótọ́",
+    "answerConfidence": "Ìdánilójú ìdáhùn",
+    "confidence": "Ìdánilójú",
+    "confidenceHelp": "Ìdánilójú ìdáhùn ni àǹfààní ìdáhùn tí a yàn — nọ́mbà tí a ṣe ìwọ̀n rẹ̀ tí a ń fi ààlà lé. Ìdánilójú ń wọn bí gbogbo ìpínkiri ṣe dájú tó (1 − entropy tí a ṣe déédéé; fún bẹ́ẹ̀ni/bẹ́ẹ̀kọ́, àǹfààní tó tóbi jù) a kò sì lè fi í wé láàárín irú ìbéèrè.",
+    "collapsed": "A gé àwọn àṣàyàn kan kúrú sí token kan náà kí wọ́n lè wọ inú ìnáwó, nítorí náà àwòṣe kò lè ya wọ́n sọ́tọ̀. Gé ọ̀rọ̀ àwọn àṣàyàn kúrú tàbí lo díẹ̀."
+  },
+  "routing": {
+    "title": "Ìdarí",
+    "detected": "Ìkọ̀wé tí a rí: {{script}} · èdè: {{language}}",
+    "undecided": "a kò tíì pinnu",
+    "scripts": "Ìpín lẹ́tà gẹ́gẹ́ bí ìkọ̀wé",
+    "pinned": "Ìbéèrè náà dárúkọ checkpoint yìí, nítorí náà a fo ìdámọ̀ èdè."
+  },
+  "usage": {
+    "title": "Ìlò àti àkókò",
+    "inputTokens": "token ìbáwọlé (a ń gba owó)",
+    "server": "àkókò àwòṣe",
+    "roundTrip": "àkókò lápapọ̀",
+    "ms": "{{ms}} ms",
+    "help": "A ń gba owó ìpinnu ní token ìbáwọlé. A ń ṣe kóòdù ìbéèrè kọ̀ọ̀kan pẹ̀lú ipò náà, nítorí náà ìbéèrè àfikún kọ̀ọ̀kan nípa ipò gígùn ń san owó ipò náà lẹ́ẹ̀kan sí i."
+  },
+  "raw": {
+    "request": "JSON ìbéèrè",
+    "response": "JSON ìdáhùn"
+  },
+  "errors": {
+    "retryIn": "O lè gbìyànjú lẹ́ẹ̀kan sí i lẹ́yìn ìṣẹ́jú-àáyá {{seconds}}.",
+    "retryNow": "O lè gbìyànjú lẹ́ẹ̀kan sí i báyìí.",
+    "rateLimitNote": "Ibi ìwọlé gbogbogbòò ń gba ìbéèrè 10 ní ìṣẹ́jú kan láti àdírẹ́sì kọ̀ọ̀kan. Gbìyànjú lẹ́ẹ̀kan sí i lẹ́yìn ìṣẹ́jú kan.",
+    "validation": {
+      "title": "Sáfà kọ ìbéèrè náà",
+      "help": "Ṣàtúnṣe ìṣòro tó wà nísàlẹ̀ kí o sì tún ṣiṣẹ́."
+    },
+    "too_large": {
+      "title": "Ìbéèrè náà ti tóbi jù",
+      "help": "Ó kọjá ọ̀kan nínú àwọn ààlà sáfà."
+    },
+    "rate_limited": {
+      "title": "Ìbéèrè ti pọ̀ jù",
+      "help": "Iṣẹ́ náà ń ṣe ààlà iye ìgbà tí àdírẹ́sì yìí lè béèrè."
+    },
+    "unavailable": {
+      "title": "Iṣẹ́ náà ń ṣiṣẹ́ lọ́wọ́",
+      "help": "Àwòṣe náà ń ṣiṣẹ́ lọ́wọ́ tàbí ó ń tún bẹ̀rẹ̀."
+    },
+    "not_found": {
+      "title": "Kò sí àwòṣe ìpinnu tó wà",
+      "help": "Iṣẹ́ náà kò ní àwòṣe tó lè dáhùn báyìí."
+    },
+    "server": {
+      "title": "Iṣẹ́ náà kùnà",
+      "help": "Nǹkan kan bàjẹ́ lórí sáfà. Gbìyànjú lẹ́ẹ̀kan sí i láìpẹ́."
+    },
+    "network": {
+      "title": "A kò lè dé ọ̀dọ̀ iṣẹ́ náà",
+      "help": "Ṣàyẹ̀wò ìsopọ̀ rẹ kí o sì gbìyànjú lẹ́ẹ̀kan sí i."
+    },
+    "timeout": {
+      "title": "Àkókò ìbéèrè ti tán",
+      "help": "Ìdáhùn kò dé lásìkò. Gbìyànjú lẹ́ẹ̀kan sí i láìpẹ́."
+    },
+    "cancelled": {
+      "title": "A ti fagilé",
+      "help": "A dá ìbéèrè náà dúró kí ó tó parí."
+    },
+    "bad_response": {
+      "title": "Ìdáhùn tí a kò lè kà",
+      "help": "Iṣẹ́ náà fi ohun tí kì í ṣe ìpinnu dáhùn."
+    }
+  }
+}

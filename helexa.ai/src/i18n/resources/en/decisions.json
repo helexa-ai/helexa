@@ -1,4 +1,15 @@
 {
+  "page": {
+    "title": "Playground",
+    "lead": "Ask a decision model typed questions about any text or JSON, and get calibrated answers in one pass — no generated text.",
+    "docsLink": "How it works",
+    "side": "Results, examples and code",
+    "tabs": {
+      "results": "Results",
+      "examples": "Examples",
+      "code": "Code"
+    }
+  },
   "compose": {
     "label": "Compose a request"
   },

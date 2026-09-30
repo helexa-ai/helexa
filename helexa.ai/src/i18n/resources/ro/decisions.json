@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Playground",
+    "lead": "Puneți unui model de decizie întrebări tipizate despre orice text sau JSON și primiți răspunsuri calibrate dintr-o singură trecere — fără text generat.",
+    "docsLink": "Cum funcționează",
+    "side": "Rezultate, exemple și cod",
+    "tabs": {
+      "results": "Rezultate",
+      "examples": "Exemple",
+      "code": "Cod"
+    }
+  },
+  "compose": {
+    "label": "Compuneți o cerere"
+  },
+  "state": {
+    "label": "Stare",
+    "mode": "Formatul stării",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "Mesajul, tichetul, documentul sau conversația despre care se decide",
+    "help": {
+      "text": "Trimis exact așa cum este scris.",
+      "json": "Un obiect este trimis ca JSON, cu cheile în ordinea scrisă. O listă este citită ca o conversație și scurtată de la început, ca să rămână replicile cele mai noi."
+    }
+  },
+  "questions": {
+    "label": "Întrebări",
+    "format": "Formatează",
+    "help": "Un obiect JSON indexat după id-ul întrebării. Fiecare întrebare are un tip, instrucțiuni și — la choice și score — criterii."
+  },
+  "add": {
+    "label": "Adăugați o întrebare",
+    "invalidJson": "Corectați mai întâi întrebările: adăugarea uneia ar înlocui un text care nu este un obiect JSON valid.",
+    "noul": {
+      "title": "Da sau nu",
+      "desc": "O afirmație este adevărată? Răspunde cu o probabilitate."
+    },
+    "score": {
+      "title": "Grilă de evaluare",
+      "desc": "Evaluează pe niveluri ordonate. Răspunde cu nivelul așteptat."
+    },
+    "choice": {
+      "title": "Alegere multiplă",
+      "desc": "Alege una dintre opțiunile dvs. etichetate."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automat” alege checkpointul după limba stării. Dacă alegeți unul, toate cererile merg la el, indiferent de limbă.",
+    "auto": "Automat (după limbă)",
+    "english": "Engleză",
+    "multilingual": "Multilingv",
+    "typed-decisions": "Decizii tipizate"
+  },
+  "run": "Rulează",
+  "cancel": "Anulează",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Probleme de rezolvat",
+    "stateEmpty": "Starea este goală.",
+    "stateNull": "Starea nu poate fi null.",
+    "stateJson": "Starea nu este JSON valid: {{detail}} (linia {{line}}, coloana {{column}}).",
+    "stateTooLong": "Starea depășește {{max}} de caractere.",
+    "questionsJson": "Întrebările nu sunt JSON valid: {{detail}} (linia {{line}}, coloana {{column}}).",
+    "questionsNotObject": "Întrebările trebuie să fie un obiect JSON indexat după id-ul întrebării.",
+    "noQuestions": "Adăugați cel puțin o întrebare.",
+    "tooManyQuestions": "Cel mult {{max}} de întrebări pe cerere.",
+    "tooManyTotal": "Cel mult {{max}} de opțiuni în total pentru toate întrebările.",
+    "questionNotObject": "„{{id}}”: o întrebare trebuie să fie un obiect.",
+    "badType": "„{{id}}”: type trebuie să fie choice, score sau noul.",
+    "noInstructions": "„{{id}}”: lipsesc instrucțiunile.",
+    "labelsOnlyNoul": "„{{id}}”: labels se aplică doar întrebărilor noul.",
+    "choiceNeedsCriteria": "„{{id}}”: o întrebare choice are nevoie de criterii — un obiect de opțiuni sau o listă de etichete.",
+    "tooManyOptions": "„{{id}}”: cel mult {{max}} de opțiuni.",
+    "labelNotScalar": "„{{id}}”: fiecare etichetă trebuie să fie text, un număr sau true/false.",
+    "duplicateLabel": "„{{id}}”: eticheta {{label}} apare de două ori (1, 1.0 și true contează drept aceeași etichetă).",
+    "scoreNeedsLevels": "„{{id}}”: o întrebare score are nevoie de criterii ca listă de niveluri, de la cel mai mic.",
+    "tooManyLevels": "„{{id}}”: cel mult {{max}} de niveluri.",
+    "nullLevel": "„{{id}}”: un nivel nu poate fi null.",
+    "noulCriteria": "„{{id}}”: criteriile noul pot descrie doar true și false.",
+    "noulLabels": "„{{id}}”: labels are nevoie de texte diferite pentru true și false.",
+    "badBudget": "{{name}} trebuie să fie un număr întreg de la 1 la {{max}}.",
+    "server": "„{{id}}”, potrivit serverului: {{detail}}"
+  },
+  "examples": {
+    "intro": "Alegeți un exemplu pentru a-l încărca în editoare. Nu se trimite nimic până nu apăsați Rulează.",
+    "groups": {
+      "lessons": "Lecții",
+      "useCases": "Cazuri de utilizare",
+      "multilingual": "Multilingv"
+    },
+    "review": {
+      "title": "Mulțumit sau nu?",
+      "blurb": "Întrebări da/nu. Etichetele redenumesc răspunsul, iar criteriile spun ce contează."
+    },
+    "bugReport": {
+      "title": "Evaluați un raport de eroare",
+      "blurb": "O grilă de niveluri ordonate. Răspunsul este nivelul așteptat, care poate cădea între două."
+    },
+    "helpdesk": {
+      "title": "Direcționați o cerere către helpdesk",
+      "blurb": "Opțiuni descrise. Împart un singur buget de tokenuri, așa că listele lungi se stânjenesc."
+    },
+    "triage": {
+      "title": "Trierea tichetelor de suport",
+      "blurb": "Echipă, urgență și rambursare — trei întrebări despre un mesaj într-o singură cerere."
+    },
+    "resume": {
+      "title": "Selecția CV-urilor",
+      "blurb": "Vechimea, o competență cerută și leadershipul, citite dintr-un CV."
+    },
+    "guardrails": {
+      "title": "Protecții pentru LLM",
+      "blurb": "Detectați o tentativă de jailbreak și evaluați riscul înainte ca un model să răspundă."
+    },
+    "moderation": {
+      "title": "Moderarea conținutului",
+      "blurb": "Critica dură nu este hărțuire: deosebiți-le."
+    },
+    "phishing": {
+      "title": "E-mail de phishing",
+      "blurb": "O stare JSON: întregul e-mail, cu expeditor și subiect."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Tichetul de triere în scriere devanagari."
+    },
+    "japanese": {
+      "title": "Japoneză",
+      "blurb": "Tichetul de triere în japoneză."
+    },
+    "arabic": {
+      "title": "Arabă",
+      "blurb": "Tichetul de triere în scriere arabă."
+    },
+    "russian": {
+      "title": "Rusă",
+      "blurb": "Tichetul de triere în scriere chirilică."
+    },
+    "german": {
+      "title": "Germană",
+      "blurb": "Scriere latină, dar nu engleză: direcționat după limbă, nu după scriere."
+    }
+  },
+  "share": {
+    "button": "Distribuie",
+    "copied": "Link copiat",
+    "tooLong": "Această cerere este prea lungă pentru a fi distribuită ca link. Copiați în schimb JSON-ul cererii.",
+    "inAddressBar": "Nu s-a putut copia automat: linkul este în bara de adrese."
+  },
+  "code": {
+    "language": "Limbaj",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Rezolvați problemele cererii pentru a o vedea sub formă de cod.",
+    "jev": "Orice client TypeSafe Jev funcționează neschimbat: îndreptați-l aici. Un nume de model pe care acest serviciu nu îl cunoaște revine la helexa/one.",
+    "key": "Cererile fără cheie funcționează în limita publică. Pentru mai mult, creați o cheie API și setați HELEXA_API_KEY.",
+    "keyLink": "Obțineți o cheie API"
+  },
+  "copy": "Copiază",
+  "copied": "Copiat",
+  "results": {
+    "empty": "Rulați o cerere pentru a vedea aici răspunsurile.",
+    "running": "Se decide…",
+    "expectedScore": "Nivel așteptat {{score}}",
+    "pTrue": "{{p}} șanse să fie adevărat",
+    "answerConfidence": "Încrederea răspunsului",
+    "confidence": "Încredere",
+    "confidenceHelp": "Încrederea răspunsului este probabilitatea răspunsului ales — numărul calibrat pe care se stabilește un prag. Încrederea măsoară cât de hotărâtă este întreaga distribuție (1 − entropia normalizată; la da/nu, probabilitatea cea mai mare) și nu se compară între tipuri de întrebări.",
+    "collapsed": "Unele opțiuni au fost reduse la aceleași tokenuri ca să încapă în buget, așa că modelul nu le-a putut deosebi. Scurtați textele opțiunilor sau folosiți mai puține opțiuni."
+  },
+  "routing": {
+    "title": "Direcționare",
+    "detected": "Scriere detectată: {{script}} · limbă: {{language}}",
+    "undecided": "nedeterminată",
+    "scripts": "Ponderea literelor pe scriere",
+    "pinned": "Cererea a numit acest checkpoint, așa că detectarea limbii a fost omisă."
+  },
+  "usage": {
+    "title": "Consum și timp",
+    "inputTokens": "tokenuri de intrare (facturate)",
+    "server": "timpul modelului",
+    "roundTrip": "dus-întors",
+    "ms": "{{ms}} ms",
+    "help": "Deciziile se facturează în tokenuri de intrare. Fiecare întrebare este codificată împreună cu starea, deci fiecare întrebare în plus despre o stare lungă costă din nou acea stare."
+  },
+  "raw": {
+    "request": "JSON-ul cererii",
+    "response": "JSON-ul răspunsului"
+  },
+  "errors": {
+    "retryIn": "Puteți reîncerca în {{seconds}} s.",
+    "retryNow": "Puteți reîncerca acum.",
+    "rateLimitNote": "Punctul de acces public permite 10 cereri pe minut de la fiecare adresă. Reîncercați peste un minut.",
+    "validation": {
+      "title": "Serverul a respins cererea",
+      "help": "Rezolvați problema de mai jos și rulați din nou."
+    },
+    "too_large": {
+      "title": "Cererea este prea mare",
+      "help": "Depășește una dintre limitele serverului."
+    },
+    "rate_limited": {
+      "title": "Prea multe cereri",
+      "help": "Serviciul limitează cât de des poate întreba această adresă."
+    },
+    "unavailable": {
+      "title": "Serviciul este ocupat",
+      "help": "Modelul este ocupat sau repornește."
+    },
+    "not_found": {
+      "title": "Niciun model de decizie disponibil",
+      "help": "Serviciul nu are acum niciun model care să poată răspunde."
+    },
+    "server": {
+      "title": "Serviciul a eșuat",
+      "help": "Ceva nu a mers bine pe server. Reîncercați în curând."
+    },
+    "network": {
+      "title": "Serviciul nu poate fi contactat",
+      "help": "Verificați conexiunea și reîncercați."
+    },
+    "timeout": {
+      "title": "Cererea a expirat",
+      "help": "Nu a sosit niciun răspuns la timp. Reîncercați în curând."
+    },
+    "cancelled": {
+      "title": "Anulată",
+      "help": "Cererea a fost oprită înainte să se termine."
+    },
+    "bad_response": {
+      "title": "Răspuns ilizibil",
+      "help": "Serviciul a răspuns cu ceva care nu este o decizie."
+    }
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Bac à sable",
+    "lead": "Posez à un modèle de décision des questions typées sur n’importe quel texte ou JSON, et obtenez des réponses calibrées en une seule passe — sans texte généré.",
+    "docsLink": "Comment ça marche",
+    "side": "Résultats, exemples et code",
+    "tabs": {
+      "results": "Résultats",
+      "examples": "Exemples",
+      "code": "Code"
+    }
+  },
+  "compose": {
+    "label": "Rédiger une requête"
+  },
+  "state": {
+    "label": "État",
+    "mode": "Format de l’état",
+    "text": "Texte",
+    "json": "JSON",
+    "placeholder": "Le message, le ticket, le document ou la conversation sur lequel décider",
+    "help": {
+      "text": "Envoyé tel quel.",
+      "json": "Un objet est envoyé en JSON, clés dans l’ordre écrit. Une liste est lue comme une conversation et tronquée par le début, pour que les derniers échanges soient conservés."
+    }
+  },
+  "questions": {
+    "label": "Questions",
+    "format": "Mettre en forme",
+    "help": "Un objet JSON indexé par identifiant de question. Chaque question a un type, des instructions et — pour choice et score — des critères."
+  },
+  "add": {
+    "label": "Ajouter une question",
+    "invalidJson": "Corrigez d’abord les questions : en ajouter une remplacerait un texte qui n’est pas un objet JSON valide.",
+    "noul": {
+      "title": "Oui ou non",
+      "desc": "Une affirmation est-elle vraie ? Répond par une probabilité."
+    },
+    "score": {
+      "title": "Barème",
+      "desc": "Évalue selon des niveaux ordonnés. Répond par le niveau attendu."
+    },
+    "choice": {
+      "title": "Choix multiple",
+      "desc": "Choisit l’une de vos options étiquetées."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "« Automatique » choisit le checkpoint selon la langue de l’état. En choisir un y envoie toutes les requêtes, quelle que soit la langue.",
+    "auto": "Automatique (selon la langue)",
+    "english": "Anglais",
+    "multilingual": "Multilingue",
+    "typed-decisions": "Décisions typées"
+  },
+  "run": "Exécuter",
+  "cancel": "Annuler",
+  "shortcut": "Ctrl+Entrée",
+  "issues": {
+    "title": "Problèmes à corriger",
+    "stateEmpty": "L’état est vide.",
+    "stateNull": "L’état ne peut pas être null.",
+    "stateJson": "L’état n’est pas un JSON valide : {{detail}} (ligne {{line}}, colonne {{column}}).",
+    "stateTooLong": "L’état dépasse {{max}} caractères.",
+    "questionsJson": "Les questions ne sont pas un JSON valide : {{detail}} (ligne {{line}}, colonne {{column}}).",
+    "questionsNotObject": "Les questions doivent être un objet JSON indexé par identifiant de question.",
+    "noQuestions": "Ajoutez au moins une question.",
+    "tooManyQuestions": "Au plus {{max}} questions par requête.",
+    "tooManyTotal": "Au plus {{max}} options pour l’ensemble des questions.",
+    "questionNotObject": "« {{id}} » : une question doit être un objet.",
+    "badType": "« {{id}} » : type doit valoir choice, score ou noul.",
+    "noInstructions": "« {{id}} » : les instructions manquent.",
+    "labelsOnlyNoul": "« {{id}} » : labels ne s’applique qu’aux questions noul.",
+    "choiceNeedsCriteria": "« {{id}} » : une question choice a besoin de critères — un objet d’options ou une liste d’étiquettes.",
+    "tooManyOptions": "« {{id}} » : au plus {{max}} options.",
+    "labelNotScalar": "« {{id}} » : chaque étiquette doit être un texte, un nombre ou true/false.",
+    "duplicateLabel": "« {{id}} » : l’étiquette {{label}} apparaît deux fois (1, 1.0 et true comptent comme la même).",
+    "scoreNeedsLevels": "« {{id}} » : une question score a besoin de critères sous forme de liste de niveaux, du plus bas au plus haut.",
+    "tooManyLevels": "« {{id}} » : au plus {{max}} niveaux.",
+    "nullLevel": "« {{id}} » : un niveau ne peut pas être null.",
+    "noulCriteria": "« {{id}} » : les critères noul ne peuvent décrire que true et false.",
+    "noulLabels": "« {{id}} » : labels doit donner des textes différents pour true et false.",
+    "badBudget": "{{name}} doit être un nombre entier de 1 à {{max}}.",
+    "server": "« {{id}} », selon le serveur : {{detail}}"
+  },
+  "examples": {
+    "intro": "Choisissez un exemple pour le charger dans les éditeurs. Rien n’est envoyé avant que vous cliquiez sur Exécuter.",
+    "groups": {
+      "lessons": "Leçons",
+      "useCases": "Cas d’usage",
+      "multilingual": "Multilingue"
+    },
+    "review": {
+      "title": "Satisfait ou pas ?",
+      "blurb": "Questions oui/non. Les étiquettes renomment la réponse, les critères disent ce qui compte."
+    },
+    "bugReport": {
+      "title": "Noter un rapport de bug",
+      "blurb": "Un barème de niveaux ordonnés. La réponse est le niveau attendu, qui peut tomber entre deux."
+    },
+    "helpdesk": {
+      "title": "Orienter une demande au support",
+      "blurb": "Des options décrites. Elles partagent un même budget de tokens : les longues listes se gênent."
+    },
+    "triage": {
+      "title": "Tri des tickets de support",
+      "blurb": "Équipe, urgence et remboursement — trois questions sur un message en une requête."
+    },
+    "resume": {
+      "title": "Présélection de CV",
+      "blurb": "Séniorité, une compétence requise et le management, lus dans un CV."
+    },
+    "guardrails": {
+      "title": "Garde-fous pour LLM",
+      "blurb": "Repérer une tentative de jailbreak et évaluer le risque avant qu’un modèle réponde."
+    },
+    "moderation": {
+      "title": "Modération de contenu",
+      "blurb": "Une critique sévère n’est pas du harcèlement : distinguez les deux."
+    },
+    "phishing": {
+      "title": "E-mail d’hameçonnage",
+      "blurb": "Un état JSON : l’e-mail entier, expéditeur et objet compris."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Le ticket de tri en écriture devanagari."
+    },
+    "japanese": {
+      "title": "Japonais",
+      "blurb": "Le ticket de tri en japonais."
+    },
+    "arabic": {
+      "title": "Arabe",
+      "blurb": "Le ticket de tri en écriture arabe."
+    },
+    "russian": {
+      "title": "Russe",
+      "blurb": "Le ticket de tri en écriture cyrillique."
+    },
+    "german": {
+      "title": "Allemand",
+      "blurb": "Écriture latine, mais pas de l’anglais : aiguillé selon la langue, pas l’écriture."
+    }
+  },
+  "share": {
+    "button": "Partager",
+    "copied": "Lien copié",
+    "tooLong": "Cette requête est trop longue pour être partagée en lien. Copiez plutôt le JSON de la requête.",
+    "inAddressBar": "Copie automatique impossible : le lien est dans la barre d’adresse."
+  },
+  "code": {
+    "language": "Langage",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Corrigez les problèmes de la requête pour la voir sous forme de code.",
+    "jev": "Tout client TypeSafe Jev fonctionne tel quel : pointez-le ici. Un nom de modèle inconnu de ce service se replie sur helexa/one.",
+    "key": "Les requêtes sans clé fonctionnent dans la limite publique. Pour davantage, créez une clé d’API et définissez HELEXA_API_KEY.",
+    "keyLink": "Obtenir une clé d’API"
+  },
+  "copy": "Copier",
+  "copied": "Copié",
+  "results": {
+    "empty": "Exécutez une requête pour voir les réponses ici.",
+    "running": "Décision en cours…",
+    "expectedScore": "Niveau attendu {{score}}",
+    "pTrue": "{{p}} de chances que ce soit vrai",
+    "answerConfidence": "Confiance de la réponse",
+    "confidence": "Confiance",
+    "confidenceHelp": "La confiance de la réponse est la probabilité de la réponse choisie — le nombre calibré sur lequel fixer un seuil. La confiance mesure à quel point toute la distribution est tranchée (1 − entropie normalisée ; pour oui/non, la plus grande probabilité) et ne se compare pas d’un type de question à l’autre.",
+    "collapsed": "Certaines options ont été réduites aux mêmes tokens pour tenir dans le budget, et le modèle n’a pas pu les distinguer. Raccourcissez les textes des options ou utilisez-en moins."
+  },
+  "routing": {
+    "title": "Aiguillage",
+    "detected": "Écriture détectée : {{script}} · langue : {{language}}",
+    "undecided": "indéterminée",
+    "scripts": "Part des lettres par écriture",
+    "pinned": "La requête a nommé ce checkpoint : la détection de langue a été ignorée."
+  },
+  "usage": {
+    "title": "Consommation et durée",
+    "inputTokens": "tokens d’entrée (facturés)",
+    "server": "temps du modèle",
+    "roundTrip": "aller-retour",
+    "ms": "{{ms}} ms",
+    "help": "Les décisions sont facturées en tokens d’entrée. Chaque question est encodée avec l’état : chaque question de plus sur un long état coûte à nouveau cet état."
+  },
+  "raw": {
+    "request": "JSON de la requête",
+    "response": "JSON de la réponse"
+  },
+  "errors": {
+    "retryIn": "Vous pourrez réessayer dans {{seconds}} s.",
+    "retryNow": "Vous pouvez réessayer maintenant.",
+    "rateLimitNote": "Le point d’accès public autorise 10 requêtes par minute par adresse. Réessayez dans une minute.",
+    "validation": {
+      "title": "Le serveur a refusé la requête",
+      "help": "Corrigez le problème ci-dessous et relancez."
+    },
+    "too_large": {
+      "title": "La requête est trop volumineuse",
+      "help": "Elle dépasse l’une des limites du serveur."
+    },
+    "rate_limited": {
+      "title": "Trop de requêtes",
+      "help": "Le service limite la fréquence des demandes de cette adresse."
+    },
+    "unavailable": {
+      "title": "Le service est occupé",
+      "help": "Le modèle est occupé ou redémarre."
+    },
+    "not_found": {
+      "title": "Aucun modèle de décision disponible",
+      "help": "Le service n’a pour l’instant aucun modèle capable de répondre."
+    },
+    "server": {
+      "title": "Le service a échoué",
+      "help": "Une erreur s’est produite sur le serveur. Réessayez sous peu."
+    },
+    "network": {
+      "title": "Service injoignable",
+      "help": "Vérifiez votre connexion et réessayez."
+    },
+    "timeout": {
+      "title": "La requête a expiré",
+      "help": "Aucune réponse n’est arrivée à temps. Réessayez sous peu."
+    },
+    "cancelled": {
+      "title": "Annulée",
+      "help": "La requête a été arrêtée avant la fin."
+    },
+    "bad_response": {
+      "title": "Réponse illisible",
+      "help": "Le service a répondu par autre chose qu’une décision."
+    }
+  }
+}

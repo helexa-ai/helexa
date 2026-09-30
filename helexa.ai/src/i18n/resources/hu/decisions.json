@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Játszótér",
+    "lead": "Tegyen fel egy döntési modellnek típusos kérdéseket bármilyen szövegről vagy JSON-ról, és kapjon kalibrált válaszokat egyetlen lépésben — generált szöveg nélkül.",
+    "docsLink": "Hogyan működik",
+    "side": "Eredmények, példák és kód",
+    "tabs": {
+      "results": "Eredmények",
+      "examples": "Példák",
+      "code": "Kód"
+    }
+  },
+  "compose": {
+    "label": "Kérés összeállítása"
+  },
+  "state": {
+    "label": "Állapot",
+    "mode": "Az állapot formátuma",
+    "text": "Szöveg",
+    "json": "JSON",
+    "placeholder": "Az üzenet, jegy, dokumentum vagy beszélgetés, amelyről dönteni kell",
+    "help": {
+      "text": "Pontosan úgy küldjük el, ahogy meg van írva.",
+      "json": "Az objektum JSON-ként megy el, a kulcsok leírt sorrendjében. A lista beszélgetésként olvasódik, és az elejéről rövidül, hogy a legfrissebb hozzászólások megmaradjanak."
+    }
+  },
+  "questions": {
+    "label": "Kérdések",
+    "format": "Formázás",
+    "help": "JSON-objektum, amelynek kulcsai a kérdésazonosítók. Minden kérdésnek van típusa, utasítása és — choice és score esetén — kritériumai."
+  },
+  "add": {
+    "label": "Kérdés hozzáadása",
+    "invalidJson": "Előbb javítsa a kérdéseket: a hozzáadás felülírna egy szöveget, amely nem érvényes JSON-objektum.",
+    "noul": {
+      "title": "Igen vagy nem",
+      "desc": "Igaz egy állítás? Valószínűséggel válaszol."
+    },
+    "score": {
+      "title": "Értékelési skála",
+      "desc": "Rendezett szintek szerint értékel. A várható szinttel válaszol."
+    },
+    "choice": {
+      "title": "Feleletválasztás",
+      "desc": "Kiválasztja az Ön címkézett lehetőségeinek egyikét."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "Az „Automatikus” az állapot nyelve alapján választ checkpointot. Ha egyet kiválaszt, minden kérés oda megy, nyelvtől függetlenül.",
+    "auto": "Automatikus (nyelv szerint)",
+    "english": "Angol",
+    "multilingual": "Többnyelvű",
+    "typed-decisions": "Típusos döntések"
+  },
+  "run": "Futtatás",
+  "cancel": "Mégse",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Javítandó problémák",
+    "stateEmpty": "Az állapot üres.",
+    "stateNull": "Az állapot nem lehet null.",
+    "stateJson": "Az állapot nem érvényes JSON: {{detail}} ({{line}}. sor, {{column}}. oszlop).",
+    "stateTooLong": "Az állapot hosszabb {{max}} karakternél.",
+    "questionsJson": "A kérdések nem érvényes JSON: {{detail}} ({{line}}. sor, {{column}}. oszlop).",
+    "questionsNotObject": "A kérdéseknek JSON-objektumnak kell lenniük, kulcsként a kérdésazonosítókkal.",
+    "noQuestions": "Adjon hozzá legalább egy kérdést.",
+    "tooManyQuestions": "Kérésenként legfeljebb {{max}} kérdés.",
+    "tooManyTotal": "Az összes kérdésben együtt legfeljebb {{max}} lehetőség.",
+    "questionNotObject": "„{{id}}”: a kérdésnek objektumnak kell lennie.",
+    "badType": "„{{id}}”: a type értéke choice, score vagy noul lehet.",
+    "noInstructions": "„{{id}}”: hiányzik az utasítás.",
+    "labelsOnlyNoul": "„{{id}}”: a labels csak noul kérdésekre vonatkozik.",
+    "choiceNeedsCriteria": "„{{id}}”: a choice kérdéshez kritériumok kellenek — lehetőségek objektuma vagy címkék listája.",
+    "tooManyOptions": "„{{id}}”: legfeljebb {{max}} lehetőség.",
+    "labelNotScalar": "„{{id}}”: minden címke szöveg, szám vagy true/false lehet.",
+    "duplicateLabel": "„{{id}}”: a(z) {{label}} címke kétszer szerepel (az 1, az 1.0 és a true ugyanannak számít).",
+    "scoreNeedsLevels": "„{{id}}”: a score kérdéshez a kritériumoknak szintek listájának kell lenniük, a legalacsonyabbal kezdve.",
+    "tooManyLevels": "„{{id}}”: legfeljebb {{max}} szint.",
+    "nullLevel": "„{{id}}”: egy szint nem lehet null.",
+    "noulCriteria": "„{{id}}”: a noul kritériumai csak a true és a false értéket írhatják le.",
+    "noulLabels": "„{{id}}”: a labels különböző szöveget igényel a true és a false számára.",
+    "badBudget": "A(z) {{name}} értéke 1 és {{max}} közötti egész szám lehet.",
+    "server": "„{{id}}”, a szerver szerint: {{detail}}"
+  },
+  "examples": {
+    "intro": "Válasszon egy példát, hogy betöltse a szerkesztőkbe. Semmi sem megy el, amíg meg nem nyomja a Futtatás gombot.",
+    "groups": {
+      "lessons": "Leckék",
+      "useCases": "Felhasználási esetek",
+      "multilingual": "Többnyelvű"
+    },
+    "review": {
+      "title": "Elégedett vagy sem?",
+      "blurb": "Igen/nem kérdések. A címkék átnevezik a választ, a kritériumok megmondják, mi számít."
+    },
+    "bugReport": {
+      "title": "Hibajelentés értékelése",
+      "blurb": "Rendezett szintek skálája. A válasz a várható szint, amely két szint közé is eshet."
+    },
+    "helpdesk": {
+      "title": "Kérés továbbítása az ügyfélszolgálatnak",
+      "blurb": "Leírt lehetőségek. Egy közös tokenkereten osztoznak, így a hosszú listák zavarják egymást."
+    },
+    "triage": {
+      "title": "Támogatási jegyek osztályozása",
+      "blurb": "Csapat, sürgősség és visszatérítés — három kérdés egy üzenetről, egyetlen kérésben."
+    },
+    "resume": {
+      "title": "Önéletrajzok szűrése",
+      "blurb": "Szenioritás, egy elvárt készség és vezetői tapasztalat, egy önéletrajzból kiolvasva."
+    },
+    "guardrails": {
+      "title": "Védőkorlátok LLM-ekhez",
+      "blurb": "Felismerni a jailbreak-kísérletet és felmérni a kárt, mielőtt a modell válaszol."
+    },
+    "moderation": {
+      "title": "Tartalommoderálás",
+      "blurb": "Az éles kritika nem zaklatás: különböztesse meg őket."
+    },
+    "phishing": {
+      "title": "Adathalász e-mail",
+      "blurb": "JSON-állapot: a teljes e-mail, feladóval és tárggyal."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Az osztályozandó jegy dévanágari írással."
+    },
+    "japanese": {
+      "title": "Japán",
+      "blurb": "Az osztályozandó jegy japánul."
+    },
+    "arabic": {
+      "title": "Arab",
+      "blurb": "Az osztályozandó jegy arab írással."
+    },
+    "russian": {
+      "title": "Orosz",
+      "blurb": "Az osztályozandó jegy cirill írással."
+    },
+    "german": {
+      "title": "Német",
+      "blurb": "Latin írás, de nem angol: nyelv, nem írás szerint irányítva."
+    }
+  },
+  "share": {
+    "button": "Megosztás",
+    "copied": "Hivatkozás másolva",
+    "tooLong": "Ez a kérés túl hosszú ahhoz, hogy hivatkozásként megossza. Másolja inkább a kérés JSON-ját.",
+    "inAddressBar": "Az automatikus másolás nem sikerült: a hivatkozás a címsorban van."
+  },
+  "code": {
+    "language": "Nyelv",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Javítsa a kérés problémáit, hogy kódként lássa.",
+    "jev": "Bármely TypeSafe Jev kliens változtatás nélkül működik: csak irányítsa ide. Az a modellnév, amelyet ez a szolgáltatás nem ismer, a helexa/one-ra esik vissza.",
+    "key": "A kulcs nélküli kérések a nyilvános korláton belül működnek. Többhöz hozzon létre API-kulcsot, és állítsa be a HELEXA_API_KEY változót.",
+    "keyLink": "API-kulcs igénylése"
+  },
+  "copy": "Másolás",
+  "copied": "Másolva",
+  "results": {
+    "empty": "Futtasson egy kérést, hogy itt lássa a válaszokat.",
+    "running": "Döntés folyamatban…",
+    "expectedScore": "Várható szint: {{score}}",
+    "pTrue": "{{p}} esély, hogy igaz",
+    "answerConfidence": "Válaszbiztonság",
+    "confidence": "Biztonság",
+    "confidenceHelp": "A válaszbiztonság a választott válasz valószínűsége — a kalibrált szám, amelyre küszöböt lehet állítani. A biztonság azt méri, mennyire határozott a teljes eloszlás (1 − normalizált entrópia; igen/nem esetén a nagyobbik valószínűség), és kérdéstípusok között nem összehasonlítható.",
+    "collapsed": "Egyes lehetőségeket a keret miatt ugyanazokra a tokenekre rövidítettünk, így a modell nem tudta megkülönböztetni őket. Rövidítse a lehetőségek szövegét, vagy használjon kevesebbet."
+  },
+  "routing": {
+    "title": "Irányítás",
+    "detected": "Felismert írás: {{script}} · nyelv: {{language}}",
+    "undecided": "meghatározatlan",
+    "scripts": "A betűk aránya írásrendszerenként",
+    "pinned": "A kérés ezt a checkpointot nevezte meg, ezért a nyelvfelismerés kimaradt."
+  },
+  "usage": {
+    "title": "Felhasználás és idő",
+    "inputTokens": "bemeneti token (számlázott)",
+    "server": "modellidő",
+    "roundTrip": "teljes idő",
+    "ms": "{{ms}} ms",
+    "help": "A döntéseket bemeneti tokenekben számlázzuk. Minden kérdés az állapottal együtt kódolódik, így egy hosszú állapotról feltett minden további kérdés újra az állapot árába kerül."
+  },
+  "raw": {
+    "request": "A kérés JSON-ja",
+    "response": "A válasz JSON-ja"
+  },
+  "errors": {
+    "retryIn": "{{seconds}} mp múlva próbálkozhat újra.",
+    "retryNow": "Most újrapróbálhatja.",
+    "rateLimitNote": "A nyilvános végpont címenként percenként 10 kérést fogad. Próbálja újra egy perc múlva.",
+    "validation": {
+      "title": "A szerver elutasította a kérést",
+      "help": "Javítsa az alábbi problémát, és futtassa újra."
+    },
+    "too_large": {
+      "title": "A kérés túl nagy",
+      "help": "Túllépi a szerver egyik korlátját."
+    },
+    "rate_limited": {
+      "title": "Túl sok kérés",
+      "help": "A szolgáltatás korlátozza, milyen gyakran kérdezhet ez a cím."
+    },
+    "unavailable": {
+      "title": "A szolgáltatás foglalt",
+      "help": "A modell foglalt vagy újraindul."
+    },
+    "not_found": {
+      "title": "Nincs elérhető döntési modell",
+      "help": "A szolgáltatásnak jelenleg nincs olyan modellje, amely válaszolni tudna."
+    },
+    "server": {
+      "title": "A szolgáltatás hibát jelzett",
+      "help": "Valami hiba történt a szerveren. Próbálja újra hamarosan."
+    },
+    "network": {
+      "title": "A szolgáltatás nem érhető el",
+      "help": "Ellenőrizze a kapcsolatot, és próbálja újra."
+    },
+    "timeout": {
+      "title": "A kérés időtúllépés miatt megszakadt",
+      "help": "Nem érkezett időben válasz. Próbálja újra hamarosan."
+    },
+    "cancelled": {
+      "title": "Megszakítva",
+      "help": "A kérés befejezés előtt leállt."
+    },
+    "bad_response": {
+      "title": "Olvashatatlan válasz",
+      "help": "A szolgáltatás olyasmivel válaszolt, ami nem döntés."
+    }
+  }
+}

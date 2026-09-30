@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Deneme alanı",
+    "lead": "Bir karar modeline herhangi bir metin ya da JSON hakkında tipli sorular sorun ve tek geçişte kalibre edilmiş yanıtlar alın — üretilmiş metin olmadan.",
+    "docsLink": "Nasıl çalışır",
+    "side": "Sonuçlar, örnekler ve kod",
+    "tabs": {
+      "results": "Sonuçlar",
+      "examples": "Örnekler",
+      "code": "Kod"
+    }
+  },
+  "compose": {
+    "label": "İstek oluştur"
+  },
+  "state": {
+    "label": "Durum",
+    "mode": "Durum biçimi",
+    "text": "Metin",
+    "json": "JSON",
+    "placeholder": "Hakkında karar verilecek mesaj, talep, belge veya konuşma",
+    "help": {
+      "text": "Tam olarak yazıldığı gibi gönderilir.",
+      "json": "Bir nesne, anahtarlar yazıldığı sırayla JSON olarak gönderilir. Bir liste konuşma olarak okunur ve en yeni konuşmalar kalsın diye baştan kısaltılır."
+    }
+  },
+  "questions": {
+    "label": "Sorular",
+    "format": "Biçimlendir",
+    "help": "Anahtarları soru kimlikleri olan bir JSON nesnesi. Her sorunun bir türü, talimatları ve — choice ile score için — ölçütleri vardır."
+  },
+  "add": {
+    "label": "Soru ekle",
+    "invalidJson": "Önce soruları düzeltin: soru eklemek, geçerli bir JSON nesnesi olmayan metnin yerini alır.",
+    "noul": {
+      "title": "Evet ya da hayır",
+      "desc": "Bir ifade doğru mu? Bir olasılıkla yanıtlar."
+    },
+    "score": {
+      "title": "Değerlendirme ölçeği",
+      "desc": "Sıralı düzeylere göre puanlar. Beklenen düzeyle yanıtlar."
+    },
+    "choice": {
+      "title": "Çoktan seçmeli",
+      "desc": "Etiketlediğiniz seçeneklerden birini seçer."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Otomatik”, checkpoint’i durumun diline göre seçer. Birini seçerseniz, dili ne olursa olsun tüm istekler ona gider.",
+    "auto": "Otomatik (dile göre)",
+    "english": "İngilizce",
+    "multilingual": "Çok dilli",
+    "typed-decisions": "Tipli kararlar"
+  },
+  "run": "Çalıştır",
+  "cancel": "İptal",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Düzeltilecek sorunlar",
+    "stateEmpty": "Durum boş.",
+    "stateNull": "Durum null olamaz.",
+    "stateJson": "Durum geçerli bir JSON değil: {{detail}} (satır {{line}}, sütun {{column}}).",
+    "stateTooLong": "Durum {{max}} karakterden uzun.",
+    "questionsJson": "Sorular geçerli bir JSON değil: {{detail}} (satır {{line}}, sütun {{column}}).",
+    "questionsNotObject": "Sorular, anahtarları soru kimlikleri olan bir JSON nesnesi olmalıdır.",
+    "noQuestions": "En az bir soru ekleyin.",
+    "tooManyQuestions": "İstek başına en fazla {{max}} soru.",
+    "tooManyTotal": "Tüm sorularda toplam en fazla {{max}} seçenek.",
+    "questionNotObject": "“{{id}}”: bir soru nesne olmalıdır.",
+    "badType": "“{{id}}”: type değeri choice, score veya noul olmalıdır.",
+    "noInstructions": "“{{id}}”: talimatlar eksik.",
+    "labelsOnlyNoul": "“{{id}}”: labels yalnızca noul soruları için geçerlidir.",
+    "choiceNeedsCriteria": "“{{id}}”: choice sorusu ölçüt gerektirir — bir seçenek nesnesi veya etiket listesi.",
+    "tooManyOptions": "“{{id}}”: en fazla {{max}} seçenek.",
+    "labelNotScalar": "“{{id}}”: her etiket metin, sayı veya true/false olmalıdır.",
+    "duplicateLabel": "“{{id}}”: {{label}} etiketi iki kez geçiyor (1, 1.0 ve true aynı etiket sayılır).",
+    "scoreNeedsLevels": "“{{id}}”: score sorusu, en düşükten başlayan bir düzey listesi olarak ölçüt gerektirir.",
+    "tooManyLevels": "“{{id}}”: en fazla {{max}} düzey.",
+    "nullLevel": "“{{id}}”: bir düzey null olamaz.",
+    "noulCriteria": "“{{id}}”: noul ölçütleri yalnızca true ve false’u tanımlayabilir.",
+    "noulLabels": "“{{id}}”: labels, true ve false için farklı metinler gerektirir.",
+    "badBudget": "{{name}}, 1 ile {{max}} arasında bir tam sayı olmalıdır.",
+    "server": "“{{id}}”, sunucuya göre: {{detail}}"
+  },
+  "examples": {
+    "intro": "Düzenleyicilere yüklemek için bir örnek seçin. Çalıştır’a basana kadar hiçbir şey gönderilmez.",
+    "groups": {
+      "lessons": "Dersler",
+      "useCases": "Kullanım örnekleri",
+      "multilingual": "Çok dilli"
+    },
+    "review": {
+      "title": "Memnun mu, değil mi?",
+      "blurb": "Evet/hayır soruları. Etiketler yanıtı yeniden adlandırır, ölçütler neyin sayıldığını söyler."
+    },
+    "bugReport": {
+      "title": "Bir hata raporunu değerlendirin",
+      "blurb": "Sıralı düzeylerden oluşan bir ölçek. Yanıt, iki düzey arasına da düşebilen beklenen düzeydir."
+    },
+    "helpdesk": {
+      "title": "Bir yardım masası talebini yönlendirin",
+      "blurb": "Açıklamalı seçenekler. Tek bir token bütçesini paylaştıkları için uzun listeler birbirini sıkıştırır."
+    },
+    "triage": {
+      "title": "Destek talebi önceliklendirme",
+      "blurb": "Ekip, aciliyet ve iade — tek bir istekte bir mesaj hakkında üç soru."
+    },
+    "resume": {
+      "title": "Özgeçmiş eleme",
+      "blurb": "Kıdem, istenen bir beceri ve liderlik, bir özgeçmişten okunur."
+    },
+    "guardrails": {
+      "title": "LLM korkulukları",
+      "blurb": "Bir model yanıtlamadan önce jailbreak girişimini tespit edin ve zararı değerlendirin."
+    },
+    "moderation": {
+      "title": "İçerik denetimi",
+      "blurb": "Sert eleştiri taciz değildir: ikisini ayırt edin."
+    },
+    "phishing": {
+      "title": "Oltalama e-postası",
+      "blurb": "JSON durumu: gönderen ve konusuyla birlikte e-postanın tamamı."
+    },
+    "hindi": {
+      "title": "Hintçe",
+      "blurb": "Önceliklendirme talebi Devanagari yazısıyla."
+    },
+    "japanese": {
+      "title": "Japonca",
+      "blurb": "Önceliklendirme talebi Japonca."
+    },
+    "arabic": {
+      "title": "Arapça",
+      "blurb": "Önceliklendirme talebi Arap yazısıyla."
+    },
+    "russian": {
+      "title": "Rusça",
+      "blurb": "Önceliklendirme talebi Kiril yazısıyla."
+    },
+    "german": {
+      "title": "Almanca",
+      "blurb": "Latin yazısı ama İngilizce değil: yazıya göre değil, dile göre yönlendirilir."
+    }
+  },
+  "share": {
+    "button": "Paylaş",
+    "copied": "Bağlantı kopyalandı",
+    "tooLong": "Bu istek bağlantı olarak paylaşılamayacak kadar uzun. Bunun yerine isteğin JSON’unu kopyalayın.",
+    "inAddressBar": "Otomatik kopyalanamadı: bağlantı adres çubuğunda."
+  },
+  "code": {
+    "language": "Dil",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Kod olarak görmek için isteğin sorunlarını düzeltin.",
+    "jev": "Her TypeSafe Jev istemcisi değiştirilmeden çalışır: onu buraya yönlendirmeniz yeterli. Bu hizmetin tanımadığı bir model adı helexa/one’a düşer.",
+    "key": "Anahtarsız istekler genel sınır içinde çalışır. Daha fazlası için bir API anahtarı oluşturun ve HELEXA_API_KEY’i ayarlayın.",
+    "keyLink": "API anahtarı alın"
+  },
+  "copy": "Kopyala",
+  "copied": "Kopyalandı",
+  "results": {
+    "empty": "Yanıtları burada görmek için bir istek çalıştırın.",
+    "running": "Karar veriliyor…",
+    "expectedScore": "Beklenen düzey {{score}}",
+    "pTrue": "Doğru olma olasılığı {{p}}",
+    "answerConfidence": "Yanıt güveni",
+    "confidence": "Güven",
+    "confidenceHelp": "Yanıt güveni, seçilen yanıtın olasılığıdır — eşik koymak için kalibre edilmiş sayı. Güven, tüm dağılımın ne kadar kararlı olduğunu ölçer (1 − normalleştirilmiş entropi; evet/hayırda büyük olan olasılık) ve soru türleri arasında karşılaştırılamaz.",
+    "collapsed": "Bazı seçenekler bütçeye sığmak için aynı token’lara kısaltıldı, bu yüzden model onları ayırt edemedi. Seçenek metinlerini kısaltın veya daha az seçenek kullanın."
+  },
+  "routing": {
+    "title": "Yönlendirme",
+    "detected": "Algılanan yazı: {{script}} · dil: {{language}}",
+    "undecided": "belirsiz",
+    "scripts": "Yazıya göre harf payı",
+    "pinned": "İstek bu checkpoint’i belirttiği için dil algılama atlandı."
+  },
+  "usage": {
+    "title": "Kullanım ve süre",
+    "inputTokens": "girdi token’ı (faturalandırılır)",
+    "server": "model süresi",
+    "roundTrip": "toplam süre",
+    "ms": "{{ms}} ms",
+    "help": "Kararlar girdi token’ı üzerinden faturalandırılır. Her soru durumla birlikte kodlanır, bu yüzden uzun bir durum hakkındaki her ek soru o durumu yeniden maliyete ekler."
+  },
+  "raw": {
+    "request": "İstek JSON’u",
+    "response": "Yanıt JSON’u"
+  },
+  "errors": {
+    "retryIn": "{{seconds}} sn sonra yeniden deneyebilirsiniz.",
+    "retryNow": "Şimdi yeniden deneyebilirsiniz.",
+    "rateLimitNote": "Genel uç nokta, adres başına dakikada 10 istek kabul eder. Bir dakika sonra yeniden deneyin.",
+    "validation": {
+      "title": "Sunucu isteği reddetti",
+      "help": "Aşağıdaki sorunu düzeltip yeniden çalıştırın."
+    },
+    "too_large": {
+      "title": "İstek çok büyük",
+      "help": "Sunucunun sınırlarından birini aşıyor."
+    },
+    "rate_limited": {
+      "title": "Çok fazla istek",
+      "help": "Hizmet, bu adresin ne sıklıkla soru sorabileceğini sınırlar."
+    },
+    "unavailable": {
+      "title": "Hizmet meşgul",
+      "help": "Model meşgul ya da yeniden başlatılıyor."
+    },
+    "not_found": {
+      "title": "Kullanılabilir karar modeli yok",
+      "help": "Hizmetin şu anda yanıt verebilecek bir modeli yok."
+    },
+    "server": {
+      "title": "Hizmet başarısız oldu",
+      "help": "Sunucuda bir sorun oluştu. Birazdan yeniden deneyin."
+    },
+    "network": {
+      "title": "Hizmete ulaşılamıyor",
+      "help": "Bağlantınızı kontrol edip yeniden deneyin."
+    },
+    "timeout": {
+      "title": "İstek zaman aşımına uğradı",
+      "help": "Yanıt zamanında gelmedi. Birazdan yeniden deneyin."
+    },
+    "cancelled": {
+      "title": "İptal edildi",
+      "help": "İstek tamamlanmadan durduruldu."
+    },
+    "bad_response": {
+      "title": "Okunamayan yanıt",
+      "help": "Hizmet, karar olmayan bir şeyle yanıt verdi."
+    }
+  }
+}

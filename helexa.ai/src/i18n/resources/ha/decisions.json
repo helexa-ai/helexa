@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Filin gwaji",
+    "lead": "Yi wa samfurin yanke shawara tambayoyi masu nau’i game da kowane rubutu ko JSON, ka sami amsoshi da aka daidaita a zagaye ɗaya — ba tare da rubutun da aka ƙirƙira ba.",
+    "docsLink": "Yadda yake aiki",
+    "side": "Sakamako, misalai da lamba",
+    "tabs": {
+      "results": "Sakamako",
+      "examples": "Misalai",
+      "code": "Lamba"
+    }
+  },
+  "compose": {
+    "label": "Rubuta buƙata"
+  },
+  "state": {
+    "label": "Yanayi",
+    "mode": "Tsarin yanayi",
+    "text": "Rubutu",
+    "json": "JSON",
+    "placeholder": "Saƙo, tikiti, takarda ko tattaunawar da za a yanke shawara a kai",
+    "help": {
+      "text": "Ana aika shi daidai yadda aka rubuta.",
+      "json": "Ana aika abu a matsayin JSON, maɓallai a jerin da aka rubuta su. Ana karanta jeri a matsayin tattaunawa kuma ana rage shi daga farko, don sabbin maganganu su rage."
+    }
+  },
+  "questions": {
+    "label": "Tambayoyi",
+    "format": "Tsara",
+    "help": "Abu na JSON wanda maɓallansa lambobin tantance tambayoyi ne. Kowace tambaya na da nau’i, umarni kuma — ga choice da score — ma’auni."
+  },
+  "add": {
+    "label": "Ƙara tambaya",
+    "invalidJson": "Gyara tambayoyin tukuna: ƙara ɗaya zai maye gurbin rubutun da ba abu na JSON mai inganci ba ne.",
+    "noul": {
+      "title": "Eh ko a’a",
+      "desc": "Shin magana gaskiya ce? Yana amsawa da yiwuwa."
+    },
+    "score": {
+      "title": "Ma’aunin tantancewa",
+      "desc": "Yana ba da maki bisa matakai da aka jera. Yana amsawa da matakin da ake tsammani."
+    },
+    "choice": {
+      "title": "Zaɓi daga da yawa",
+      "desc": "Yana zaɓar ɗaya daga cikin zaɓuɓɓukanka masu lakabi."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Kai tsaye” yana zaɓar checkpoint bisa harshen yanayin. Idan ka zaɓi ɗaya, duk buƙatu za su je gare shi, ko da wane harshe.",
+    "auto": "Kai tsaye (bisa harshe)",
+    "english": "Turanci",
+    "multilingual": "Harsuna da yawa",
+    "typed-decisions": "Shawarwari masu nau’i"
+  },
+  "run": "Gudanar",
+  "cancel": "Soke",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Matsalolin da za a gyara",
+    "stateEmpty": "Yanayin babu komai.",
+    "stateNull": "Yanayi ba zai iya zama null ba.",
+    "stateJson": "Yanayin ba JSON mai inganci ba ne: {{detail}} (layi {{line}}, shafi {{column}}).",
+    "stateTooLong": "Yanayin ya fi haruffa {{max}} tsawo.",
+    "questionsJson": "Tambayoyin ba JSON mai inganci ba ne: {{detail}} (layi {{line}}, shafi {{column}}).",
+    "questionsNotObject": "Dole tambayoyi su zama abu na JSON wanda maɓallansa lambobin tantance tambayoyi ne.",
+    "noQuestions": "Ƙara aƙalla tambaya ɗaya.",
+    "tooManyQuestions": "Tambayoyi {{max}} a mafi yawa a kowace buƙata.",
+    "tooManyTotal": "Zaɓuɓɓuka {{max}} a mafi yawa gaba ɗaya a duk tambayoyi.",
+    "questionNotObject": "“{{id}}”: dole tambaya ta zama abu.",
+    "badType": "“{{id}}”: dole type ya zama choice, score ko noul.",
+    "noInstructions": "“{{id}}”: babu umarni.",
+    "labelsOnlyNoul": "“{{id}}”: labels ya shafi tambayoyin noul kawai.",
+    "choiceNeedsCriteria": "“{{id}}”: tambayar choice na buƙatar ma’auni — abu na zaɓuɓɓuka ko jerin lakabai.",
+    "tooManyOptions": "“{{id}}”: zaɓuɓɓuka {{max}} a mafi yawa.",
+    "labelNotScalar": "“{{id}}”: dole kowane lakabi ya zama rubutu, lamba ko true/false.",
+    "duplicateLabel": "“{{id}}”: lakabin {{label}} ya bayyana sau biyu (1, 1.0 da true ana ƙidaya su a matsayin lakabi ɗaya).",
+    "scoreNeedsLevels": "“{{id}}”: tambayar score na buƙatar ma’auni a matsayin jerin matakai, daga mafi ƙasa.",
+    "tooManyLevels": "“{{id}}”: matakai {{max}} a mafi yawa.",
+    "nullLevel": "“{{id}}”: mataki ba zai iya zama null ba.",
+    "noulCriteria": "“{{id}}”: ma’aunin noul na iya bayyana true da false kawai.",
+    "noulLabels": "“{{id}}”: labels na buƙatar rubutu daban-daban ga true da false.",
+    "badBudget": "Dole {{name}} ya zama cikakkiyar lamba daga 1 zuwa {{max}}.",
+    "server": "“{{id}}”, a cewar sabar: {{detail}}"
+  },
+  "examples": {
+    "intro": "Zaɓi misali don loda shi a cikin masu gyara. Ba za a aika komai ba sai ka danna Gudanar.",
+    "groups": {
+      "lessons": "Darussa",
+      "useCases": "Yanayin amfani",
+      "multilingual": "Harsuna da yawa"
+    },
+    "review": {
+      "title": "Ya gamsu ko a’a?",
+      "blurb": "Tambayoyin eh/a’a. Lakabai suna sake sunan amsar, ma’auni kuma suna faɗin abin da ake la’akari."
+    },
+    "bugReport": {
+      "title": "Tantance rahoton kuskure",
+      "blurb": "Ma’aunin matakai da aka jera. Amsar ita ce matakin da ake tsammani, wanda zai iya faɗa tsakanin biyu."
+    },
+    "helpdesk": {
+      "title": "Tura buƙata zuwa teburin taimako",
+      "blurb": "Zaɓuɓɓuka da aka bayyana. Suna raba kasafin token ɗaya, don haka dogayen jeri suna matse juna."
+    },
+    "triage": {
+      "title": "Rarraba tikitin tallafi",
+      "blurb": "Ƙungiya, gaggawa da mayar da kuɗi — tambayoyi uku game da saƙo ɗaya a buƙata ɗaya."
+    },
+    "resume": {
+      "title": "Tace takardun CV",
+      "blurb": "Matakin ƙwarewa, fasahar da ake buƙata da jagoranci, da aka karanta daga CV."
+    },
+    "guardrails": {
+      "title": "Shingen kariya na LLM",
+      "blurb": "Gano ƙoƙarin jailbreak kuma tantance lahani kafin samfuri ya amsa."
+    },
+    "moderation": {
+      "title": "Kula da abun ciki",
+      "blurb": "Suka mai tsanani ba cin zarafi ba ne: bambanta su."
+    },
+    "phishing": {
+      "title": "Imel na zamba",
+      "blurb": "Yanayin JSON: imel gaba ɗaya, tare da mai aikawa da maudu’i."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Tikitin rarrabawa a rubutun Devanagari."
+    },
+    "japanese": {
+      "title": "Japananci",
+      "blurb": "Tikitin rarrabawa a Japananci."
+    },
+    "arabic": {
+      "title": "Larabci",
+      "blurb": "Tikitin rarrabawa a rubutun Larabci."
+    },
+    "russian": {
+      "title": "Rashanci",
+      "blurb": "Tikitin rarrabawa a rubutun Cyrillic."
+    },
+    "german": {
+      "title": "Jamusanci",
+      "blurb": "Rubutun Latin, amma ba Turanci ba: ana tura shi bisa harshe, ba rubutu ba."
+    }
+  },
+  "share": {
+    "button": "Raba",
+    "copied": "An kwafi hanyar haɗi",
+    "tooLong": "Wannan buƙatar ta yi tsayi da yawa don a raba ta a matsayin hanyar haɗi. Maimakon haka kwafi JSON na buƙatar.",
+    "inAddressBar": "Ba a iya kwafa kai tsaye ba: hanyar haɗin tana cikin sandar adireshi."
+  },
+  "code": {
+    "language": "Harshe",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK na laya",
+    "fixFirst": "Gyara matsalolin buƙatar don ganin ta a matsayin lamba.",
+    "jev": "Kowane abokin ciniki na TypeSafe Jev yana aiki ba tare da canji ba: kawai ka nuna shi nan. Sunan samfurin da wannan sabis bai sani ba zai koma helexa/one.",
+    "key": "Buƙatu ba tare da maɓalli ba suna aiki cikin iyakar jama’a. Don ƙari, ƙirƙiri maɓallin API kuma ka saita HELEXA_API_KEY.",
+    "keyLink": "Sami maɓallin API"
+  },
+  "copy": "Kwafi",
+  "copied": "An kwafi",
+  "results": {
+    "empty": "Gudanar da buƙata don ganin amsoshi a nan.",
+    "running": "Ana yanke shawara…",
+    "expectedScore": "Matakin da ake tsammani {{score}}",
+    "pTrue": "Yiwuwar {{p}} cewa gaskiya ne",
+    "answerConfidence": "Tabbacin amsa",
+    "confidence": "Tabbaci",
+    "confidenceHelp": "Tabbacin amsa shi ne yiwuwar amsar da aka zaɓa — lambar da aka daidaita da ake sa iyaka a kanta. Tabbaci yana auna yadda rarrabuwar gaba ɗaya take a bayyane (1 − entropy da aka daidaita; a eh/a’a, yiwuwa mafi girma) kuma ba a kwatanta shi tsakanin nau’o’in tambayoyi.",
+    "collapsed": "An rage wasu zaɓuɓɓuka zuwa token iri ɗaya don su shiga kasafin, don haka samfurin bai iya bambanta su ba. Rage rubutun zaɓuɓɓuka ko ka yi amfani da kaɗan."
+  },
+  "routing": {
+    "title": "Hanyar tura",
+    "detected": "Rubutun da aka gano: {{script}} · harshe: {{language}}",
+    "undecided": "ba a tantance ba",
+    "scripts": "Rabon haruffa bisa rubutu",
+    "pinned": "Buƙatar ta ambaci wannan checkpoint, don haka an tsallake gano harshe."
+  },
+  "usage": {
+    "title": "Amfani da lokaci",
+    "inputTokens": "token na shigarwa (ana biya)",
+    "server": "lokacin samfuri",
+    "roundTrip": "jimillar lokaci",
+    "ms": "{{ms}} ms",
+    "help": "Ana biyan shawarwari da token na shigarwa. Ana ɓoye kowace tambaya tare da yanayin, don haka kowace ƙarin tambaya game da dogon yanayi tana sake biyan wannan yanayin."
+  },
+  "raw": {
+    "request": "JSON na buƙata",
+    "response": "JSON na amsa"
+  },
+  "errors": {
+    "retryIn": "Za ka iya sake gwadawa bayan daƙiƙa {{seconds}}.",
+    "retryNow": "Za ka iya sake gwadawa yanzu.",
+    "rateLimitNote": "Wurin shiga na jama’a yana karɓar buƙatu 10 a minti daga kowane adireshi. Sake gwadawa bayan minti ɗaya.",
+    "validation": {
+      "title": "Sabar ta ƙi buƙatar",
+      "help": "Gyara matsalar da ke ƙasa ka sake gudanarwa."
+    },
+    "too_large": {
+      "title": "Buƙatar ta yi girma da yawa",
+      "help": "Ta wuce ɗaya daga cikin iyakokin sabar."
+    },
+    "rate_limited": {
+      "title": "Buƙatu sun yi yawa",
+      "help": "Sabis yana iyakance sau nawa wannan adireshi zai iya tambaya."
+    },
+    "unavailable": {
+      "title": "Sabis yana cikin aiki",
+      "help": "Samfurin yana cikin aiki ko ana sake kunna shi."
+    },
+    "not_found": {
+      "title": "Babu samfurin yanke shawara da ake da shi",
+      "help": "A yanzu sabis ba shi da samfurin da zai iya amsawa."
+    },
+    "server": {
+      "title": "Sabis ya gaza",
+      "help": "Wani abu ya lalace a sabar. Sake gwadawa nan ba da jimawa ba."
+    },
+    "network": {
+      "title": "Ba a iya isa ga sabis ba",
+      "help": "Duba haɗinka ka sake gwadawa."
+    },
+    "timeout": {
+      "title": "Lokacin buƙatar ya ƙare",
+      "help": "Amsa ba ta iso a kan lokaci ba. Sake gwadawa nan ba da jimawa ba."
+    },
+    "cancelled": {
+      "title": "An soke",
+      "help": "An dakatar da buƙatar kafin ta ƙare."
+    },
+    "bad_response": {
+      "title": "Amsar da ba a iya karantawa",
+      "help": "Sabis ya amsa da wani abu da ba shawara ba ne."
+    }
+  }
+}

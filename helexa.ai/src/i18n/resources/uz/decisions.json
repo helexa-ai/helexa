@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Sinov maydoni",
+    "lead": "Qaror modeliga istalgan matn yoki JSON haqida turlangan savollar bering va bir o‘tishda kalibrlangan javoblar oling — matn generatsiya qilinmaydi.",
+    "docsLink": "Qanday ishlaydi",
+    "side": "Natijalar, misollar va kod",
+    "tabs": {
+      "results": "Natijalar",
+      "examples": "Misollar",
+      "code": "Kod"
+    }
+  },
+  "compose": {
+    "label": "So‘rov tuzish"
+  },
+  "state": {
+    "label": "Holat",
+    "mode": "Holat formati",
+    "text": "Matn",
+    "json": "JSON",
+    "placeholder": "Qaror qabul qilinadigan xabar, chipta, hujjat yoki suhbat",
+    "help": {
+      "text": "Yozilganidek aynan yuboriladi.",
+      "json": "Obyekt JSON sifatida, kalitlar yozilgan tartibda yuboriladi. Ro‘yxat suhbat sifatida o‘qiladi va eng yangi replikalar qolishi uchun boshidan qisqartiriladi."
+    }
+  },
+  "questions": {
+    "label": "Savollar",
+    "format": "Formatlash",
+    "help": "Kalitlari savol identifikatorlari bo‘lgan JSON obyekti. Har bir savolning turi, ko‘rsatmalari va — choice va score uchun — mezonlari bor."
+  },
+  "add": {
+    "label": "Savol qo‘shish",
+    "invalidJson": "Avval savollarni tuzating: qo‘shish yaroqli JSON obyekti bo‘lmagan matnni almashtirib yuboradi.",
+    "noul": {
+      "title": "Ha yoki yo‘q",
+      "desc": "Da’vo to‘g‘rimi? Ehtimollik bilan javob beradi."
+    },
+    "score": {
+      "title": "Baholash shkalasi",
+      "desc": "Tartiblangan darajalar bo‘yicha baholaydi. Kutilgan daraja bilan javob beradi."
+    },
+    "choice": {
+      "title": "Variantlardan tanlash",
+      "desc": "Siz belgilagan variantlardan birini tanlaydi."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Avtomatik” checkpoint’ni holat tiliga qarab tanlaydi. Birini tanlasangiz, tilidan qat’i nazar barcha so‘rovlar unga boradi.",
+    "auto": "Avtomatik (til bo‘yicha)",
+    "english": "Ingliz",
+    "multilingual": "Ko‘p tilli",
+    "typed-decisions": "Turlangan qarorlar"
+  },
+  "run": "Ishga tushirish",
+  "cancel": "Bekor qilish",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Tuzatilishi kerak bo‘lgan muammolar",
+    "stateEmpty": "Holat bo‘sh.",
+    "stateNull": "Holat null bo‘lishi mumkin emas.",
+    "stateJson": "Holat yaroqli JSON emas: {{detail}} ({{line}}-qator, {{column}}-ustun).",
+    "stateTooLong": "Holat {{max}} belgidan uzun.",
+    "questionsJson": "Savollar yaroqli JSON emas: {{detail}} ({{line}}-qator, {{column}}-ustun).",
+    "questionsNotObject": "Savollar kalitlari savol identifikatorlari bo‘lgan JSON obyekti bo‘lishi kerak.",
+    "noQuestions": "Kamida bitta savol qo‘shing.",
+    "tooManyQuestions": "Bitta so‘rovda ko‘pi bilan {{max}} ta savol.",
+    "tooManyTotal": "Barcha savollarda jami ko‘pi bilan {{max}} ta variant.",
+    "questionNotObject": "“{{id}}”: savol obyekt bo‘lishi kerak.",
+    "badType": "“{{id}}”: type choice, score yoki noul bo‘lishi kerak.",
+    "noInstructions": "“{{id}}”: ko‘rsatmalar yo‘q.",
+    "labelsOnlyNoul": "“{{id}}”: labels faqat noul savollariga taalluqli.",
+    "choiceNeedsCriteria": "“{{id}}”: choice savoliga mezonlar kerak — variantlar obyekti yoki yorliqlar ro‘yxati.",
+    "tooManyOptions": "“{{id}}”: ko‘pi bilan {{max}} ta variant.",
+    "labelNotScalar": "“{{id}}”: har bir yorliq matn, son yoki true/false bo‘lishi kerak.",
+    "duplicateLabel": "“{{id}}”: {{label}} yorlig‘i ikki marta uchraydi (1, 1.0 va true bir xil yorliq hisoblanadi).",
+    "scoreNeedsLevels": "“{{id}}”: score savoliga eng pastidan boshlanadigan darajalar ro‘yxati ko‘rinishidagi mezonlar kerak.",
+    "tooManyLevels": "“{{id}}”: ko‘pi bilan {{max}} ta daraja.",
+    "nullLevel": "“{{id}}”: daraja null bo‘lishi mumkin emas.",
+    "noulCriteria": "“{{id}}”: noul mezonlari faqat true va false’ni tavsiflay oladi.",
+    "noulLabels": "“{{id}}”: labels uchun true va false matnlari har xil bo‘lishi kerak.",
+    "badBudget": "{{name}} 1 dan {{max}} gacha butun son bo‘lishi kerak.",
+    "server": "“{{id}}”, serverga ko‘ra: {{detail}}"
+  },
+  "examples": {
+    "intro": "Muharrirlarga yuklash uchun misol tanlang. “Ishga tushirish”ni bosmaguningizcha hech narsa yuborilmaydi.",
+    "groups": {
+      "lessons": "Darslar",
+      "useCases": "Qo‘llanish holatlari",
+      "multilingual": "Ko‘p tilli"
+    },
+    "review": {
+      "title": "Mamnunmi yoki yo‘qmi?",
+      "blurb": "Ha/yo‘q savollari. Yorliqlar javobni qayta nomlaydi, mezonlar nima hisobga olinishini aytadi."
+    },
+    "bugReport": {
+      "title": "Xato hisobotini baholash",
+      "blurb": "Tartiblangan darajalar shkalasi. Javob — ikki daraja oralig‘iga tushishi mumkin bo‘lgan kutilgan daraja."
+    },
+    "helpdesk": {
+      "title": "So‘rovni yordam xizmatiga yo‘naltirish",
+      "blurb": "Tavsiflangan variantlar. Ular bitta token byudjetini bo‘lishadi, shuning uchun uzun ro‘yxatlar bir-biriga xalal beradi."
+    },
+    "triage": {
+      "title": "Yordam chiptalarini saralash",
+      "blurb": "Jamoa, shoshilinchlik va pulni qaytarish — bitta so‘rovda bitta xabar haqida uchta savol."
+    },
+    "resume": {
+      "title": "Rezyumelarni saralash",
+      "blurb": "Tajriba darajasi, talab qilinadigan ko‘nikma va yetakchilik — rezyumedan o‘qiladi."
+    },
+    "guardrails": {
+      "title": "LLM himoya to‘siqlari",
+      "blurb": "Model javob berishidan oldin jailbreak urinishini aniqlang va zararni baholang."
+    },
+    "moderation": {
+      "title": "Kontent moderatsiyasi",
+      "blurb": "Qattiq tanqid ta’qib emas: ularni farqlang."
+    },
+    "phishing": {
+      "title": "Fishing xati",
+      "blurb": "JSON holati: jo‘natuvchi va mavzusi bilan butun xat."
+    },
+    "hindi": {
+      "title": "Hind",
+      "blurb": "Devanagari yozuvidagi saralash chiptasi."
+    },
+    "japanese": {
+      "title": "Yapon",
+      "blurb": "Yapon tilidagi saralash chiptasi."
+    },
+    "arabic": {
+      "title": "Arab",
+      "blurb": "Arab yozuvidagi saralash chiptasi."
+    },
+    "russian": {
+      "title": "Rus",
+      "blurb": "Kirill yozuvidagi saralash chiptasi."
+    },
+    "german": {
+      "title": "Nemis",
+      "blurb": "Lotin yozuvi, lekin ingliz tili emas: yozuv bo‘yicha emas, til bo‘yicha yo‘naltiriladi."
+    }
+  },
+  "share": {
+    "button": "Ulashish",
+    "copied": "Havola nusxalandi",
+    "tooLong": "Bu so‘rov havola sifatida ulashish uchun juda uzun. O‘rniga so‘rovning JSON’ini nusxalang.",
+    "inAddressBar": "Avtomatik nusxalab bo‘lmadi: havola manzil satrida."
+  },
+  "code": {
+    "language": "Til",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "So‘rovni kod sifatida ko‘rish uchun uning muammolarini tuzating.",
+    "jev": "Har qanday TypeSafe Jev mijozi o‘zgarishsiz ishlaydi: shunchaki uni shu yerga yo‘naltiring. Bu xizmat bilmaydigan model nomi helexa/one’ga o‘tadi.",
+    "key": "Kalitsiz so‘rovlar ommaviy limit doirasida ishlaydi. Ko‘proq uchun API kalitini yarating va HELEXA_API_KEY’ni o‘rnating.",
+    "keyLink": "API kalitini olish"
+  },
+  "copy": "Nusxalash",
+  "copied": "Nusxalandi",
+  "results": {
+    "empty": "Javoblarni shu yerda ko‘rish uchun so‘rovni ishga tushiring.",
+    "running": "Qaror qabul qilinmoqda…",
+    "expectedScore": "Kutilgan daraja {{score}}",
+    "pTrue": "To‘g‘ri bo‘lish ehtimoli {{p}}",
+    "answerConfidence": "Javob ishonchliligi",
+    "confidence": "Ishonchlilik",
+    "confidenceHelp": "Javob ishonchliligi — tanlangan javobning ehtimolligi, chegara qo‘yiladigan kalibrlangan son. Ishonchlilik butun taqsimot qanchalik aniq ekanini o‘lchaydi (1 − normallashtirilgan entropiya; ha/yo‘q uchun kattaroq ehtimollik) va uni savol turlari o‘rtasida solishtirib bo‘lmaydi.",
+    "collapsed": "Byudjetga sig‘ish uchun ba’zi variantlar bir xil tokenlargacha qisqartirildi, shuning uchun model ularni farqlay olmadi. Variant matnlarini qisqartiring yoki kamroq variant ishlating."
+  },
+  "routing": {
+    "title": "Yo‘naltirish",
+    "detected": "Aniqlangan yozuv: {{script}} · til: {{language}}",
+    "undecided": "aniqlanmagan",
+    "scripts": "Yozuvlar bo‘yicha harflar ulushi",
+    "pinned": "So‘rovda shu checkpoint ko‘rsatilgan, shuning uchun tilni aniqlash o‘tkazib yuborildi."
+  },
+  "usage": {
+    "title": "Sarf va vaqt",
+    "inputTokens": "kirish tokenlari (hisob-kitob qilinadi)",
+    "server": "model vaqti",
+    "roundTrip": "umumiy vaqt",
+    "ms": "{{ms}} ms",
+    "help": "Qarorlar kirish tokenlari bo‘yicha hisoblanadi. Har bir savol holat bilan birga kodlanadi, shuning uchun uzun holat haqidagi har bir qo‘shimcha savol o‘sha holat narxini qayta oladi."
+  },
+  "raw": {
+    "request": "So‘rov JSON’i",
+    "response": "Javob JSON’i"
+  },
+  "errors": {
+    "retryIn": "{{seconds}} s dan keyin qayta urinishingiz mumkin.",
+    "retryNow": "Hozir qayta urinishingiz mumkin.",
+    "rateLimitNote": "Ommaviy nuqta bitta manzildan daqiqasiga 10 ta so‘rov qabul qiladi. Bir daqiqadan keyin qayta urining.",
+    "validation": {
+      "title": "Server so‘rovni rad etdi",
+      "help": "Quyidagi muammoni tuzating va qayta ishga tushiring."
+    },
+    "too_large": {
+      "title": "So‘rov juda katta",
+      "help": "U server cheklovlaridan biridan oshib ketadi."
+    },
+    "rate_limited": {
+      "title": "So‘rovlar juda ko‘p",
+      "help": "Xizmat bu manzil qanchalik tez-tez so‘rashi mumkinligini cheklaydi."
+    },
+    "unavailable": {
+      "title": "Xizmat band",
+      "help": "Model band yoki qayta ishga tushmoqda."
+    },
+    "not_found": {
+      "title": "Mavjud qaror modeli yo‘q",
+      "help": "Hozir xizmatda javob bera oladigan model yo‘q."
+    },
+    "server": {
+      "title": "Xizmatda nosozlik",
+      "help": "Serverda nimadir noto‘g‘ri ketdi. Birozdan keyin qayta urining."
+    },
+    "network": {
+      "title": "Xizmatga ulanib bo‘lmadi",
+      "help": "Ulanishni tekshiring va qayta urining."
+    },
+    "timeout": {
+      "title": "So‘rov vaqti tugadi",
+      "help": "Javob o‘z vaqtida kelmadi. Birozdan keyin qayta urining."
+    },
+    "cancelled": {
+      "title": "Bekor qilindi",
+      "help": "So‘rov tugashidan oldin to‘xtatildi."
+    },
+    "bad_response": {
+      "title": "O‘qib bo‘lmaydigan javob",
+      "help": "Xizmat qaror bo‘lmagan narsa bilan javob berdi."
+    }
+  }
+}
