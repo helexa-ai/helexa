@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Spazju tal-provi",
+    "lead": "Staqsi lil mudell tad-deċiżjonijiet mistoqsijiet tipizzati dwar kwalunkwe test jew JSON u ikseb tweġibiet kalibrati f’passaġġ wieħed — mingħajr test iġġenerat.",
+    "docsLink": "Kif jaħdem",
+    "side": "Riżultati, eżempji u kodiċi",
+    "tabs": {
+      "results": "Riżultati",
+      "examples": "Eżempji",
+      "code": "Kodiċi"
+    }
+  },
+  "compose": {
+    "label": "Ikteb talba"
+  },
+  "state": {
+    "label": "Stat",
+    "mode": "Format tal-istat",
+    "text": "Test",
+    "json": "JSON",
+    "placeholder": "Il-messaġġ, it-tiket, id-dokument jew il-konversazzjoni li trid tiddeċiedi dwarha",
+    "help": {
+      "text": "Jintbagħat eżattament kif inkiteb.",
+      "json": "Oġġett jintbagħat bħala JSON, biċ-ċwievet fl-ordni li nkitbu. Lista tinqara bħala konversazzjoni u titqassar mill-bidu, biex jibqgħu l-aħħar interventi."
+    }
+  },
+  "questions": {
+    "label": "Mistoqsijiet",
+    "format": "Ifformattja",
+    "help": "Oġġett JSON bl-id tal-mistoqsijiet bħala ċwievet. Kull mistoqsija għandha tip, struzzjonijiet u — għal choice u score — kriterji."
+  },
+  "add": {
+    "label": "Żid mistoqsija",
+    "invalidJson": "L-ewwel irranġa l-mistoqsijiet: iż-żieda tieħu post test li mhuwiex oġġett JSON validu.",
+    "noul": {
+      "title": "Iva jew le",
+      "desc": "Stqarrija hija vera? Twieġeb bi probabbiltà."
+    },
+    "score": {
+      "title": "Skala ta’ evalwazzjoni",
+      "desc": "Tivvaluta skont livelli ordnati. Twieġeb bil-livell mistenni."
+    },
+    "choice": {
+      "title": "Għażla multipla",
+      "desc": "Tagħżel waħda mill-għażliet immarkati tiegħek."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Awtomatiku” jagħżel il-checkpoint skont il-lingwa tal-istat. Jekk tagħżel wieħed, it-talbiet kollha jmorru għandu, tkun xi tkun il-lingwa.",
+    "auto": "Awtomatiku (skont il-lingwa)",
+    "english": "Ingliż",
+    "multilingual": "Multilingwi",
+    "typed-decisions": "Deċiżjonijiet tipizzati"
+  },
+  "run": "Ħaddem",
+  "cancel": "Ikkanċella",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Problemi li jridu jiġu rranġati",
+    "stateEmpty": "L-istat huwa vojt.",
+    "stateNull": "L-istat ma jistax ikun null.",
+    "stateJson": "L-istat mhuwiex JSON validu: {{detail}} (linja {{line}}, kolonna {{column}}).",
+    "stateTooLong": "L-istat huwa itwal minn {{max}} karattru.",
+    "questionsJson": "Il-mistoqsijiet mhumiex JSON validu: {{detail}} (linja {{line}}, kolonna {{column}}).",
+    "questionsNotObject": "Il-mistoqsijiet iridu jkunu oġġett JSON bl-id tal-mistoqsijiet bħala ċwievet.",
+    "noQuestions": "Żid mill-inqas mistoqsija waħda.",
+    "tooManyQuestions": "Mhux aktar minn {{max}} mistoqsija għal kull talba.",
+    "tooManyTotal": "Mhux aktar minn {{max}} għażla b’kollox fil-mistoqsijiet kollha.",
+    "questionNotObject": "“{{id}}”: mistoqsija trid tkun oġġett.",
+    "badType": "“{{id}}”: type irid ikun choice, score jew noul.",
+    "noInstructions": "“{{id}}”: l-istruzzjonijiet huma nieqsa.",
+    "labelsOnlyNoul": "“{{id}}”: labels japplika biss għal mistoqsijiet noul.",
+    "choiceNeedsCriteria": "“{{id}}”: mistoqsija choice teħtieġ kriterji — oġġett ta’ għażliet jew lista ta’ tikketti.",
+    "tooManyOptions": "“{{id}}”: mhux aktar minn {{max}} għażla.",
+    "labelNotScalar": "“{{id}}”: kull tikketta trid tkun test, numru jew true/false.",
+    "duplicateLabel": "“{{id}}”: it-tikketta {{label}} tidher darbtejn (1, 1.0 u true jgħoddu bħala l-istess tikketta).",
+    "scoreNeedsLevels": "“{{id}}”: mistoqsija score teħtieġ kriterji bħala lista ta’ livelli, mill-aktar baxx.",
+    "tooManyLevels": "“{{id}}”: mhux aktar minn {{max}} livell.",
+    "nullLevel": "“{{id}}”: livell ma jistax ikun null.",
+    "noulCriteria": "“{{id}}”: il-kriterji noul jistgħu jiddeskrivu biss true u false.",
+    "noulLabels": "“{{id}}”: labels teħtieġ testi differenti għal true u false.",
+    "badBudget": "{{name}} irid ikun numru sħiħ minn 1 sa {{max}}.",
+    "server": "“{{id}}”, skont is-server: {{detail}}"
+  },
+  "examples": {
+    "intro": "Agħżel eżempju biex ittellgħu fl-edituri. Xejn ma jintbagħat qabel ma tagħfas Ħaddem.",
+    "groups": {
+      "lessons": "Lezzjonijiet",
+      "useCases": "Użi",
+      "multilingual": "Multilingwi"
+    },
+    "review": {
+      "title": "Sodisfatt jew le?",
+      "blurb": "Mistoqsijiet iva/le. It-tikketti jsemmu mill-ġdid it-tweġiba, il-kriterji jgħidu x’jgħodd."
+    },
+    "bugReport": {
+      "title": "Ivvaluta rapport ta’ żball",
+      "blurb": "Skala ta’ livelli ordnati. It-tweġiba hija l-livell mistenni, li jista’ jaqa’ bejn tnejn."
+    },
+    "helpdesk": {
+      "title": "Idderieġi talba lill-helpdesk",
+      "blurb": "Għażliet deskritti. Jaqsmu baġit wieħed ta’ tokens, għalhekk listi twal jiffullaw lil xulxin."
+    },
+    "triage": {
+      "title": "Klassifikazzjoni ta’ tiketti ta’ appoġġ",
+      "blurb": "Tim, urġenza u rifużjoni — tliet mistoqsijiet dwar messaġġ wieħed f’talba waħda."
+    },
+    "resume": {
+      "title": "Għażla ta’ CVs",
+      "blurb": "Anzjanità, ħila meħtieġa u tmexxija, moqrija minn CV."
+    },
+    "guardrails": {
+      "title": "Salvagwardji għal LLM",
+      "blurb": "Identifika attentat ta’ jailbreak u vvaluta l-ħsara qabel ma mudell iwieġeb."
+    },
+    "moderation": {
+      "title": "Moderazzjoni tal-kontenut",
+      "blurb": "Kritika ħarxa mhijiex fastidju: iddistingwihom."
+    },
+    "phishing": {
+      "title": "Email ta’ phishing",
+      "blurb": "Stat JSON: l-email kollha, bil-mittent u s-suġġett."
+    },
+    "hindi": {
+      "title": "Ħindi",
+      "blurb": "It-tiket tal-klassifikazzjoni bl-iskrittura Devanagari."
+    },
+    "japanese": {
+      "title": "Ġappuniż",
+      "blurb": "It-tiket tal-klassifikazzjoni bil-Ġappuniż."
+    },
+    "arabic": {
+      "title": "Għarbi",
+      "blurb": "It-tiket tal-klassifikazzjoni bl-iskrittura Għarbija."
+    },
+    "russian": {
+      "title": "Russu",
+      "blurb": "It-tiket tal-klassifikazzjoni biċ-Ċirilliku."
+    },
+    "german": {
+      "title": "Ġermaniż",
+      "blurb": "Skrittura Latina, iżda mhux Ingliż: jiġi dderieġut skont il-lingwa, mhux l-iskrittura."
+    }
+  },
+  "share": {
+    "button": "Aqsam",
+    "copied": "Il-link ġie kkupjat",
+    "tooLong": "Din it-talba hija twila wisq biex tinqasam bħala link. Minflok ikkopja l-JSON tat-talba.",
+    "inAddressBar": "Ma setax jiġi kkupjat awtomatikament: il-link qiegħed fil-bar tal-indirizz."
+  },
+  "code": {
+    "language": "Lingwa",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Irranġa l-problemi tat-talba biex tarah bħala kodiċi.",
+    "jev": "Kull klijent TypeSafe Jev jaħdem mingħajr bidliet: sempliċement ippuntah hawn. Isem ta’ mudell li dan is-servizz ma jafx jaqa’ lura għal helexa/one.",
+    "key": "Talbiet mingħajr ċavetta jaħdmu fil-limitu pubbliku. Għal aktar, oħloq ċavetta API u issettja HELEXA_API_KEY.",
+    "keyLink": "Ikseb ċavetta API"
+  },
+  "copy": "Ikkopja",
+  "copied": "Ikkupjat",
+  "results": {
+    "empty": "Ħaddem talba biex tara t-tweġibiet hawn.",
+    "running": "Qed tittieħed deċiżjoni…",
+    "expectedScore": "Livell mistenni {{score}}",
+    "pTrue": "{{p}} ċans li huwa veru",
+    "answerConfidence": "Kunfidenza tat-tweġiba",
+    "confidence": "Kunfidenza",
+    "confidenceHelp": "Il-kunfidenza tat-tweġiba hija l-probabbiltà tat-tweġiba magħżula — in-numru kalibrat li fuqu tiġi stabbilita soll. Il-kunfidenza tkejjel kemm hija deċiża d-distribuzzjoni kollha (1 − entropija normalizzata; għal iva/le, l-akbar probabbiltà) u ma tistax titqabbel bejn tipi ta’ mistoqsijiet.",
+    "collapsed": "Xi għażliet tqassru għall-istess tokens biex jidħlu fil-baġit, għalhekk il-mudell ma setax jiddistingwihom. Qassar it-testi tal-għażliet jew uża inqas."
+  },
+  "routing": {
+    "title": "Direzzjoni",
+    "detected": "Skrittura identifikata: {{script}} · lingwa: {{language}}",
+    "undecided": "mhux deċiża",
+    "scripts": "Proporzjon ta’ ittri skont l-iskrittura",
+    "pinned": "It-talba semmiet dan il-checkpoint, għalhekk l-identifikazzjoni tal-lingwa nqabżet."
+  },
+  "usage": {
+    "title": "Użu u ħin",
+    "inputTokens": "tokens tal-input (iffatturati)",
+    "server": "ħin tal-mudell",
+    "roundTrip": "ħin totali",
+    "ms": "{{ms}} ms",
+    "help": "Id-deċiżjonijiet jiġu ffatturati f’tokens tal-input. Kull mistoqsija tiġi kkodifikata flimkien mal-istat, għalhekk kull mistoqsija żejda dwar stat twil terġa’ tiswa dak l-istat."
+  },
+  "raw": {
+    "request": "JSON tat-talba",
+    "response": "JSON tat-tweġiba"
+  },
+  "errors": {
+    "retryIn": "Tista’ terġa’ tipprova f’{{seconds}} s.",
+    "retryNow": "Tista’ terġa’ tipprova issa.",
+    "rateLimitNote": "L-endpoint pubbliku jaċċetta 10 talbiet kull minuta minn kull indirizz. Erġa’ pprova f’minuta.",
+    "validation": {
+      "title": "Is-server irrifjuta t-talba",
+      "help": "Irranġa l-problema t’hawn taħt u erġa’ ħaddem."
+    },
+    "too_large": {
+      "title": "It-talba hija kbira wisq",
+      "help": "Taqbeż wieħed mil-limiti tas-server."
+    },
+    "rate_limited": {
+      "title": "Wisq talbiet",
+      "help": "Is-servizz jillimita kemm-il darba dan l-indirizz jista’ jistaqsi."
+    },
+    "unavailable": {
+      "title": "Is-servizz huwa okkupat",
+      "help": "Il-mudell huwa okkupat jew qed jerġa’ jibda."
+    },
+    "not_found": {
+      "title": "L-ebda mudell tad-deċiżjonijiet disponibbli",
+      "help": "Bħalissa s-servizz m’għandux mudell li jista’ jwieġeb."
+    },
+    "server": {
+      "title": "Is-servizz falla",
+      "help": "Xi ħaġa marret ħażin fuq is-server. Erġa’ pprova ftit wara."
+    },
+    "network": {
+      "title": "Is-servizz ma jistax jintlaħaq",
+      "help": "Iċċekkja l-konnessjoni tiegħek u erġa’ pprova."
+    },
+    "timeout": {
+      "title": "Il-ħin tat-talba skada",
+      "help": "Ma waslet l-ebda tweġiba fil-ħin. Erġa’ pprova ftit wara."
+    },
+    "cancelled": {
+      "title": "Ikkanċellata",
+      "help": "It-talba twaqqfet qabel ma spiċċat."
+    },
+    "bad_response": {
+      "title": "Tweġiba illeġibbli",
+      "help": "Is-servizz wieġeb b’xi ħaġa li mhijiex deċiżjoni."
+    }
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Piaskownica",
+    "lead": "Zadawaj modelowi decyzyjnemu typowane pytania o dowolny tekst lub JSON i otrzymuj skalibrowane odpowiedzi w jednym przebiegu — bez generowanego tekstu.",
+    "docsLink": "Jak to działa",
+    "side": "Wyniki, przykłady i kod",
+    "tabs": {
+      "results": "Wyniki",
+      "examples": "Przykłady",
+      "code": "Kod"
+    }
+  },
+  "compose": {
+    "label": "Utwórz zapytanie"
+  },
+  "state": {
+    "label": "Stan",
+    "mode": "Format stanu",
+    "text": "Tekst",
+    "json": "JSON",
+    "placeholder": "Wiadomość, zgłoszenie, dokument lub rozmowa, o których trzeba zdecydować",
+    "help": {
+      "text": "Wysyłany dokładnie tak, jak został napisany.",
+      "json": "Obiekt jest wysyłany jako JSON, z kluczami w zapisanej kolejności. Lista jest czytana jako rozmowa i przycinana od początku, żeby zostały najnowsze wypowiedzi."
+    }
+  },
+  "questions": {
+    "label": "Pytania",
+    "format": "Formatuj",
+    "help": "Obiekt JSON z identyfikatorami pytań jako kluczami. Każde pytanie ma typ, instrukcje i — w choice i score — kryteria."
+  },
+  "add": {
+    "label": "Dodaj pytanie",
+    "invalidJson": "Najpierw popraw pytania: dodanie nowego zastąpiłoby tekst, który nie jest poprawnym obiektem JSON.",
+    "noul": {
+      "title": "Tak czy nie",
+      "desc": "Czy stwierdzenie jest prawdziwe? Odpowiada prawdopodobieństwem."
+    },
+    "score": {
+      "title": "Skala ocen",
+      "desc": "Ocenia według uporządkowanych poziomów. Odpowiada oczekiwanym poziomem."
+    },
+    "choice": {
+      "title": "Wybór wielokrotny",
+      "desc": "Wybiera jedną z twoich oznaczonych opcji."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automatycznie” wybiera checkpoint według języka stanu. Jeśli wybierzesz konkretny, wszystkie zapytania trafią do niego, bez względu na język.",
+    "auto": "Automatycznie (według języka)",
+    "english": "Angielski",
+    "multilingual": "Wielojęzyczny",
+    "typed-decisions": "Decyzje typowane"
+  },
+  "run": "Uruchom",
+  "cancel": "Anuluj",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Do poprawienia",
+    "stateEmpty": "Stan jest pusty.",
+    "stateNull": "Stan nie może być null.",
+    "stateJson": "Stan nie jest poprawnym JSON-em: {{detail}} (wiersz {{line}}, kolumna {{column}}).",
+    "stateTooLong": "Stan ma więcej niż {{max}} znaków.",
+    "questionsJson": "Pytania nie są poprawnym JSON-em: {{detail}} (wiersz {{line}}, kolumna {{column}}).",
+    "questionsNotObject": "Pytania muszą być obiektem JSON z identyfikatorami pytań jako kluczami.",
+    "noQuestions": "Dodaj co najmniej jedno pytanie.",
+    "tooManyQuestions": "Najwyżej {{max}} pytań na zapytanie.",
+    "tooManyTotal": "Najwyżej {{max}} opcji łącznie we wszystkich pytaniach.",
+    "questionNotObject": "„{{id}}”: pytanie musi być obiektem.",
+    "badType": "„{{id}}”: type musi mieć wartość choice, score lub noul.",
+    "noInstructions": "„{{id}}”: brakuje instrukcji.",
+    "labelsOnlyNoul": "„{{id}}”: labels dotyczy tylko pytań noul.",
+    "choiceNeedsCriteria": "„{{id}}”: pytanie choice potrzebuje kryteriów — obiektu opcji lub listy etykiet.",
+    "tooManyOptions": "„{{id}}”: najwyżej {{max}} opcji.",
+    "labelNotScalar": "„{{id}}”: każda etykieta musi być tekstem, liczbą lub true/false.",
+    "duplicateLabel": "„{{id}}”: etykieta {{label}} występuje dwa razy (1, 1.0 i true liczą się jako ta sama).",
+    "scoreNeedsLevels": "„{{id}}”: pytanie score potrzebuje kryteriów w postaci listy poziomów, od najniższego.",
+    "tooManyLevels": "„{{id}}”: najwyżej {{max}} poziomów.",
+    "nullLevel": "„{{id}}”: poziom nie może być null.",
+    "noulCriteria": "„{{id}}”: kryteria noul mogą opisywać tylko true i false.",
+    "noulLabels": "„{{id}}”: labels wymaga różnych tekstów dla true i false.",
+    "badBudget": "{{name}} musi być liczbą całkowitą od 1 do {{max}}.",
+    "server": "„{{id}}”, według serwera: {{detail}}"
+  },
+  "examples": {
+    "intro": "Wybierz przykład, aby wczytać go do edytorów. Nic nie zostanie wysłane, dopóki nie klikniesz Uruchom.",
+    "groups": {
+      "lessons": "Lekcje",
+      "useCases": "Zastosowania",
+      "multilingual": "Wielojęzyczne"
+    },
+    "review": {
+      "title": "Zadowolony czy nie?",
+      "blurb": "Pytania tak/nie. Etykiety zmieniają nazwę odpowiedzi, kryteria mówią, co się liczy."
+    },
+    "bugReport": {
+      "title": "Oceń zgłoszenie błędu",
+      "blurb": "Skala uporządkowanych poziomów. Odpowiedź to oczekiwany poziom, który może wypaść między dwoma."
+    },
+    "helpdesk": {
+      "title": "Skieruj zgłoszenie do helpdesku",
+      "blurb": "Opisane opcje. Dzielą jeden budżet tokenów, więc długie listy sobie przeszkadzają."
+    },
+    "triage": {
+      "title": "Segregacja zgłoszeń do wsparcia",
+      "blurb": "Zespół, pilność i zwrot — trzy pytania o jedną wiadomość w jednym zapytaniu."
+    },
+    "resume": {
+      "title": "Selekcja CV",
+      "blurb": "Poziom doświadczenia, wymagana umiejętność i przywództwo, odczytane z CV."
+    },
+    "guardrails": {
+      "title": "Zabezpieczenia dla LLM",
+      "blurb": "Wykryj próbę jailbreaku i oceń szkodliwość, zanim model odpowie."
+    },
+    "moderation": {
+      "title": "Moderacja treści",
+      "blurb": "Ostra krytyka to nie nękanie: odróżniaj je."
+    },
+    "phishing": {
+      "title": "E-mail phishingowy",
+      "blurb": "Stan w JSON: cały e-mail, z nadawcą i tematem."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Zgłoszenie do segregacji zapisane dewanagari."
+    },
+    "japanese": {
+      "title": "Japoński",
+      "blurb": "Zgłoszenie do segregacji po japońsku."
+    },
+    "arabic": {
+      "title": "Arabski",
+      "blurb": "Zgłoszenie do segregacji pismem arabskim."
+    },
+    "russian": {
+      "title": "Rosyjski",
+      "blurb": "Zgłoszenie do segregacji cyrylicą."
+    },
+    "german": {
+      "title": "Niemiecki",
+      "blurb": "Alfabet łaciński, ale nie angielski: kierowane według języka, nie pisma."
+    }
+  },
+  "share": {
+    "button": "Udostępnij",
+    "copied": "Skopiowano link",
+    "tooLong": "To zapytanie jest za długie, aby udostępnić je jako link. Skopiuj zamiast tego JSON zapytania.",
+    "inAddressBar": "Nie udało się skopiować automatycznie: link jest na pasku adresu."
+  },
+  "code": {
+    "language": "Język",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Popraw problemy w zapytaniu, aby zobaczyć je jako kod.",
+    "jev": "Każdy klient TypeSafe Jev działa bez zmian: wystarczy wskazać mu ten adres. Nazwa modelu nieznana tej usłudze przechodzi na helexa/one.",
+    "key": "Zapytania bez klucza działają w ramach limitu publicznego. Aby mieć więcej, utwórz klucz API i ustaw HELEXA_API_KEY.",
+    "keyLink": "Uzyskaj klucz API"
+  },
+  "copy": "Kopiuj",
+  "copied": "Skopiowano",
+  "results": {
+    "empty": "Uruchom zapytanie, aby zobaczyć tu odpowiedzi.",
+    "running": "Trwa decydowanie…",
+    "expectedScore": "Oczekiwany poziom {{score}}",
+    "pTrue": "{{p}} szans, że to prawda",
+    "answerConfidence": "Pewność odpowiedzi",
+    "confidence": "Pewność",
+    "confidenceHelp": "Pewność odpowiedzi to prawdopodobieństwo wybranej odpowiedzi — skalibrowana liczba, na której ustawia się próg. Pewność mierzy, jak zdecydowany jest cały rozkład (1 − znormalizowana entropia; w tak/nie większe z prawdopodobieństw), i nie da się jej porównywać między typami pytań.",
+    "collapsed": "Niektóre opcje przycięto do tych samych tokenów, aby zmieściły się w budżecie, więc model nie mógł ich odróżnić. Skróć teksty opcji lub użyj ich mniej."
+  },
+  "routing": {
+    "title": "Kierowanie",
+    "detected": "Wykryte pismo: {{script}} · język: {{language}}",
+    "undecided": "nieokreślony",
+    "scripts": "Udział liter według pisma",
+    "pinned": "Zapytanie wskazało ten checkpoint, więc wykrywanie języka pominięto."
+  },
+  "usage": {
+    "title": "Zużycie i czas",
+    "inputTokens": "tokeny wejściowe (rozliczane)",
+    "server": "czas modelu",
+    "roundTrip": "czas całkowity",
+    "ms": "{{ms}} ms",
+    "help": "Decyzje rozlicza się w tokenach wejściowych. Każde pytanie jest kodowane razem ze stanem, więc każde dodatkowe pytanie o długi stan znów kosztuje ten stan."
+  },
+  "raw": {
+    "request": "JSON zapytania",
+    "response": "JSON odpowiedzi"
+  },
+  "errors": {
+    "retryIn": "Możesz spróbować ponownie za {{seconds}} s.",
+    "retryNow": "Możesz spróbować ponownie.",
+    "rateLimitNote": "Publiczny punkt dostępu przyjmuje 10 zapytań na minutę z jednego adresu. Spróbuj ponownie za minutę.",
+    "validation": {
+      "title": "Serwer odrzucił zapytanie",
+      "help": "Popraw poniższy problem i uruchom ponownie."
+    },
+    "too_large": {
+      "title": "Zapytanie jest za duże",
+      "help": "Przekracza jeden z limitów serwera."
+    },
+    "rate_limited": {
+      "title": "Za dużo zapytań",
+      "help": "Usługa ogranicza, jak często można pytać z tego adresu."
+    },
+    "unavailable": {
+      "title": "Usługa jest zajęta",
+      "help": "Model jest zajęty lub się restartuje."
+    },
+    "not_found": {
+      "title": "Brak dostępnego modelu decyzyjnego",
+      "help": "Usługa nie ma teraz modelu, który mógłby odpowiedzieć."
+    },
+    "server": {
+      "title": "Usługa zawiodła",
+      "help": "Coś poszło nie tak na serwerze. Spróbuj ponownie za chwilę."
+    },
+    "network": {
+      "title": "Brak połączenia z usługą",
+      "help": "Sprawdź połączenie i spróbuj ponownie."
+    },
+    "timeout": {
+      "title": "Upłynął limit czasu",
+      "help": "Odpowiedź nie nadeszła na czas. Spróbuj ponownie za chwilę."
+    },
+    "cancelled": {
+      "title": "Anulowano",
+      "help": "Zapytanie przerwano przed zakończeniem."
+    },
+    "bad_response": {
+      "title": "Nieczytelna odpowiedź",
+      "help": "Usługa odpowiedziała czymś, co nie jest decyzją."
+    }
+  }
+}

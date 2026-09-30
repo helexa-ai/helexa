@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Smėlio dėžė",
+    "lead": "Užduokite sprendimų modeliui tipizuotus klausimus apie bet kokį tekstą ar JSON ir gaukite kalibruotus atsakymus vienu perėjimu — be sugeneruoto teksto.",
+    "docsLink": "Kaip tai veikia",
+    "side": "Rezultatai, pavyzdžiai ir kodas",
+    "tabs": {
+      "results": "Rezultatai",
+      "examples": "Pavyzdžiai",
+      "code": "Kodas"
+    }
+  },
+  "compose": {
+    "label": "Sudaryti užklausą"
+  },
+  "state": {
+    "label": "Būsena",
+    "mode": "Būsenos formatas",
+    "text": "Tekstas",
+    "json": "JSON",
+    "placeholder": "Žinutė, užklausa, dokumentas ar pokalbis, dėl kurio priimamas sprendimas",
+    "help": {
+      "text": "Siunčiama tiksliai taip, kaip parašyta.",
+      "json": "Objektas siunčiamas kaip JSON, raktai – parašyta tvarka. Sąrašas skaitomas kaip pokalbis ir trumpinamas nuo pradžios, kad liktų naujausios replikos."
+    }
+  },
+  "questions": {
+    "label": "Klausimai",
+    "format": "Formatuoti",
+    "help": "JSON objektas, kurio raktai yra klausimų ID. Kiekvienas klausimas turi tipą, nurodymus ir — choice bei score atveju — kriterijus."
+  },
+  "add": {
+    "label": "Pridėti klausimą",
+    "invalidJson": "Pirmiausia pataisykite klausimus: pridėjimas pakeistų tekstą, kuris nėra galiojantis JSON objektas.",
+    "noul": {
+      "title": "Taip ar ne",
+      "desc": "Ar teiginys teisingas? Atsako tikimybe."
+    },
+    "score": {
+      "title": "Vertinimo skalė",
+      "desc": "Vertina pagal surikiuotus lygius. Atsako tikėtinu lygiu."
+    },
+    "choice": {
+      "title": "Pasirinkimas iš variantų",
+      "desc": "Pasirenka vieną iš jūsų pažymėtų variantų."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automatiškai“ parenka checkpoint pagal būsenos kalbą. Pasirinkus konkretų, visos užklausos keliauja į jį, nepriklausomai nuo kalbos.",
+    "auto": "Automatiškai (pagal kalbą)",
+    "english": "Anglų",
+    "multilingual": "Daugiakalbis",
+    "typed-decisions": "Tipizuoti sprendimai"
+  },
+  "run": "Vykdyti",
+  "cancel": "Atšaukti",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Taisytinos problemos",
+    "stateEmpty": "Būsena tuščia.",
+    "stateNull": "Būsena negali būti null.",
+    "stateJson": "Būsena nėra galiojantis JSON: {{detail}} ({{line}} eilutė, {{column}} stulpelis).",
+    "stateTooLong": "Būsena ilgesnė nei {{max}} simbolių.",
+    "questionsJson": "Klausimai nėra galiojantis JSON: {{detail}} ({{line}} eilutė, {{column}} stulpelis).",
+    "questionsNotObject": "Klausimai turi būti JSON objektas, kurio raktai yra klausimų ID.",
+    "noQuestions": "Pridėkite bent vieną klausimą.",
+    "tooManyQuestions": "Ne daugiau kaip {{max}} klausimų vienoje užklausoje.",
+    "tooManyTotal": "Ne daugiau kaip {{max}} variantų visuose klausimuose kartu.",
+    "questionNotObject": "„{{id}}“: klausimas turi būti objektas.",
+    "badType": "„{{id}}“: type turi būti choice, score arba noul.",
+    "noInstructions": "„{{id}}“: trūksta nurodymų.",
+    "labelsOnlyNoul": "„{{id}}“: labels taikomas tik noul klausimams.",
+    "choiceNeedsCriteria": "„{{id}}“: choice klausimui reikia kriterijų — variantų objekto arba žymių sąrašo.",
+    "tooManyOptions": "„{{id}}“: ne daugiau kaip {{max}} variantų.",
+    "labelNotScalar": "„{{id}}“: kiekviena žymė turi būti tekstas, skaičius arba true/false.",
+    "duplicateLabel": "„{{id}}“: žymė {{label}} kartojasi du kartus (1, 1.0 ir true laikomi ta pačia žyme).",
+    "scoreNeedsLevels": "„{{id}}“: score klausimui reikia kriterijų kaip lygių sąrašo, pradedant žemiausiu.",
+    "tooManyLevels": "„{{id}}“: ne daugiau kaip {{max}} lygių.",
+    "nullLevel": "„{{id}}“: lygis negali būti null.",
+    "noulCriteria": "„{{id}}“: noul kriterijai gali aprašyti tik true ir false.",
+    "noulLabels": "„{{id}}“: labels reikia skirtingų tekstų true ir false.",
+    "badBudget": "{{name}} turi būti sveikasis skaičius nuo 1 iki {{max}}.",
+    "server": "„{{id}}“, anot serverio: {{detail}}"
+  },
+  "examples": {
+    "intro": "Pasirinkite pavyzdį, kad įkeltumėte jį į redaktorius. Niekas neišsiunčiama, kol nepaspausite Vykdyti.",
+    "groups": {
+      "lessons": "Pamokos",
+      "useCases": "Naudojimo atvejai",
+      "multilingual": "Daugiakalbiai"
+    },
+    "review": {
+      "title": "Patenkintas ar ne?",
+      "blurb": "Taip/ne klausimai. Žymės pervadina atsakymą, kriterijai nurodo, kas svarbu."
+    },
+    "bugReport": {
+      "title": "Įvertinkite klaidos pranešimą",
+      "blurb": "Surikiuotų lygių skalė. Atsakymas yra tikėtinas lygis, galintis patekti tarp dviejų."
+    },
+    "helpdesk": {
+      "title": "Nukreipkite užklausą pagalbos tarnybai",
+      "blurb": "Aprašyti variantai. Jie dalijasi vienu žetonų biudžetu, todėl ilgi sąrašai vienas kitą spaudžia."
+    },
+    "triage": {
+      "title": "Pagalbos užklausų rūšiavimas",
+      "blurb": "Komanda, skubumas ir grąžinimas — trys klausimai apie vieną žinutę vienoje užklausoje."
+    },
+    "resume": {
+      "title": "Gyvenimo aprašymų atranka",
+      "blurb": "Patirties lygis, reikalaujamas įgūdis ir vadovavimas, perskaityti iš gyvenimo aprašymo."
+    },
+    "guardrails": {
+      "title": "LLM apsaugos",
+      "blurb": "Atpažinkite jailbreak bandymą ir įvertinkite žalą, kol modelis dar neatsakė."
+    },
+    "moderation": {
+      "title": "Turinio moderavimas",
+      "blurb": "Aštri kritika nėra priekabiavimas: atskirkite jas."
+    },
+    "phishing": {
+      "title": "Sukčiavimo el. laiškas",
+      "blurb": "JSON būsena: visas laiškas su siuntėju ir tema."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Rūšiuojama užklausa devanagarių raštu."
+    },
+    "japanese": {
+      "title": "Japonų",
+      "blurb": "Rūšiuojama užklausa japonų kalba."
+    },
+    "arabic": {
+      "title": "Arabų",
+      "blurb": "Rūšiuojama užklausa arabų raštu."
+    },
+    "russian": {
+      "title": "Rusų",
+      "blurb": "Rūšiuojama užklausa kirilica."
+    },
+    "german": {
+      "title": "Vokiečių",
+      "blurb": "Lotyniškas raštas, bet ne anglų kalba: nukreipiama pagal kalbą, ne pagal raštą."
+    }
+  },
+  "share": {
+    "button": "Bendrinti",
+    "copied": "Nuoroda nukopijuota",
+    "tooLong": "Ši užklausa per ilga, kad būtų bendrinama nuoroda. Vietoj to nukopijuokite užklausos JSON.",
+    "inAddressBar": "Nepavyko nukopijuoti automatiškai: nuoroda yra adreso juostoje."
+  },
+  "code": {
+    "language": "Kalba",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Ištaisykite užklausos problemas, kad pamatytumėte ją kaip kodą.",
+    "jev": "Bet kuris TypeSafe Jev klientas veikia be pakeitimų: tiesiog nukreipkite jį čia. Modelio pavadinimas, kurio ši paslauga nežino, pakeičiamas į helexa/one.",
+    "key": "Užklausos be rakto veikia pagal viešąjį limitą. Daugiau — susikurkite API raktą ir nustatykite HELEXA_API_KEY.",
+    "keyLink": "Gauti API raktą"
+  },
+  "copy": "Kopijuoti",
+  "copied": "Nukopijuota",
+  "results": {
+    "empty": "Paleiskite užklausą, kad čia pamatytumėte atsakymus.",
+    "running": "Priimamas sprendimas…",
+    "expectedScore": "Tikėtinas lygis {{score}}",
+    "pTrue": "{{p}} tikimybė, kad tai tiesa",
+    "answerConfidence": "Atsakymo tikrumas",
+    "confidence": "Tikrumas",
+    "confidenceHelp": "Atsakymo tikrumas yra pasirinkto atsakymo tikimybė — kalibruotas skaičius, kuriam nustatoma riba. Tikrumas matuoja, koks ryžtingas yra visas skirstinys (1 − normalizuota entropija; taip/ne atveju didesnė tikimybė), ir jo negalima lyginti tarp klausimų tipų.",
+    "collapsed": "Kai kurie variantai dėl biudžeto sutrumpinti iki tų pačių žetonų, todėl modelis negalėjo jų atskirti. Sutrumpinkite variantų tekstus arba naudokite mažiau variantų."
+  },
+  "routing": {
+    "title": "Nukreipimas",
+    "detected": "Nustatytas raštas: {{script}} · kalba: {{language}}",
+    "undecided": "nenustatyta",
+    "scripts": "Raidžių dalis pagal raštą",
+    "pinned": "Užklausa nurodė šį checkpoint, todėl kalbos nustatymas praleistas."
+  },
+  "usage": {
+    "title": "Sąnaudos ir laikas",
+    "inputTokens": "įvesties žetonai (apmokestinami)",
+    "server": "modelio laikas",
+    "roundTrip": "bendras laikas",
+    "ms": "{{ms}} ms",
+    "help": "Sprendimai apmokestinami įvesties žetonais. Kiekvienas klausimas koduojamas kartu su būsena, todėl kiekvienas papildomas klausimas apie ilgą būseną vėl kainuoja tą būseną."
+  },
+  "raw": {
+    "request": "Užklausos JSON",
+    "response": "Atsakymo JSON"
+  },
+  "errors": {
+    "retryIn": "Bandyti dar kartą galėsite po {{seconds}} s.",
+    "retryNow": "Galite bandyti dar kartą.",
+    "rateLimitNote": "Viešasis galinis taškas priima 10 užklausų per minutę iš vieno adreso. Bandykite dar kartą po minutės.",
+    "validation": {
+      "title": "Serveris atmetė užklausą",
+      "help": "Ištaisykite toliau nurodytą problemą ir paleiskite iš naujo."
+    },
+    "too_large": {
+      "title": "Užklausa per didelė",
+      "help": "Ji viršija vieną iš serverio ribų."
+    },
+    "rate_limited": {
+      "title": "Per daug užklausų",
+      "help": "Paslauga riboja, kaip dažnai šis adresas gali klausti."
+    },
+    "unavailable": {
+      "title": "Paslauga užimta",
+      "help": "Modelis užimtas arba paleidžiamas iš naujo."
+    },
+    "not_found": {
+      "title": "Nėra prieinamo sprendimų modelio",
+      "help": "Šiuo metu paslauga neturi modelio, kuris galėtų atsakyti."
+    },
+    "server": {
+      "title": "Paslaugos klaida",
+      "help": "Serveryje kažkas nutiko. Netrukus bandykite dar kartą."
+    },
+    "network": {
+      "title": "Nepavyksta pasiekti paslaugos",
+      "help": "Patikrinkite ryšį ir bandykite dar kartą."
+    },
+    "timeout": {
+      "title": "Baigėsi užklausos laikas",
+      "help": "Atsakymas negautas laiku. Netrukus bandykite dar kartą."
+    },
+    "cancelled": {
+      "title": "Atšaukta",
+      "help": "Užklausa sustabdyta nepasibaigus."
+    },
+    "bad_response": {
+      "title": "Neįskaitomas atsakymas",
+      "help": "Paslauga atsakė tuo, kas nėra sprendimas."
+    }
+  }
+}

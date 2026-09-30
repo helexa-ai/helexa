@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Uwanja wa majaribio",
+    "lead": "Uliza modeli ya maamuzi maswali yenye aina kuhusu maandishi au JSON yoyote na upate majibu yaliyosawazishwa kwa pitio moja — bila maandishi yanayozalishwa.",
+    "docsLink": "Jinsi inavyofanya kazi",
+    "side": "Matokeo, mifano na msimbo",
+    "tabs": {
+      "results": "Matokeo",
+      "examples": "Mifano",
+      "code": "Msimbo"
+    }
+  },
+  "compose": {
+    "label": "Tunga ombi"
+  },
+  "state": {
+    "label": "Hali",
+    "mode": "Muundo wa hali",
+    "text": "Maandishi",
+    "json": "JSON",
+    "placeholder": "Ujumbe, tiketi, hati au mazungumzo ya kuamulia",
+    "help": {
+      "text": "Hutumwa kama ilivyoandikwa hasa.",
+      "json": "Kitu hutumwa kama JSON, funguo zikiwa kwa mpangilio ulioandikwa. Orodha husomwa kama mazungumzo na hufupishwa kuanzia mwanzo, ili zamu za karibuni zibaki."
+    }
+  },
+  "questions": {
+    "label": "Maswali",
+    "format": "Panga",
+    "help": "Kitu cha JSON chenye vitambulisho vya maswali kama funguo. Kila swali lina aina, maelekezo na — kwa choice na score — vigezo."
+  },
+  "add": {
+    "label": "Ongeza swali",
+    "invalidJson": "Rekebisha maswali kwanza: kuongeza swali kungebadilisha maandishi ambayo si kitu halali cha JSON.",
+    "noul": {
+      "title": "Ndiyo au hapana",
+      "desc": "Je, kauli ni kweli? Hujibu kwa uwezekano."
+    },
+    "score": {
+      "title": "Kipimo cha tathmini",
+      "desc": "Hupima kwa viwango vilivyopangwa. Hujibu kwa kiwango kinachotarajiwa."
+    },
+    "choice": {
+      "title": "Chaguo nyingi",
+      "desc": "Huchagua mojawapo ya chaguo zako zenye lebo."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Kiotomatiki” huchagua checkpoint kulingana na lugha ya hali. Ukichagua moja, maombi yote huenda kwake, bila kujali lugha.",
+    "auto": "Kiotomatiki (kwa lugha)",
+    "english": "Kiingereza",
+    "multilingual": "Lugha nyingi",
+    "typed-decisions": "Maamuzi yenye aina"
+  },
+  "run": "Endesha",
+  "cancel": "Ghairi",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Matatizo ya kurekebisha",
+    "stateEmpty": "Hali ni tupu.",
+    "stateNull": "Hali haiwezi kuwa null.",
+    "stateJson": "Hali si JSON halali: {{detail}} (mstari {{line}}, safu {{column}}).",
+    "stateTooLong": "Hali ni ndefu kuliko herufi {{max}}.",
+    "questionsJson": "Maswali si JSON halali: {{detail}} (mstari {{line}}, safu {{column}}).",
+    "questionsNotObject": "Maswali lazima yawe kitu cha JSON chenye vitambulisho vya maswali kama funguo.",
+    "noQuestions": "Ongeza angalau swali moja.",
+    "tooManyQuestions": "Maswali {{max}} zaidi kwa kila ombi.",
+    "tooManyTotal": "Chaguo {{max}} zaidi kwa jumla katika maswali yote.",
+    "questionNotObject": "“{{id}}”: swali lazima liwe kitu.",
+    "badType": "“{{id}}”: type lazima iwe choice, score au noul.",
+    "noInstructions": "“{{id}}”: maelekezo hayapo.",
+    "labelsOnlyNoul": "“{{id}}”: labels inatumika kwa maswali ya noul pekee.",
+    "choiceNeedsCriteria": "“{{id}}”: swali la choice linahitaji vigezo — kitu cha chaguo au orodha ya lebo.",
+    "tooManyOptions": "“{{id}}”: chaguo {{max}} zaidi.",
+    "labelNotScalar": "“{{id}}”: kila lebo lazima iwe maandishi, nambari au true/false.",
+    "duplicateLabel": "“{{id}}”: lebo {{label}} inaonekana mara mbili (1, 1.0 na true huhesabiwa kama lebo moja).",
+    "scoreNeedsLevels": "“{{id}}”: swali la score linahitaji vigezo kama orodha ya viwango, kuanzia cha chini kabisa.",
+    "tooManyLevels": "“{{id}}”: viwango {{max}} zaidi.",
+    "nullLevel": "“{{id}}”: kiwango hakiwezi kuwa null.",
+    "noulCriteria": "“{{id}}”: vigezo vya noul vinaweza kueleza true na false pekee.",
+    "noulLabels": "“{{id}}”: labels inahitaji maandishi tofauti kwa true na false.",
+    "badBudget": "{{name}} lazima iwe nambari kamili kutoka 1 hadi {{max}}.",
+    "server": "“{{id}}”, kwa mujibu wa seva: {{detail}}"
+  },
+  "examples": {
+    "intro": "Chagua mfano ili kuupakia kwenye vihariri. Hakuna kinachotumwa hadi ubonyeze Endesha.",
+    "groups": {
+      "lessons": "Masomo",
+      "useCases": "Matumizi",
+      "multilingual": "Lugha nyingi"
+    },
+    "review": {
+      "title": "Ameridhika au la?",
+      "blurb": "Maswali ya ndiyo/hapana. Lebo hubadilisha jina la jibu, vigezo husema kinachohesabika."
+    },
+    "bugReport": {
+      "title": "Tathmini ripoti ya hitilafu",
+      "blurb": "Kipimo cha viwango vilivyopangwa. Jibu ni kiwango kinachotarajiwa, kinachoweza kuangukia kati ya viwili."
+    },
+    "helpdesk": {
+      "title": "Elekeza ombi kwa dawati la msaada",
+      "blurb": "Chaguo zenye maelezo. Zinashiriki bajeti moja ya tokeni, hivyo orodha ndefu hubanana."
+    },
+    "triage": {
+      "title": "Upangaji wa tiketi za usaidizi",
+      "blurb": "Timu, uharaka na marejesho — maswali matatu kuhusu ujumbe mmoja katika ombi moja."
+    },
+    "resume": {
+      "title": "Uchujaji wa wasifu",
+      "blurb": "Kiwango cha uzoefu, ujuzi unaohitajika na uongozi, vilivyosomwa kutoka kwenye wasifu."
+    },
+    "guardrails": {
+      "title": "Kinga za LLM",
+      "blurb": "Tambua jaribio la jailbreak na upime madhara kabla modeli haijajibu."
+    },
+    "moderation": {
+      "title": "Udhibiti wa maudhui",
+      "blurb": "Ukosoaji mkali si unyanyasaji: vitofautishe."
+    },
+    "phishing": {
+      "title": "Barua pepe ya ulaghai",
+      "blurb": "Hali ya JSON: barua pepe nzima, pamoja na mtumaji na kichwa."
+    },
+    "hindi": {
+      "title": "Kihindi",
+      "blurb": "Tiketi ya upangaji kwa hati ya Devanagari."
+    },
+    "japanese": {
+      "title": "Kijapani",
+      "blurb": "Tiketi ya upangaji kwa Kijapani."
+    },
+    "arabic": {
+      "title": "Kiarabu",
+      "blurb": "Tiketi ya upangaji kwa hati ya Kiarabu."
+    },
+    "russian": {
+      "title": "Kirusi",
+      "blurb": "Tiketi ya upangaji kwa hati ya Kisiriliki."
+    },
+    "german": {
+      "title": "Kijerumani",
+      "blurb": "Hati ya Kilatini, lakini si Kiingereza: huelekezwa kwa lugha, si kwa hati."
+    }
+  },
+  "share": {
+    "button": "Shiriki",
+    "copied": "Kiungo kimenakiliwa",
+    "tooLong": "Ombi hili ni refu mno kushirikiwa kama kiungo. Badala yake nakili JSON ya ombi.",
+    "inAddressBar": "Haikuweza kunakili kiotomatiki: kiungo kiko kwenye upau wa anwani."
+  },
+  "code": {
+    "language": "Lugha",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK ya laya",
+    "fixFirst": "Rekebisha matatizo ya ombi ili kuliona kama msimbo.",
+    "jev": "Mteja yeyote wa TypeSafe Jev hufanya kazi bila mabadiliko: mwelekeze hapa. Jina la modeli ambalo huduma hii haijui hurudi kwenye helexa/one.",
+    "key": "Maombi bila ufunguo hufanya kazi ndani ya kikomo cha umma. Kwa zaidi, unda ufunguo wa API na uweke HELEXA_API_KEY.",
+    "keyLink": "Pata ufunguo wa API"
+  },
+  "copy": "Nakili",
+  "copied": "Imenakiliwa",
+  "results": {
+    "empty": "Endesha ombi ili kuona majibu hapa.",
+    "running": "Inaamua…",
+    "expectedScore": "Kiwango kinachotarajiwa {{score}}",
+    "pTrue": "Uwezekano wa {{p}} kuwa kweli",
+    "answerConfidence": "Uhakika wa jibu",
+    "confidence": "Uhakika",
+    "confidenceHelp": "Uhakika wa jibu ni uwezekano wa jibu lililochaguliwa — nambari iliyosawazishwa ya kuwekea kizingiti. Uhakika hupima jinsi mgawanyo mzima ulivyo thabiti (1 − entropia iliyosawazishwa; kwa ndiyo/hapana, uwezekano mkubwa zaidi) na hauwezi kulinganishwa kati ya aina za maswali.",
+    "collapsed": "Baadhi ya chaguo zilifupishwa hadi tokeni zilezile ili kutoshea kwenye bajeti, hivyo modeli haikuweza kuzitofautisha. Fupisha maandishi ya chaguo au tumia chache."
+  },
+  "routing": {
+    "title": "Uelekezaji",
+    "detected": "Hati iliyogunduliwa: {{script}} · lugha: {{language}}",
+    "undecided": "haijaamuliwa",
+    "scripts": "Sehemu ya herufi kwa kila hati",
+    "pinned": "Ombi lilitaja checkpoint hii, hivyo ugunduzi wa lugha uliachwa."
+  },
+  "usage": {
+    "title": "Matumizi na muda",
+    "inputTokens": "tokeni za ingizo (zinatozwa)",
+    "server": "muda wa modeli",
+    "roundTrip": "muda wote",
+    "ms": "{{ms}} ms",
+    "help": "Maamuzi hutozwa kwa tokeni za ingizo. Kila swali husimbwa pamoja na hali, hivyo kila swali la ziada kuhusu hali ndefu hugharimu hali hiyo tena."
+  },
+  "raw": {
+    "request": "JSON ya ombi",
+    "response": "JSON ya jibu"
+  },
+  "errors": {
+    "retryIn": "Unaweza kujaribu tena baada ya sekunde {{seconds}}.",
+    "retryNow": "Unaweza kujaribu tena sasa.",
+    "rateLimitNote": "Sehemu ya umma hupokea maombi 10 kwa dakika kutoka kila anwani. Jaribu tena baada ya dakika moja.",
+    "validation": {
+      "title": "Seva imekataa ombi",
+      "help": "Rekebisha tatizo lililo hapa chini na uendeshe tena."
+    },
+    "too_large": {
+      "title": "Ombi ni kubwa mno",
+      "help": "Linazidi mojawapo ya vikomo vya seva."
+    },
+    "rate_limited": {
+      "title": "Maombi mengi mno",
+      "help": "Huduma hudhibiti mara ngapi anwani hii inaweza kuuliza."
+    },
+    "unavailable": {
+      "title": "Huduma ina shughuli",
+      "help": "Modeli ina shughuli au inaanza upya."
+    },
+    "not_found": {
+      "title": "Hakuna modeli ya maamuzi inayopatikana",
+      "help": "Kwa sasa huduma haina modeli inayoweza kujibu."
+    },
+    "server": {
+      "title": "Huduma imeshindwa",
+      "help": "Kuna hitilafu kwenye seva. Jaribu tena baada ya muda mfupi."
+    },
+    "network": {
+      "title": "Huduma haifikiki",
+      "help": "Angalia muunganisho wako kisha ujaribu tena."
+    },
+    "timeout": {
+      "title": "Muda wa ombi umeisha",
+      "help": "Jibu halikufika kwa wakati. Jaribu tena baada ya muda mfupi."
+    },
+    "cancelled": {
+      "title": "Imeghairiwa",
+      "help": "Ombi lilisimamishwa kabla ya kukamilika."
+    },
+    "bad_response": {
+      "title": "Jibu lisilosomeka",
+      "help": "Huduma ilijibu kwa kitu ambacho si uamuzi."
+    }
+  }
+}

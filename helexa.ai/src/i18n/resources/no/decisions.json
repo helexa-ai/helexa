@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Lekeplass",
+    "lead": "Still en beslutningsmodell typede spørsmål om hvilken som helst tekst eller JSON, og få kalibrerte svar i én enkelt runde — uten generert tekst.",
+    "docsLink": "Slik fungerer det",
+    "side": "Resultater, eksempler og kode",
+    "tabs": {
+      "results": "Resultater",
+      "examples": "Eksempler",
+      "code": "Kode"
+    }
+  },
+  "compose": {
+    "label": "Skriv en forespørsel"
+  },
+  "state": {
+    "label": "Tilstand",
+    "mode": "Tilstandens format",
+    "text": "Tekst",
+    "json": "JSON",
+    "placeholder": "Meldingen, saken, dokumentet eller samtalen beslutningen gjelder",
+    "help": {
+      "text": "Sendes nøyaktig slik den er skrevet.",
+      "json": "Et objekt sendes som JSON, med nøklene i skrevet rekkefølge. En liste leses som en samtale og kortes ned fra starten, slik at de nyeste replikkene blir stående."
+    }
+  },
+  "questions": {
+    "label": "Spørsmål",
+    "format": "Formater",
+    "help": "Et JSON-objekt med spørsmåls-ID-er som nøkler. Hvert spørsmål har en type, instruksjoner og — for choice og score — kriterier."
+  },
+  "add": {
+    "label": "Legg til spørsmål",
+    "invalidJson": "Rett spørsmålene først: å legge til ett ville erstatte tekst som ikke er et gyldig JSON-objekt.",
+    "noul": {
+      "title": "Ja eller nei",
+      "desc": "Stemmer en påstand? Svarer med en sannsynlighet."
+    },
+    "score": {
+      "title": "Vurderingsskala",
+      "desc": "Vurderer etter ordnede nivåer. Svarer med forventet nivå."
+    },
+    "choice": {
+      "title": "Flervalg",
+      "desc": "Velger ett av dine merkede alternativer."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "«Automatisk» velger checkpoint etter tilstandens språk. Velger du ett, går alle forespørsler dit, uansett språk.",
+    "auto": "Automatisk (etter språk)",
+    "english": "Engelsk",
+    "multilingual": "Flerspråklig",
+    "typed-decisions": "Typede beslutninger"
+  },
+  "run": "Kjør",
+  "cancel": "Avbryt",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Problemer som må rettes",
+    "stateEmpty": "Tilstanden er tom.",
+    "stateNull": "Tilstanden kan ikke være null.",
+    "stateJson": "Tilstanden er ikke gyldig JSON: {{detail}} (linje {{line}}, kolonne {{column}}).",
+    "stateTooLong": "Tilstanden er lengre enn {{max}} tegn.",
+    "questionsJson": "Spørsmålene er ikke gyldig JSON: {{detail}} (linje {{line}}, kolonne {{column}}).",
+    "questionsNotObject": "Spørsmålene må være et JSON-objekt med spørsmåls-ID-er som nøkler.",
+    "noQuestions": "Legg til minst ett spørsmål.",
+    "tooManyQuestions": "Høyst {{max}} spørsmål per forespørsel.",
+    "tooManyTotal": "Høyst {{max}} alternativer totalt i alle spørsmål.",
+    "questionNotObject": "«{{id}}»: et spørsmål må være et objekt.",
+    "badType": "«{{id}}»: type må være choice, score eller noul.",
+    "noInstructions": "«{{id}}»: instruksjoner mangler.",
+    "labelsOnlyNoul": "«{{id}}»: labels gjelder bare noul-spørsmål.",
+    "choiceNeedsCriteria": "«{{id}}»: et choice-spørsmål trenger kriterier — et objekt med alternativer eller en liste med etiketter.",
+    "tooManyOptions": "«{{id}}»: høyst {{max}} alternativer.",
+    "labelNotScalar": "«{{id}}»: hver etikett må være tekst, et tall eller true/false.",
+    "duplicateLabel": "«{{id}}»: etiketten {{label}} forekommer to ganger (1, 1.0 og true regnes som samme etikett).",
+    "scoreNeedsLevels": "«{{id}}»: et score-spørsmål trenger kriterier som en liste med nivåer, lavest først.",
+    "tooManyLevels": "«{{id}}»: høyst {{max}} nivåer.",
+    "nullLevel": "«{{id}}»: et nivå kan ikke være null.",
+    "noulCriteria": "«{{id}}»: noul-kriterier kan bare beskrive true og false.",
+    "noulLabels": "«{{id}}»: labels trenger ulike tekster for true og false.",
+    "badBudget": "{{name}} må være et heltall fra 1 til {{max}}.",
+    "server": "«{{id}}», ifølge serveren: {{detail}}"
+  },
+  "examples": {
+    "intro": "Velg et eksempel for å laste det inn i redigeringsfeltene. Ingenting sendes før du trykker Kjør.",
+    "groups": {
+      "lessons": "Leksjoner",
+      "useCases": "Bruksområder",
+      "multilingual": "Flerspråklig"
+    },
+    "review": {
+      "title": "Fornøyd eller ikke?",
+      "blurb": "Ja/nei-spørsmål. Etiketter gir svaret nytt navn, kriterier sier hva som teller."
+    },
+    "bugReport": {
+      "title": "Vurder en feilrapport",
+      "blurb": "En skala med ordnede nivåer. Svaret er forventet nivå, som kan havne mellom to."
+    },
+    "helpdesk": {
+      "title": "Send en brukerstøttesak videre",
+      "blurb": "Beskrevne alternativer. De deler ett tokenbudsjett, så lange lister trenger hverandre ut."
+    },
+    "triage": {
+      "title": "Sortering av støttesaker",
+      "blurb": "Team, hastegrad og refusjon — tre spørsmål om én melding i én forespørsel."
+    },
+    "resume": {
+      "title": "Gjennomgang av CV-er",
+      "blurb": "Senioritet, en etterspurt ferdighet og lederskap, lest ut av en CV."
+    },
+    "guardrails": {
+      "title": "Rekkverk for LLM",
+      "blurb": "Oppdag et jailbreak-forsøk og vurder skaden før en modell svarer."
+    },
+    "moderation": {
+      "title": "Innholdsmoderering",
+      "blurb": "Hard kritikk er ikke trakassering: skill dem fra hverandre."
+    },
+    "phishing": {
+      "title": "Phishing-e-post",
+      "blurb": "En JSON-tilstand: hele e-posten, med avsender og emne."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Sorteringssaken skrevet med devanagari."
+    },
+    "japanese": {
+      "title": "Japansk",
+      "blurb": "Sorteringssaken på japansk."
+    },
+    "arabic": {
+      "title": "Arabisk",
+      "blurb": "Sorteringssaken med arabisk skrift."
+    },
+    "russian": {
+      "title": "Russisk",
+      "blurb": "Sorteringssaken med kyrillisk skrift."
+    },
+    "german": {
+      "title": "Tysk",
+      "blurb": "Latinsk skrift, men ikke engelsk: rutes etter språk, ikke skrift."
+    }
+  },
+  "share": {
+    "button": "Del",
+    "copied": "Lenken er kopiert",
+    "tooLong": "Denne forespørselen er for lang til å deles som lenke. Kopier forespørselens JSON i stedet.",
+    "inAddressBar": "Kunne ikke kopiere automatisk: lenken står i adressefeltet."
+  },
+  "code": {
+    "language": "Språk",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya-SDK",
+    "fixFirst": "Rett problemene i forespørselen for å se den som kode.",
+    "jev": "Alle TypeSafe Jev-klienter virker uendret: pek dem hit. Et modellnavn tjenesten ikke kjenner, faller tilbake til helexa/one.",
+    "key": "Forespørsler uten nøkkel virker innenfor den offentlige grensen. For mer oppretter du en API-nøkkel og setter HELEXA_API_KEY.",
+    "keyLink": "Skaff en API-nøkkel"
+  },
+  "copy": "Kopier",
+  "copied": "Kopiert",
+  "results": {
+    "empty": "Kjør en forespørsel for å se svarene her.",
+    "running": "Beslutter…",
+    "expectedScore": "Forventet nivå {{score}}",
+    "pTrue": "{{p}} sjanse for at det stemmer",
+    "answerConfidence": "Svarsikkerhet",
+    "confidence": "Sikkerhet",
+    "confidenceHelp": "Svarsikkerheten er sannsynligheten for det valgte svaret — det kalibrerte tallet å sette en terskel på. Sikkerheten måler hvor tydelig hele fordelingen er (1 − normalisert entropi; for ja/nei den største sannsynligheten) og kan ikke sammenlignes mellom spørsmålstyper.",
+    "collapsed": "Noen alternativer ble kortet ned til de samme tokenene for å få plass i budsjettet, så modellen kunne ikke skille dem. Kort ned alternativtekstene eller bruk færre."
+  },
+  "routing": {
+    "title": "Ruting",
+    "detected": "Oppdaget skrift: {{script}} · språk: {{language}}",
+    "undecided": "ubestemt",
+    "scripts": "Andel bokstaver per skrift",
+    "pinned": "Forespørselen oppga denne checkpointen, så språkgjenkjenningen ble hoppet over."
+  },
+  "usage": {
+    "title": "Forbruk og tid",
+    "inputTokens": "inndatatokener (faktureres)",
+    "server": "modelltid",
+    "roundTrip": "total tid",
+    "ms": "{{ms}} ms",
+    "help": "Beslutninger faktureres i inndatatokener. Hvert spørsmål kodes sammen med tilstanden, så hvert ekstra spørsmål om en lang tilstand koster tilstanden på nytt."
+  },
+  "raw": {
+    "request": "Forespørselens JSON",
+    "response": "Svarets JSON"
+  },
+  "errors": {
+    "retryIn": "Du kan prøve igjen om {{seconds}} s.",
+    "retryNow": "Du kan prøve igjen nå.",
+    "rateLimitNote": "Det offentlige endepunktet tar imot 10 forespørsler i minuttet per adresse. Prøv igjen om et minutt.",
+    "validation": {
+      "title": "Serveren avviste forespørselen",
+      "help": "Rett problemet nedenfor og kjør på nytt."
+    },
+    "too_large": {
+      "title": "Forespørselen er for stor",
+      "help": "Den overskrider en av serverens grenser."
+    },
+    "rate_limited": {
+      "title": "For mange forespørsler",
+      "help": "Tjenesten begrenser hvor ofte denne adressen kan spørre."
+    },
+    "unavailable": {
+      "title": "Tjenesten er opptatt",
+      "help": "Modellen er opptatt eller starter på nytt."
+    },
+    "not_found": {
+      "title": "Ingen beslutningsmodell tilgjengelig",
+      "help": "Tjenesten har for øyeblikket ingen modell som kan svare."
+    },
+    "server": {
+      "title": "Tjenesten feilet",
+      "help": "Noe gikk galt på serveren. Prøv igjen om litt."
+    },
+    "network": {
+      "title": "Får ikke kontakt med tjenesten",
+      "help": "Sjekk tilkoblingen og prøv igjen."
+    },
+    "timeout": {
+      "title": "Forespørselen fikk tidsavbrudd",
+      "help": "Svaret kom ikke i tide. Prøv igjen om litt."
+    },
+    "cancelled": {
+      "title": "Avbrutt",
+      "help": "Forespørselen ble stoppet før den var ferdig."
+    },
+    "bad_response": {
+      "title": "Uleselig svar",
+      "help": "Tjenesten svarte med noe som ikke er en beslutning."
+    }
+  }
+}

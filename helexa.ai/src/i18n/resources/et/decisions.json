@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Mänguväljak",
+    "lead": "Esitage otsustusmudelile tüübitud küsimusi mis tahes teksti või JSON-i kohta ja saage kalibreeritud vastused ühe läbimisega — ilma genereeritud tekstita.",
+    "docsLink": "Kuidas see töötab",
+    "side": "Tulemused, näited ja kood",
+    "tabs": {
+      "results": "Tulemused",
+      "examples": "Näited",
+      "code": "Kood"
+    }
+  },
+  "compose": {
+    "label": "Koosta päring"
+  },
+  "state": {
+    "label": "Olek",
+    "mode": "Oleku vorming",
+    "text": "Tekst",
+    "json": "JSON",
+    "placeholder": "Sõnum, pilet, dokument või vestlus, mille kohta otsustatakse",
+    "help": {
+      "text": "Saadetakse täpselt nii, nagu see on kirjutatud.",
+      "json": "Objekt saadetakse JSON-ina, võtmed kirjutatud järjekorras. Loend loetakse vestlusena ja seda lühendatakse algusest, et uusimad repliigid alles jääksid."
+    }
+  },
+  "questions": {
+    "label": "Küsimused",
+    "format": "Vorminda",
+    "help": "JSON-objekt, mille võtmed on küsimuste ID-d. Igal küsimusel on tüüp, juhised ja — choice ja score puhul — kriteeriumid."
+  },
+  "add": {
+    "label": "Lisa küsimus",
+    "invalidJson": "Parandage esmalt küsimused: lisamine asendaks teksti, mis pole kehtiv JSON-objekt.",
+    "noul": {
+      "title": "Jah või ei",
+      "desc": "Kas väide on tõene? Vastab tõenäosusega."
+    },
+    "score": {
+      "title": "Hindamisskaala",
+      "desc": "Hindab järjestatud tasemete järgi. Vastab oodatava tasemega."
+    },
+    "choice": {
+      "title": "Valikvastus",
+      "desc": "Valib ühe teie sildistatud valikutest."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automaatne” valib checkpointi oleku keele järgi. Kui valite ühe, lähevad kõik päringud sinna, olenemata keelest.",
+    "auto": "Automaatne (keele järgi)",
+    "english": "Inglise",
+    "multilingual": "Mitmekeelne",
+    "typed-decisions": "Tüübitud otsused"
+  },
+  "run": "Käivita",
+  "cancel": "Tühista",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Parandamist vajavad probleemid",
+    "stateEmpty": "Olek on tühi.",
+    "stateNull": "Olek ei saa olla null.",
+    "stateJson": "Olek pole kehtiv JSON: {{detail}} (rida {{line}}, veerg {{column}}).",
+    "stateTooLong": "Olek on pikem kui {{max}} märki.",
+    "questionsJson": "Küsimused pole kehtiv JSON: {{detail}} (rida {{line}}, veerg {{column}}).",
+    "questionsNotObject": "Küsimused peavad olema JSON-objekt, mille võtmed on küsimuste ID-d.",
+    "noQuestions": "Lisage vähemalt üks küsimus.",
+    "tooManyQuestions": "Kuni {{max}} küsimust päringu kohta.",
+    "tooManyTotal": "Kõigis küsimustes kokku kuni {{max}} valikut.",
+    "questionNotObject": "„{{id}}”: küsimus peab olema objekt.",
+    "badType": "„{{id}}”: type peab olema choice, score või noul.",
+    "noInstructions": "„{{id}}”: juhised puuduvad.",
+    "labelsOnlyNoul": "„{{id}}”: labels kehtib ainult noul-küsimustele.",
+    "choiceNeedsCriteria": "„{{id}}”: choice-küsimus vajab kriteeriume — valikute objekti või siltide loendit.",
+    "tooManyOptions": "„{{id}}”: kuni {{max}} valikut.",
+    "labelNotScalar": "„{{id}}”: iga silt peab olema tekst, arv või true/false.",
+    "duplicateLabel": "„{{id}}”: silt {{label}} esineb kaks korda (1, 1.0 ja true loetakse samaks sildiks).",
+    "scoreNeedsLevels": "„{{id}}”: score-küsimus vajab kriteeriume tasemete loendina, madalaimast alates.",
+    "tooManyLevels": "„{{id}}”: kuni {{max}} taset.",
+    "nullLevel": "„{{id}}”: tase ei saa olla null.",
+    "noulCriteria": "„{{id}}”: noul-kriteeriumid saavad kirjeldada ainult väärtusi true ja false.",
+    "noulLabels": "„{{id}}”: labels vajab väärtustele true ja false erinevaid tekste.",
+    "badBudget": "{{name}} peab olema täisarv vahemikus 1 kuni {{max}}.",
+    "server": "„{{id}}”, serveri sõnul: {{detail}}"
+  },
+  "examples": {
+    "intro": "Valige näide, et see redaktoritesse laadida. Midagi ei saadeta enne, kui vajutate Käivita.",
+    "groups": {
+      "lessons": "Õppetunnid",
+      "useCases": "Kasutusjuhud",
+      "multilingual": "Mitmekeelne"
+    },
+    "review": {
+      "title": "Rahul või mitte?",
+      "blurb": "Jah/ei-küsimused. Sildid nimetavad vastuse ümber, kriteeriumid ütlevad, mis loeb."
+    },
+    "bugReport": {
+      "title": "Hinda veateadet",
+      "blurb": "Järjestatud tasemete skaala. Vastus on oodatav tase, mis võib jääda kahe vahele."
+    },
+    "helpdesk": {
+      "title": "Suuna kasutajatoe päring",
+      "blurb": "Kirjeldatud valikud. Neil on ühine tokenieelarve, nii et pikad loendid tõrjuvad üksteist."
+    },
+    "triage": {
+      "title": "Tugipiletite sorteerimine",
+      "blurb": "Meeskond, kiireloomulisus ja tagasimakse — kolm küsimust ühe sõnumi kohta ühes päringus."
+    },
+    "resume": {
+      "title": "CV-de sõelumine",
+      "blurb": "Staaž, nõutud oskus ja juhtimiskogemus, loetud CV-st."
+    },
+    "guardrails": {
+      "title": "LLM-i kaitsepiirded",
+      "blurb": "Tuvasta jailbreak-katse ja hinda kahju enne, kui mudel vastab."
+    },
+    "moderation": {
+      "title": "Sisu modereerimine",
+      "blurb": "Terav kriitika pole ahistamine: eristage neid."
+    },
+    "phishing": {
+      "title": "Andmepüügikiri",
+      "blurb": "JSON-olek: kogu e-kiri koos saatja ja teemaga."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Sorteerimispilet devanaagari kirjas."
+    },
+    "japanese": {
+      "title": "Jaapani",
+      "blurb": "Sorteerimispilet jaapani keeles."
+    },
+    "arabic": {
+      "title": "Araabia",
+      "blurb": "Sorteerimispilet araabia kirjas."
+    },
+    "russian": {
+      "title": "Vene",
+      "blurb": "Sorteerimispilet kirillitsas."
+    },
+    "german": {
+      "title": "Saksa",
+      "blurb": "Ladina kiri, kuid mitte inglise keel: suunatakse keele, mitte kirja järgi."
+    }
+  },
+  "share": {
+    "button": "Jaga",
+    "copied": "Link kopeeritud",
+    "tooLong": "See päring on lingina jagamiseks liiga pikk. Kopeerige selle asemel päringu JSON.",
+    "inAddressBar": "Automaatne kopeerimine ebaõnnestus: link on aadressiribal."
+  },
+  "code": {
+    "language": "Keel",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Parandage päringu probleemid, et näha seda koodina.",
+    "jev": "Iga TypeSafe Jev klient töötab muutmata kujul: suunake see lihtsalt siia. Mudelinimi, mida see teenus ei tunne, langeb tagasi väärtusele helexa/one.",
+    "key": "Võtmeta päringud töötavad avaliku piirangu piires. Rohkemaks looge API-võti ja määrake HELEXA_API_KEY.",
+    "keyLink": "Hankige API-võti"
+  },
+  "copy": "Kopeeri",
+  "copied": "Kopeeritud",
+  "results": {
+    "empty": "Käivitage päring, et vastuseid siin näha.",
+    "running": "Otsustatakse…",
+    "expectedScore": "Oodatav tase {{score}}",
+    "pTrue": "{{p}} tõenäosus, et see on tõsi",
+    "answerConfidence": "Vastuse kindlus",
+    "confidence": "Kindlus",
+    "confidenceHelp": "Vastuse kindlus on valitud vastuse tõenäosus — kalibreeritud arv, millele lävi seada. Kindlus mõõdab, kui otsustav on kogu jaotus (1 − normaliseeritud entroopia; jah/ei puhul suurem tõenäosus), ja seda ei saa küsimuste tüüpide vahel võrrelda.",
+    "collapsed": "Mõned valikud lühendati eelarvesse mahtumiseks samadeks tokeniteks, nii et mudel ei suutnud neid eristada. Lühendage valikute tekste või kasutage vähem valikuid."
+  },
+  "routing": {
+    "title": "Suunamine",
+    "detected": "Tuvastatud kiri: {{script}} · keel: {{language}}",
+    "undecided": "määramata",
+    "scripts": "Tähtede osakaal kirjasüsteemiti",
+    "pinned": "Päring nimetas selle checkpointi, seega jäeti keeletuvastus vahele."
+  },
+  "usage": {
+    "title": "Kasutus ja aeg",
+    "inputTokens": "sisendtokenit (arveldatakse)",
+    "server": "mudeli aeg",
+    "roundTrip": "koguaeg",
+    "ms": "{{ms}} ms",
+    "help": "Otsuseid arveldatakse sisendtokenites. Iga küsimus kodeeritakse koos olekuga, nii et iga lisaküsimus pika oleku kohta maksab selle oleku uuesti."
+  },
+  "raw": {
+    "request": "Päringu JSON",
+    "response": "Vastuse JSON"
+  },
+  "errors": {
+    "retryIn": "Saate uuesti proovida {{seconds}} s pärast.",
+    "retryNow": "Saate nüüd uuesti proovida.",
+    "rateLimitNote": "Avalik lõpp-punkt võtab ühelt aadressilt vastu 10 päringut minutis. Proovige minuti pärast uuesti.",
+    "validation": {
+      "title": "Server lükkas päringu tagasi",
+      "help": "Parandage allolev probleem ja käivitage uuesti."
+    },
+    "too_large": {
+      "title": "Päring on liiga suur",
+      "help": "See ületab ühe serveri piirangutest."
+    },
+    "rate_limited": {
+      "title": "Liiga palju päringuid",
+      "help": "Teenus piirab, kui tihti sellelt aadressilt küsida saab."
+    },
+    "unavailable": {
+      "title": "Teenus on hõivatud",
+      "help": "Mudel on hõivatud või taaskäivitub."
+    },
+    "not_found": {
+      "title": "Otsustusmudelit pole saadaval",
+      "help": "Teenusel pole praegu mudelit, mis saaks vastata."
+    },
+    "server": {
+      "title": "Teenus ebaõnnestus",
+      "help": "Serveris läks midagi valesti. Proovige varsti uuesti."
+    },
+    "network": {
+      "title": "Teenusega ei saa ühendust",
+      "help": "Kontrollige ühendust ja proovige uuesti."
+    },
+    "timeout": {
+      "title": "Päring aegus",
+      "help": "Vastus ei saabunud õigel ajal. Proovige varsti uuesti."
+    },
+    "cancelled": {
+      "title": "Tühistatud",
+      "help": "Päring peatati enne lõpuleviimist."
+    },
+    "bad_response": {
+      "title": "Loetamatu vastus",
+      "help": "Teenus vastas millegagi, mis pole otsus."
+    }
+  }
+}

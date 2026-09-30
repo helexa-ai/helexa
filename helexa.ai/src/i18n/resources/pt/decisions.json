@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Playground",
+    "lead": "Faça a um modelo de decisão perguntas tipadas sobre qualquer texto ou JSON e obtenha respostas calibradas numa só passagem — sem texto gerado.",
+    "docsLink": "Como funciona",
+    "side": "Resultados, exemplos e código",
+    "tabs": {
+      "results": "Resultados",
+      "examples": "Exemplos",
+      "code": "Código"
+    }
+  },
+  "compose": {
+    "label": "Compor um pedido"
+  },
+  "state": {
+    "label": "Estado",
+    "mode": "Formato do estado",
+    "text": "Texto",
+    "json": "JSON",
+    "placeholder": "A mensagem, o ticket, o documento ou a conversa sobre a qual decidir",
+    "help": {
+      "text": "Enviado exatamente como está escrito.",
+      "json": "Um objeto é enviado como JSON, com as chaves pela ordem escrita. Uma lista é lida como uma conversa e cortada a partir do início, para que as intervenções mais recentes se mantenham."
+    }
+  },
+  "questions": {
+    "label": "Perguntas",
+    "format": "Formatar",
+    "help": "Um objeto JSON indexado pelo id da pergunta. Cada pergunta tem um tipo, instruções e — em choice e score — critérios."
+  },
+  "add": {
+    "label": "Adicionar uma pergunta",
+    "invalidJson": "Corrija primeiro as perguntas: adicionar uma substituiria texto que não é um objeto JSON válido.",
+    "noul": {
+      "title": "Sim ou não",
+      "desc": "Uma afirmação é verdadeira? Responde com uma probabilidade."
+    },
+    "score": {
+      "title": "Rubrica",
+      "desc": "Avalia segundo níveis ordenados. Responde com o nível esperado."
+    },
+    "choice": {
+      "title": "Escolha múltipla",
+      "desc": "Escolhe uma das suas opções rotuladas."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "«Automático» escolhe o checkpoint pela língua do estado. Se escolher um, todos os pedidos vão para ele, seja qual for a língua.",
+    "auto": "Automático (pela língua)",
+    "english": "Inglês",
+    "multilingual": "Multilingue",
+    "typed-decisions": "Decisões tipadas"
+  },
+  "run": "Executar",
+  "cancel": "Cancelar",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Problemas a corrigir",
+    "stateEmpty": "O estado está vazio.",
+    "stateNull": "O estado não pode ser null.",
+    "stateJson": "O estado não é JSON válido: {{detail}} (linha {{line}}, coluna {{column}}).",
+    "stateTooLong": "O estado tem mais de {{max}} caracteres.",
+    "questionsJson": "As perguntas não são JSON válido: {{detail}} (linha {{line}}, coluna {{column}}).",
+    "questionsNotObject": "As perguntas têm de ser um objeto JSON indexado pelo id da pergunta.",
+    "noQuestions": "Adicione pelo menos uma pergunta.",
+    "tooManyQuestions": "No máximo {{max}} perguntas por pedido.",
+    "tooManyTotal": "No máximo {{max}} opções no conjunto das perguntas.",
+    "questionNotObject": "«{{id}}»: uma pergunta tem de ser um objeto.",
+    "badType": "«{{id}}»: type tem de ser choice, score ou noul.",
+    "noInstructions": "«{{id}}»: faltam as instruções.",
+    "labelsOnlyNoul": "«{{id}}»: labels só se aplica a perguntas noul.",
+    "choiceNeedsCriteria": "«{{id}}»: uma pergunta choice precisa de critérios — um objeto de opções ou uma lista de rótulos.",
+    "tooManyOptions": "«{{id}}»: no máximo {{max}} opções.",
+    "labelNotScalar": "«{{id}}»: cada rótulo tem de ser texto, um número ou true/false.",
+    "duplicateLabel": "«{{id}}»: o rótulo {{label}} aparece duas vezes (1, 1.0 e true contam como o mesmo).",
+    "scoreNeedsLevels": "«{{id}}»: uma pergunta score precisa de critérios como lista de níveis, do mais baixo para o mais alto.",
+    "tooManyLevels": "«{{id}}»: no máximo {{max}} níveis.",
+    "nullLevel": "«{{id}}»: um nível não pode ser null.",
+    "noulCriteria": "«{{id}}»: os critérios noul só podem descrever true e false.",
+    "noulLabels": "«{{id}}»: labels precisa de textos diferentes para true e false.",
+    "badBudget": "{{name}} tem de ser um número inteiro de 1 a {{max}}.",
+    "server": "«{{id}}», segundo o servidor: {{detail}}"
+  },
+  "examples": {
+    "intro": "Escolha um exemplo para o carregar nos editores. Nada é enviado até carregar em Executar.",
+    "groups": {
+      "lessons": "Lições",
+      "useCases": "Casos de uso",
+      "multilingual": "Multilingue"
+    },
+    "review": {
+      "title": "Satisfeito ou não?",
+      "blurb": "Perguntas de sim/não. Os rótulos mudam o nome da resposta e os critérios dizem o que conta."
+    },
+    "bugReport": {
+      "title": "Avaliar um relatório de erro",
+      "blurb": "Uma rubrica de níveis ordenados. A resposta é o nível esperado, que pode ficar entre dois."
+    },
+    "helpdesk": {
+      "title": "Encaminhar um pedido ao apoio técnico",
+      "blurb": "Opções descritas. Partilham o mesmo orçamento de tokens, por isso listas longas atrapalham-se."
+    },
+    "triage": {
+      "title": "Triagem de tickets de suporte",
+      "blurb": "Equipa, urgência e reembolso — três perguntas sobre uma mensagem num só pedido."
+    },
+    "resume": {
+      "title": "Triagem de currículos",
+      "blurb": "Senioridade, uma competência exigida e liderança, lidas num CV."
+    },
+    "guardrails": {
+      "title": "Salvaguardas para LLM",
+      "blurb": "Detetar uma tentativa de jailbreak e avaliar o dano antes de um modelo responder."
+    },
+    "moderation": {
+      "title": "Moderação de conteúdos",
+      "blurb": "Crítica dura não é assédio: distinga as duas coisas."
+    },
+    "phishing": {
+      "title": "E-mail de phishing",
+      "blurb": "Um estado JSON: o e-mail inteiro, com remetente e assunto."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "O ticket de triagem em escrita devanágari."
+    },
+    "japanese": {
+      "title": "Japonês",
+      "blurb": "O ticket de triagem em japonês."
+    },
+    "arabic": {
+      "title": "Árabe",
+      "blurb": "O ticket de triagem em escrita árabe."
+    },
+    "russian": {
+      "title": "Russo",
+      "blurb": "O ticket de triagem em escrita cirílica."
+    },
+    "german": {
+      "title": "Alemão",
+      "blurb": "Escrita latina, mas não inglês: encaminhado pela língua, não pela escrita."
+    }
+  },
+  "share": {
+    "button": "Partilhar",
+    "copied": "Ligação copiada",
+    "tooLong": "Este pedido é longo demais para partilhar como ligação. Copie antes o JSON do pedido.",
+    "inAddressBar": "Não foi possível copiar automaticamente: a ligação está na barra de endereço."
+  },
+  "code": {
+    "language": "Linguagem",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Corrija os problemas do pedido para o ver como código.",
+    "jev": "Qualquer cliente TypeSafe Jev funciona sem alterações: aponte-o para aqui. Um nome de modelo que este serviço não conhece recai em helexa/one.",
+    "key": "Os pedidos sem chave funcionam dentro do limite público. Para mais, crie uma chave de API e defina HELEXA_API_KEY.",
+    "keyLink": "Obter uma chave de API"
+  },
+  "copy": "Copiar",
+  "copied": "Copiado",
+  "results": {
+    "empty": "Execute um pedido para ver aqui as respostas.",
+    "running": "A decidir…",
+    "expectedScore": "Nível esperado {{score}}",
+    "pTrue": "{{p}} de probabilidade de ser verdade",
+    "answerConfidence": "Confiança da resposta",
+    "confidence": "Confiança",
+    "confidenceHelp": "A confiança da resposta é a probabilidade da resposta escolhida — o número calibrado sobre o qual definir um limiar. A confiança mede quão decidida está toda a distribuição (1 − entropia normalizada; em sim/não, a probabilidade maior) e não é comparável entre tipos de pergunta.",
+    "collapsed": "Algumas opções foram cortadas para os mesmos tokens para caber no orçamento, e o modelo não as conseguiu distinguir. Encurte os textos das opções ou use menos opções."
+  },
+  "routing": {
+    "title": "Encaminhamento",
+    "detected": "Escrita detetada: {{script}} · língua: {{language}}",
+    "undecided": "indeterminada",
+    "scripts": "Proporção de letras por escrita",
+    "pinned": "O pedido indicou este checkpoint, por isso a deteção de língua foi ignorada."
+  },
+  "usage": {
+    "title": "Consumo e tempo",
+    "inputTokens": "tokens de entrada (faturados)",
+    "server": "tempo do modelo",
+    "roundTrip": "ida e volta",
+    "ms": "{{ms}} ms",
+    "help": "As decisões são faturadas em tokens de entrada. Cada pergunta é codificada juntamente com o estado, por isso cada pergunta extra sobre um estado longo volta a custar esse estado."
+  },
+  "raw": {
+    "request": "JSON do pedido",
+    "response": "JSON da resposta"
+  },
+  "errors": {
+    "retryIn": "Pode tentar de novo dentro de {{seconds}} s.",
+    "retryNow": "Já pode tentar de novo.",
+    "rateLimitNote": "O endpoint público permite 10 pedidos por minuto por endereço. Tente de novo dentro de um minuto.",
+    "validation": {
+      "title": "O servidor rejeitou o pedido",
+      "help": "Corrija o problema abaixo e execute de novo."
+    },
+    "too_large": {
+      "title": "O pedido é demasiado grande",
+      "help": "Ultrapassa um dos limites do servidor."
+    },
+    "rate_limited": {
+      "title": "Pedidos a mais",
+      "help": "O serviço limita a frequência com que este endereço pode perguntar."
+    },
+    "unavailable": {
+      "title": "O serviço está ocupado",
+      "help": "O modelo está ocupado ou a reiniciar."
+    },
+    "not_found": {
+      "title": "Nenhum modelo de decisão disponível",
+      "help": "O serviço não tem neste momento nenhum modelo capaz de responder."
+    },
+    "server": {
+      "title": "O serviço falhou",
+      "help": "Algo correu mal no servidor. Tente de novo daqui a pouco."
+    },
+    "network": {
+      "title": "Não foi possível contactar o serviço",
+      "help": "Verifique a sua ligação e tente de novo."
+    },
+    "timeout": {
+      "title": "O pedido expirou",
+      "help": "Não chegou nenhuma resposta a tempo. Tente de novo daqui a pouco."
+    },
+    "cancelled": {
+      "title": "Cancelado",
+      "help": "O pedido foi interrompido antes de terminar."
+    },
+    "bad_response": {
+      "title": "Resposta ilegível",
+      "help": "O serviço respondeu com algo que não é uma decisão."
+    }
+  }
+}

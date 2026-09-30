@@ -106,6 +106,14 @@ const Header: React.FC = () => {
             >
               {t("nav.images")}
             </NavLink>
+            <NavLink
+              to="/playground"
+              className={({ isActive }): string =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+            >
+              {t("nav.playground")}
+            </NavLink>
             {/* Documentation is reachable on every host — this only
                 decides whether it is advertised. The pages are still
                 being written and proofread, so the link is shown on the

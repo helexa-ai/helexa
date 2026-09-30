@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Lekplats",
+    "lead": "Ställ typade frågor till en beslutsmodell om valfri text eller JSON och få kalibrerade svar i ett enda pass — utan genererad text.",
+    "docsLink": "Så fungerar det",
+    "side": "Resultat, exempel och kod",
+    "tabs": {
+      "results": "Resultat",
+      "examples": "Exempel",
+      "code": "Kod"
+    }
+  },
+  "compose": {
+    "label": "Skriv en begäran"
+  },
+  "state": {
+    "label": "Tillstånd",
+    "mode": "Tillståndets format",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "Meddelandet, ärendet, dokumentet eller samtalet som beslutet gäller",
+    "help": {
+      "text": "Skickas exakt som det är skrivet.",
+      "json": "Ett objekt skickas som JSON, med nycklarna i skriven ordning. En lista läses som ett samtal och kortas från början, så att de senaste replikerna finns kvar."
+    }
+  },
+  "questions": {
+    "label": "Frågor",
+    "format": "Formatera",
+    "help": "Ett JSON-objekt med fråge-id:n som nycklar. Varje fråga har en typ, instruktioner och — för choice och score — kriterier."
+  },
+  "add": {
+    "label": "Lägg till fråga",
+    "invalidJson": "Rätta frågorna först: att lägga till en skulle ersätta text som inte är ett giltigt JSON-objekt.",
+    "noul": {
+      "title": "Ja eller nej",
+      "desc": "Stämmer ett påstående? Svarar med en sannolikhet."
+    },
+    "score": {
+      "title": "Bedömningsskala",
+      "desc": "Bedömer mot ordnade nivåer. Svarar med den förväntade nivån."
+    },
+    "choice": {
+      "title": "Flerval",
+      "desc": "Väljer ett av dina märkta alternativ."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "”Automatiskt” väljer checkpoint efter tillståndets språk. Väljer du ett går alla begäranden dit, oavsett språk.",
+    "auto": "Automatiskt (efter språk)",
+    "english": "Engelska",
+    "multilingual": "Flerspråkig",
+    "typed-decisions": "Typade beslut"
+  },
+  "run": "Kör",
+  "cancel": "Avbryt",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Problem att åtgärda",
+    "stateEmpty": "Tillståndet är tomt.",
+    "stateNull": "Tillståndet kan inte vara null.",
+    "stateJson": "Tillståndet är inte giltig JSON: {{detail}} (rad {{line}}, kolumn {{column}}).",
+    "stateTooLong": "Tillståndet är längre än {{max}} tecken.",
+    "questionsJson": "Frågorna är inte giltig JSON: {{detail}} (rad {{line}}, kolumn {{column}}).",
+    "questionsNotObject": "Frågorna måste vara ett JSON-objekt med fråge-id:n som nycklar.",
+    "noQuestions": "Lägg till minst en fråga.",
+    "tooManyQuestions": "Högst {{max}} frågor per begäran.",
+    "tooManyTotal": "Högst {{max}} alternativ totalt i alla frågor.",
+    "questionNotObject": "”{{id}}”: en fråga måste vara ett objekt.",
+    "badType": "”{{id}}”: type måste vara choice, score eller noul.",
+    "noInstructions": "”{{id}}”: instruktioner saknas.",
+    "labelsOnlyNoul": "”{{id}}”: labels gäller bara noul-frågor.",
+    "choiceNeedsCriteria": "”{{id}}”: en choice-fråga behöver kriterier — ett objekt med alternativ eller en lista med etiketter.",
+    "tooManyOptions": "”{{id}}”: högst {{max}} alternativ.",
+    "labelNotScalar": "”{{id}}”: varje etikett måste vara text, ett tal eller true/false.",
+    "duplicateLabel": "”{{id}}”: etiketten {{label}} förekommer två gånger (1, 1.0 och true räknas som samma etikett).",
+    "scoreNeedsLevels": "”{{id}}”: en score-fråga behöver kriterier som en lista med nivåer, lägst först.",
+    "tooManyLevels": "”{{id}}”: högst {{max}} nivåer.",
+    "nullLevel": "”{{id}}”: en nivå kan inte vara null.",
+    "noulCriteria": "”{{id}}”: noul-kriterier kan bara beskriva true och false.",
+    "noulLabels": "”{{id}}”: labels behöver olika texter för true och false.",
+    "badBudget": "{{name}} måste vara ett heltal från 1 till {{max}}.",
+    "server": "”{{id}}”, enligt servern: {{detail}}"
+  },
+  "examples": {
+    "intro": "Välj ett exempel för att läsa in det i redigerarna. Inget skickas förrän du trycker på Kör.",
+    "groups": {
+      "lessons": "Lektioner",
+      "useCases": "Användningsfall",
+      "multilingual": "Flerspråkigt"
+    },
+    "review": {
+      "title": "Nöjd eller inte?",
+      "blurb": "Ja/nej-frågor. Etiketter byter namn på svaret, kriterier säger vad som räknas."
+    },
+    "bugReport": {
+      "title": "Bedöm en felrapport",
+      "blurb": "En skala med ordnade nivåer. Svaret är den förväntade nivån, som kan hamna mellan två."
+    },
+    "helpdesk": {
+      "title": "Dirigera ett supportärende",
+      "blurb": "Beskrivna alternativ. De delar en tokenbudget, så långa listor tränger undan varandra."
+    },
+    "triage": {
+      "title": "Sortering av supportärenden",
+      "blurb": "Team, brådska och återbetalning — tre frågor om ett meddelande i en begäran."
+    },
+    "resume": {
+      "title": "Granskning av cv",
+      "blurb": "Senioritet, en efterfrågad färdighet och ledarskap, utlästa ur ett cv."
+    },
+    "guardrails": {
+      "title": "Skyddsräcken för LLM",
+      "blurb": "Upptäck ett jailbreak-försök och bedöm skadan innan en modell svarar."
+    },
+    "moderation": {
+      "title": "Innehållsmoderering",
+      "blurb": "Hård kritik är inte trakasserier: skilj dem åt."
+    },
+    "phishing": {
+      "title": "Nätfiskemejl",
+      "blurb": "Ett JSON-tillstånd: hela mejlet, med avsändare och ämne."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Sorteringsärendet i devanagari."
+    },
+    "japanese": {
+      "title": "Japanska",
+      "blurb": "Sorteringsärendet på japanska."
+    },
+    "arabic": {
+      "title": "Arabiska",
+      "blurb": "Sorteringsärendet i arabisk skrift."
+    },
+    "russian": {
+      "title": "Ryska",
+      "blurb": "Sorteringsärendet i kyrillisk skrift."
+    },
+    "german": {
+      "title": "Tyska",
+      "blurb": "Latinsk skrift, men inte engelska: dirigeras efter språk, inte skrift."
+    }
+  },
+  "share": {
+    "button": "Dela",
+    "copied": "Länken kopierad",
+    "tooLong": "Den här begäran är för lång för att delas som länk. Kopiera begärans JSON i stället.",
+    "inAddressBar": "Det gick inte att kopiera automatiskt: länken finns i adressfältet."
+  },
+  "code": {
+    "language": "Språk",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya-SDK",
+    "fixFirst": "Åtgärda problemen i begäran för att se den som kod.",
+    "jev": "Alla TypeSafe Jev-klienter fungerar oförändrade: peka dem hit. Ett modellnamn som tjänsten inte känner till faller tillbaka på helexa/one.",
+    "key": "Begäranden utan nyckel fungerar inom den offentliga gränsen. För mer skapar du en API-nyckel och sätter HELEXA_API_KEY.",
+    "keyLink": "Skaffa en API-nyckel"
+  },
+  "copy": "Kopiera",
+  "copied": "Kopierat",
+  "results": {
+    "empty": "Kör en begäran för att se svaren här.",
+    "running": "Beslutar…",
+    "expectedScore": "Förväntad nivå {{score}}",
+    "pTrue": "{{p}} chans att det stämmer",
+    "answerConfidence": "Svarssäkerhet",
+    "confidence": "Säkerhet",
+    "confidenceHelp": "Svarssäkerheten är sannolikheten för det valda svaret — det kalibrerade talet att sätta en tröskel på. Säkerheten mäter hur tydlig hela fördelningen är (1 − normaliserad entropi; för ja/nej den större sannolikheten) och kan inte jämföras mellan frågetyper.",
+    "collapsed": "Vissa alternativ kortades till samma token för att rymmas i budgeten, så modellen kunde inte skilja dem åt. Korta alternativens texter eller använd färre."
+  },
+  "routing": {
+    "title": "Dirigering",
+    "detected": "Upptäckt skrift: {{script}} · språk: {{language}}",
+    "undecided": "obestämt",
+    "scripts": "Andel bokstäver per skrift",
+    "pinned": "Begäran angav denna checkpoint, så språkigenkänningen hoppades över."
+  },
+  "usage": {
+    "title": "Förbrukning och tid",
+    "inputTokens": "indatatoken (debiteras)",
+    "server": "modelltid",
+    "roundTrip": "total tid",
+    "ms": "{{ms}} ms",
+    "help": "Beslut debiteras i indatatoken. Varje fråga kodas tillsammans med tillståndet, så varje extra fråga om ett långt tillstånd kostar tillståndet igen."
+  },
+  "raw": {
+    "request": "Begärans JSON",
+    "response": "Svarets JSON"
+  },
+  "errors": {
+    "retryIn": "Du kan försöka igen om {{seconds}} s.",
+    "retryNow": "Du kan försöka igen nu.",
+    "rateLimitNote": "Den offentliga slutpunkten tar emot 10 begäranden per minut och adress. Försök igen om en minut.",
+    "validation": {
+      "title": "Servern avvisade begäran",
+      "help": "Åtgärda problemet nedan och kör igen."
+    },
+    "too_large": {
+      "title": "Begäran är för stor",
+      "help": "Den överskrider en av serverns gränser."
+    },
+    "rate_limited": {
+      "title": "För många begäranden",
+      "help": "Tjänsten begränsar hur ofta den här adressen får fråga."
+    },
+    "unavailable": {
+      "title": "Tjänsten är upptagen",
+      "help": "Modellen är upptagen eller startar om."
+    },
+    "not_found": {
+      "title": "Ingen beslutsmodell tillgänglig",
+      "help": "Tjänsten har just nu ingen modell som kan svara."
+    },
+    "server": {
+      "title": "Tjänsten misslyckades",
+      "help": "Något gick fel på servern. Försök igen om en stund."
+    },
+    "network": {
+      "title": "Tjänsten går inte att nå",
+      "help": "Kontrollera anslutningen och försök igen."
+    },
+    "timeout": {
+      "title": "Begäran tog för lång tid",
+      "help": "Inget svar kom i tid. Försök igen om en stund."
+    },
+    "cancelled": {
+      "title": "Avbruten",
+      "help": "Begäran stoppades innan den blev klar."
+    },
+    "bad_response": {
+      "title": "Oläsligt svar",
+      "help": "Tjänsten svarade med något som inte är ett beslut."
+    }
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Playground",
+    "lead": "Stel een beslismodel getypeerde vragen over elke tekst of JSON en krijg gekalibreerde antwoorden in één keer — zonder gegenereerde tekst.",
+    "docsLink": "Hoe het werkt",
+    "side": "Resultaten, voorbeelden en code",
+    "tabs": {
+      "results": "Resultaten",
+      "examples": "Voorbeelden",
+      "code": "Code"
+    }
+  },
+  "compose": {
+    "label": "Verzoek opstellen"
+  },
+  "state": {
+    "label": "Toestand",
+    "mode": "Formaat van de toestand",
+    "text": "Tekst",
+    "json": "JSON",
+    "placeholder": "Het bericht, ticket, document of gesprek waarover beslist moet worden",
+    "help": {
+      "text": "Wordt precies zo verzonden als geschreven.",
+      "json": "Een object wordt als JSON verzonden, met de sleutels in de geschreven volgorde. Een lijst wordt gelezen als een gesprek en vanaf het begin ingekort, zodat de nieuwste beurten blijven staan."
+    }
+  },
+  "questions": {
+    "label": "Vragen",
+    "format": "Opmaken",
+    "help": "Een JSON-object met vraag-id's als sleutels. Elke vraag heeft een type, instructies en — bij choice en score — criteria."
+  },
+  "add": {
+    "label": "Vraag toevoegen",
+    "invalidJson": "Herstel eerst de vragen: een vraag toevoegen zou tekst vervangen die geen geldig JSON-object is.",
+    "noul": {
+      "title": "Ja of nee",
+      "desc": "Klopt een bewering? Antwoordt met een kans."
+    },
+    "score": {
+      "title": "Beoordelingsschaal",
+      "desc": "Beoordeelt op geordende niveaus. Antwoordt met het verwachte niveau."
+    },
+    "choice": {
+      "title": "Meerkeuze",
+      "desc": "Kiest een van uw gelabelde opties."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "‘Automatisch’ kiest het checkpoint op basis van de taal van de toestand. Kiest u er een, dan gaan alle verzoeken daarheen, in welke taal dan ook.",
+    "auto": "Automatisch (op taal)",
+    "english": "Engels",
+    "multilingual": "Meertalig",
+    "typed-decisions": "Getypeerde beslissingen"
+  },
+  "run": "Uitvoeren",
+  "cancel": "Annuleren",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Op te lossen problemen",
+    "stateEmpty": "De toestand is leeg.",
+    "stateNull": "De toestand mag niet null zijn.",
+    "stateJson": "De toestand is geen geldige JSON: {{detail}} (regel {{line}}, kolom {{column}}).",
+    "stateTooLong": "De toestand is langer dan {{max}} tekens.",
+    "questionsJson": "De vragen zijn geen geldige JSON: {{detail}} (regel {{line}}, kolom {{column}}).",
+    "questionsNotObject": "De vragen moeten een JSON-object zijn met vraag-id's als sleutels.",
+    "noQuestions": "Voeg minstens één vraag toe.",
+    "tooManyQuestions": "Maximaal {{max}} vragen per verzoek.",
+    "tooManyTotal": "Maximaal {{max}} opties over alle vragen samen.",
+    "questionNotObject": "‘{{id}}’: een vraag moet een object zijn.",
+    "badType": "‘{{id}}’: type moet choice, score of noul zijn.",
+    "noInstructions": "‘{{id}}’: de instructies ontbreken.",
+    "labelsOnlyNoul": "‘{{id}}’: labels geldt alleen voor noul-vragen.",
+    "choiceNeedsCriteria": "‘{{id}}’: een choice-vraag heeft criteria nodig — een object met opties of een lijst met labels.",
+    "tooManyOptions": "‘{{id}}’: maximaal {{max}} opties.",
+    "labelNotScalar": "‘{{id}}’: elk label moet tekst, een getal of true/false zijn.",
+    "duplicateLabel": "‘{{id}}’: label {{label}} komt twee keer voor (1, 1.0 en true tellen als hetzelfde label).",
+    "scoreNeedsLevels": "‘{{id}}’: een score-vraag heeft criteria nodig als lijst van niveaus, het laagste eerst.",
+    "tooManyLevels": "‘{{id}}’: maximaal {{max}} niveaus.",
+    "nullLevel": "‘{{id}}’: een niveau mag niet null zijn.",
+    "noulCriteria": "‘{{id}}’: noul-criteria kunnen alleen true en false beschrijven.",
+    "noulLabels": "‘{{id}}’: labels moet verschillende teksten hebben voor true en false.",
+    "badBudget": "{{name}} moet een geheel getal van 1 tot {{max}} zijn.",
+    "server": "‘{{id}}’, volgens de server: {{detail}}"
+  },
+  "examples": {
+    "intro": "Kies een voorbeeld om het in de editors te laden. Er wordt niets verzonden tot u op Uitvoeren drukt.",
+    "groups": {
+      "lessons": "Lessen",
+      "useCases": "Toepassingen",
+      "multilingual": "Meertalig"
+    },
+    "review": {
+      "title": "Tevreden of niet?",
+      "blurb": "Ja/nee-vragen. Labels hernoemen het antwoord, criteria zeggen wat telt."
+    },
+    "bugReport": {
+      "title": "Een bugrapport beoordelen",
+      "blurb": "Een schaal van geordende niveaus. Het antwoord is het verwachte niveau, dat tussen twee kan vallen."
+    },
+    "helpdesk": {
+      "title": "Een helpdeskverzoek doorsturen",
+      "blurb": "Beschreven opties. Ze delen één tokenbudget, dus lange lijsten zitten elkaar in de weg."
+    },
+    "triage": {
+      "title": "Triage van supporttickets",
+      "blurb": "Team, urgentie en terugbetaling — drie vragen over één bericht in één verzoek."
+    },
+    "resume": {
+      "title": "Cv's screenen",
+      "blurb": "Senioriteit, een vereiste vaardigheid en leiderschap, gelezen uit een cv."
+    },
+    "guardrails": {
+      "title": "Vangrails voor LLM's",
+      "blurb": "Een jailbreakpoging herkennen en de schade inschatten voordat een model antwoordt."
+    },
+    "moderation": {
+      "title": "Contentmoderatie",
+      "blurb": "Harde kritiek is geen intimidatie: houd ze uit elkaar."
+    },
+    "phishing": {
+      "title": "Phishingmail",
+      "blurb": "Een JSON-toestand: de hele e-mail, met afzender en onderwerp."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Het triageticket in Devanagari-schrift."
+    },
+    "japanese": {
+      "title": "Japans",
+      "blurb": "Het triageticket in het Japans."
+    },
+    "arabic": {
+      "title": "Arabisch",
+      "blurb": "Het triageticket in Arabisch schrift."
+    },
+    "russian": {
+      "title": "Russisch",
+      "blurb": "Het triageticket in cyrillisch schrift."
+    },
+    "german": {
+      "title": "Duits",
+      "blurb": "Latijns schrift, maar geen Engels: doorgestuurd op taal, niet op schrift."
+    }
+  },
+  "share": {
+    "button": "Delen",
+    "copied": "Link gekopieerd",
+    "tooLong": "Dit verzoek is te lang om als link te delen. Kopieer in plaats daarvan de JSON van het verzoek.",
+    "inAddressBar": "Automatisch kopiëren lukte niet: de link staat in de adresbalk."
+  },
+  "code": {
+    "language": "Taal",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya-SDK",
+    "fixFirst": "Los de problemen in het verzoek op om het als code te zien.",
+    "jev": "Elke TypeSafe Jev-client werkt ongewijzigd: laat hem hierheen wijzen. Een modelnaam die deze dienst niet kent, valt terug op helexa/one.",
+    "key": "Verzoeken zonder sleutel werken binnen de openbare limiet. Voor meer maakt u een API-sleutel aan en stelt u HELEXA_API_KEY in.",
+    "keyLink": "API-sleutel aanvragen"
+  },
+  "copy": "Kopiëren",
+  "copied": "Gekopieerd",
+  "results": {
+    "empty": "Voer een verzoek uit om hier de antwoorden te zien.",
+    "running": "Bezig met beslissen…",
+    "expectedScore": "Verwacht niveau {{score}}",
+    "pTrue": "{{p}} kans dat het klopt",
+    "answerConfidence": "Antwoordzekerheid",
+    "confidence": "Zekerheid",
+    "confidenceHelp": "De antwoordzekerheid is de kans op het gekozen antwoord — het gekalibreerde getal om een drempel op te zetten. De zekerheid meet hoe uitgesproken de hele verdeling is (1 − genormaliseerde entropie; bij ja/nee de grootste kans) en is niet vergelijkbaar tussen vraagtypen.",
+    "collapsed": "Sommige opties zijn voor het budget tot dezelfde tokens ingekort, waardoor het model ze niet kon onderscheiden. Maak de optieteksten korter of gebruik minder opties."
+  },
+  "routing": {
+    "title": "Doorsturing",
+    "detected": "Herkend schrift: {{script}} · taal: {{language}}",
+    "undecided": "onbepaald",
+    "scripts": "Aandeel letters per schrift",
+    "pinned": "Het verzoek noemde dit checkpoint, dus taalherkenning is overgeslagen."
+  },
+  "usage": {
+    "title": "Verbruik en tijd",
+    "inputTokens": "invoertokens (gefactureerd)",
+    "server": "modeltijd",
+    "roundTrip": "totale duur",
+    "ms": "{{ms}} ms",
+    "help": "Beslissingen worden gefactureerd per invoertoken. Elke vraag wordt samen met de toestand gecodeerd, dus elke extra vraag over een lange toestand kost die toestand opnieuw."
+  },
+  "raw": {
+    "request": "JSON van het verzoek",
+    "response": "JSON van het antwoord"
+  },
+  "errors": {
+    "retryIn": "U kunt het over {{seconds}} s opnieuw proberen.",
+    "retryNow": "U kunt het nu opnieuw proberen.",
+    "rateLimitNote": "Het openbare eindpunt staat 10 verzoeken per minuut per adres toe. Probeer het over een minuut opnieuw.",
+    "validation": {
+      "title": "De server heeft het verzoek geweigerd",
+      "help": "Los het probleem hieronder op en voer het opnieuw uit."
+    },
+    "too_large": {
+      "title": "Het verzoek is te groot",
+      "help": "Het overschrijdt een van de limieten van de server."
+    },
+    "rate_limited": {
+      "title": "Te veel verzoeken",
+      "help": "De dienst beperkt hoe vaak dit adres iets mag vragen."
+    },
+    "unavailable": {
+      "title": "De dienst is bezet",
+      "help": "Het model is bezet of start opnieuw op."
+    },
+    "not_found": {
+      "title": "Geen beslismodel beschikbaar",
+      "help": "De dienst heeft op dit moment geen model dat hierop kan antwoorden."
+    },
+    "server": {
+      "title": "De dienst is mislukt",
+      "help": "Er ging iets mis op de server. Probeer het zo meteen opnieuw."
+    },
+    "network": {
+      "title": "Dienst niet bereikbaar",
+      "help": "Controleer uw verbinding en probeer het opnieuw."
+    },
+    "timeout": {
+      "title": "Het verzoek is verlopen",
+      "help": "Er kwam niet op tijd een antwoord. Probeer het zo meteen opnieuw."
+    },
+    "cancelled": {
+      "title": "Geannuleerd",
+      "help": "Het verzoek is gestopt voordat het klaar was."
+    },
+    "bad_response": {
+      "title": "Onleesbaar antwoord",
+      "help": "De dienst antwoordde met iets wat geen beslissing is."
+    }
+  }
+}

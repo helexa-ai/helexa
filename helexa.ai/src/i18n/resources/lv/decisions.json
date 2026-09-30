@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Smilškaste",
+    "lead": "Uzdodiet lēmumu modelim tipizētus jautājumus par jebkuru tekstu vai JSON un saņemiet kalibrētas atbildes vienā piegājienā — bez ģenerēta teksta.",
+    "docsLink": "Kā tas darbojas",
+    "side": "Rezultāti, piemēri un kods",
+    "tabs": {
+      "results": "Rezultāti",
+      "examples": "Piemēri",
+      "code": "Kods"
+    }
+  },
+  "compose": {
+    "label": "Sastādīt pieprasījumu"
+  },
+  "state": {
+    "label": "Stāvoklis",
+    "mode": "Stāvokļa formāts",
+    "text": "Teksts",
+    "json": "JSON",
+    "placeholder": "Ziņa, pieteikums, dokuments vai saruna, par ko jāpieņem lēmums",
+    "help": {
+      "text": "Tiek nosūtīts tieši tā, kā uzrakstīts.",
+      "json": "Objekts tiek nosūtīts kā JSON ar atslēgām uzrakstītajā secībā. Saraksts tiek lasīts kā saruna un saīsināts no sākuma, lai paliktu jaunākās replikas."
+    }
+  },
+  "questions": {
+    "label": "Jautājumi",
+    "format": "Formatēt",
+    "help": "JSON objekts, kura atslēgas ir jautājumu ID. Katram jautājumam ir tips, norādījumi un — choice un score gadījumā — kritēriji."
+  },
+  "add": {
+    "label": "Pievienot jautājumu",
+    "invalidJson": "Vispirms izlabojiet jautājumus: pievienošana aizstātu tekstu, kas nav derīgs JSON objekts.",
+    "noul": {
+      "title": "Jā vai nē",
+      "desc": "Vai apgalvojums ir patiess? Atbild ar varbūtību."
+    },
+    "score": {
+      "title": "Vērtēšanas skala",
+      "desc": "Vērtē pēc sakārtotiem līmeņiem. Atbild ar sagaidāmo līmeni."
+    },
+    "choice": {
+      "title": "Izvēle no variantiem",
+      "desc": "Izvēlas vienu no jūsu apzīmētajiem variantiem."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "“Automātiski” izvēlas checkpoint pēc stāvokļa valodas. Ja izvēlaties konkrētu, visi pieprasījumi nonāk tajā neatkarīgi no valodas.",
+    "auto": "Automātiski (pēc valodas)",
+    "english": "Angļu",
+    "multilingual": "Daudzvalodu",
+    "typed-decisions": "Tipizēti lēmumi"
+  },
+  "run": "Palaist",
+  "cancel": "Atcelt",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Labojamās problēmas",
+    "stateEmpty": "Stāvoklis ir tukšs.",
+    "stateNull": "Stāvoklis nevar būt null.",
+    "stateJson": "Stāvoklis nav derīgs JSON: {{detail}} ({{line}}. rinda, {{column}}. kolonna).",
+    "stateTooLong": "Stāvoklis ir garāks par {{max}} rakstzīmēm.",
+    "questionsJson": "Jautājumi nav derīgs JSON: {{detail}} ({{line}}. rinda, {{column}}. kolonna).",
+    "questionsNotObject": "Jautājumiem jābūt JSON objektam, kura atslēgas ir jautājumu ID.",
+    "noQuestions": "Pievienojiet vismaz vienu jautājumu.",
+    "tooManyQuestions": "Ne vairāk kā {{max}} jautājumu vienā pieprasījumā.",
+    "tooManyTotal": "Ne vairāk kā {{max}} variantu visos jautājumos kopā.",
+    "questionNotObject": "“{{id}}”: jautājumam jābūt objektam.",
+    "badType": "“{{id}}”: type jābūt choice, score vai noul.",
+    "noInstructions": "“{{id}}”: trūkst norādījumu.",
+    "labelsOnlyNoul": "“{{id}}”: labels attiecas tikai uz noul jautājumiem.",
+    "choiceNeedsCriteria": "“{{id}}”: choice jautājumam vajag kritērijus — variantu objektu vai iezīmju sarakstu.",
+    "tooManyOptions": "“{{id}}”: ne vairāk kā {{max}} variantu.",
+    "labelNotScalar": "“{{id}}”: katrai iezīmei jābūt tekstam, skaitlim vai true/false.",
+    "duplicateLabel": "“{{id}}”: iezīme {{label}} parādās divreiz (1, 1.0 un true skaitās viena un tā pati iezīme).",
+    "scoreNeedsLevels": "“{{id}}”: score jautājumam vajag kritērijus kā līmeņu sarakstu, sākot ar zemāko.",
+    "tooManyLevels": "“{{id}}”: ne vairāk kā {{max}} līmeņu.",
+    "nullLevel": "“{{id}}”: līmenis nevar būt null.",
+    "noulCriteria": "“{{id}}”: noul kritēriji var aprakstīt tikai true un false.",
+    "noulLabels": "“{{id}}”: labels vajag atšķirīgus tekstus vērtībām true un false.",
+    "badBudget": "{{name}} jābūt veselam skaitlim no 1 līdz {{max}}.",
+    "server": "“{{id}}”, pēc servera datiem: {{detail}}"
+  },
+  "examples": {
+    "intro": "Izvēlieties piemēru, lai to ielādētu redaktoros. Nekas netiek nosūtīts, kamēr nenospiežat Palaist.",
+    "groups": {
+      "lessons": "Nodarbības",
+      "useCases": "Lietojuma gadījumi",
+      "multilingual": "Daudzvalodu"
+    },
+    "review": {
+      "title": "Apmierināts vai nē?",
+      "blurb": "Jā/nē jautājumi. Iezīmes pārdēvē atbildi, kritēriji nosaka, kas ir svarīgs."
+    },
+    "bugReport": {
+      "title": "Novērtējiet kļūdas ziņojumu",
+      "blurb": "Sakārtotu līmeņu skala. Atbilde ir sagaidāmais līmenis, kas var iekrist starp diviem."
+    },
+    "helpdesk": {
+      "title": "Novirziet pieprasījumu atbalsta dienestam",
+      "blurb": "Aprakstīti varianti. Tiem ir kopīgs žetonu budžets, tāpēc gari saraksti traucē cits citam."
+    },
+    "triage": {
+      "title": "Atbalsta pieteikumu šķirošana",
+      "blurb": "Komanda, steidzamība un atmaksa — trīs jautājumi par vienu ziņu vienā pieprasījumā."
+    },
+    "resume": {
+      "title": "CV atlase",
+      "blurb": "Pieredzes līmenis, prasītā prasme un vadības pieredze, nolasīti no CV."
+    },
+    "guardrails": {
+      "title": "LLM aizsargbarjeras",
+      "blurb": "Atpazīstiet jailbreak mēģinājumu un novērtējiet kaitējumu, pirms modelis atbild."
+    },
+    "moderation": {
+      "title": "Satura moderēšana",
+      "blurb": "Asa kritika nav uzmākšanās: nošķiriet tās."
+    },
+    "phishing": {
+      "title": "Pikšķerēšanas e-pasts",
+      "blurb": "JSON stāvoklis: viss e-pasts ar sūtītāju un tēmu."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Šķirošanas pieteikums dēvanāgarī rakstā."
+    },
+    "japanese": {
+      "title": "Japāņu",
+      "blurb": "Šķirošanas pieteikums japāņu valodā."
+    },
+    "arabic": {
+      "title": "Arābu",
+      "blurb": "Šķirošanas pieteikums arābu rakstā."
+    },
+    "russian": {
+      "title": "Krievu",
+      "blurb": "Šķirošanas pieteikums kirilicā."
+    },
+    "german": {
+      "title": "Vācu",
+      "blurb": "Latīņu raksts, bet ne angļu valoda: maršrutē pēc valodas, nevis raksta."
+    }
+  },
+  "share": {
+    "button": "Kopīgot",
+    "copied": "Saite nokopēta",
+    "tooLong": "Šis pieprasījums ir pārāk garš, lai to kopīgotu kā saiti. Tā vietā nokopējiet pieprasījuma JSON.",
+    "inAddressBar": "Neizdevās nokopēt automātiski: saite ir adreses joslā."
+  },
+  "code": {
+    "language": "Valoda",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya SDK",
+    "fixFirst": "Izlabojiet pieprasījuma problēmas, lai to redzētu kā kodu.",
+    "jev": "Jebkurš TypeSafe Jev klients darbojas bez izmaiņām: vienkārši novirziet to šurp. Modeļa nosaukums, ko šis pakalpojums nepazīst, tiek aizstāts ar helexa/one.",
+    "key": "Pieprasījumi bez atslēgas darbojas publiskā ierobežojuma robežās. Lai iegūtu vairāk, izveidojiet API atslēgu un iestatiet HELEXA_API_KEY.",
+    "keyLink": "Iegūt API atslēgu"
+  },
+  "copy": "Kopēt",
+  "copied": "Nokopēts",
+  "results": {
+    "empty": "Palaidiet pieprasījumu, lai šeit redzētu atbildes.",
+    "running": "Tiek pieņemts lēmums…",
+    "expectedScore": "Sagaidāmais līmenis {{score}}",
+    "pTrue": "{{p}} varbūtība, ka tā ir patiesība",
+    "answerConfidence": "Atbildes pārliecība",
+    "confidence": "Pārliecība",
+    "confidenceHelp": "Atbildes pārliecība ir izvēlētās atbildes varbūtība — kalibrētais skaitlis, uz kura liek slieksni. Pārliecība mēra, cik noteikts ir viss sadalījums (1 − normalizēta entropija; jā/nē gadījumā lielākā varbūtība), un to nevar salīdzināt starp jautājumu tipiem.",
+    "collapsed": "Daži varianti budžeta dēļ tika saīsināti līdz vieniem un tiem pašiem žetoniem, tāpēc modelis tos nevarēja atšķirt. Saīsiniet variantu tekstus vai izmantojiet mazāk variantu."
+  },
+  "routing": {
+    "title": "Maršrutēšana",
+    "detected": "Noteiktais raksts: {{script}} · valoda: {{language}}",
+    "undecided": "nenoteikta",
+    "scripts": "Burtu īpatsvars pēc raksta",
+    "pinned": "Pieprasījumā norādīts šis checkpoint, tāpēc valodas noteikšana izlaista."
+  },
+  "usage": {
+    "title": "Patēriņš un laiks",
+    "inputTokens": "ievades žetoni (tiek apmaksāti)",
+    "server": "modeļa laiks",
+    "roundTrip": "kopējais laiks",
+    "ms": "{{ms}} ms",
+    "help": "Lēmumus apmaksā ievades žetonos. Katrs jautājums tiek kodēts kopā ar stāvokli, tāpēc katrs papildu jautājums par garu stāvokli atkal maksā šo stāvokli."
+  },
+  "raw": {
+    "request": "Pieprasījuma JSON",
+    "response": "Atbildes JSON"
+  },
+  "errors": {
+    "retryIn": "Varat mēģināt vēlreiz pēc {{seconds}} s.",
+    "retryNow": "Varat mēģināt vēlreiz.",
+    "rateLimitNote": "Publiskais galapunkts pieņem 10 pieprasījumus minūtē no vienas adreses. Mēģiniet vēlreiz pēc minūtes.",
+    "validation": {
+      "title": "Serveris noraidīja pieprasījumu",
+      "help": "Izlabojiet tālāk norādīto problēmu un palaidiet vēlreiz."
+    },
+    "too_large": {
+      "title": "Pieprasījums ir pārāk liels",
+      "help": "Tas pārsniedz kādu no servera ierobežojumiem."
+    },
+    "rate_limited": {
+      "title": "Pārāk daudz pieprasījumu",
+      "help": "Pakalpojums ierobežo, cik bieži no šīs adreses var jautāt."
+    },
+    "unavailable": {
+      "title": "Pakalpojums ir aizņemts",
+      "help": "Modelis ir aizņemts vai tiek restartēts."
+    },
+    "not_found": {
+      "title": "Nav pieejama lēmumu modeļa",
+      "help": "Pakalpojumam šobrīd nav modeļa, kas varētu atbildēt."
+    },
+    "server": {
+      "title": "Pakalpojuma kļūme",
+      "help": "Serverī kaut kas nogāja greizi. Drīz mēģiniet vēlreiz."
+    },
+    "network": {
+      "title": "Nevar sazināties ar pakalpojumu",
+      "help": "Pārbaudiet savienojumu un mēģiniet vēlreiz."
+    },
+    "timeout": {
+      "title": "Pieprasījumam beidzās laiks",
+      "help": "Atbilde nepienāca laikā. Drīz mēģiniet vēlreiz."
+    },
+    "cancelled": {
+      "title": "Atcelts",
+      "help": "Pieprasījums tika apturēts pirms pabeigšanas."
+    },
+    "bad_response": {
+      "title": "Nesalasāma atbilde",
+      "help": "Pakalpojums atbildēja ar kaut ko, kas nav lēmums."
+    }
+  }
+}

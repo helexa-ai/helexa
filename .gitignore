@@ -28,3 +28,6 @@ doc/plan/*
 .claude/
 helexa-upstream.toml
 helexa-angels.toml
+
+# Local scratch space for playground example checks (never committed).
+.pg-scratch/

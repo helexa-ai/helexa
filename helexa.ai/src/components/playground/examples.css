@@ -1,0 +1,57 @@
+/* Decision playground — examples (#360). Tokens from App.css. */
+
+.hx-pg-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+}
+.hx-pg-examples section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.hx-pg-lessons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+    gap: 0.6rem;
+}
+.hx-pg-cases {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.hx-pg-lesson,
+.hx-pg-case {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.3rem;
+    text-align: start;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.8rem;
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text);
+    cursor: pointer;
+    transition:
+        border-color var(--transition-fast),
+        transform var(--transition-fast);
+}
+.hx-pg-lesson {
+    min-height: 8rem;
+}
+.hx-pg-lesson:hover,
+.hx-pg-lesson:focus-visible,
+.hx-pg-case:hover,
+.hx-pg-case:focus-visible {
+    border-color: var(--color-accent);
+    transform: translateY(-1px);
+}
+.hx-pg-case {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.6rem;
+}

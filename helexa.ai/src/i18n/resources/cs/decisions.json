@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Pískoviště",
+    "lead": "Pokládejte rozhodovacímu modelu typované otázky o libovolném textu nebo JSON a dostávejte kalibrované odpovědi v jediném průchodu — bez generovaného textu.",
+    "docsLink": "Jak to funguje",
+    "side": "Výsledky, příklady a kód",
+    "tabs": {
+      "results": "Výsledky",
+      "examples": "Příklady",
+      "code": "Kód"
+    }
+  },
+  "compose": {
+    "label": "Sestavit požadavek"
+  },
+  "state": {
+    "label": "Stav",
+    "mode": "Formát stavu",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "Zpráva, tiket, dokument nebo konverzace, o které se rozhoduje",
+    "help": {
+      "text": "Odesílá se přesně tak, jak je napsán.",
+      "json": "Objekt se odešle jako JSON s klíči v napsaném pořadí. Seznam se čte jako konverzace a zkracuje se od začátku, aby zůstaly nejnovější repliky."
+    }
+  },
+  "questions": {
+    "label": "Otázky",
+    "format": "Formátovat",
+    "help": "Objekt JSON s id otázek jako klíči. Každá otázka má typ, pokyny a — u choice a score — kritéria."
+  },
+  "add": {
+    "label": "Přidat otázku",
+    "invalidJson": "Nejprve opravte otázky: přidání by nahradilo text, který není platným objektem JSON.",
+    "noul": {
+      "title": "Ano, nebo ne",
+      "desc": "Je tvrzení pravdivé? Odpovídá pravděpodobností."
+    },
+    "score": {
+      "title": "Hodnoticí stupnice",
+      "desc": "Hodnotí podle seřazených úrovní. Odpovídá očekávanou úrovní."
+    },
+    "choice": {
+      "title": "Výběr z možností",
+      "desc": "Vybere jednu z vašich označených možností."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "„Automaticky“ volí checkpoint podle jazyka stavu. Když zvolíte konkrétní, půjdou do něj všechny požadavky bez ohledu na jazyk.",
+    "auto": "Automaticky (podle jazyka)",
+    "english": "Angličtina",
+    "multilingual": "Vícejazyčný",
+    "typed-decisions": "Typovaná rozhodnutí"
+  },
+  "run": "Spustit",
+  "cancel": "Zrušit",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Co je třeba opravit",
+    "stateEmpty": "Stav je prázdný.",
+    "stateNull": "Stav nemůže být null.",
+    "stateJson": "Stav není platný JSON: {{detail}} (řádek {{line}}, sloupec {{column}}).",
+    "stateTooLong": "Stav je delší než {{max}} znaků.",
+    "questionsJson": "Otázky nejsou platný JSON: {{detail}} (řádek {{line}}, sloupec {{column}}).",
+    "questionsNotObject": "Otázky musí být objekt JSON s id otázek jako klíči.",
+    "noQuestions": "Přidejte alespoň jednu otázku.",
+    "tooManyQuestions": "Nejvýše {{max}} otázek na požadavek.",
+    "tooManyTotal": "Nejvýše {{max}} možností ve všech otázkách dohromady.",
+    "questionNotObject": "„{{id}}“: otázka musí být objekt.",
+    "badType": "„{{id}}“: type musí být choice, score nebo noul.",
+    "noInstructions": "„{{id}}“: chybí pokyny.",
+    "labelsOnlyNoul": "„{{id}}“: labels platí jen pro otázky noul.",
+    "choiceNeedsCriteria": "„{{id}}“: otázka choice potřebuje kritéria — objekt možností nebo seznam štítků.",
+    "tooManyOptions": "„{{id}}“: nejvýše {{max}} možností.",
+    "labelNotScalar": "„{{id}}“: každý štítek musí být text, číslo nebo true/false.",
+    "duplicateLabel": "„{{id}}“: štítek {{label}} se vyskytuje dvakrát (1, 1.0 a true se počítají jako stejný štítek).",
+    "scoreNeedsLevels": "„{{id}}“: otázka score potřebuje kritéria jako seznam úrovní od nejnižší.",
+    "tooManyLevels": "„{{id}}“: nejvýše {{max}} úrovní.",
+    "nullLevel": "„{{id}}“: úroveň nemůže být null.",
+    "noulCriteria": "„{{id}}“: kritéria noul mohou popisovat jen true a false.",
+    "noulLabels": "„{{id}}“: labels potřebuje různé texty pro true a false.",
+    "badBudget": "{{name}} musí být celé číslo od 1 do {{max}}.",
+    "server": "„{{id}}“ podle serveru: {{detail}}"
+  },
+  "examples": {
+    "intro": "Vyberte příklad a načtěte ho do editorů. Nic se neodešle, dokud nestisknete Spustit.",
+    "groups": {
+      "lessons": "Lekce",
+      "useCases": "Případy použití",
+      "multilingual": "Vícejazyčné"
+    },
+    "review": {
+      "title": "Spokojen, nebo ne?",
+      "blurb": "Otázky ano/ne. Štítky přejmenují odpověď, kritéria určují, co se počítá."
+    },
+    "bugReport": {
+      "title": "Ohodnotit hlášení chyby",
+      "blurb": "Stupnice seřazených úrovní. Odpovědí je očekávaná úroveň, která může padnout mezi dvě."
+    },
+    "helpdesk": {
+      "title": "Směrovat požadavek na helpdesk",
+      "blurb": "Popsané možnosti. Sdílejí jeden rozpočet tokenů, takže dlouhé seznamy si překážejí."
+    },
+    "triage": {
+      "title": "Třídění tiketů podpory",
+      "blurb": "Tým, naléhavost a vrácení peněz — tři otázky o jedné zprávě v jednom požadavku."
+    },
+    "resume": {
+      "title": "Třídění životopisů",
+      "blurb": "Seniorita, požadovaná dovednost a vedení lidí, vyčtené ze životopisu."
+    },
+    "guardrails": {
+      "title": "Ochrany pro LLM",
+      "blurb": "Rozpoznat pokus o jailbreak a posoudit škodlivost dřív, než model odpoví."
+    },
+    "moderation": {
+      "title": "Moderování obsahu",
+      "blurb": "Ostrá kritika není obtěžování: rozlišujte je."
+    },
+    "phishing": {
+      "title": "Phishingový e-mail",
+      "blurb": "Stav v JSON: celý e-mail i s odesílatelem a předmětem."
+    },
+    "hindi": {
+      "title": "Hindština",
+      "blurb": "Tiket k třídění v písmu dévanágarí."
+    },
+    "japanese": {
+      "title": "Japonština",
+      "blurb": "Tiket k třídění v japonštině."
+    },
+    "arabic": {
+      "title": "Arabština",
+      "blurb": "Tiket k třídění v arabském písmu."
+    },
+    "russian": {
+      "title": "Ruština",
+      "blurb": "Tiket k třídění v cyrilici."
+    },
+    "german": {
+      "title": "Němčina",
+      "blurb": "Latinka, ale ne angličtina: směruje se podle jazyka, ne podle písma."
+    }
+  },
+  "share": {
+    "button": "Sdílet",
+    "copied": "Odkaz zkopírován",
+    "tooLong": "Tento požadavek je příliš dlouhý na sdílení odkazem. Zkopírujte místo toho JSON požadavku.",
+    "inAddressBar": "Automatické kopírování se nepovedlo: odkaz je v adresním řádku."
+  },
+  "code": {
+    "language": "Jazyk",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Opravte problémy v požadavku, abyste ho viděli jako kód.",
+    "jev": "Každý klient TypeSafe Jev funguje beze změn: stačí ho nasměrovat sem. Název modelu, který tato služba nezná, přejde na helexa/one.",
+    "key": "Požadavky bez klíče fungují v rámci veřejného limitu. Pro víc si vytvořte klíč API a nastavte HELEXA_API_KEY.",
+    "keyLink": "Získat klíč API"
+  },
+  "copy": "Kopírovat",
+  "copied": "Zkopírováno",
+  "results": {
+    "empty": "Spusťte požadavek a odpovědi uvidíte zde.",
+    "running": "Rozhoduje se…",
+    "expectedScore": "Očekávaná úroveň {{score}}",
+    "pTrue": "{{p}} šance, že je to pravda",
+    "answerConfidence": "Jistota odpovědi",
+    "confidence": "Jistota",
+    "confidenceHelp": "Jistota odpovědi je pravděpodobnost zvolené odpovědi — kalibrované číslo, na které se nastavuje práh. Jistota měří, jak vyhraněné je celé rozdělení (1 − normalizovaná entropie; u ano/ne vyšší z pravděpodobností), a mezi typy otázek ji nelze srovnávat.",
+    "collapsed": "Některé možnosti byly kvůli rozpočtu zkráceny na stejné tokeny, takže je model nedokázal rozlišit. Zkraťte texty možností nebo jich použijte méně."
+  },
+  "routing": {
+    "title": "Směrování",
+    "detected": "Zjištěné písmo: {{script}} · jazyk: {{language}}",
+    "undecided": "neurčeno",
+    "scripts": "Podíl písmen podle písma",
+    "pinned": "Požadavek určil tento checkpoint, takže se detekce jazyka přeskočila."
+  },
+  "usage": {
+    "title": "Spotřeba a čas",
+    "inputTokens": "vstupní tokeny (účtované)",
+    "server": "čas modelu",
+    "roundTrip": "celková doba",
+    "ms": "{{ms}} ms",
+    "help": "Rozhodnutí se účtují ve vstupních tokenech. Každá otázka se kóduje spolu se stavem, takže každá další otázka o dlouhém stavu stojí ten stav znovu."
+  },
+  "raw": {
+    "request": "JSON požadavku",
+    "response": "JSON odpovědi"
+  },
+  "errors": {
+    "retryIn": "Zkusit znovu můžete za {{seconds}} s.",
+    "retryNow": "Můžete to zkusit znovu.",
+    "rateLimitNote": "Veřejný koncový bod přijímá 10 požadavků za minutu z jedné adresy. Zkuste to znovu za minutu.",
+    "validation": {
+      "title": "Server požadavek odmítl",
+      "help": "Opravte problém níže a spusťte znovu."
+    },
+    "too_large": {
+      "title": "Požadavek je příliš velký",
+      "help": "Překračuje jeden z limitů serveru."
+    },
+    "rate_limited": {
+      "title": "Příliš mnoho požadavků",
+      "help": "Služba omezuje, jak často se lze z této adresy ptát."
+    },
+    "unavailable": {
+      "title": "Služba je vytížená",
+      "help": "Model je vytížený nebo se restartuje."
+    },
+    "not_found": {
+      "title": "Žádný rozhodovací model není k dispozici",
+      "help": "Služba teď nemá žádný model, který by mohl odpovědět."
+    },
+    "server": {
+      "title": "Služba selhala",
+      "help": "Na serveru se něco pokazilo. Zkuste to za chvíli znovu."
+    },
+    "network": {
+      "title": "Službu nelze kontaktovat",
+      "help": "Zkontrolujte připojení a zkuste to znovu."
+    },
+    "timeout": {
+      "title": "Vypršel časový limit",
+      "help": "Odpověď nepřišla včas. Zkuste to za chvíli znovu."
+    },
+    "cancelled": {
+      "title": "Zrušeno",
+      "help": "Požadavek byl zastaven před dokončením."
+    },
+    "bad_response": {
+      "title": "Nečitelná odpověď",
+      "help": "Služba odpověděla něčím, co není rozhodnutí."
+    }
+  }
+}

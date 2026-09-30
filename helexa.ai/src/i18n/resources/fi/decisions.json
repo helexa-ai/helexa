@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Hiekkalaatikko",
+    "lead": "Esitä päätösmallille tyypitettyjä kysymyksiä mistä tahansa tekstistä tai JSONista ja saat kalibroidut vastaukset yhdellä läpikäynnillä — ilman tuotettua tekstiä.",
+    "docsLink": "Miten se toimii",
+    "side": "Tulokset, esimerkit ja koodi",
+    "tabs": {
+      "results": "Tulokset",
+      "examples": "Esimerkit",
+      "code": "Koodi"
+    }
+  },
+  "compose": {
+    "label": "Laadi pyyntö"
+  },
+  "state": {
+    "label": "Tila",
+    "mode": "Tilan muoto",
+    "text": "Teksti",
+    "json": "JSON",
+    "placeholder": "Viesti, tiketti, asiakirja tai keskustelu, josta päätetään",
+    "help": {
+      "text": "Lähetetään täsmälleen kirjoitetussa muodossa.",
+      "json": "Objekti lähetetään JSONina, avaimet kirjoitetussa järjestyksessä. Lista luetaan keskusteluna ja lyhennetään alusta, jotta uusimmat puheenvuorot säilyvät."
+    }
+  },
+  "questions": {
+    "label": "Kysymykset",
+    "format": "Muotoile",
+    "help": "JSON-objekti, jonka avaimet ovat kysymysten tunnisteita. Jokaisella kysymyksellä on tyyppi, ohjeet ja — choice- ja score-kysymyksissä — kriteerit."
+  },
+  "add": {
+    "label": "Lisää kysymys",
+    "invalidJson": "Korjaa ensin kysymykset: lisääminen korvaisi tekstin, joka ei ole kelvollinen JSON-objekti.",
+    "noul": {
+      "title": "Kyllä vai ei",
+      "desc": "Pitääkö väite paikkansa? Vastaa todennäköisyydellä."
+    },
+    "score": {
+      "title": "Arviointiasteikko",
+      "desc": "Pisteyttää järjestettyjen tasojen mukaan. Vastaa odotetulla tasolla."
+    },
+    "choice": {
+      "title": "Monivalinta",
+      "desc": "Valitsee yhden nimeämistäsi vaihtoehdoista."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "”Automaattinen” valitsee checkpointin tilan kielen perusteella. Jos valitset yhden, kaikki pyynnöt menevät sille kielestä riippumatta.",
+    "auto": "Automaattinen (kielen mukaan)",
+    "english": "Englanti",
+    "multilingual": "Monikielinen",
+    "typed-decisions": "Tyypitetyt päätökset"
+  },
+  "run": "Suorita",
+  "cancel": "Peruuta",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Korjattavat ongelmat",
+    "stateEmpty": "Tila on tyhjä.",
+    "stateNull": "Tila ei voi olla null.",
+    "stateJson": "Tila ei ole kelvollista JSONia: {{detail}} (rivi {{line}}, sarake {{column}}).",
+    "stateTooLong": "Tila on yli {{max}} merkkiä pitkä.",
+    "questionsJson": "Kysymykset eivät ole kelvollista JSONia: {{detail}} (rivi {{line}}, sarake {{column}}).",
+    "questionsNotObject": "Kysymysten on oltava JSON-objekti, jonka avaimet ovat kysymysten tunnisteita.",
+    "noQuestions": "Lisää vähintään yksi kysymys.",
+    "tooManyQuestions": "Enintään {{max}} kysymystä pyyntöä kohden.",
+    "tooManyTotal": "Enintään {{max}} vaihtoehtoa kaikissa kysymyksissä yhteensä.",
+    "questionNotObject": "”{{id}}”: kysymyksen on oltava objekti.",
+    "badType": "”{{id}}”: typen on oltava choice, score tai noul.",
+    "noInstructions": "”{{id}}”: ohjeet puuttuvat.",
+    "labelsOnlyNoul": "”{{id}}”: labels koskee vain noul-kysymyksiä.",
+    "choiceNeedsCriteria": "”{{id}}”: choice-kysymys tarvitsee kriteerit — vaihtoehto-objektin tai nimilistan.",
+    "tooManyOptions": "”{{id}}”: enintään {{max}} vaihtoehtoa.",
+    "labelNotScalar": "”{{id}}”: jokaisen nimen on oltava tekstiä, luku tai true/false.",
+    "duplicateLabel": "”{{id}}”: nimi {{label}} esiintyy kahdesti (1, 1.0 ja true lasketaan samaksi nimeksi).",
+    "scoreNeedsLevels": "”{{id}}”: score-kysymys tarvitsee kriteerit tasojen listana alimmasta alkaen.",
+    "tooManyLevels": "”{{id}}”: enintään {{max}} tasoa.",
+    "nullLevel": "”{{id}}”: taso ei voi olla null.",
+    "noulCriteria": "”{{id}}”: noul-kriteerit voivat kuvata vain arvot true ja false.",
+    "noulLabels": "”{{id}}”: labels tarvitsee eri tekstit arvoille true ja false.",
+    "badBudget": "Arvon {{name}} on oltava kokonaisluku väliltä 1–{{max}}.",
+    "server": "”{{id}}”, palvelimen mukaan: {{detail}}"
+  },
+  "examples": {
+    "intro": "Valitse esimerkki ladataksesi sen editoreihin. Mitään ei lähetetä ennen kuin painat Suorita.",
+    "groups": {
+      "lessons": "Oppitunnit",
+      "useCases": "Käyttötapaukset",
+      "multilingual": "Monikieliset"
+    },
+    "review": {
+      "title": "Tyytyväinen vai ei?",
+      "blurb": "Kyllä/ei-kysymyksiä. Nimet nimeävät vastauksen uudelleen, kriteerit kertovat, mikä ratkaisee."
+    },
+    "bugReport": {
+      "title": "Arvioi virheraportti",
+      "blurb": "Järjestettyjen tasojen asteikko. Vastaus on odotettu taso, joka voi osua kahden väliin."
+    },
+    "helpdesk": {
+      "title": "Ohjaa tukipyyntö",
+      "blurb": "Kuvatut vaihtoehdot. Ne jakavat yhden token-budjetin, joten pitkät listat ahtauttavat toisiaan."
+    },
+    "triage": {
+      "title": "Tukitikettien lajittelu",
+      "blurb": "Tiimi, kiireellisyys ja hyvitys — kolme kysymystä yhdestä viestistä yhdessä pyynnössä."
+    },
+    "resume": {
+      "title": "Ansioluetteloiden seulonta",
+      "blurb": "Kokemustaso, vaadittu taito ja johtajuus luettuna ansioluettelosta."
+    },
+    "guardrails": {
+      "title": "LLM-suojakaiteet",
+      "blurb": "Tunnista jailbreak-yritys ja arvioi haitta ennen kuin malli vastaa."
+    },
+    "moderation": {
+      "title": "Sisällön moderointi",
+      "blurb": "Kova kritiikki ei ole häirintää: erota ne toisistaan."
+    },
+    "phishing": {
+      "title": "Tietojenkalasteluviesti",
+      "blurb": "JSON-tila: koko sähköposti lähettäjineen ja aiheineen."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "Lajiteltava tiketti devanagari-kirjoituksella."
+    },
+    "japanese": {
+      "title": "Japani",
+      "blurb": "Lajiteltava tiketti japaniksi."
+    },
+    "arabic": {
+      "title": "Arabia",
+      "blurb": "Lajiteltava tiketti arabialaisella kirjoituksella."
+    },
+    "russian": {
+      "title": "Venäjä",
+      "blurb": "Lajiteltava tiketti kyrillisellä kirjoituksella."
+    },
+    "german": {
+      "title": "Saksa",
+      "blurb": "Latinalainen kirjoitus mutta ei englantia: ohjataan kielen, ei kirjoitusjärjestelmän mukaan."
+    }
+  },
+  "share": {
+    "button": "Jaa",
+    "copied": "Linkki kopioitu",
+    "tooLong": "Tämä pyyntö on liian pitkä jaettavaksi linkkinä. Kopioi sen sijaan pyynnön JSON.",
+    "inAddressBar": "Automaattinen kopiointi epäonnistui: linkki on osoiterivillä."
+  },
+  "code": {
+    "language": "Kieli",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "laya-SDK",
+    "fixFirst": "Korjaa pyynnön ongelmat nähdäksesi sen koodina.",
+    "jev": "Mikä tahansa TypeSafe Jev -asiakas toimii muuttamatta: ohjaa se vain tänne. Mallin nimi, jota tämä palvelu ei tunne, palautuu arvoon helexa/one.",
+    "key": "Pyynnöt ilman avainta toimivat julkisen rajan puitteissa. Enempää varten luo API-avain ja aseta HELEXA_API_KEY.",
+    "keyLink": "Hanki API-avain"
+  },
+  "copy": "Kopioi",
+  "copied": "Kopioitu",
+  "results": {
+    "empty": "Suorita pyyntö nähdäksesi vastaukset tässä.",
+    "running": "Päätetään…",
+    "expectedScore": "Odotettu taso {{score}}",
+    "pTrue": "{{p}} todennäköisyys, että pitää paikkansa",
+    "answerConfidence": "Vastauksen varmuus",
+    "confidence": "Varmuus",
+    "confidenceHelp": "Vastauksen varmuus on valitun vastauksen todennäköisyys — kalibroitu luku, jolle kynnys asetetaan. Varmuus mittaa, kuinka selvä koko jakauma on (1 − normalisoitu entropia; kyllä/ei-kysymyksissä suurempi todennäköisyys), eikä sitä voi verrata kysymystyyppien välillä.",
+    "collapsed": "Jotkin vaihtoehdot lyhennettiin budjetin vuoksi samoiksi tokeneiksi, joten malli ei pystynyt erottamaan niitä. Lyhennä vaihtoehtojen tekstejä tai käytä vähemmän vaihtoehtoja."
+  },
+  "routing": {
+    "title": "Ohjaus",
+    "detected": "Tunnistettu kirjoitus: {{script}} · kieli: {{language}}",
+    "undecided": "määrittämätön",
+    "scripts": "Kirjainten osuus kirjoitusjärjestelmittäin",
+    "pinned": "Pyyntö nimesi tämän checkpointin, joten kielentunnistus ohitettiin."
+  },
+  "usage": {
+    "title": "Käyttö ja aika",
+    "inputTokens": "syötetokenia (laskutetaan)",
+    "server": "mallin aika",
+    "roundTrip": "kokonaisaika",
+    "ms": "{{ms}} ms",
+    "help": "Päätökset laskutetaan syötetokeneina. Jokainen kysymys koodataan yhdessä tilan kanssa, joten jokainen lisäkysymys pitkästä tilasta maksaa tilan uudelleen."
+  },
+  "raw": {
+    "request": "Pyynnön JSON",
+    "response": "Vastauksen JSON"
+  },
+  "errors": {
+    "retryIn": "Voit yrittää uudelleen {{seconds}} s kuluttua.",
+    "retryNow": "Voit yrittää uudelleen nyt.",
+    "rateLimitNote": "Julkinen päätepiste ottaa vastaan 10 pyyntöä minuutissa osoitetta kohden. Yritä uudelleen minuutin kuluttua.",
+    "validation": {
+      "title": "Palvelin hylkäsi pyynnön",
+      "help": "Korjaa alla oleva ongelma ja suorita uudelleen."
+    },
+    "too_large": {
+      "title": "Pyyntö on liian suuri",
+      "help": "Se ylittää yhden palvelimen rajoista."
+    },
+    "rate_limited": {
+      "title": "Liikaa pyyntöjä",
+      "help": "Palvelu rajoittaa, kuinka usein tästä osoitteesta voi kysyä."
+    },
+    "unavailable": {
+      "title": "Palvelu on varattu",
+      "help": "Malli on varattu tai käynnistyy uudelleen."
+    },
+    "not_found": {
+      "title": "Päätösmallia ei ole saatavilla",
+      "help": "Palvelulla ei juuri nyt ole mallia, joka voisi vastata."
+    },
+    "server": {
+      "title": "Palvelu epäonnistui",
+      "help": "Palvelimella tapahtui virhe. Yritä pian uudelleen."
+    },
+    "network": {
+      "title": "Palveluun ei saada yhteyttä",
+      "help": "Tarkista yhteytesi ja yritä uudelleen."
+    },
+    "timeout": {
+      "title": "Pyyntö aikakatkaistiin",
+      "help": "Vastausta ei tullut ajoissa. Yritä pian uudelleen."
+    },
+    "cancelled": {
+      "title": "Peruttu",
+      "help": "Pyyntö pysäytettiin ennen kuin se valmistui."
+    },
+    "bad_response": {
+      "title": "Lukukelvoton vastaus",
+      "help": "Palvelu vastasi jollakin, joka ei ole päätös."
+    }
+  }
+}

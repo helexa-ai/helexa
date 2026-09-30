@@ -1,0 +1,217 @@
+/* Decision playground — compose pane (#358). Tokens from App.css. */
+
+.hx-pg-compose {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 0;
+}
+
+.hx-pg-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.9rem;
+    background-color: var(--color-bg-elevated);
+    box-shadow: var(--shadow-card);
+    min-width: 0;
+}
+
+.hx-pg-panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.hx-pg-panel-head label {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.hx-pg-eyebrow {
+    display: block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+.hx-pg-editor {
+    width: 100%;
+    resize: vertical;
+    border-radius: 0.6rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-subtle);
+    color: inherit;
+    padding: 0.7rem 0.8rem;
+    font: inherit;
+    font-size: 0.92rem;
+    line-height: 1.45;
+}
+.hx-pg-editor:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+}
+.hx-pg-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    tab-size: 2;
+}
+
+.hx-pg-help {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+}
+
+.hx-pg-link {
+    background: none;
+    border: 0;
+    padding: 0.2rem 0;
+    color: var(--color-accent);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+/* Segmented control (Text / JSON). */
+.hx-pg-seg {
+    display: inline-flex;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.55rem;
+    overflow: hidden;
+}
+.hx-pg-seg button {
+    background: transparent;
+    border: 0;
+    padding: 0.3rem 0.75rem;
+    min-height: 32px;
+    color: var(--color-text-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+.hx-pg-seg button + button {
+    border-inline-start: 1px solid var(--color-border-subtle);
+}
+.hx-pg-seg button.active {
+    background-color: var(--color-accent-soft);
+    color: var(--color-accent);
+}
+
+/* Type badges share one shape; each primitive has its own hue. */
+.hx-pg-type {
+    display: inline-block;
+    padding: 0.1rem 0.5rem;
+    border-radius: 999px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    width: fit-content;
+    border: 1px solid currentColor;
+}
+.hx-pg-type-noul {
+    color: var(--color-accent);
+}
+.hx-pg-type-score {
+    color: var(--color-accent-2);
+}
+.hx-pg-type-choice {
+    color: var(--color-accent-hot);
+}
+
+.hx-pg-add {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.hx-pg-add-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
+    gap: 0.5rem;
+}
+.hx-pg-add-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    text-align: start;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.7rem;
+    background: transparent;
+    color: var(--color-text);
+    cursor: pointer;
+    transition:
+        border-color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+.hx-pg-add-btn:hover:not(:disabled),
+.hx-pg-add-btn:focus-visible {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+}
+.hx-pg-add-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+.hx-pg-add-btn strong {
+    font-size: 0.9rem;
+}
+.hx-pg-add-desc {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+}
+
+.hx-pg-issues {
+    margin: 0;
+    padding: 0.6rem 0.8rem 0.6rem 1.8rem;
+    border-radius: 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--color-accent-hot) 45%, transparent);
+    background-color: color-mix(in srgb, var(--color-accent-hot) 8%, transparent);
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+}
+.hx-pg-issues li + li {
+    margin-top: 0.2rem;
+}
+
+.hx-pg-runbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+.hx-pg-checkpoint {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+.hx-pg-checkpoint select {
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text);
+    padding: 0.35rem 0.5rem;
+    min-height: 36px;
+    font: inherit;
+    font-size: 0.9rem;
+}
+.hx-pg-checkpoint select option {
+    background: var(--color-bg-elevated);
+    color: var(--color-text);
+}
+.hx-pg-run {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-inline-start: auto;
+}

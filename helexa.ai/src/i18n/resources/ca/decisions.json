@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Espai de proves",
+    "lead": "Feu a un model de decisió preguntes tipades sobre qualsevol text o JSON i obtingueu respostes calibrades en una sola passada, sense text generat.",
+    "docsLink": "Com funciona",
+    "side": "Resultats, exemples i codi",
+    "tabs": {
+      "results": "Resultats",
+      "examples": "Exemples",
+      "code": "Codi"
+    }
+  },
+  "compose": {
+    "label": "Redacteu una sol·licitud"
+  },
+  "state": {
+    "label": "Estat",
+    "mode": "Format de l’estat",
+    "text": "Text",
+    "json": "JSON",
+    "placeholder": "El missatge, el tiquet, el document o la conversa sobre el qual decidir",
+    "help": {
+      "text": "S’envia tal com està escrit.",
+      "json": "Un objecte s’envia com a JSON, amb les claus en l’ordre escrit. Una llista es llegeix com una conversa i s’escurça des del principi, perquè es conservin els torns més recents."
+    }
+  },
+  "questions": {
+    "label": "Preguntes",
+    "format": "Formata",
+    "help": "Un objecte JSON indexat per id de pregunta. Cada pregunta té un tipus, instruccions i, en choice i score, criteris."
+  },
+  "add": {
+    "label": "Afegeix una pregunta",
+    "invalidJson": "Corregiu primer les preguntes: afegir-ne una substituiria un text que no és un objecte JSON vàlid.",
+    "noul": {
+      "title": "Sí o no",
+      "desc": "Una afirmació és certa? Respon amb una probabilitat."
+    },
+    "score": {
+      "title": "Rúbrica",
+      "desc": "Qualifica segons nivells ordenats. Respon amb el nivell esperat."
+    },
+    "choice": {
+      "title": "Opció múltiple",
+      "desc": "Tria una de les vostres opcions etiquetades."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "«Automàtic» tria el checkpoint segons la llengua de l’estat. Si en trieu un, totes les sol·licituds hi van, sigui quina sigui la llengua.",
+    "auto": "Automàtic (segons la llengua)",
+    "english": "Anglès",
+    "multilingual": "Multilingüe",
+    "typed-decisions": "Decisions tipades"
+  },
+  "run": "Executa",
+  "cancel": "Cancel·la",
+  "shortcut": "Ctrl+Retorn",
+  "issues": {
+    "title": "Problemes per resoldre",
+    "stateEmpty": "L’estat és buit.",
+    "stateNull": "L’estat no pot ser null.",
+    "stateJson": "L’estat no és un JSON vàlid: {{detail}} (línia {{line}}, columna {{column}}).",
+    "stateTooLong": "L’estat supera els {{max}} caràcters.",
+    "questionsJson": "Les preguntes no són un JSON vàlid: {{detail}} (línia {{line}}, columna {{column}}).",
+    "questionsNotObject": "Les preguntes han de ser un objecte JSON indexat per id de pregunta.",
+    "noQuestions": "Afegiu almenys una pregunta.",
+    "tooManyQuestions": "Com a màxim {{max}} preguntes per sol·licitud.",
+    "tooManyTotal": "Com a màxim {{max}} opcions en total entre totes les preguntes.",
+    "questionNotObject": "«{{id}}»: una pregunta ha de ser un objecte.",
+    "badType": "«{{id}}»: type ha de ser choice, score o noul.",
+    "noInstructions": "«{{id}}»: falten les instruccions.",
+    "labelsOnlyNoul": "«{{id}}»: labels només s’aplica a preguntes noul.",
+    "choiceNeedsCriteria": "«{{id}}»: una pregunta choice necessita criteris: un objecte d’opcions o una llista d’etiquetes.",
+    "tooManyOptions": "«{{id}}»: com a màxim {{max}} opcions.",
+    "labelNotScalar": "«{{id}}»: cada etiqueta ha de ser text, un nombre o true/false.",
+    "duplicateLabel": "«{{id}}»: l’etiqueta {{label}} apareix dues vegades (1, 1.0 i true compten com la mateixa).",
+    "scoreNeedsLevels": "«{{id}}»: una pregunta score necessita criteris com a llista de nivells, del més baix al més alt.",
+    "tooManyLevels": "«{{id}}»: com a màxim {{max}} nivells.",
+    "nullLevel": "«{{id}}»: un nivell no pot ser null.",
+    "noulCriteria": "«{{id}}»: els criteris noul només poden descriure true i false.",
+    "noulLabels": "«{{id}}»: labels necessita textos diferents per a true i false.",
+    "badBudget": "{{name}} ha de ser un nombre enter d’1 a {{max}}.",
+    "server": "«{{id}}», segons el servidor: {{detail}}"
+  },
+  "examples": {
+    "intro": "Trieu un exemple per carregar-lo als editors. No s’envia res fins que premeu Executa.",
+    "groups": {
+      "lessons": "Lliçons",
+      "useCases": "Casos d’ús",
+      "multilingual": "Multilingüe"
+    },
+    "review": {
+      "title": "Satisfet o no?",
+      "blurb": "Preguntes de sí/no. Les etiquetes canvien el nom de la resposta i els criteris diuen què compta."
+    },
+    "bugReport": {
+      "title": "Qualificar un informe d’error",
+      "blurb": "Una rúbrica de nivells ordenats. La resposta és el nivell esperat, que pot quedar entre dos."
+    },
+    "helpdesk": {
+      "title": "Encaminar una sol·licitud al servei d’assistència",
+      "blurb": "Opcions descrites. Comparteixen un mateix pressupost de tokens, així que les llistes llargues es destorben."
+    },
+    "triage": {
+      "title": "Classificació de tiquets de suport",
+      "blurb": "Equip, urgència i reemborsament: tres preguntes sobre un missatge en una sola sol·licitud."
+    },
+    "resume": {
+      "title": "Cribratge de currículums",
+      "blurb": "Nivell d’experiència, una habilitat requerida i lideratge, llegits d’un CV."
+    },
+    "guardrails": {
+      "title": "Salvaguardes per a LLM",
+      "blurb": "Detectar un intent de jailbreak i valorar el dany abans que respongui un model."
+    },
+    "moderation": {
+      "title": "Moderació de continguts",
+      "blurb": "Una crítica dura no és assetjament: distingiu-los."
+    },
+    "phishing": {
+      "title": "Correu de pesca",
+      "blurb": "Un estat JSON: el correu sencer, amb remitent i assumpte."
+    },
+    "hindi": {
+      "title": "Hindi",
+      "blurb": "El tiquet de classificació en escriptura devanagari."
+    },
+    "japanese": {
+      "title": "Japonès",
+      "blurb": "El tiquet de classificació en japonès."
+    },
+    "arabic": {
+      "title": "Àrab",
+      "blurb": "El tiquet de classificació en escriptura àrab."
+    },
+    "russian": {
+      "title": "Rus",
+      "blurb": "El tiquet de classificació en escriptura ciríl·lica."
+    },
+    "german": {
+      "title": "Alemany",
+      "blurb": "Escriptura llatina, però no anglès: s’encamina per llengua, no per escriptura."
+    }
+  },
+  "share": {
+    "button": "Comparteix",
+    "copied": "Enllaç copiat",
+    "tooLong": "Aquesta sol·licitud és massa llarga per compartir-la com a enllaç. Copieu-ne el JSON en lloc seu.",
+    "inAddressBar": "No s’ha pogut copiar automàticament: l’enllaç és a la barra d’adreces."
+  },
+  "code": {
+    "language": "Llenguatge",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK de laya",
+    "fixFirst": "Resoleu els problemes de la sol·licitud per veure-la com a codi.",
+    "jev": "Qualsevol client de TypeSafe Jev funciona sense canvis: apunteu-lo aquí. Un nom de model que aquest servei no conegui recorre a helexa/one.",
+    "key": "Les sol·licituds sense clau funcionen dins del límit públic. Per a més, creeu una clau d’API i definiu HELEXA_API_KEY.",
+    "keyLink": "Obteniu una clau d’API"
+  },
+  "copy": "Copia",
+  "copied": "Copiat",
+  "results": {
+    "empty": "Executeu una sol·licitud per veure aquí les respostes.",
+    "running": "S’està decidint…",
+    "expectedScore": "Nivell esperat {{score}}",
+    "pTrue": "{{p}} de probabilitat que sigui cert",
+    "answerConfidence": "Confiança de la resposta",
+    "confidence": "Confiança",
+    "confidenceHelp": "La confiança de la resposta és la probabilitat de la resposta escollida: el nombre calibrat sobre el qual fixar un llindar. La confiança mesura com de definida és tota la distribució (1 − entropia normalitzada; en sí/no, la probabilitat més alta) i no es pot comparar entre tipus de pregunta.",
+    "collapsed": "Algunes opcions s’han escurçat als mateixos tokens per cabre al pressupost, i el model no les ha pogut distingir. Escurceu els textos de les opcions o feu-ne servir menys."
+  },
+  "routing": {
+    "title": "Encaminament",
+    "detected": "Escriptura detectada: {{script}} · llengua: {{language}}",
+    "undecided": "indeterminada",
+    "scripts": "Proporció de lletres per escriptura",
+    "pinned": "La sol·licitud indicava aquest checkpoint, així que s’ha omès la detecció de llengua."
+  },
+  "usage": {
+    "title": "Consum i temps",
+    "inputTokens": "tokens d’entrada (facturats)",
+    "server": "temps del model",
+    "roundTrip": "anada i tornada",
+    "ms": "{{ms}} ms",
+    "help": "Les decisions es facturen en tokens d’entrada. Cada pregunta es codifica juntament amb l’estat, així que cada pregunta de més sobre un estat llarg torna a costar aquest estat."
+  },
+  "raw": {
+    "request": "JSON de la sol·licitud",
+    "response": "JSON de la resposta"
+  },
+  "errors": {
+    "retryIn": "Podeu tornar-ho a provar d’aquí a {{seconds}} s.",
+    "retryNow": "Ja podeu tornar-ho a provar.",
+    "rateLimitNote": "El punt d’accés públic permet 10 sol·licituds per minut per adreça. Torneu-ho a provar d’aquí a un minut.",
+    "validation": {
+      "title": "El servidor ha rebutjat la sol·licitud",
+      "help": "Corregiu el problema de sota i torneu a executar-la."
+    },
+    "too_large": {
+      "title": "La sol·licitud és massa gran",
+      "help": "Supera un dels límits del servidor."
+    },
+    "rate_limited": {
+      "title": "Massa sol·licituds",
+      "help": "El servei limita la freqüència amb què aquesta adreça pot preguntar."
+    },
+    "unavailable": {
+      "title": "El servei està ocupat",
+      "help": "El model està ocupat o s’està reiniciant."
+    },
+    "not_found": {
+      "title": "No hi ha cap model de decisió disponible",
+      "help": "Ara mateix el servei no té cap model que pugui respondre-ho."
+    },
+    "server": {
+      "title": "El servei ha fallat",
+      "help": "Alguna cosa ha anat malament al servidor. Torneu-ho a provar d’aquí a poc."
+    },
+    "network": {
+      "title": "No s’ha pogut contactar amb el servei",
+      "help": "Comproveu la connexió i torneu-ho a provar."
+    },
+    "timeout": {
+      "title": "La sol·licitud ha caducat",
+      "help": "No ha arribat cap resposta a temps. Torneu-ho a provar d’aquí a poc."
+    },
+    "cancelled": {
+      "title": "Cancel·lada",
+      "help": "La sol·licitud s’ha aturat abans d’acabar."
+    },
+    "bad_response": {
+      "title": "Resposta il·legible",
+      "help": "El servei ha respost amb una cosa que no és una decisió."
+    }
+  }
+}

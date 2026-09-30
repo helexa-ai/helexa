@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Peskovnik",
+    "lead": "Postavite modelu za odločanje tipizirana vprašanja o katerem koli besedilu ali JSON in prejmite umerjene odgovore v enem prehodu — brez ustvarjenega besedila.",
+    "docsLink": "Kako deluje",
+    "side": "Rezultati, primeri in koda",
+    "tabs": {
+      "results": "Rezultati",
+      "examples": "Primeri",
+      "code": "Koda"
+    }
+  },
+  "compose": {
+    "label": "Sestavite zahtevo"
+  },
+  "state": {
+    "label": "Stanje",
+    "mode": "Oblika stanja",
+    "text": "Besedilo",
+    "json": "JSON",
+    "placeholder": "Sporočilo, zahtevek, dokument ali pogovor, o katerem se odloča",
+    "help": {
+      "text": "Pošlje se natanko tako, kot je napisano.",
+      "json": "Objekt se pošlje kot JSON, s ključi v zapisanem vrstnem redu. Seznam se bere kot pogovor in se krajša od začetka, da ostanejo najnovejše izmenjave."
+    }
+  },
+  "questions": {
+    "label": "Vprašanja",
+    "format": "Oblikuj",
+    "help": "Objekt JSON z id-ji vprašanj kot ključi. Vsako vprašanje ima tip, navodila in — pri choice in score — merila."
+  },
+  "add": {
+    "label": "Dodaj vprašanje",
+    "invalidJson": "Najprej popravite vprašanja: dodajanje bi zamenjalo besedilo, ki ni veljaven objekt JSON.",
+    "noul": {
+      "title": "Da ali ne",
+      "desc": "Ali je trditev resnična? Odgovori z verjetnostjo."
+    },
+    "score": {
+      "title": "Ocenjevalna lestvica",
+      "desc": "Ocenjuje po urejenih ravneh. Odgovori s pričakovano ravnjo."
+    },
+    "choice": {
+      "title": "Izbira med možnostmi",
+      "desc": "Izbere eno od vaših označenih možnosti."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "»Samodejno« izbere checkpoint glede na jezik stanja. Če izberete določenega, gredo vse zahteve k njemu, ne glede na jezik.",
+    "auto": "Samodejno (po jeziku)",
+    "english": "Angleščina",
+    "multilingual": "Večjezični",
+    "typed-decisions": "Tipizirane odločitve"
+  },
+  "run": "Zaženi",
+  "cancel": "Prekliči",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Kaj je treba popraviti",
+    "stateEmpty": "Stanje je prazno.",
+    "stateNull": "Stanje ne more biti null.",
+    "stateJson": "Stanje ni veljaven JSON: {{detail}} (vrstica {{line}}, stolpec {{column}}).",
+    "stateTooLong": "Stanje je daljše od {{max}} znakov.",
+    "questionsJson": "Vprašanja niso veljaven JSON: {{detail}} (vrstica {{line}}, stolpec {{column}}).",
+    "questionsNotObject": "Vprašanja morajo biti objekt JSON z id-ji vprašanj kot ključi.",
+    "noQuestions": "Dodajte vsaj eno vprašanje.",
+    "tooManyQuestions": "Največ {{max}} vprašanj na zahtevo.",
+    "tooManyTotal": "Največ {{max}} možnosti v vseh vprašanjih skupaj.",
+    "questionNotObject": "»{{id}}«: vprašanje mora biti objekt.",
+    "badType": "»{{id}}«: type mora biti choice, score ali noul.",
+    "noInstructions": "»{{id}}«: manjkajo navodila.",
+    "labelsOnlyNoul": "»{{id}}«: labels velja samo za vprašanja noul.",
+    "choiceNeedsCriteria": "»{{id}}«: vprašanje choice potrebuje merila — objekt možnosti ali seznam oznak.",
+    "tooManyOptions": "»{{id}}«: največ {{max}} možnosti.",
+    "labelNotScalar": "»{{id}}«: vsaka oznaka mora biti besedilo, število ali true/false.",
+    "duplicateLabel": "»{{id}}«: oznaka {{label}} se pojavi dvakrat (1, 1.0 in true štejejo kot ista oznaka).",
+    "scoreNeedsLevels": "»{{id}}«: vprašanje score potrebuje merila kot seznam ravni, od najnižje.",
+    "tooManyLevels": "»{{id}}«: največ {{max}} ravni.",
+    "nullLevel": "»{{id}}«: raven ne more biti null.",
+    "noulCriteria": "»{{id}}«: merila noul lahko opisujejo samo true in false.",
+    "noulLabels": "»{{id}}«: labels potrebuje različni besedili za true in false.",
+    "badBudget": "{{name}} mora biti celo število od 1 do {{max}}.",
+    "server": "»{{id}}« po navedbah strežnika: {{detail}}"
+  },
+  "examples": {
+    "intro": "Izberite primer, da ga naložite v urejevalnika. Nič se ne pošlje, dokler ne pritisnete Zaženi.",
+    "groups": {
+      "lessons": "Lekcije",
+      "useCases": "Primeri uporabe",
+      "multilingual": "Večjezični"
+    },
+    "review": {
+      "title": "Zadovoljen ali ne?",
+      "blurb": "Vprašanja da/ne. Oznake preimenujejo odgovor, merila povedo, kaj šteje."
+    },
+    "bugReport": {
+      "title": "Ocenite poročilo o napaki",
+      "blurb": "Lestvica urejenih ravni. Odgovor je pričakovana raven, ki lahko pade med dve."
+    },
+    "helpdesk": {
+      "title": "Usmerite zahtevo na podporo",
+      "blurb": "Opisane možnosti. Delijo si en proračun žetonov, zato si dolgi seznami ovirajo drug drugega."
+    },
+    "triage": {
+      "title": "Razvrščanje zahtevkov za podporo",
+      "blurb": "Ekipa, nujnost in vračilo — tri vprašanja o enem sporočilu v eni zahtevi."
+    },
+    "resume": {
+      "title": "Pregled življenjepisov",
+      "blurb": "Senioriteta, zahtevana veščina in vodenje, prebrani iz življenjepisa."
+    },
+    "guardrails": {
+      "title": "Varovala za LLM",
+      "blurb": "Prepoznajte poskus jailbreaka in ocenite škodo, preden model odgovori."
+    },
+    "moderation": {
+      "title": "Moderiranje vsebine",
+      "blurb": "Ostra kritika ni nadlegovanje: razlikujte ju."
+    },
+    "phishing": {
+      "title": "Lažno predstavljanje po e-pošti",
+      "blurb": "Stanje v JSON: celotno sporočilo s pošiljateljem in zadevo."
+    },
+    "hindi": {
+      "title": "Hindijščina",
+      "blurb": "Zahtevek za razvrščanje v pisavi devanagari."
+    },
+    "japanese": {
+      "title": "Japonščina",
+      "blurb": "Zahtevek za razvrščanje v japonščini."
+    },
+    "arabic": {
+      "title": "Arabščina",
+      "blurb": "Zahtevek za razvrščanje v arabski pisavi."
+    },
+    "russian": {
+      "title": "Ruščina",
+      "blurb": "Zahtevek za razvrščanje v cirilici."
+    },
+    "german": {
+      "title": "Nemščina",
+      "blurb": "Latinica, a ne angleščina: usmerjeno po jeziku, ne po pisavi."
+    }
+  },
+  "share": {
+    "button": "Deli",
+    "copied": "Povezava kopirana",
+    "tooLong": "Ta zahteva je predolga za deljenje s povezavo. Namesto tega kopirajte JSON zahteve.",
+    "inAddressBar": "Samodejno kopiranje ni uspelo: povezava je v naslovni vrstici."
+  },
+  "code": {
+    "language": "Jezik",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Odpravite težave v zahtevi, da jo vidite kot kodo.",
+    "jev": "Vsak odjemalec TypeSafe Jev deluje brez sprememb: le usmerite ga sem. Ime modela, ki ga ta storitev ne pozna, preide na helexa/one.",
+    "key": "Zahteve brez ključa delujejo znotraj javne omejitve. Za več ustvarite ključ API in nastavite HELEXA_API_KEY.",
+    "keyLink": "Pridobite ključ API"
+  },
+  "copy": "Kopiraj",
+  "copied": "Kopirano",
+  "results": {
+    "empty": "Zaženite zahtevo, da tu vidite odgovore.",
+    "running": "Odločanje…",
+    "expectedScore": "Pričakovana raven {{score}}",
+    "pTrue": "{{p}} verjetnost, da drži",
+    "answerConfidence": "Zanesljivost odgovora",
+    "confidence": "Zanesljivost",
+    "confidenceHelp": "Zanesljivost odgovora je verjetnost izbranega odgovora — umerjeno število, na katerega se postavi prag. Zanesljivost meri, kako odločna je celotna porazdelitev (1 − normalizirana entropija; pri da/ne večja od verjetnosti), in je med tipi vprašanj ni mogoče primerjati.",
+    "collapsed": "Nekatere možnosti so bile zaradi proračuna skrajšane na enake žetone, zato jih model ni mogel razlikovati. Skrajšajte besedila možnosti ali jih uporabite manj."
+  },
+  "routing": {
+    "title": "Usmerjanje",
+    "detected": "Zaznana pisava: {{script}} · jezik: {{language}}",
+    "undecided": "neodločeno",
+    "scripts": "Delež črk po pisavah",
+    "pinned": "Zahteva je navedla ta checkpoint, zato je bilo zaznavanje jezika preskočeno."
+  },
+  "usage": {
+    "title": "Poraba in čas",
+    "inputTokens": "vhodni žetoni (obračunani)",
+    "server": "čas modela",
+    "roundTrip": "skupni čas",
+    "ms": "{{ms}} ms",
+    "help": "Odločitve se obračunajo po vhodnih žetonih. Vsako vprašanje se kodira skupaj s stanjem, zato vsako dodatno vprašanje o dolgem stanju znova stane to stanje."
+  },
+  "raw": {
+    "request": "JSON zahteve",
+    "response": "JSON odgovora"
+  },
+  "errors": {
+    "retryIn": "Znova lahko poskusite čez {{seconds}} s.",
+    "retryNow": "Zdaj lahko poskusite znova.",
+    "rateLimitNote": "Javna končna točka sprejme 10 zahtev na minuto z enega naslova. Poskusite znova čez minuto.",
+    "validation": {
+      "title": "Strežnik je zavrnil zahtevo",
+      "help": "Odpravite spodnjo težavo in zaženite znova."
+    },
+    "too_large": {
+      "title": "Zahteva je prevelika",
+      "help": "Presega eno od omejitev strežnika."
+    },
+    "rate_limited": {
+      "title": "Preveč zahtev",
+      "help": "Storitev omejuje, kako pogosto lahko ta naslov sprašuje."
+    },
+    "unavailable": {
+      "title": "Storitev je zasedena",
+      "help": "Model je zaseden ali se znova zaganja."
+    },
+    "not_found": {
+      "title": "Noben model za odločanje ni na voljo",
+      "help": "Storitev trenutno nima modela, ki bi lahko odgovoril."
+    },
+    "server": {
+      "title": "Storitev je odpovedala",
+      "help": "Na strežniku je šlo nekaj narobe. Kmalu poskusite znova."
+    },
+    "network": {
+      "title": "Storitve ni mogoče doseči",
+      "help": "Preverite povezavo in poskusite znova."
+    },
+    "timeout": {
+      "title": "Zahteva je potekla",
+      "help": "Odgovor ni prispel pravočasno. Kmalu poskusite znova."
+    },
+    "cancelled": {
+      "title": "Preklicano",
+      "help": "Zahteva je bila ustavljena, preden se je končala."
+    },
+    "bad_response": {
+      "title": "Neberljiv odgovor",
+      "help": "Storitev je odgovorila z nečim, kar ni odločitev."
+    }
+  }
+}

@@ -1,0 +1,238 @@
+{
+  "page": {
+    "title": "Clós súgartha",
+    "lead": "Cuir ceisteanna clóscríofa ar mhúnla cinntí faoi théacs nó JSON ar bith agus faigh freagraí calabraithe in aon phas amháin — gan téacs ginte.",
+    "docsLink": "Conas a oibríonn sé",
+    "side": "Torthaí, samplaí agus cód",
+    "tabs": {
+      "results": "Torthaí",
+      "examples": "Samplaí",
+      "code": "Cód"
+    }
+  },
+  "compose": {
+    "label": "Cum iarratas"
+  },
+  "state": {
+    "label": "Staid",
+    "mode": "Formáid na staide",
+    "text": "Téacs",
+    "json": "JSON",
+    "placeholder": "An teachtaireacht, an ticéad, an doiciméad nó an comhrá atá le cinneadh",
+    "help": {
+      "text": "Seoltar é díreach mar atá sé scríofa.",
+      "json": "Seoltar réad mar JSON, agus na heochracha san ord inar scríobhadh iad. Léitear liosta mar chomhrá agus giorraítear é ón tús, ionas go bhfanann na sealanna is déanaí."
+    }
+  },
+  "questions": {
+    "label": "Ceisteanna",
+    "format": "Formáidigh",
+    "help": "Réad JSON agus aitheantais na gceisteanna mar eochracha. Tá cineál, treoracha agus — do choice agus score — critéir ag gach ceist."
+  },
+  "add": {
+    "label": "Cuir ceist leis",
+    "invalidJson": "Ceartaigh na ceisteanna ar dtús: chuirfeadh ceist nua téacs nach réad JSON bailí é in áit.",
+    "noul": {
+      "title": "Tá nó níl",
+      "desc": "An bhfuil ráiteas fíor? Freagraíonn sé le dóchúlacht."
+    },
+    "score": {
+      "title": "Scála measúnaithe",
+      "desc": "Grádaíonn sé de réir leibhéal ordaithe. Freagraíonn sé leis an leibhéal ionchais."
+    },
+    "choice": {
+      "title": "Ilrogha",
+      "desc": "Roghnaíonn sé ceann de do roghanna lipéadaithe."
+    }
+  },
+  "checkpoint": {
+    "label": "Checkpoint",
+    "help": "Roghnaíonn “Uathoibríoch” an checkpoint de réir theanga na staide. Má roghnaíonn tú ceann, téann gach iarratas chuige, is cuma cén teanga.",
+    "auto": "Uathoibríoch (de réir teanga)",
+    "english": "Béarla",
+    "multilingual": "Ilteangach",
+    "typed-decisions": "Cinntí clóscríofa"
+  },
+  "run": "Rith",
+  "cancel": "Cealaigh",
+  "shortcut": "Ctrl+Enter",
+  "issues": {
+    "title": "Fadhbanna le ceartú",
+    "stateEmpty": "Tá an staid folamh.",
+    "stateNull": "Ní féidir leis an staid a bheith null.",
+    "stateJson": "Ní JSON bailí í an staid: {{detail}} (líne {{line}}, colún {{column}}).",
+    "stateTooLong": "Tá an staid níos faide ná {{max}} carachtar.",
+    "questionsJson": "Ní JSON bailí iad na ceisteanna: {{detail}} (líne {{line}}, colún {{column}}).",
+    "questionsNotObject": "Caithfidh na ceisteanna a bheith ina réad JSON agus aitheantais na gceisteanna mar eochracha.",
+    "noQuestions": "Cuir ceist amháin ar a laghad leis.",
+    "tooManyQuestions": "{{max}} ceist ar a mhéad in aghaidh an iarratais.",
+    "tooManyTotal": "{{max}} rogha ar a mhéad san iomlán thar na ceisteanna go léir.",
+    "questionNotObject": "“{{id}}”: caithfidh ceist a bheith ina réad.",
+    "badType": "“{{id}}”: caithfidh type a bheith choice, score nó noul.",
+    "noInstructions": "“{{id}}”: tá na treoracha ar iarraidh.",
+    "labelsOnlyNoul": "“{{id}}”: ní bhaineann labels ach le ceisteanna noul.",
+    "choiceNeedsCriteria": "“{{id}}”: teastaíonn critéir ó cheist choice — réad roghanna nó liosta lipéad.",
+    "tooManyOptions": "“{{id}}”: {{max}} rogha ar a mhéad.",
+    "labelNotScalar": "“{{id}}”: caithfidh gach lipéad a bheith ina théacs, ina uimhir nó ina true/false.",
+    "duplicateLabel": "“{{id}}”: tá an lipéad {{label}} ann faoi dhó (áirítear 1, 1.0 agus true mar an lipéad céanna).",
+    "scoreNeedsLevels": "“{{id}}”: teastaíonn critéir ó cheist score mar liosta leibhéal, ón gceann is ísle.",
+    "tooManyLevels": "“{{id}}”: {{max}} leibhéal ar a mhéad.",
+    "nullLevel": "“{{id}}”: ní féidir le leibhéal a bheith null.",
+    "noulCriteria": "“{{id}}”: ní féidir le critéir noul cur síos ach ar true agus false.",
+    "noulLabels": "“{{id}}”: teastaíonn téacsanna difriúla ó labels do true agus false.",
+    "badBudget": "Caithfidh {{name}} a bheith ina shlánuimhir ó 1 go {{max}}.",
+    "server": "“{{id}}”, de réir an fhreastalaí: {{detail}}"
+  },
+  "examples": {
+    "intro": "Roghnaigh sampla chun é a luchtú sna heagarthóirí. Ní sheoltar aon rud go mbrúnn tú Rith.",
+    "groups": {
+      "lessons": "Ceachtanna",
+      "useCases": "Cásanna úsáide",
+      "multilingual": "Ilteangach"
+    },
+    "review": {
+      "title": "Sásta nó nach ea?",
+      "blurb": "Ceisteanna tá/níl. Athainmníonn lipéid an freagra, deir critéir cad a chomhaireann."
+    },
+    "bugReport": {
+      "title": "Grádaigh tuairisc fabht",
+      "blurb": "Scála leibhéal ordaithe. Is é an freagra an leibhéal ionchais, a d’fhéadfadh titim idir dhá cheann."
+    },
+    "helpdesk": {
+      "title": "Seol iarratas chuig an deasc chabhrach",
+      "blurb": "Roghanna le cur síos. Roinneann siad buiséad token amháin, mar sin plúchann liostaí fada a chéile."
+    },
+    "triage": {
+      "title": "Triáiseáil ticéad tacaíochta",
+      "blurb": "Foireann, práinn agus aisíocaíocht — trí cheist faoi theachtaireacht amháin in iarratas amháin."
+    },
+    "resume": {
+      "title": "Scagadh CVanna",
+      "blurb": "Sinsearacht, scil riachtanach agus ceannaireacht, léite ó CV."
+    },
+    "guardrails": {
+      "title": "Ráillí cosanta do LLManna",
+      "blurb": "Aithin iarracht jailbreak agus measúnaigh an díobháil sula bhfreagraíonn múnla."
+    },
+    "moderation": {
+      "title": "Modhnóireacht ábhair",
+      "blurb": "Ní ciapadh é cáineadh géar: déan idirdhealú eatarthu."
+    },
+    "phishing": {
+      "title": "Ríomhphost fioscaireachta",
+      "blurb": "Staid JSON: an ríomhphost iomlán, leis an seoltóir agus an t-ábhar."
+    },
+    "hindi": {
+      "title": "Hiondúis",
+      "blurb": "An ticéad triáiseála i script Devanagari."
+    },
+    "japanese": {
+      "title": "Seapáinis",
+      "blurb": "An ticéad triáiseála i Seapáinis."
+    },
+    "arabic": {
+      "title": "Araibis",
+      "blurb": "An ticéad triáiseála i script Arabach."
+    },
+    "russian": {
+      "title": "Rúisis",
+      "blurb": "An ticéad triáiseála i script Coireallach."
+    },
+    "german": {
+      "title": "Gearmáinis",
+      "blurb": "Script Laidineach, ach ní Béarla: ródaithe de réir teanga, ní de réir scripte."
+    }
+  },
+  "share": {
+    "button": "Comhroinn",
+    "copied": "Cóipeáladh an nasc",
+    "tooLong": "Tá an t-iarratas seo rófhada le comhroinnt mar nasc. Cóipeáil JSON an iarratais ina ionad.",
+    "inAddressBar": "Níorbh fhéidir cóipeáil go huathoibríoch: tá an nasc sa bharra seoltaí."
+  },
+  "code": {
+    "language": "Teanga",
+    "curl": "curl",
+    "python": "Python",
+    "laya": "SDK laya",
+    "fixFirst": "Réitigh fadhbanna an iarratais chun é a fheiceáil mar chód.",
+    "jev": "Oibríonn aon chliant TypeSafe Jev gan athrú: dírigh anseo é. Titeann ainm múnla nach n-aithníonn an tseirbhís seo siar ar helexa/one.",
+    "key": "Oibríonn iarratais gan eochair laistigh den teorainn phoiblí. Le haghaidh níos mó, cruthaigh eochair API agus socraigh HELEXA_API_KEY.",
+    "keyLink": "Faigh eochair API"
+  },
+  "copy": "Cóipeáil",
+  "copied": "Cóipeáilte",
+  "results": {
+    "empty": "Rith iarratas chun na freagraí a fheiceáil anseo.",
+    "running": "Ag cinneadh…",
+    "expectedScore": "Leibhéal ionchais {{score}}",
+    "pTrue": "{{p}} seans go bhfuil sé fíor",
+    "answerConfidence": "Muinín an fhreagra",
+    "confidence": "Muinín",
+    "confidenceHelp": "Is é muinín an fhreagra dóchúlacht an fhreagra roghnaithe — an uimhir chalabraithe ar a gcuirtear tairseach. Tomhaiseann muinín cé chomh cinnte is atá an dáileadh ar fad (1 − eantrópacht normalaithe; do tá/níl, an dóchúlacht is mó) agus ní féidir í a chur i gcomparáid idir cineálacha ceisteanna.",
+    "collapsed": "Giorraíodh roinnt roghanna go dtí na tokens céanna chun iad a chur sa bhuiséad, mar sin níorbh fhéidir leis an múnla idirdhealú a dhéanamh eatarthu. Giorraigh téacsanna na roghanna nó úsáid níos lú acu."
+  },
+  "routing": {
+    "title": "Ródú",
+    "detected": "Script braite: {{script}} · teanga: {{language}}",
+    "undecided": "gan chinneadh",
+    "scripts": "Cion na litreacha de réir scripte",
+    "pinned": "Luaigh an t-iarratas an checkpoint seo, mar sin scipeáladh brath teanga."
+  },
+  "usage": {
+    "title": "Úsáid agus am",
+    "inputTokens": "tokens ionchuir (gearrtar táille orthu)",
+    "server": "am an mhúnla",
+    "roundTrip": "am iomlán",
+    "ms": "{{ms}} ms",
+    "help": "Gearrtar táille ar chinntí de réir tokens ionchuir. Ionchódaítear gach ceist in éineacht leis an staid, mar sin cosnaíonn gach ceist bhreise faoi staid fhada an staid sin arís."
+  },
+  "raw": {
+    "request": "JSON an iarratais",
+    "response": "JSON an fhreagra"
+  },
+  "errors": {
+    "retryIn": "Is féidir leat triail eile a bhaint as i gceann {{seconds}} s.",
+    "retryNow": "Is féidir leat triail eile a bhaint as anois.",
+    "rateLimitNote": "Glacann an críochphointe poiblí le 10 n-iarratas sa nóiméad ó gach seoladh. Bain triail eile as i gceann nóiméid.",
+    "validation": {
+      "title": "Dhiúltaigh an freastalaí don iarratas",
+      "help": "Ceartaigh an fhadhb thíos agus rith arís."
+    },
+    "too_large": {
+      "title": "Tá an t-iarratas rómhór",
+      "help": "Sáraíonn sé ceann de theorainneacha an fhreastalaí."
+    },
+    "rate_limited": {
+      "title": "An iomarca iarratas",
+      "help": "Teorannaíonn an tseirbhís cé chomh minic is féidir leis an seoladh seo ceist a chur."
+    },
+    "unavailable": {
+      "title": "Tá an tseirbhís gnóthach",
+      "help": "Tá an múnla gnóthach nó á atosú."
+    },
+    "not_found": {
+      "title": "Níl múnla cinntí ar fáil",
+      "help": "Níl múnla ag an tseirbhís faoi láthair a d’fhéadfadh freagra a thabhairt."
+    },
+    "server": {
+      "title": "Theip ar an tseirbhís",
+      "help": "Chuaigh rud éigin mícheart ar an bhfreastalaí. Bain triail eile as ar ball."
+    },
+    "network": {
+      "title": "Ní féidir teacht ar an tseirbhís",
+      "help": "Seiceáil do cheangal agus bain triail eile as."
+    },
+    "timeout": {
+      "title": "Chuaigh an t-iarratas thar am",
+      "help": "Níor tháinig freagra in am. Bain triail eile as ar ball."
+    },
+    "cancelled": {
+      "title": "Cealaithe",
+      "help": "Stopadh an t-iarratas sular chríochnaigh sé."
+    },
+    "bad_response": {
+      "title": "Freagra doléite",
+      "help": "D’fhreagair an tseirbhís le rud nach cinneadh é."
+    }
+  }
+}
