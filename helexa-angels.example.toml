@@ -58,6 +58,6 @@ timeout_secs = 30
 # whether a mail also goes out. An unknown provider is a hard startup
 # failure rather than silently swallowed notifications.
 provider = "smtp"
-smtp_url = "smtps://user%40l4ir.net:CHANGEME@mail.l4ir.net:465"
+smtp_url = "smtps://mailer%40example.org:CHANGEME@smtp.example.org:465"
 from_addr = "helexa <no-reply@helexa.ai>"
 notify_to = "angels@helexa.ai"

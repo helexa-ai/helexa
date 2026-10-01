@@ -267,9 +267,10 @@ else
 fi
 
 # ── bench UI: internal vhost (bench.internal) on the gateway ──────────
-# Reachable from inside the WireGuard mesh — the public bench.helexa.ai
-# dead-ends at the OPNsense LAN interface (it only port-forwards :443
-# from the WAN). Same SPA + /api→bob proxy, but with an internal-CA cert
+# For clients inside the WireGuard mesh, where the public bench.helexa.ai
+# doesn't resolve to a usable path (see doc/infra/edge-ingress.md in the
+# private helexa/security repo). Same SPA + /api→bob proxy, but with an
+# internal-CA cert
 # (smallstep "lair") renewed by step@bench.timer, replicating the
 # convention on oolon.kosherinata.internal.
 int_domain="bench.internal"
@@ -366,8 +367,9 @@ fi
 # deploy.yml's deploy-website job; each site's edge proxy serves it
 # under server_name helexa.ai with its own Let's Encrypt cert.
 # Cloudflare DNS load balancing (operator-managed) routes the public
-# name to both site WAN IPs. Conventions per
-# architecture/reverse-proxies.md §4. Idempotent.
+# name to both site WAN IPs. Edge conventions are summarised in
+# doc/infra/edge-ingress.md in the private helexa/security repo.
+# Idempotent.
 web_domain="helexa.ai"
 web_webroot="/var/www/${web_domain}"
 web_hosts=("${cortex_host}" "oolon.kosherinata.internal")
@@ -605,8 +607,9 @@ for angels_host in "${web_hosts[@]}"; do
 done
 
 # ── helexa website: internal vhost (helexa.internal) on the gateway ────
-# Mesh clients can't reach the public helexa.ai (hairpin gotcha —
-# reverse-proxies.md §2). Same SPA webroot, internal-CA cert renewed by
+# For mesh clients, which can't use the public helexa.ai (see
+# doc/infra/edge-ingress.md in the private helexa/security repo). Same
+# SPA webroot, internal-CA cert renewed by
 # step@helexa.timer. hanzalova only; both site routers carry the
 # split-horizon helexa.internal → hanzalova host override.
 web_int_domain="helexa.internal"

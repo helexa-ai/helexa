@@ -1226,9 +1226,8 @@ mean-vs-reference-envelope, not single cases.
   near-ties, probabilities within a bf16 tolerance.
 - The public edge is `https://helexa.ai/v1/systemone`. It is rate-limited
   (10 r/min per IP), so replay against the router (gallumbits:8088).
-  Neither edge is reachable from inside its own LAN (no NAT reflection;
-  hanzalova's presents the OPNsense certificate), so public probes must
-  go cross-site.
+  Probing the public names has network constraints; see
+  `doc/infra/edge-ingress.md` in the private helexa/security repo.
 
 **Sharp edges:**
 - **rustingface#6:** a neuron cold load of anything rf.internal hasn't

@@ -52,21 +52,10 @@ curl -s 'http://localhost:26559/api/v1/targets' | jq '.data.activeTargets[]|sele
 
 `grafana-helexa-fleet.json` is a raw dashboard model with a `datasource`
 template variable, so it binds to whichever Prometheus data source you pick
-at import. Import via the API (creds in `/etc/grafana/grafana.env`):
-
-```sh
-# on golgafrinchans; GF_SECURITY_ADMIN_USER/PASSWORD live in the root-only
-# env file, Grafana is published on :28767
-set -a; source <(sudo cat /etc/grafana/grafana.env); set +a
-jq -n --slurpfile d grafana-helexa-fleet.json \
-  '{dashboard: $d[0], overwrite: true, folderUid: null}' \
-| curl -s -u "$GF_SECURITY_ADMIN_USER:$GF_SECURITY_ADMIN_PASSWORD" \
-    -H 'Content-Type: application/json' \
-    -d @- http://localhost:28767/api/dashboards/db | jq '{status,uid,version}'
-```
-
-The dashboard lands at uid `helexa-fleet`. Re-importing with `overwrite:true`
-updates it in place.
+at import. Import it through the Grafana dashboards API with admin
+credentials (`overwrite: true` updates it in place; it lands at uid
+`helexa-fleet`). The exact command and where the admin credentials live are
+in `doc/infra/monitoring-access.md` in the private helexa/security repo.
 
 ## What the dashboard shows
 
