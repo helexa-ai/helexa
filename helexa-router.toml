@@ -26,7 +26,11 @@ region = "eu-central"
 
 # Product tiers → real model ids (#166). The SPA sends the tier names.
 [aliases]
-"helexa/small" = "Qwen/Qwen3-8B"
+# helexa/small is the tier anonymous web chat uses. It points at the 1.7B on
+# quadbrat, the same target as the catalogue alias in models.toml: the 8B
+# needs benjy, and while benjy serves nothing an alias aimed there made
+# anonymous chat answer "no operator serves model 'Qwen/Qwen3-8B'".
+"helexa/small" = "Qwen/Qwen3-1.7B"
 "helexa/balanced" = "Qwen/Qwen3.8-27B"
 # System-One decisions (#333). Also the model /v1/systemone falls back
 # to when a request names none or names a service no operator serves.
