@@ -242,10 +242,20 @@ jobs:
 
   test:
     name: Test
-    timeout-minutes: 25
+    # The compile alone took 19 of the old 25 minutes on main (2026-10-17,
+    # 75% Rust cache hits), so any growth in a workspace crate tipped a
+    # healthy run into a timeout. 45 leaves room without hiding a hang.
+    timeout-minutes: 45
     runs-on: rust
     needs: changes
     if: needs.changes.outputs.rust == 'true'
+    # Line tables only: full debuginfo for the whole graph made the neuron
+    # test binary's compile and link the memory peak of the job, and on the
+    # 15 GB rust runners a Test sharing the host with a Clippy was killed
+    # mid-compile with no log (2026-10-17). Backtraces keep file:line.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v4
       # See script/ci-cargo-escalate.sh for the escalation rationale.

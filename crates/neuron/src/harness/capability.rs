@@ -60,6 +60,8 @@ pub fn classify_files(
         // A decision model answers typed questions (`/v1/systemone`);
         // it generates no text, so it must not claim "text".
         SourceFormat::DecisionModel => vec!["decision".to_string()],
+        // A music model (#383) renders audio on `/v1/audio/generations`.
+        SourceFormat::AceStep => vec![cortex_core::audio::CAPABILITY.to_string()],
         // A repo with no recognised weights (tokenizer-only, or an empty
         // entry) is not servable, so claiming "text" would be a lie of
         // the same kind this module exists to remove.
@@ -170,5 +172,14 @@ mod tests {
     fn uncached_repo_is_unknown_not_empty() {
         let dir = std::env::temp_dir().join("helexa-capability-probe-missing");
         assert!(from_cache(&dir, "does-not/exist").is_none());
+    }
+
+    #[test]
+    fn acestep_snapshot_is_audio_not_text() {
+        let mut files = crate::harness::audio::required_files();
+        files.push("config.json".into());
+        files.push("acestep-5Hz-lm-1.7B/model.safetensors".into());
+        let refs: Vec<&str> = files.iter().map(String::as_str).collect();
+        assert_eq!(classify_files(&refs, || None), vec!["audio".to_string()]);
     }
 }

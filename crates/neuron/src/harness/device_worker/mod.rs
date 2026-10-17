@@ -51,7 +51,9 @@ use tokio::sync::oneshot;
 
 #[cfg(feature = "cuda")]
 pub use jobs::TpHandle;
-pub use jobs::{ArchHandle, DecisionHandle, DenseLoad, ImageHandle, Job, KvSnapshotId};
+pub use jobs::{
+    ArchHandle, AudioHandle, DecisionHandle, DenseLoad, ImageHandle, Job, KvSnapshotId,
+};
 
 /// Errors returned by `DeviceWorkerHandle` submit methods.
 #[derive(Debug, thiserror::Error)]
@@ -324,6 +326,82 @@ impl DeviceWorkerHandle {
                 handle,
                 params,
                 max_dim,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Load an ACE-Step music pipeline (#383) on the worker thread.
+    pub async fn load_audio(
+        &self,
+        files: crate::harness::audio::AceStepFiles,
+        model_id: String,
+    ) -> Result<AudioHandle, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::LoadAudio {
+                files,
+                model_id,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        match reply_rx.await {
+            Ok(result) => result.map_err(WorkerError::from),
+            Err(_) => Err(WorkerError::Gone {
+                device_index: self.device_index,
+            }),
+        }
+    }
+
+    /// Drop the music pipeline for `handle` on the worker thread. Same
+    /// poison-tolerant contract as [`Self::drop_arch`].
+    pub async fn drop_audio(&self, handle: AudioHandle) -> Result<(), WorkerError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::DropAudio {
+                handle,
+                reply: reply_tx,
+            })
+            .map_err(|_| WorkerError::Gone {
+                device_index: self.device_index,
+            })?;
+        reply_rx.await.map_err(|_| WorkerError::Gone {
+            device_index: self.device_index,
+        })
+    }
+
+    /// Render one song (#383) on the worker thread. The reply is CPU-side
+    /// samples; no device tensor crosses back.
+    pub async fn generate_audio(
+        &self,
+        handle: AudioHandle,
+        params: crate::harness::audio::AudioGenParams,
+    ) -> Result<crate::harness::audio::AudioGenResult, WorkerError> {
+        if self.poisoned.load(Ordering::Acquire) {
+            return Err(WorkerError::Poisoned {
+                device_index: self.device_index,
+            });
+        }
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.tx
+            .send(Job::GenerateAudio {
+                handle,
+                params,
                 reply: reply_tx,
             })
             .map_err(|_| WorkerError::Gone {

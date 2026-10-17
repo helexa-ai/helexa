@@ -1,0 +1,590 @@
+{
+ "stats": {
+  "text_token_ids": {
+   "shape": [
+    1,
+    69
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 13378.8984375,
+   "std": 30062.693359375
+  },
+  "text_hidden_states": {
+   "shape": [
+    1,
+    69,
+    1024
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 25.977481842041016,
+   "mean": 0.02045757882297039,
+   "std": 3.241281747817993
+  },
+  "lyric_token_ids": {
+   "shape": [
+    1,
+    85
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 12799.2705078125,
+   "std": 28789.38671875
+  },
+  "lyric_embeds": {
+   "shape": [
+    1,
+    85,
+    1024
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.1455078125,
+   "mean": -6.758137897122651e-05,
+   "std": 0.028640327975153923
+  },
+  "lyric_encoder_out": {
+   "shape": [
+    1,
+    85,
+    2048
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.863743305206299,
+   "mean": 0.00022191336029209197,
+   "std": 0.21818169951438904
+  },
+  "encoder_hidden_states": {
+   "shape": [
+    1,
+    155,
+    2048
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 59.50959014892578,
+   "mean": -0.00023797630274202675,
+   "std": 2.5121824741363525
+  },
+  "encoder_attention_mask": {
+   "shape": [
+    1,
+    155
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_src_latents": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": -0.20503059029579163,
+   "std": 0.9627315402030945
+  },
+  "gen_chunk_masks": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_is_covers": {
+   "shape": [
+    1
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "gen_text_attention_mask": {
+   "shape": [
+    1,
+    69
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_lyric_attention_mask": {
+   "shape": [
+    1,
+    85
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_refer_audio_acoustic_hidden_states_packed": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": -0.20505407452583313,
+   "std": 0.9630097150802612
+  },
+  "gen_refer_audio_order_mask": {
+   "shape": [
+    1
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "noise": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.481950759887695,
+   "mean": -0.0012088896473869681,
+   "std": 1.0021259784698486
+  },
+  "decoder_attention_mask": {
+   "shape": [
+    1,
+    3000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "context_latents": {
+   "shape": [
+    1,
+    3000,
+    128
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": 0.397484689950943,
+   "std": 0.9090932011604309
+  },
+  "target_latents": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.963353157043457,
+   "mean": -0.059779636561870575,
+   "std": 0.9689832329750061
+  },
+  "vae_input": {
+   "shape": [
+    1,
+    64,
+    3000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.963353157043457,
+   "mean": -0.059779632836580276,
+   "std": 0.9689832329750061
+  },
+  "vae_output": {
+   "shape": [
+    1,
+    2,
+    5760000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.1243239641189575,
+   "mean": 0.0022900181356817484,
+   "std": 0.2425956279039383
+  },
+  "step0_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.481950759887695,
+   "mean": -0.0012088901130482554,
+   "std": 1.0021259784698486
+  },
+  "step0_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.20016860961914,
+   "mean": 0.031169403344392776,
+   "std": 0.9595847725868225
+  },
+  "step1_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.489744186401367,
+   "mean": -0.0011380503419786692,
+   "std": 0.9892756342887878
+  },
+  "step1_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.930624485015869,
+   "mean": 0.051206715404987335,
+   "std": 0.9604854583740234
+  },
+  "step2_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.4029998779296875,
+   "mean": -0.001731583965010941,
+   "std": 0.9694339036941528
+  },
+  "step2_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.688076972961426,
+   "mean": 0.056339867413043976,
+   "std": 1.0303699970245361
+  },
+  "step3_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.267682075500488,
+   "mean": -0.0033748296555131674,
+   "std": 0.9417667984962463
+  },
+  "step3_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.325620651245117,
+   "mean": 0.059855762869119644,
+   "std": 1.113539218902588
+  },
+  "step4_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.180131912231445,
+   "mean": -0.006492315791547298,
+   "std": 0.9044287800788879
+  },
+  "step4_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.624993324279785,
+   "mean": 0.063774473965168,
+   "std": 1.1794639825820923
+  },
+  "step5_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.143228530883789,
+   "mean": -0.01178787462413311,
+   "std": 0.8583288192749023
+  },
+  "step5_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 10.063016891479492,
+   "mean": 0.07400824129581451,
+   "std": 1.2499022483825684
+  },
+  "step6_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.062557220458984,
+   "mean": -0.02117106132209301,
+   "std": 0.8128213286399841
+  },
+  "step6_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 10.117950439453125,
+   "mean": 0.07707438617944717,
+   "std": 1.2784838676452637
+  },
+  "step7_xt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.788510322570801,
+   "mean": -0.03600787743926048,
+   "std": 0.8092695474624634
+  },
+  "step7_vt": {
+   "shape": [
+    1,
+    3000,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 11.121769905090332,
+   "mean": 0.07923920452594757,
+   "std": 1.3733223676681519
+  },
+  "final_audio_full": {
+   "shape": [
+    2,
+    5760000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.8912509083747864,
+   "mean": 0.001815296127460897,
+   "std": 0.19230540096759796
+  },
+  "vae_waveform": {
+   "shape": [
+    1,
+    2,
+    24000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0015655603492632508,
+   "mean": 0.0008253749110735953,
+   "std": 0.00031154692987911403
+  }
+ },
+ "planner": [],
+ "decoder_calls": 8,
+ "text_prompt": "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n# Caption\nanthemic rock, driving drums, distorted guitars, male vocals, stadium\n\n# Metas\n- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: 120 seconds\n<|endoftext|>\n<|endoftext|>",
+ "lyric_prompt": "# Languages\nen\n\n# Lyric\n[Verse]\nEngines roar across the plain\nThunder rolling in the rain\n[Chorus]\nWe are the fire, we are the flame\nNothing will ever be the same\n[Verse]\nIron hearts and open roads\nCarry all our heavy loads\n[Chorus]\nWe are the fire, we are the flame\nNothing will ever be the same\n<|endoftext|><|endoftext|>",
+ "generate_audio_kwargs": {
+  "seed": [
+   99
+  ],
+  "non_cover_text_hidden_states": null,
+  "non_cover_text_attention_mask": null,
+  "precomputed_lm_hints_25Hz": null,
+  "audio_cover_strength": 1.0,
+  "cover_noise_strength": 0.0,
+  "infer_method": "ode",
+  "infer_steps": 8,
+  "diffusion_guidance_scale": 1.0,
+  "use_adg": false,
+  "cfg_interval_start": 0.0,
+  "cfg_interval_end": 1.0,
+  "shift": 3.0,
+  "repaint_mask": null,
+  "clean_src_latents": null,
+  "repaint_crossfade_frames": 12,
+  "repaint_injection_ratio": 0.5,
+  "sampler_mode": "euler",
+  "velocity_norm_threshold": 0.0,
+  "velocity_ema_factor": 0.0,
+  "dcw_enabled": true,
+  "dcw_mode": "double",
+  "dcw_scaler": 0.05,
+  "dcw_high_scaler": 0.02,
+  "dcw_wavelet": "haar",
+  "retake_seed": null,
+  "retake_variance": 0.0
+ },
+ "noise_source": "cpu_f32",
+ "noise_seed": [
+  99
+ ],
+ "vae_path": "tiled_decode",
+ "first_nan": null,
+ "drift_vs_cpu_f32": {
+  "target_latents": {
+   "max_abs": 0.012529700994491577,
+   "rel_l2": 0.00023412087466567755,
+   "cos": 1.0000017881393433
+  },
+  "step0_vt": {
+   "max_abs": 0.0010593533515930176,
+   "rel_l2": 3.1580562790622935e-05,
+   "cos": 1.0000009536743164
+  }
+ },
+ "timesteps": [
+  1.0,
+  0.9545454382896423,
+  0.8999999761581421,
+  0.8333333134651184,
+  0.75,
+  0.6428571343421936,
+  0.5,
+  0.30000001192092896
+ ],
+ "steps_saved": {
+  "xt": [],
+  "vt": []
+ },
+ "normalisation_gain": 0.79269939661026,
+ "case": {
+  "name": "vocal_en_120s_noplan",
+  "caption": "anthemic rock, driving drums, distorted guitars, male vocals, stadium",
+  "lyrics": "[Verse]\nEngines roar across the plain\nThunder rolling in the rain\n[Chorus]\nWe are the fire, we are the flame\nNothing will ever be the same\n[Verse]\nIron hearts and open roads\nCarry all our heavy loads\n[Chorus]\nWe are the fire, we are the flame\nNothing will ever be the same\n",
+  "instrumental": false,
+  "language": "en",
+  "duration": 120.0,
+  "planner": false,
+  "seed": 99
+ },
+ "trace": "cuda_f32",
+ "sample_rate": 48000,
+ "latent_frames": 3000,
+ "wall_s": 80.42,
+ "planner_metadata": {
+  "cot_bpm": null,
+  "cot_keyscale": "",
+  "cot_timesignature": "",
+  "cot_duration": null,
+  "cot_vocal_language": "unknown",
+  "cot_caption": "",
+  "cot_lyrics": ""
+ },
+ "nan_anywhere": false,
+ "dtype": "float32",
+ "time_costs": {
+  "dit_encoder_time_cost": 0.2964894771575928,
+  "dit_diffusion_time_cost": 13.03431224822998,
+  "dit_diffusion_per_step_time_cost": 1.6292890310287476,
+  "dit_total_time_cost": 78.95445084571838,
+  "dit_offload_time_cost": 0.0,
+  "dit_vae_decode_time_cost": 65.62364912033081,
+  "pipeline_total_time": 78.95445084571838
+ },
+ "vram_peak_gib": 12.64
+}

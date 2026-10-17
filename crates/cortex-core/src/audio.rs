@@ -55,6 +55,10 @@ pub struct AudioGenerationRequest {
     /// Guidance / CFG scale.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guidance_scale: Option<f64>,
+    /// Language of the lyrics, as a code such as `"en"` or `"es"`. Models
+    /// that use it default to `"unknown"`; a song planner may infer it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
     /// Song planner: `"off"`, `"auto"` (model default) or `"on"`, for
     /// models that have one (ACE-Step's LM).
     #[serde(default, skip_serializing_if = "Option::is_none")]

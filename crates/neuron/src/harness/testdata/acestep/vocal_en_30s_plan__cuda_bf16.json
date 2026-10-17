@@ -1,0 +1,698 @@
+{
+ "stats": {
+  "planner0_input_ids": {
+   "shape": [
+    1,
+    88
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151645.0,
+   "mean": 19310.5,
+   "std": 36945.2421875
+  },
+  "planner0_output_ids": {
+   "shape": [
+    1,
+    164
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151667.0,
+   "mean": 11851.962890625,
+   "std": 22489.11328125
+  },
+  "planner1_input_ids": {
+   "shape": [
+    2,
+    253
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151668.0,
+   "mean": 75740.6484375,
+   "std": 71543.0234375
+  },
+  "planner1_output_ids": {
+   "shape": [
+    2,
+    151
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 215285.0,
+   "mean": 175618.65625,
+   "std": 19471.232421875
+  },
+  "text_token_ids": {
+   "shape": [
+    1,
+    168
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 12768.2861328125,
+   "std": 23394.662109375
+  },
+  "text_hidden_states": {
+   "shape": [
+    1,
+    168,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 53.25,
+   "mean": 0.006647909060120583,
+   "std": 3.6152524948120117
+  },
+  "lyric_token_ids": {
+   "shape": [
+    1,
+    50
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 15434.919921875,
+   "std": 32450.25390625
+  },
+  "lyric_embeds": {
+   "shape": [
+    1,
+    50,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.1455078125,
+   "mean": -2.0353383661131375e-05,
+   "std": 0.02917708456516266
+  },
+  "lyric_encoder_out": {
+   "shape": [
+    1,
+    50,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.84375,
+   "mean": 7.857609307393432e-05,
+   "std": 0.21875111758708954
+  },
+  "encoder_hidden_states": {
+   "shape": [
+    1,
+    219,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 61.75,
+   "mean": 0.01834404468536377,
+   "std": 4.027553558349609
+  },
+  "encoder_attention_mask": {
+   "shape": [
+    1,
+    219
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 0.9999999403953552,
+   "std": 0.0
+  },
+  "gen_src_latents": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.0,
+   "mean": -0.1963416337966919,
+   "std": 1.3276153802871704
+  },
+  "gen_chunk_masks": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_is_covers": {
+   "shape": [
+    1
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_precomputed_lm_hints_25Hz": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.0,
+   "mean": -0.1963416337966919,
+   "std": 1.3276153802871704
+  },
+  "gen_text_attention_mask": {
+   "shape": [
+    1,
+    168
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_lyric_attention_mask": {
+   "shape": [
+    1,
+    50
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_refer_audio_acoustic_hidden_states_packed": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": -0.20527024567127228,
+   "std": 0.9638134837150574
+  },
+  "gen_refer_audio_order_mask": {
+   "shape": [
+    1
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "noise": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.3125,
+   "mean": 0.00015245501708704978,
+   "std": 0.9954671263694763
+  },
+  "decoder_attention_mask": {
+   "shape": [
+    1,
+    750
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "context_latents": {
+   "shape": [
+    1,
+    750,
+    128
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.0,
+   "mean": 0.40182918310165405,
+   "std": 1.113141655921936
+  },
+  "target_latents": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.75,
+   "mean": -0.05630049481987953,
+   "std": 0.9725976586341858
+  },
+  "vae_input": {
+   "shape": [
+    1,
+    64,
+    750
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.75,
+   "mean": -0.05630049481987953,
+   "std": 0.9725977182388306
+  },
+  "vae_output": {
+   "shape": [
+    1,
+    2,
+    1440000
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.1953125,
+   "mean": 0.0017192979576066136,
+   "std": 0.20992910861968994
+  },
+  "step0_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.3125,
+   "mean": 0.00015245501708704978,
+   "std": 0.9954671263694763
+  },
+  "step0_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.03125,
+   "mean": 0.03901836276054382,
+   "std": 1.0200481414794922
+  },
+  "step1_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.25,
+   "mean": 0.00017262109031435102,
+   "std": 0.9807873368263245
+  },
+  "step1_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.84375,
+   "mean": 0.06322557479143143,
+   "std": 1.0437380075454712
+  },
+  "step2_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.15625,
+   "mean": -0.0005775972967967391,
+   "std": 0.9585269689559937
+  },
+  "step2_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.59375,
+   "mean": 0.05350181460380554,
+   "std": 1.0736874341964722
+  },
+  "step3_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0,
+   "mean": -0.00213055033236742,
+   "std": 0.9294414520263672
+  },
+  "step3_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.1875,
+   "mean": 0.05613993480801582,
+   "std": 1.1276668310165405
+  },
+  "step4_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.859375,
+   "mean": -0.004975701216608286,
+   "std": 0.8924679756164551
+  },
+  "step4_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.25,
+   "mean": 0.0634550154209137,
+   "std": 1.1632198095321655
+  },
+  "step5_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.671875,
+   "mean": -0.01013150718063116,
+   "std": 0.8479833602905273
+  },
+  "step5_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.5625,
+   "mean": 0.0709952563047409,
+   "std": 1.2117410898208618
+  },
+  "step6_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.5,
+   "mean": -0.019236139953136444,
+   "std": 0.8052212595939636
+  },
+  "step6_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.125,
+   "mean": 0.07383294403553009,
+   "std": 1.2253835201263428
+  },
+  "step7_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.5,
+   "mean": -0.033381376415491104,
+   "std": 0.8078320622444153
+  },
+  "step7_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 10.125,
+   "mean": 0.07622785121202469,
+   "std": 1.3199793100357056
+  },
+  "final_audio_full": {
+   "shape": [
+    2,
+    1440000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.8912509083747864,
+   "mean": 0.0012819459661841393,
+   "std": 0.15652769804000854
+  },
+  "vae_waveform": {
+   "shape": [
+    1,
+    2,
+    24000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0859375,
+   "mean": 0.0022140510845929384,
+   "std": 0.2581889033317566
+  },
+  "planner_audio_codes": {
+   "shape": [
+    150
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 63616.0,
+   "mean": 24109.48046875,
+   "std": 19469.529296875
+  }
+ },
+ "planner": [
+  {
+   "phase": "cot",
+   "formatted_prompt": "<|im_start|>system\n# Instruction\nGenerate audio semantic tokens based on the given conditions:\n\n<|im_end|>\n<|im_start|>user\n# Caption\nupbeat indie pop, bright electric guitars, punchy drums, female vocals\n\n# Lyric\n[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n\n<|im_end|>\n<|im_start|>assistant\n",
+   "temperature": 0.0,
+   "cfg_scale": 1.0,
+   "negative_prompt": "NO USER INPUT",
+   "target_duration": null,
+   "loop": "_generate_with_constrained_decoding",
+   "output_text": "<think>\nbpm: 130\ncaption: An energetic indie rock track driven by bright, slightly overdriven electric\n  guitars playing chunky power chords and melodic riffs. A punchy acoustic drum kit\n  lays down a straightforward 4/4 beat with prominent crash cymbals accenting the\n  chorus sections. The clean bass guitar provides a solid rhythmic foundation. A clear\n  male lead vocal delivers an anthemic melody with passion, pushing into a higher\n  register for emphasis on key phrases like 'Hold on'. The song builds to a powerful\n  hook before ending abruptly after a brief instrumental break featuring layered vocals\n  and driving instrumentation.\nduration: 30\nkeyscale: A major\nlanguage: en\ntimesignature: 4\n<|im_end|>"
+  },
+  {
+   "phase": "codes",
+   "formatted_prompt": "<|im_start|>system\n# Instruction\nGenerate audio semantic tokens based on the given conditions:\n\n<|im_end|>\n<|im_start|>user\n# Caption\nupbeat indie pop, bright electric guitars, punchy drums, female vocals\n\n# Lyric\n[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n\n<|im_end|>\n<|im_start|>assistant\n<think>\nbpm: 130\ncaption: An energetic indie rock track driven by bright, slightly overdriven electric\n  guitars playing chunky power chords and melodic riffs. A punchy acoustic drum kit\n  lays down a straightforward 4/4 beat with prominent crash cymbals accenting the\n  chorus sections. The clean bass guitar provides a solid rhythmic foundation. A clear\n  male lead vocal delivers an anthemic melody with passion, pushing into a higher\n  register for emphasis on key phrases like 'Hold on'. The song builds to a powerful\n  hook before ending abruptly after a brief instrumental break featuring layered vocals\n  and driving instrumentation.\nduration: 30\nkeyscale: A major\nlanguage: en\ntimesignature: 4\n</think>\n\n",
+   "temperature": 0.0,
+   "cfg_scale": 2.0,
+   "negative_prompt": "NO USER INPUT",
+   "target_duration": 30.0,
+   "loop": "_generate_with_cfg_custom",
+   "output_text": "<|audio_code_16660|><|audio_code_33986|><|audio_code_2517|><|audio_code_27778|><|audio_code_964|><|audio_code_47100|><|audio_code_2181|><|audio_code_28996|><|audio_code_1814|><|audio_code_2053|><|audio_code_2053|><|audio_code_13509|><|audio_code_11260|><|audio_code_49091|><|audio_code_23547|><|audio_code_26043|><|audio_code_26381|><|audio_code_13294|><|audio_code_11223|><|audio_code_2048|><|audio_code_63616|><|audio_code_2080|><|audio_code_21493|><|audio_code_53248|><|audio_code_35902|><|audio_code_39727|><|audio_code_56078|><|audio_code_20717|><|audio_code_1734|><|audio_code_12368|><|audio_code_23549|><|audio_code_28999|><|audio_code_30367|><|audio_code_26295|><|audio_code_1287|><|audio_code_40916|><|audio_code_12741|><|audio_code_14978|><|audio_code_54724|><|audio_code_2179|><|audio_code_26043|><|audio_code_26437|><|audio_code_1373|><|audio_code_27908|><|audio_code_12749|><|audio_code_2117|><|audio_code_2053|><|audio_code_1093|><|audio_code_25916|><|audio_code_28484|><|audio_code_26532|><|audio_code_27094|><|audio_code_2519|><|audio_code_1924|><|audio_code_3543|><|audio_code_10157|><|audio_code_10695|><|audio_code_3527|><|audio_code_15191|><|audio_code_54911|><|audio_code_5831|><|audio_code_13825|><|audio_code_33467|><|audio_code_12839|><|audio_code_33855|><|audio_code_28839|><|audio_code_2195|><|audio_code_4131|><|audio_code_547|><|audio_code_2090|><|audio_code_27754|><|audio_code_36851|><|audio_code_11252|><|audio_code_258|><|audio_code_13308|><|audio_code_15087|><|audio_code_54334|><|audio_code_10944|><|audio_code_2048|><|audio_code_58547|><|audio_code_15371|><|audio_code_2192|><|audio_code_7184|><|audio_code_5640|><|audio_code_11642|><|audio_code_13056|><|audio_code_25619|><|audio_code_533|><|audio_code_12864|><|audio_code_3060|><|audio_code_1543|><|audio_code_27679|><|audio_code_28182|><|audio_code_28215|><|audio_code_30775|><|audio_code_10815|><|audio_code_11271|><|audio_code_11791|><|audio_code_1623|><|audio_code_14359|><|audio_code_27671|><|audio_code_28207|><|audio_code_28223|><|audio_code_46143|><|audio_code_10815|><|audio_code_11271|><|audio_code_1559|><|audio_code_14999|><|audio_code_191|><|audio_code_2886|><|audio_code_775|><|audio_code_36294|><|audio_code_12676|><|audio_code_901|><|audio_code_43447|><|audio_code_18468|><|audio_code_37|><|audio_code_7717|><|audio_code_20532|><|audio_code_15411|><|audio_code_16956|><|audio_code_40965|><|audio_code_63550|><|audio_code_37942|><|audio_code_30227|><|audio_code_23486|><|audio_code_52884|><|audio_code_54788|><|audio_code_52748|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_55308|><|audio_code_32855|><|audio_code_35847|><|audio_code_35847|><|audio_code_35847|><|audio_code_62151|><|im_end|>"
+  }
+ ],
+ "decoder_calls": 8,
+ "text_prompt": "# Instruction\nGenerate audio semantic tokens based on the given conditions:\n\n# Caption\nAn energetic indie rock track driven by bright, slightly overdriven electric guitars playing chunky power chords and melodic riffs. A punchy acoustic drum kit lays down a straightforward 4/4 beat with prominent crash cymbals accenting the chorus sections. The clean bass guitar provides a solid rhythmic foundation. A clear male lead vocal delivers an anthemic melody with passion, pushing into a higher register for emphasis on key phrases like 'Hold on'. The song builds to a powerful hook before ending abruptly after a brief instrumental break featuring layered vocals and driving instrumentation.\n\n# Metas\n- bpm: 130\n- timesignature: 4\n- keyscale: A major\n- duration: 30 seconds\n<|endoftext|>\n<|endoftext|>",
+ "lyric_prompt": "# Languages\nen\n\n# Lyric\n[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n<|endoftext|><|endoftext|>",
+ "generate_audio_kwargs": {
+  "seed": [
+   4242
+  ],
+  "non_cover_text_hidden_states": null,
+  "non_cover_text_attention_mask": null,
+  "audio_cover_strength": 1.0,
+  "cover_noise_strength": 0.0,
+  "infer_method": "ode",
+  "infer_steps": 8,
+  "diffusion_guidance_scale": 1.0,
+  "use_adg": false,
+  "cfg_interval_start": 0.0,
+  "cfg_interval_end": 1.0,
+  "shift": 3.0,
+  "repaint_mask": null,
+  "clean_src_latents": null,
+  "repaint_crossfade_frames": 12,
+  "repaint_injection_ratio": 0.5,
+  "sampler_mode": "euler",
+  "velocity_norm_threshold": 0.0,
+  "velocity_ema_factor": 0.0,
+  "dcw_enabled": true,
+  "dcw_mode": "double",
+  "dcw_scaler": 0.05,
+  "dcw_high_scaler": 0.02,
+  "dcw_wavelet": "haar",
+  "retake_seed": null,
+  "retake_variance": 0.0
+ },
+ "noise_source": "cpu_f32",
+ "noise_seed": [
+  4242
+ ],
+ "vae_path": "tiled_decode",
+ "first_nan": null,
+ "drift_vs_cpu_f32": {
+  "target_latents": {
+   "max_abs": 6.518059253692627,
+   "rel_l2": 1.0133154392242432,
+   "cos": 0.48105722665786743
+  },
+  "step0_vt": {
+   "max_abs": 5.565886974334717,
+   "rel_l2": 0.9169155359268188,
+   "cos": 0.5819730162620544
+  },
+  "step4_vt": {
+   "max_abs": 6.736806392669678,
+   "rel_l2": 0.9715560078620911,
+   "cos": 0.5323664546012878
+  },
+  "step7_vt": {
+   "max_abs": 8.886380195617676,
+   "rel_l2": 1.049615502357483,
+   "cos": 0.4532463550567627
+  }
+ },
+ "timesteps": [
+  1.0,
+  0.953125,
+  0.8984375,
+  0.83203125,
+  0.75,
+  0.64453125,
+  0.5,
+  0.30078125
+ ],
+ "steps_saved": {
+  "xt": [],
+  "vt": [
+   0,
+   7
+  ]
+ },
+ "normalisation_gain": 0.7456216812133789,
+ "case": {
+  "name": "vocal_en_30s_plan",
+  "caption": "upbeat indie pop, bright electric guitars, punchy drums, female vocals",
+  "lyrics": "[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n",
+  "instrumental": false,
+  "language": "en",
+  "duration": 30.0,
+  "planner": true,
+  "seed": 4242
+ },
+ "trace": "cuda_bf16",
+ "sample_rate": 48000,
+ "latent_frames": 750,
+ "wall_s": 72.41,
+ "planner_metadata": {
+  "cot_bpm": 130,
+  "cot_keyscale": "A major",
+  "cot_timesignature": "4",
+  "cot_duration": null,
+  "cot_vocal_language": "unknown",
+  "cot_caption": "",
+  "cot_lyrics": ""
+ },
+ "nan_anywhere": false,
+ "dtype": "bfloat16",
+ "time_costs": {
+  "lm_phase1_time": 29.488646984100342,
+  "lm_phase2_time": 31.742631673812866,
+  "lm_total_time": 61.23127865791321,
+  "dit_encoder_time_cost": 0.12582159042358398,
+  "dit_diffusion_time_cost": 2.019932746887207,
+  "dit_diffusion_per_step_time_cost": 0.2524915933609009,
+  "dit_total_time_cost": 10.337615966796875,
+  "dit_offload_time_cost": 0.0,
+  "dit_vae_decode_time_cost": 8.191861629486084,
+  "pipeline_total_time": 71.56889462471008
+ },
+ "vram_peak_gib": 10.18
+}

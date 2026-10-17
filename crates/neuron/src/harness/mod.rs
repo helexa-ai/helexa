@@ -2,6 +2,7 @@
 
 pub mod admission;
 pub mod arch;
+pub mod audio;
 pub mod candle;
 pub mod capability;
 pub mod chat_template;

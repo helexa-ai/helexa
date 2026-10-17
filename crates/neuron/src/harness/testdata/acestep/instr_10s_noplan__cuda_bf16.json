@@ -1,0 +1,628 @@
+{
+ "stats": {
+  "text_token_ids": {
+   "shape": [
+    1,
+    72
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 14568.125,
+   "std": 30829.6796875
+  },
+  "text_hidden_states": {
+   "shape": [
+    1,
+    72,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 33.0,
+   "mean": 0.021900618448853493,
+   "std": 3.2504899501800537
+  },
+  "lyric_token_ids": {
+   "shape": [
+    1,
+    15
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 29993.201171875,
+   "std": 52921.24609375
+  },
+  "lyric_embeds": {
+   "shape": [
+    1,
+    15,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.1767578125,
+   "mean": 2.0410874640219845e-05,
+   "std": 0.03075374662876129
+  },
+  "lyric_encoder_out": {
+   "shape": [
+    1,
+    15,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.53125,
+   "mean": -8.808567508822307e-05,
+   "std": 0.11486581712961197
+  },
+  "encoder_hidden_states": {
+   "shape": [
+    1,
+    88,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 58.75,
+   "mean": 0.007172065321356058,
+   "std": 3.4257657527923584
+  },
+  "encoder_attention_mask": {
+   "shape": [
+    1,
+    88
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_src_latents": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": -0.20533928275108337,
+   "std": 0.9645420908927917
+  },
+  "gen_chunk_masks": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_is_covers": {
+   "shape": [
+    1
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "gen_text_attention_mask": {
+   "shape": [
+    1,
+    72
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_lyric_attention_mask": {
+   "shape": [
+    1,
+    15
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_refer_audio_acoustic_hidden_states_packed": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": -0.20527024567127228,
+   "std": 0.9638134837150574
+  },
+  "gen_refer_audio_order_mask": {
+   "shape": [
+    1
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "noise": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0625,
+   "mean": -0.0015215945895761251,
+   "std": 1.0108590126037598
+  },
+  "decoder_attention_mask": {
+   "shape": [
+    1,
+    250
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "context_latents": {
+   "shape": [
+    1,
+    250,
+    128
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": 0.3973304033279419,
+   "std": 0.9101529121398926
+  },
+  "target_latents": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.8125,
+   "mean": -0.03683716058731079,
+   "std": 1.0391204357147217
+  },
+  "vae_input": {
+   "shape": [
+    1,
+    64,
+    250
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.8125,
+   "mean": -0.03683716803789139,
+   "std": 1.0391203165054321
+  },
+  "vae_output": {
+   "shape": [
+    1,
+    2,
+    480000
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.09375,
+   "mean": 0.0019740236457437277,
+   "std": 0.16050520539283752
+  },
+  "step0_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0625,
+   "mean": -0.0015215944731608033,
+   "std": 1.0108590126037598
+  },
+  "step0_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.75,
+   "mean": 0.029024723917245865,
+   "std": 1.087060570716858
+  },
+  "step1_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0,
+   "mean": -0.0014959202380850911,
+   "std": 0.9948191046714783
+  },
+  "step1_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.78125,
+   "mean": 0.0699673667550087,
+   "std": 1.131856918334961
+  },
+  "step2_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.90625,
+   "mean": -0.002318344544619322,
+   "std": 0.9700552821159363
+  },
+  "step2_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.15625,
+   "mean": 0.04690621793270111,
+   "std": 1.1479475498199463
+  },
+  "step3_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.796875,
+   "mean": -0.0036648816894739866,
+   "std": 0.9381669163703918
+  },
+  "step3_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.875,
+   "mean": 0.0431983508169651,
+   "std": 1.2662577629089355
+  },
+  "step4_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.5625,
+   "mean": -0.0058504026383161545,
+   "std": 0.8947983980178833
+  },
+  "step4_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.125,
+   "mean": 0.0328899547457695,
+   "std": 1.3014971017837524
+  },
+  "step5_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.421875,
+   "mean": -0.008506354875862598,
+   "std": 0.8428772687911987
+  },
+  "step5_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.5625,
+   "mean": 0.044462598860263824,
+   "std": 1.3666576147079468
+  },
+  "step6_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.359375,
+   "mean": -0.014202592894434929,
+   "std": 0.7932853102684021
+  },
+  "step6_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.75,
+   "mean": 0.048620857298374176,
+   "std": 1.3998051881790161
+  },
+  "step7_xt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.25,
+   "mean": -0.023524314165115356,
+   "std": 0.8046457171440125
+  },
+  "step7_vt": {
+   "shape": [
+    1,
+    250,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.3125,
+   "mean": 0.044245440512895584,
+   "std": 1.5749262571334839
+  },
+  "final_audio_full": {
+   "shape": [
+    2,
+    480000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.8912509083747864,
+   "mean": 0.0016085486859083176,
+   "std": 0.13078895211219788
+  },
+  "vae_waveform": {
+   "shape": [
+    1,
+    2,
+    24000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.90625,
+   "mean": 0.0024766994174569845,
+   "std": 0.2409236878156662
+  }
+ },
+ "planner": [],
+ "decoder_calls": 8,
+ "text_prompt": "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n# Caption\nwarm lo-fi hip hop beat, dusty vinyl drums, mellow rhodes chords, relaxed\n\n# Metas\n- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: 10 seconds\n<|endoftext|>\n<|endoftext|>",
+ "lyric_prompt": "# Languages\nunknown\n\n# Lyric\n[Instrumental]<|endoftext|><|endoftext|>",
+ "generate_audio_kwargs": {
+  "seed": [
+   1234
+  ],
+  "non_cover_text_hidden_states": null,
+  "non_cover_text_attention_mask": null,
+  "precomputed_lm_hints_25Hz": null,
+  "audio_cover_strength": 1.0,
+  "cover_noise_strength": 0.0,
+  "infer_method": "ode",
+  "infer_steps": 8,
+  "diffusion_guidance_scale": 1.0,
+  "use_adg": false,
+  "cfg_interval_start": 0.0,
+  "cfg_interval_end": 1.0,
+  "shift": 3.0,
+  "repaint_mask": null,
+  "clean_src_latents": null,
+  "repaint_crossfade_frames": 12,
+  "repaint_injection_ratio": 0.5,
+  "sampler_mode": "euler",
+  "velocity_norm_threshold": 0.0,
+  "velocity_ema_factor": 0.0,
+  "dcw_enabled": true,
+  "dcw_mode": "double",
+  "dcw_scaler": 0.05,
+  "dcw_high_scaler": 0.02,
+  "dcw_wavelet": "haar",
+  "retake_seed": null,
+  "retake_variance": 0.0
+ },
+ "noise_source": "cpu_f32",
+ "noise_seed": [
+  1234
+ ],
+ "vae_path": "tiled_decode",
+ "first_nan": null,
+ "drift_vs_cpu_f32": {
+  "target_latents": {
+   "max_abs": 1.1789467334747314,
+   "rel_l2": 0.0816783532500267,
+   "cos": 0.9966683387756348
+  },
+  "step0_vt": {
+   "max_abs": 0.9140055179595947,
+   "rel_l2": 0.0775710716843605,
+   "cos": 0.9969895482063293
+  },
+  "step1_vt": {
+   "max_abs": 1.0068531036376953,
+   "rel_l2": 0.04007680341601372,
+   "cos": 0.9992018342018127
+  },
+  "step2_vt": {
+   "max_abs": 2.0684454441070557,
+   "rel_l2": 0.09504576772451401,
+   "cos": 0.9954776763916016
+  },
+  "step3_vt": {
+   "max_abs": 1.8307780027389526,
+   "rel_l2": 0.1291956901550293,
+   "cos": 0.9916636943817139
+  },
+  "step4_vt": {
+   "max_abs": 4.880147457122803,
+   "rel_l2": 0.14142011106014252,
+   "cos": 0.989952802658081
+  },
+  "step5_vt": {
+   "max_abs": 1.726083755493164,
+   "rel_l2": 0.10134051740169525,
+   "cos": 0.9948592185974121
+  },
+  "step6_vt": {
+   "max_abs": 2.1955137252807617,
+   "rel_l2": 0.10752364993095398,
+   "cos": 0.9942163825035095
+  },
+  "step7_vt": {
+   "max_abs": 1.8701152801513672,
+   "rel_l2": 0.09535709768533707,
+   "cos": 0.9954763650894165
+  }
+ },
+ "timesteps": [
+  1.0,
+  0.953125,
+  0.8984375,
+  0.83203125,
+  0.75,
+  0.64453125,
+  0.5,
+  0.30078125
+ ],
+ "steps_saved": {
+  "xt": [],
+  "vt": [
+   0,
+   7
+  ]
+ },
+ "normalisation_gain": 0.8148579597473145,
+ "case": {
+  "name": "instr_10s_noplan",
+  "caption": "warm lo-fi hip hop beat, dusty vinyl drums, mellow rhodes chords, relaxed",
+  "lyrics": "[Instrumental]",
+  "instrumental": true,
+  "language": "unknown",
+  "duration": 10.0,
+  "planner": false,
+  "seed": 1234
+ },
+ "trace": "cuda_bf16",
+ "sample_rate": 48000,
+ "latent_frames": 250,
+ "wall_s": 5.07,
+ "planner_metadata": {
+  "cot_bpm": null,
+  "cot_keyscale": "",
+  "cot_timesignature": "",
+  "cot_duration": null,
+  "cot_vocal_language": "unknown",
+  "cot_caption": "",
+  "cot_lyrics": ""
+ },
+ "nan_anywhere": false,
+ "dtype": "bfloat16",
+ "time_costs": {
+  "dit_encoder_time_cost": 0.12479805946350098,
+  "dit_diffusion_time_cost": 1.8494272232055664,
+  "dit_diffusion_per_step_time_cost": 0.2311784029006958,
+  "dit_total_time_cost": 3.6470632553100586,
+  "dit_offload_time_cost": 0.0,
+  "dit_vae_decode_time_cost": 1.6728379726409912,
+  "pipeline_total_time": 3.6470632553100586
+ },
+ "vram_peak_gib": 10.15
+}

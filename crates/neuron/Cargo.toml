@@ -101,6 +101,9 @@ cudarc = { version = "0.19", optional = true, default-features = false, features
 # compiling the `half` crate at conflicting versions.
 half = { version = "2.5", optional = true }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+# Reads ACE-Step's `silence_latent.pt` (a torch zip archive of one raw
+# tensor). Already in the graph via candle; stored entries need no codecs.
+zip = { version = "8", default-features = false }
 hf-hub = { version = "0.4", features = ["tokio"] }
 # Jinja-compatible template renderer for the model's chat template
 # (standalone `chat_template.jinja` or `tokenizer_config.json::chat_template`).

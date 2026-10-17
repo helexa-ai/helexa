@@ -1,0 +1,584 @@
+{
+ "stats": {
+  "text_token_ids": {
+   "shape": [
+    1,
+    69
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 12901.0869140625,
+   "std": 29659.20703125
+  },
+  "text_hidden_states": {
+   "shape": [
+    1,
+    69,
+    1024
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 25.977462768554688,
+   "mean": 0.00036398525116965175,
+   "std": 3.253805637359619
+  },
+  "lyric_token_ids": {
+   "shape": [
+    1,
+    50
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 15434.919921875,
+   "std": 32450.25390625
+  },
+  "lyric_embeds": {
+   "shape": [
+    1,
+    50,
+    1024
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.1455078125,
+   "mean": -2.0353392756078392e-05,
+   "std": 0.02917708456516266
+  },
+  "lyric_encoder_out": {
+   "shape": [
+    1,
+    50,
+    2048
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.894902229309082,
+   "mean": 7.792711403453723e-05,
+   "std": 0.21897192299365997
+  },
+  "encoder_hidden_states": {
+   "shape": [
+    1,
+    120,
+    2048
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 59.021427154541016,
+   "mean": 0.002522275783121586,
+   "std": 2.9075214862823486
+  },
+  "encoder_attention_mask": {
+   "shape": [
+    1,
+    120
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_src_latents": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": -0.20505407452583313,
+   "std": 0.963009774684906
+  },
+  "gen_chunk_masks": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_is_covers": {
+   "shape": [
+    1
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "gen_text_attention_mask": {
+   "shape": [
+    1,
+    69
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_lyric_attention_mask": {
+   "shape": [
+    1,
+    50
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_refer_audio_acoustic_hidden_states_packed": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": -0.20505407452583313,
+   "std": 0.963009774684906
+  },
+  "gen_refer_audio_order_mask": {
+   "shape": [
+    1
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "noise": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.32608699798584,
+   "mean": 0.00013574918557424098,
+   "std": 0.9954732656478882
+  },
+  "decoder_attention_mask": {
+   "shape": [
+    1,
+    750
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "context_latents": {
+   "shape": [
+    1,
+    750,
+    128
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.726634979248047,
+   "mean": 0.39747297763824463,
+   "std": 0.909247875213623
+  },
+  "target_latents": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.855146408081055,
+   "mean": -0.10179205238819122,
+   "std": 0.9877894520759583
+  },
+  "vae_input": {
+   "shape": [
+    1,
+    64,
+    750
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.855146408081055,
+   "mean": -0.10179205238819122,
+   "std": 0.9877894520759583
+  },
+  "vae_output": {
+   "shape": [
+    1,
+    2,
+    1440000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0940608978271484,
+   "mean": 0.00133415253367275,
+   "std": 0.21052733063697815
+  },
+  "step0_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.32608699798584,
+   "mean": 0.00013574918557424098,
+   "std": 0.9954732656478882
+  },
+  "step0_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.070732593536377,
+   "mean": 0.05843878537416458,
+   "std": 0.9566363096237183
+  },
+  "step1_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.280888080596924,
+   "mean": 0.00026856421027332544,
+   "std": 0.9832545518875122
+  },
+  "step1_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.922452926635742,
+   "mean": 0.06643501669168472,
+   "std": 0.9535956382751465
+  },
+  "step2_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.16705322265625,
+   "mean": -0.0005014782072976232,
+   "std": 0.9635385870933533
+  },
+  "step2_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.635523796081543,
+   "mean": 0.08539843559265137,
+   "std": 1.0332694053649902
+  },
+  "step3_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.07429838180542,
+   "mean": -0.0029922660905867815,
+   "std": 0.9360235333442688
+  },
+  "step3_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.268397331237793,
+   "mean": 0.09882763773202896,
+   "std": 1.1148301362991333
+  },
+  "step4_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.903026580810547,
+   "mean": -0.008139536716043949,
+   "std": 0.8993426561355591
+  },
+  "step4_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.34974479675293,
+   "mean": 0.1131046786904335,
+   "std": 1.1900103092193604
+  },
+  "step5_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.682326316833496,
+   "mean": -0.017531266435980797,
+   "std": 0.8535701632499695
+  },
+  "step5_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.695948600769043,
+   "mean": 0.13233351707458496,
+   "std": 1.2726740837097168
+  },
+  "step6_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.6596059799194336,
+   "mean": -0.0343092642724514,
+   "std": 0.809625506401062
+  },
+  "step6_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.736127853393555,
+   "mean": 0.13481976091861725,
+   "std": 1.2994892597198486
+  },
+  "step7_xt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.375988006591797,
+   "mean": -0.06026206910610199,
+   "std": 0.8118113279342651
+  },
+  "step7_vt": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.46337604522705,
+   "mean": 0.1384333074092865,
+   "std": 1.379015326499939
+  },
+  "final_audio_full": {
+   "shape": [
+    2,
+    1440000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.8912509083747864,
+   "mean": 0.0010868358658626676,
+   "std": 0.17150112986564636
+  },
+  "vae_waveform": {
+   "shape": [
+    1,
+    2,
+    24000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.548636257648468,
+   "mean": 0.0009465132025070488,
+   "std": 0.07344960421323776
+  }
+ },
+ "planner": [],
+ "decoder_calls": 8,
+ "text_prompt": "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n# Caption\nupbeat indie pop, bright electric guitars, punchy drums, female vocals\n\n# Metas\n- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: 30 seconds\n<|endoftext|>\n<|endoftext|>",
+ "lyric_prompt": "# Languages\nen\n\n# Lyric\n[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n<|endoftext|><|endoftext|>",
+ "generate_audio_kwargs": {
+  "seed": [
+   4242
+  ],
+  "non_cover_text_hidden_states": null,
+  "non_cover_text_attention_mask": null,
+  "precomputed_lm_hints_25Hz": null,
+  "audio_cover_strength": 1.0,
+  "cover_noise_strength": 0.0,
+  "infer_method": "ode",
+  "infer_steps": 8,
+  "diffusion_guidance_scale": 1.0,
+  "use_adg": false,
+  "cfg_interval_start": 0.0,
+  "cfg_interval_end": 1.0,
+  "shift": 3.0,
+  "repaint_mask": null,
+  "clean_src_latents": null,
+  "repaint_crossfade_frames": 12,
+  "repaint_injection_ratio": 0.5,
+  "sampler_mode": "euler",
+  "velocity_norm_threshold": 0.0,
+  "velocity_ema_factor": 0.0,
+  "dcw_enabled": true,
+  "dcw_mode": "double",
+  "dcw_scaler": 0.05,
+  "dcw_high_scaler": 0.02,
+  "dcw_wavelet": "haar",
+  "retake_seed": null,
+  "retake_variance": 0.0
+ },
+ "noise_seed": [
+  4242
+ ],
+ "vae_path": "tiled_decode",
+ "first_nan": null,
+ "timesteps": [
+  1.0,
+  0.9545454382896423,
+  0.8999999761581421,
+  0.8333333134651184,
+  0.75,
+  0.6428571343421936,
+  0.5,
+  0.30000001192092896
+ ],
+ "steps_saved": {
+  "xt": [
+   4,
+   7
+  ],
+  "vt": [
+   0,
+   4,
+   7
+  ]
+ },
+ "lyric_encoder_out_is_encoder_prefix": true,
+ "normalisation_gain": 0.8146263957023621,
+ "case": {
+  "name": "vocal_en_30s_noplan",
+  "caption": "upbeat indie pop, bright electric guitars, punchy drums, female vocals",
+  "lyrics": "[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\nEvery word we never sung\n",
+  "instrumental": false,
+  "language": "en",
+  "duration": 30.0,
+  "planner": false,
+  "seed": 4242
+ },
+ "trace": "cpu_f32",
+ "sample_rate": 48000,
+ "latent_frames": 750,
+ "wall_s": 39.68,
+ "planner_metadata": {
+  "cot_bpm": null,
+  "cot_keyscale": "",
+  "cot_timesignature": "",
+  "cot_duration": null,
+  "cot_vocal_language": "unknown",
+  "cot_caption": "",
+  "cot_lyrics": ""
+ },
+ "nan_anywhere": false,
+ "dtype": "float32",
+ "time_costs": {
+  "dit_encoder_time_cost": 0.8679859638214111,
+  "dit_diffusion_time_cost": 12.171108961105347,
+  "dit_diffusion_per_step_time_cost": 1.5213886201381683,
+  "dit_total_time_cost": 34.99993133544922,
+  "dit_offload_time_cost": 0.0,
+  "dit_vae_decode_time_cost": 21.96083641052246,
+  "pipeline_total_time": 34.99993133544922
+ }
+}

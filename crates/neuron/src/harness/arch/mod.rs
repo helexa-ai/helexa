@@ -20,6 +20,7 @@
 //! TP-aware analogues live in `harness/tp/tp_<family>.rs` and follow
 //! the pattern set by `tp_qwen3.rs`.
 
+pub mod acestep;
 pub mod laya;
 pub mod phase_probe;
 pub mod qwen3_5;

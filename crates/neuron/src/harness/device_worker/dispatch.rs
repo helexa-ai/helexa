@@ -19,7 +19,7 @@ use crate::harness::candle::ModelArch;
 #[cfg(feature = "cuda")]
 use crate::harness::device_worker::jobs::TpHandle;
 use crate::harness::device_worker::jobs::{
-    ArchHandle, DecisionHandle, DenseLoad, ImageHandle, ImageInput, Job, KvSnapshotId,
+    ArchHandle, AudioHandle, DecisionHandle, DenseLoad, ImageHandle, ImageInput, Job, KvSnapshotId,
 };
 use crate::harness::image::ZImagePipeline;
 #[cfg(feature = "cuda")]
@@ -71,6 +71,11 @@ struct DeviceWorkerState {
     decision_models: HashMap<DecisionHandle, Box<LayaModel>>,
     /// Counter for minting fresh `DecisionHandle`s.
     next_decision_handle: u64,
+    /// ACE-Step music pipeline slab (#383). Same lifecycle discipline as
+    /// `image_models`, in its own namespace.
+    audio_models: HashMap<AudioHandle, Box<crate::harness::audio::AceStepEngine>>,
+    /// Counter for minting fresh `AudioHandle`s.
+    next_audio_handle: u64,
     /// Leader's NCCL state. Populated by `Job::NcclInit`; the
     /// underlying `Comm`'s libnccl handle lives bound to this thread
     /// for its entire lifetime. Subprocess workers maintain their own
@@ -813,6 +818,57 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 };
                 let _ = reply.send(result);
             }
+            Job::LoadAudio {
+                files,
+                model_id,
+                reply,
+            } => {
+                let result = crate::harness::audio::AceStepEngine::load(&files, &state.device)
+                    .with_context(|| format!("load ace-step pipeline for {model_id}"))
+                    .map(|engine| {
+                        let handle = AudioHandle(state.next_audio_handle);
+                        state.next_audio_handle = state.next_audio_handle.wrapping_add(1);
+                        tracing::info!(
+                            device_index,
+                            model_id,
+                            planner = engine.has_planner(),
+                            handle = handle.0,
+                            "device worker: audio pipeline loaded"
+                        );
+                        state.audio_models.insert(handle, Box::new(engine));
+                        handle
+                    });
+                trim_device_pool(&state);
+                let _ = reply.send(result);
+            }
+            Job::DropAudio { handle, reply } => {
+                let removed = state.audio_models.remove(&handle);
+                let was_present = removed.is_some();
+                // Explicit drop on this thread, as for DropImage.
+                drop(removed);
+                trim_device_pool(&state);
+                tracing::debug!(
+                    device_index,
+                    handle = handle.0,
+                    was_present,
+                    "device worker: audio pipeline dropped"
+                );
+                let _ = reply.send(());
+            }
+            Job::GenerateAudio {
+                handle,
+                params,
+                reply,
+            } => {
+                let result = match state.audio_models.get_mut(&handle) {
+                    Some(engine) => engine.generate(&params),
+                    None => Err(anyhow::anyhow!("no audio pipeline for handle {}", handle.0)),
+                };
+                // Song lengths vary per request, so release this render's
+                // pooled transients before the next one, as images do.
+                trim_device_pool(&state);
+                let _ = reply.send(result);
+            }
             Job::Shutdown => unreachable!("Shutdown should break above"),
         }
     }
@@ -887,6 +943,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_image_handle: 1,
             decision_models: HashMap::new(),
             next_decision_handle: 1,
+            audio_models: HashMap::new(),
+            next_audio_handle: 1,
             nccl: NcclState::new(),
             tp_models: HashMap::new(),
             next_tp_handle: 1,
@@ -907,6 +965,8 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
             next_image_handle: 1,
             decision_models: HashMap::new(),
             next_decision_handle: 1,
+            audio_models: HashMap::new(),
+            next_audio_handle: 1,
             nccl: NcclState::new(),
         }
     }
@@ -2042,6 +2102,15 @@ fn drain_poisoned(job: Job, device_index: u32) {
             let _ = reply.send(());
         }
         Job::Decide { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::LoadAudio { reply, .. } => {
+            let _ = reply.send(Err(err()));
+        }
+        Job::DropAudio { reply, .. } => {
+            let _ = reply.send(());
+        }
+        Job::GenerateAudio { reply, .. } => {
             let _ = reply.send(Err(err()));
         }
         Job::ForwardLogitsWithImages { reply, .. } => {

@@ -59,6 +59,12 @@ pub enum SourceFormat {
     /// `config.json`. Served by the decision path — single device,
     /// unquantized. Takes precedence over the safetensors sniff.
     DecisionModel,
+    /// An ACE-Step 1.5 music repo (#383): the turbo DiT, text encoder,
+    /// VAE and planner as subfolders of one snapshot. Served by the audio
+    /// path — single device, unquantized for now. Takes precedence over
+    /// the safetensors sniff, which would read the root `config.json` as a
+    /// text model.
+    AceStep,
 }
 
 /// Output of `preflight` for a load that can proceed. Carries the
@@ -258,6 +264,22 @@ pub async fn preflight(
             tp_size,
             picked_quant_file: None,
         }),
+        (SourceFormat::AceStep, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
+            model_id: source_id.to_string(),
+            reason: format!(
+                "music models load on a single device; tensor_parallel={tp} is not supported"
+            ),
+        }),
+        (SourceFormat::AceStep, _, Some(q)) => Err(PreflightError::Unsupported {
+            model_id: source_id.to_string(),
+            reason: format!("music models load unquantized for now; remove quant={q:?}"),
+        }),
+        (SourceFormat::AceStep, _, None) => Ok(PlacementPlan {
+            model_id: source_id.to_string(),
+            format: format.clone(),
+            tp_size,
+            picked_quant_file: None,
+        }),
 
         (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
             Ok(PlacementPlan {
@@ -326,6 +348,9 @@ pub fn classify(filenames: &[&str]) -> SourceFormat {
     }
     if is_decision_layout(filenames) {
         return SourceFormat::DecisionModel;
+    }
+    if crate::harness::audio::is_acestep_layout(filenames) {
+        return SourceFormat::AceStep;
     }
     let mut gguf_quants: Vec<String> = filenames
         .iter()
@@ -707,6 +732,20 @@ mod tests {
                 tp_size,
                 picked_quant_file: None,
             }),
+            (SourceFormat::AceStep, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!("music models load on a single device; tensor_parallel={tp}"),
+            }),
+            (SourceFormat::AceStep, _, Some(q)) => Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!("music models load unquantized for now; remove quant={q:?}"),
+            }),
+            (SourceFormat::AceStep, _, None) => Ok(PlacementPlan {
+                model_id: source_id.to_string(),
+                format: format.clone(),
+                tp_size,
+                picked_quant_file: None,
+            }),
             (SourceFormat::DenseSafetensors { .. } | SourceFormat::Mixed { .. }, _, _) => {
                 Ok(PlacementPlan {
                     model_id: source_id.to_string(),
@@ -751,6 +790,10 @@ mod tests {
     #[test]
     fn classify_laya_layout() {
         assert_eq!(classify(&LAYA_FILES), SourceFormat::DecisionModel);
+        let mut ace = crate::harness::audio::required_files();
+        ace.push("config.json".into());
+        let ace: Vec<&str> = ace.iter().map(String::as_str).collect();
+        assert_eq!(classify(&ace), SourceFormat::AceStep);
         // A causal LM that also ships an rl config is still a text model.
         let lm = [
             "config.json",
