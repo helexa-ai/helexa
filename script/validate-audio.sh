@@ -135,7 +135,8 @@ r = json.loads(sys.stdin.read())
 assert r["seed"] == 42 and r["sample_rate"] == 48000 and r["channels"] == 2, r
 assert abs(r["usage"]["helexa_audio_units"] - r["duration"]) < 1e-6, r
 t = r["usage"]["helexa_timing"]
-print(f"   units {r[\"usage\"][\"helexa_audio_units\"]:.2f} | plan {t[\"plan_ms\"]}ms generate {t[\"generate_ms\"]}ms")
+units = r["usage"]["helexa_audio_units"]
+print("   units %.2f | encode %sms plan %sms generate %sms decode %sms" % (units, t["encode_ms"], t["plan_ms"], t["generate_ms"], t["decode_ms"]))
 '
 done
 cmp -s "${WORK}/n1.wav" "${WORK}/n2.wav" && echo "   same seed, same bytes" \
