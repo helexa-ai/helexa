@@ -146,6 +146,8 @@ pub enum LoadedHandle {
     /// Laya decision model (#336): typed questions in, calibrated
     /// option scores out, no text generation.
     Decision(Arc<super::decision_model::LoadedDecisionModel>),
+    /// ACE-Step music generation pipeline (#383).
+    Audio(Arc<LoadedAudioModel>),
 }
 
 impl LoadedHandle {
@@ -155,6 +157,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.model_id,
             LoadedHandle::Image(m) => &m.model_id,
+            LoadedHandle::Audio(m) => &m.model_id,
             LoadedHandle::Decision(m) => &m.model_id,
         }
     }
@@ -166,6 +169,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.spec,
             LoadedHandle::Image(m) => &m.spec,
+            LoadedHandle::Audio(m) => &m.spec,
             LoadedHandle::Decision(m) => &m.spec,
         }
     }
@@ -176,6 +180,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.devices.clone(),
             LoadedHandle::Image(m) => m.devices.clone(),
+            LoadedHandle::Audio(m) => m.devices.clone(),
             LoadedHandle::Decision(m) => m.devices.clone(),
         }
     }
@@ -190,6 +195,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.poisoned.load(Ordering::Acquire),
             LoadedHandle::Image(m) => m.poisoned.load(Ordering::Acquire),
+            LoadedHandle::Audio(m) => m.poisoned.load(Ordering::Acquire),
             LoadedHandle::Decision(m) => m.poisoned.load(Ordering::Acquire),
         }
     }
@@ -202,6 +208,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.in_flight(), m.admission.queue_depth()),
             LoadedHandle::Image(m) => (m.admission.in_flight(), m.admission.queue_depth()),
+            LoadedHandle::Audio(m) => (m.admission.in_flight(), m.admission.queue_depth()),
             LoadedHandle::Decision(m) => (m.admission.in_flight(), m.admission.queue_depth()),
         }
     }
@@ -215,6 +222,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
             LoadedHandle::Image(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
+            LoadedHandle::Audio(m) => (m.admission.max_in_flight(), m.admission.max_queue_depth()),
             LoadedHandle::Decision(m) => {
                 (m.admission.max_in_flight(), m.admission.max_queue_depth())
             }
@@ -241,6 +249,10 @@ impl LoadedHandle {
                 m.admission.anon_in_flight(),
                 m.admission.anon_max_in_flight(),
             ),
+            LoadedHandle::Audio(m) => (
+                m.admission.anon_in_flight(),
+                m.admission.anon_max_in_flight(),
+            ),
             LoadedHandle::Decision(m) => (
                 m.admission.anon_in_flight(),
                 m.admission.anon_max_in_flight(),
@@ -255,6 +267,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.close(),
             LoadedHandle::Image(m) => m.admission.close(),
+            LoadedHandle::Audio(m) => m.admission.close(),
             LoadedHandle::Decision(m) => m.admission.close(),
         }
     }
@@ -267,6 +280,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.rejections(),
             LoadedHandle::Image(m) => m.admission.rejections(),
+            LoadedHandle::Audio(m) => m.admission.rejections(),
             LoadedHandle::Decision(m) => m.admission.rejections(),
         }
     }
@@ -279,6 +293,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => &m.admission,
             LoadedHandle::Image(m) => &m.admission,
+            LoadedHandle::Audio(m) => &m.admission,
             LoadedHandle::Decision(m) => &m.admission,
         };
         (admission.kv_budget_mb(), admission.kv_available_mb())
@@ -293,7 +308,9 @@ impl LoadedHandle {
             LoadedHandle::Tp(m) => &m.prefill_rate,
             // Image models have no token throughput; steps/sec lives in
             // the per-request timing instead.
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return (0.0, 0.0),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
+                return (0.0, 0.0);
+            }
         };
         (ema.get().unwrap_or(0.0), ema.decode().unwrap_or(0.0))
     }
@@ -308,12 +325,17 @@ impl LoadedHandle {
         if matches!(self, LoadedHandle::Decision(_)) {
             return vec!["decision".to_string()];
         }
+        if matches!(self, LoadedHandle::Audio(_)) {
+            return vec![cortex_core::audio::CAPABILITY.to_string()];
+        }
         let mut caps = vec!["text".to_string()];
         let has_vision = match self {
             LoadedHandle::Single(m) => m.has_vision,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.has_vision,
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => unreachable!("handled above"),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
+                unreachable!("handled above")
+            }
         };
         if has_vision {
             caps.push("vision".to_string());
@@ -359,7 +381,9 @@ impl LoadedHandle {
             LoadedHandle::Tp(m) => (m.last_free_mb.load(Ordering::Acquire), m.context_profile),
             // Image generation has its own VRAM path and no prefill
             // floor, so this check would say nothing useful about it.
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
+                return None;
+            }
         };
         // `0` is the CPU-load and missing-worker sentinel — the same one
         // `check_vram` skips on. Nothing to assert either way.
@@ -440,7 +464,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.tool_call_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.tool_call_tokens.is_some(),
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => false,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => false,
         }
     }
 
@@ -451,7 +475,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.reasoning_tokens.is_some(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_tokens.is_some(),
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => false,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => false,
         }
     }
 
@@ -462,7 +486,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.preserve_thinking,
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.preserve_thinking,
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => None,
         }
     }
 
@@ -472,7 +496,9 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.reasoning_efforts.clone(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.reasoning_efforts.clone(),
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => Default::default(),
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
+                Default::default()
+            }
         }
     }
 
@@ -498,7 +524,7 @@ impl LoadedHandle {
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.query_vram_tightest_free_mb().await,
             // No context-limit derivation for image models; nothing to cache.
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => return,
         };
         // Don't clobber a good cached value with a transient `0`
         // (worker gone/poisoned sentinel).
@@ -507,7 +533,7 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => m.last_free_mb.store(free, Ordering::Release),
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => m.last_free_mb.store(free, Ordering::Release),
-                LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {}
+                LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {}
             }
         }
     }
@@ -536,7 +562,9 @@ impl LoadedHandle {
                 m.prefill_rate.get(),
             ),
             // Token limits are meaningless for image generation.
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => return None,
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
+                return None;
+            }
         };
         let rate = rate.unwrap_or(cfg.bootstrap_prefill_tok_per_sec);
         // The KV budget admission will actually grant. Advertising past
@@ -546,7 +574,7 @@ impl LoadedHandle {
             LoadedHandle::Single(m) => m.admission.kv_budget_mb(),
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(m) => m.admission.kv_budget_mb(),
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
                 unreachable!("derived_limit returned above")
             }
         };
@@ -567,7 +595,7 @@ impl LoadedHandle {
                 LoadedHandle::Single(m) => &m.derived_input_cap,
                 #[cfg(feature = "cuda")]
                 LoadedHandle::Tp(m) => &m.derived_input_cap,
-                LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
+                LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
                     unreachable!("derived_limit returned above")
                 }
             };
@@ -631,6 +659,29 @@ impl LoadedImageModel {
     pub async fn query_vram(&self) -> (u64, u64) {
         self.worker.query_vram().await.unwrap_or_default()
     }
+}
+
+/// A loaded ACE-Step music pipeline (#383). Every component lives in the
+/// device worker's audio slab, addressed via [`Self::handle`]; this
+/// async-side struct holds admission bookkeeping and the model's limits.
+/// A render is one `Job::GenerateAudio` round-trip.
+pub struct LoadedAudioModel {
+    pub model_id: String,
+    pub spec: ModelSpec,
+    pub devices: Vec<u32>,
+    pub worker: Arc<super::device_worker::DeviceWorkerHandle>,
+    pub handle: super::device_worker::AudioHandle,
+    /// Whether the snapshot carried a song planner.
+    pub has_planner: bool,
+    /// What a request may ask of this model; validated before admission.
+    pub limits: cortex_core::audio::AudioLimits,
+    /// Set when a render fails at the driver level: subsequent requests
+    /// fast-reject and `/models` reports `poisoned`.
+    pub poisoned: Arc<AtomicBool>,
+    /// Admission control (#53) with `max_in_flight` forced to 1 — a render
+    /// saturates the device. The cortex job queue is the real backlog.
+    pub admission: super::admission::AdmissionController,
+    pub inference_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// A loaded model with its tokenizer, device placement, and architecture-
@@ -3307,7 +3358,7 @@ impl CandleHarness {
             LoadedHandle::Tp(m) => {
                 return self.inference_tp_stream(m, request, principal, wire).await;
             }
-            LoadedHandle::Image(_) | LoadedHandle::Decision(_) => {
+            LoadedHandle::Image(_) | LoadedHandle::Decision(_) | LoadedHandle::Audio(_) => {
                 return Err(InferenceError::WrongModality {
                     model_id: request.model.clone(),
                 });
@@ -4031,6 +4082,11 @@ impl Harness for CandleHarness {
         if matches!(plan.format, super::preflight::SourceFormat::DecisionModel) {
             return self.load_decision_model(spec, &source_id).await;
         }
+        // ACE-Step music models (#383) take the audio path: one device,
+        // unquantized (preflight rejected tp>1 and quant).
+        if matches!(plan.format, super::preflight::SourceFormat::AceStep) {
+            return self.load_audio_model(spec, &source_id).await;
+        }
 
         let tp_size = spec.tensor_parallel.unwrap_or(1);
         if tp_size > 1 {
@@ -4402,6 +4458,17 @@ impl Harness for CandleHarness {
                 // them (the device worker, for a CUDA load).
                 dm.release().await;
             }
+            LoadedHandle::Audio(audio) => {
+                // Drop the pipeline on the worker thread so its CUDA
+                // tensors release on the context that allocated them.
+                if let Err(e) = audio.worker.drop_audio(audio.handle).await {
+                    tracing::warn!(
+                        model = %model_id,
+                        error = %e,
+                        "audio unload: DropAudio RPC failed (pipeline may leak in worker slab)"
+                    );
+                }
+            }
             #[cfg(feature = "cuda")]
             LoadedHandle::Tp(tp) => {
                 // Try to recover the inner TpLoadedModel so we can move
@@ -4574,6 +4641,107 @@ impl CandleHarness {
             "image pipeline loaded"
         );
         Ok(())
+    }
+
+    /// Load an ACE-Step music pipeline (#383): resolve the snapshot's
+    /// components, build them on the device worker, and register the
+    /// model with `capabilities: ["audio"]`.
+    #[cfg_attr(not(feature = "cuda"), allow(unused_variables, unreachable_code))]
+    async fn load_audio_model(
+        &self,
+        spec: &ModelSpec,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<()> {
+        let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
+        let device = Self::pick_device(&devices)?;
+        let worker: Arc<super::device_worker::DeviceWorkerHandle> = match &device {
+            #[cfg(feature = "cuda")]
+            Device::Cuda(_) => self.ensure_device_worker(devices[0]).await?,
+            // On CPU builds this arm is the whole match: a song on the CPU
+            // takes many minutes and is not a serving target.
+            _ => anyhow::bail!(
+                "music generation requires a CUDA device; '{}' resolved to a CPU device",
+                spec.model_id
+            ),
+        };
+
+        let files = self.resolve_audio_files(source_id).await?;
+        let has_planner = files.planner.is_some();
+        let handle = worker
+            .load_audio(files, spec.model_id.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("worker load_audio: {e:#}"))?;
+
+        // Admission (#53) with the in-flight ceiling forced to 1: a render
+        // saturates the device. cortex queues jobs ahead of this.
+        let admission_cfg = crate::config::AdmissionConfig {
+            max_in_flight: 1,
+            ..self.admission_cfg.clone()
+        };
+        let loaded = LoadedAudioModel {
+            model_id: spec.model_id.clone(),
+            spec: spec.clone(),
+            devices,
+            worker,
+            handle,
+            has_planner,
+            limits: super::audio::ACESTEP_LIMITS,
+            poisoned: Arc::new(AtomicBool::new(false)),
+            admission: crate::harness::admission::AdmissionController::new(&admission_cfg),
+            inference_lock: Arc::new(tokio::sync::Mutex::new(())),
+        };
+        let mut models = self.models.write().await;
+        models.insert(spec.model_id.clone(), LoadedHandle::Audio(Arc::new(loaded)));
+        tracing::info!(model = %spec.model_id, planner = has_planner, "audio pipeline loaded");
+        Ok(())
+    }
+
+    /// Resolve an ACE-Step snapshot into a local root, downloading through
+    /// hf-hub as needed: every required component, plus the first planner
+    /// LM the repo has.
+    async fn resolve_audio_files(
+        &self,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<super::audio::AceStepFiles> {
+        let api = self.hf_api_for(&source_id.scheme)?;
+        let repo = api.model(source_id.repo_path());
+        let display_id = source_id.to_string();
+        let mut first = None;
+        for file in super::audio::required_files() {
+            let path = repo
+                .get(&file)
+                .await
+                .with_context(|| format!("fetch {file} from {display_id}"))?;
+            if first.is_none() {
+                first = Some((path, file));
+            }
+        }
+        // hf-hub materialises a snapshot as a tree mirroring the repo, so
+        // the root is the first file's path less its repo-relative part.
+        let (path, rel) = first.context("ACE-Step needs at least one file")?;
+        let mut root = path;
+        for _ in rel.split('/') {
+            root = root
+                .parent()
+                .context("snapshot path shorter than its repo path")?
+                .to_path_buf();
+        }
+        let mut planner = None;
+        for dir in super::audio::PLANNER_DIRS {
+            let mut ok = true;
+            for file in super::audio::planner_files(dir) {
+                if let Err(e) = repo.get(&file).await {
+                    tracing::info!(repo = %display_id, file, error = %format!("{e:#}"), "planner file unavailable");
+                    ok = false;
+                    break;
+                }
+            }
+            if ok {
+                planner = Some(dir.to_string());
+                break;
+            }
+        }
+        Ok(super::audio::AceStepFiles { root, planner })
     }
 
     /// Load a Laya decision model (#336): resolve the checkpoints' files,
@@ -5002,23 +5170,102 @@ impl CandleHarness {
     /// of these per job and waits for the whole render; the reply is the
     /// WAV bytes plus the result metadata cortex records on the job.
     ///
-    /// No audio architecture is loadable yet, so every model reachable
-    /// here is the wrong modality or not loaded. The ACE-Step engine
-    /// (#383) adds a `LoadedHandle::Audio` arm that validates against the
-    /// model's limits, takes an admission permit and runs the device job.
+    /// Validated against the model's limits before admission; the render
+    /// itself is one device-worker job. A request without a seed gets a
+    /// random one, reported back so the song can be reproduced.
     pub async fn audio_generation(
         &self,
         request: &cortex_core::audio::AudioGenerationRequest,
-        _principal: Option<&str>,
+        principal: Option<&str>,
     ) -> Result<(Vec<u8>, cortex_core::audio::NeuronAudioResult), InferenceError> {
-        let loaded = self.models.read().await.contains_key(&request.model);
-        if loaded {
-            Err(InferenceError::WrongModality {
-                model_id: request.model.clone(),
-            })
-        } else {
-            Err(InferenceError::ModelNotLoaded(request.model.clone()))
+        let handle = {
+            let models = self.models.read().await;
+            models.get(&request.model).cloned()
+        };
+        let audio = match handle {
+            Some(LoadedHandle::Audio(m)) => m,
+            Some(_) => {
+                return Err(InferenceError::WrongModality {
+                    model_id: request.model.clone(),
+                });
+            }
+            None => return Err(InferenceError::ModelNotLoaded(request.model.clone())),
+        };
+        if audio.poisoned.load(Ordering::Acquire) {
+            return Err(InferenceError::Other(anyhow::anyhow!(
+                "audio model '{}' is poisoned; unload and reload it",
+                request.model
+            )));
         }
+
+        // Validate before admission so a malformed request never takes a
+        // queue slot.
+        request
+            .validate_limits(&audio.limits)
+            .map_err(|detail| InferenceError::InvalidAudioParams { detail })?;
+        // The planner runs only when asked for until its port is proven
+        // against the reference (#384); `auto` means off until then.
+        let planner = match request.planner.as_deref() {
+            Some("on") if !audio.has_planner => {
+                return Err(InferenceError::InvalidAudioParams {
+                    detail: "this model has no song planner; use planner=off or auto".into(),
+                });
+            }
+            Some("on") => true,
+            _ => false,
+        };
+        // A random seed small enough to type back in, so any render can be
+        // reproduced from what the job reports.
+        let seed = request.seed.unwrap_or_else(|| {
+            use std::hash::BuildHasher;
+            std::collections::hash_map::RandomState::new().hash_one(unix_subsec_nanos())
+                & 0x7fff_ffff
+        });
+        let params = super::audio::AudioGenParams {
+            prompt: request.prompt.clone(),
+            lyrics: if request.is_instrumental() {
+                String::new()
+            } else {
+                request.lyrics.clone().unwrap_or_default()
+            },
+            duration_secs: request.duration.unwrap_or(audio.limits.default_duration),
+            seed,
+            steps: request.steps.map(|s| s as usize),
+            guidance_scale: request.guidance_scale,
+            planner,
+            temperature: request.temperature,
+            language: request.language.clone(),
+        };
+
+        let _permit = audio.admission.enter(principal).await?;
+        let _guard = audio.inference_lock.lock().await;
+        let result = audio
+            .worker
+            .generate_audio(audio.handle, params)
+            .await
+            .map_err(|e| InferenceError::Other(anyhow::anyhow!("audio generation: {e:#}")))?;
+
+        let duration = result.duration_secs();
+        let sample_rate = result.sample_rate;
+        let timing = result.timing;
+        let wav = tokio::task::spawn_blocking(move || {
+            super::audio::encode_wav_pcm16(&result.left, &result.right, result.sample_rate)
+        })
+        .await
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("wav encode task: {e:#}")))?;
+        Ok((
+            wav,
+            cortex_core::audio::NeuronAudioResult {
+                duration,
+                sample_rate,
+                channels: 2,
+                seed,
+                usage: cortex_core::audio::AudioUsage {
+                    helexa_audio_units: duration,
+                    helexa_timing: Some(timing),
+                },
+            },
+        ))
     }
 
     /// Run one text-to-image generation (#198). This is the internal
@@ -6624,6 +6871,10 @@ pub enum InferenceError {
     /// Maps to 400 — client error, not server fault.
     #[error("invalid image generation parameters: {detail}")]
     InvalidImageParams { detail: String },
+    /// Audio generation parameters the model cannot serve (#383): a
+    /// duration out of range, lyrics for a model that does not sing.
+    #[error("invalid audio generation parameters: {detail}")]
+    InvalidAudioParams { detail: String },
     /// The loaded model's chat template could not render the request
     /// (e.g. a message / tool-call structure it rejects). Returned only
     /// when the request carried tools — silently degrading to a

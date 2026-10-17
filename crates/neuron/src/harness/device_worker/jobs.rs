@@ -68,6 +68,15 @@ pub struct ImageHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DecisionHandle(pub u64);
 
+/// Opaque handle to an ACE-Step music pipeline ([`AceStepEngine`]) stored
+/// in the worker thread's audio slab (#383). Same discipline as
+/// [`ImageHandle`]: construction, every generation and `Drop` happen on the
+/// worker thread, and `Job::DropAudio` is the only way to release it.
+///
+/// [`AceStepEngine`]: crate::harness::audio::AceStepEngine
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AudioHandle(pub u64);
+
 /// Opaque handle to a prefix-cache snapshot (#11) stored worker-side
 /// next to the model slab. Scoped to the `ArchHandle` it was captured
 /// from — `Job::DropArch` drops every snapshot under its handle. The
@@ -584,6 +593,27 @@ pub enum Job {
         handle: DecisionHandle,
         batch: crate::harness::arch::laya::DecisionBatch,
         reply: oneshot::Sender<Result<Vec<crate::harness::arch::laya::DecisionRow>>>,
+    },
+    /// Load an ACE-Step snapshot (#383) — already on local disk — into
+    /// the audio slab. File resolution (hf-hub) happens on the async side.
+    LoadAudio {
+        files: crate::harness::audio::AceStepFiles,
+        model_id: String,
+        reply: oneshot::Sender<Result<AudioHandle>>,
+    },
+    /// Remove a music pipeline from the slab and drop it on the worker
+    /// thread. Mirrors `DropImage`.
+    DropAudio {
+        handle: AudioHandle,
+        reply: oneshot::Sender<()>,
+    },
+    /// Render one song (#383): planner, text encoding, denoise and VAE
+    /// decode in one job, since a render saturates the device. The reply
+    /// is CPU-side samples — no device tensor crosses back.
+    GenerateAudio {
+        handle: AudioHandle,
+        params: crate::harness::audio::AudioGenParams,
+        reply: oneshot::Sender<Result<crate::harness::audio::AudioGenResult>>,
     },
     /// Tell the worker to break its dispatch loop and exit. Any jobs
     /// queued after this in the channel reply `Err` to their oneshot

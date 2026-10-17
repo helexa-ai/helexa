@@ -1,0 +1,543 @@
+//! Music generation engine (#383): ACE-Step 1.5 behind the device worker.
+//!
+//! The ACE-Step repo carries every component as a subfolder of one
+//! snapshot — the turbo DiT (with its `silence_latent.pt`), the song
+//! planner LM, the Qwen3 text encoder and the VAE — so the loader takes
+//! the snapshot root and finds them by name.
+//!
+//! Same discipline as the image engine (`image.rs`): the pipeline lives in
+//! the worker's audio slab, one `Job::GenerateAudio` runs a whole song, and
+//! the reply is CPU-side samples. WAV encoding happens on the async side.
+
+use super::arch::acestep::pipeline::{AceStepPipeline, GenerationParams, LmMetadata};
+use super::arch::acestep::{AceStepConfig, VaeConfig, lm::LmConfig, qwen3, sampling};
+use anyhow::{Context, Result};
+use candle_core::{DType, Device};
+use candle_nn::VarBuilder;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+/// The turbo DiT's subfolder.
+pub const DIT_DIR: &str = "acestep-v15-turbo";
+/// The text encoder's subfolder.
+pub const TEXT_ENCODER_DIR: &str = "Qwen3-Embedding-0.6B";
+/// The VAE's subfolder.
+pub const VAE_DIR: &str = "vae";
+/// Planner LMs in order of preference; the first the snapshot has is used.
+pub const PLANNER_DIRS: [&str; 2] = ["acestep-5Hz-lm-1.7B", "acestep-5Hz-lm-0.6B"];
+
+/// What ACE-Step 1.5 turbo serves (#383). Upstream allows 10 minutes; the
+/// planner's code budget (3072 tokens at 5 Hz) covers that. No `steps`
+/// knob: the turbo schedule is a fixed eight steps.
+pub const ACESTEP_LIMITS: cortex_core::audio::AudioLimits = cortex_core::audio::AudioLimits {
+    min_duration: 10.0,
+    max_duration: 600.0,
+    default_duration: 30.0,
+    vocals: true,
+    sample_rate: 48_000,
+    channels: 2,
+    max_steps: None,
+};
+
+/// The turbo schedule's default step count.
+pub const DEFAULT_STEPS: usize = 8;
+/// Turbo models are trained with timestep shift 3.
+const TURBO_SHIFT: f64 = 3.0;
+/// Upstream's default output peak, in dBFS.
+const PEAK_DB: f64 = -1.0;
+
+/// Files every ACE-Step snapshot needs, relative to its root.
+pub fn required_files() -> Vec<String> {
+    vec![
+        format!("{DIT_DIR}/config.json"),
+        format!("{DIT_DIR}/model.safetensors"),
+        format!("{DIT_DIR}/silence_latent.pt"),
+        format!("{TEXT_ENCODER_DIR}/config.json"),
+        format!("{TEXT_ENCODER_DIR}/model.safetensors"),
+        format!("{TEXT_ENCODER_DIR}/tokenizer.json"),
+        format!("{VAE_DIR}/config.json"),
+        format!("{VAE_DIR}/diffusion_pytorch_model.safetensors"),
+    ]
+}
+
+/// Files a planner LM needs, relative to the snapshot root.
+pub fn planner_files(dir: &str) -> Vec<String> {
+    ["config.json", "model.safetensors", "tokenizer.json"]
+        .iter()
+        .map(|f| format!("{dir}/{f}"))
+        .collect()
+}
+
+/// True for a repo laid out like ACE-Step 1.5: the turbo DiT and the VAE as
+/// subfolders. Checked before the generic safetensors sniff, which would
+/// otherwise take the root `config.json` for a text model.
+pub fn is_acestep_layout(filenames: &[&str]) -> bool {
+    filenames.contains(&format!("{DIT_DIR}/config.json").as_str())
+        && filenames.contains(&format!("{VAE_DIR}/diffusion_pytorch_model.safetensors").as_str())
+}
+
+/// A resolved snapshot: the root directory every component sits under, and
+/// which planner (if any) it has.
+#[derive(Debug, Clone)]
+pub struct AceStepFiles {
+    pub root: PathBuf,
+    pub planner: Option<String>,
+}
+
+/// One generation's parameters, already validated against the model's limits.
+#[derive(Debug, Clone)]
+pub struct AudioGenParams {
+    pub prompt: String,
+    /// Empty for an instrumental.
+    pub lyrics: String,
+    pub duration_secs: f64,
+    pub seed: u64,
+    pub steps: Option<usize>,
+    pub guidance_scale: Option<f64>,
+    /// Run the song planner first (when the model has one).
+    pub planner: bool,
+    pub temperature: Option<f64>,
+    /// Lyric language code; `None` lets the planner (or `"unknown"`) decide.
+    pub language: Option<String>,
+}
+
+/// One generation's output: CPU-side stereo samples in `[-1, 1]`.
+#[derive(Debug, Clone)]
+pub struct AudioGenResult {
+    pub left: Vec<f32>,
+    pub right: Vec<f32>,
+    pub sample_rate: u32,
+    pub timing: cortex_core::audio::AudioTiming,
+}
+
+impl AudioGenResult {
+    pub fn duration_secs(&self) -> f64 {
+        self.left.len() as f64 / self.sample_rate.max(1) as f64
+    }
+}
+
+/// The loaded pipeline, owned by the device worker.
+pub struct AceStepEngine {
+    pipeline: AceStepPipeline,
+    has_planner: bool,
+}
+
+fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+    let f = std::fs::File::open(path).with_context(|| format!("open {}", path.display()))?;
+    serde_json::from_reader(f).with_context(|| format!("parse {}", path.display()))
+}
+
+impl AceStepEngine {
+    /// Build every component on `device`: bf16 on a GPU, f32 on the CPU.
+    pub fn load(files: &AceStepFiles, device: &Device) -> Result<Self> {
+        let dtype = if device.is_cpu() {
+            DType::F32
+        } else {
+            DType::BF16
+        };
+        let root = &files.root;
+        let dit = root.join(DIT_DIR);
+        let te = root.join(TEXT_ENCODER_DIR);
+        let vae = root.join(VAE_DIR);
+
+        let dit_config: AceStepConfig = read_json(&dit.join("config.json"))?;
+        let vae_config: VaeConfig = read_json(&vae.join("config.json"))?;
+        let text_config: qwen3::Config = read_json(&te.join("config.json"))?;
+
+        // SAFETY: the snapshot is a read-only cache the daemon owns; the
+        // files are not modified while mapped.
+        let dit_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&[dit.join("model.safetensors")], dtype, device)?
+        };
+        let vae_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &[vae.join("diffusion_pytorch_model.safetensors")],
+                dtype,
+                device,
+            )?
+        };
+        // The embedding model's tensors carry a `model.` prefix the bare
+        // qwen3 encoder does not expect.
+        let text_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&[te.join("model.safetensors")], dtype, device)?
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+
+        let silence_latent = super::arch::acestep::pipeline::load_silence_latent(
+            &dit.join("silence_latent.pt"),
+            dit_config.audio_acoustic_hidden_dim,
+            dtype,
+            device,
+        )?;
+        let mut pipeline = AceStepPipeline::new(
+            &dit_config,
+            &vae_config,
+            &text_config,
+            dit_vb,
+            vae_vb,
+            text_vb,
+            &te.join("tokenizer.json"),
+            silence_latent,
+            false,
+        )?;
+
+        let has_planner = match &files.planner {
+            Some(dir) => {
+                let lm = root.join(dir);
+                let lm_config: qwen3::Config = read_json(&lm.join("config.json"))?;
+                let lm_vb = unsafe {
+                    VarBuilder::from_mmaped_safetensors(
+                        &[lm.join("model.safetensors")],
+                        dtype,
+                        device,
+                    )?
+                };
+                pipeline.load_lm(&lm_config, lm_vb, &lm.join("tokenizer.json"))?;
+                true
+            }
+            None => false,
+        };
+        Ok(Self {
+            pipeline,
+            has_planner,
+        })
+    }
+
+    pub fn has_planner(&self) -> bool {
+        self.has_planner
+    }
+
+    /// Render one song.
+    pub fn generate(&mut self, p: &AudioGenParams) -> Result<AudioGenResult> {
+        let mut timing = cortex_core::audio::AudioTiming::default();
+
+        let (lm_hints, lm_metadata) = if p.planner && self.has_planner {
+            let t = Instant::now();
+            let cfg = LmConfig {
+                temperature: p.temperature.unwrap_or(0.85),
+                seed: p.seed,
+                ..Default::default()
+            };
+            let (hints, meta) =
+                self.pipeline
+                    .generate_lm_hints(&p.prompt, &p.lyrics, p.duration_secs, &cfg)?;
+            timing.plan_ms = t.elapsed().as_millis() as u64;
+            let metadata = LmMetadata {
+                bpm: meta.get("bpm").cloned(),
+                timesignature: meta.get("timesignature").cloned(),
+                keyscale: meta.get("keyscale").cloned(),
+                caption: meta.get("caption").cloned(),
+                language: meta
+                    .get("language")
+                    .or_else(|| meta.get("vocal_language"))
+                    .cloned(),
+            };
+            (Some(hints), Some(metadata))
+        } else {
+            (None, None)
+        };
+
+        let params = GenerationParams {
+            duration_secs: p.duration_secs,
+            seed: Some(p.seed),
+            num_steps: Some(p.steps.unwrap_or(DEFAULT_STEPS)),
+            guidance_scale: p
+                .guidance_scale
+                .unwrap_or(GenerationParams::default().guidance_scale),
+            shift: TURBO_SHIFT,
+            is_turbo: true,
+            lm_hints_25hz: lm_hints,
+            lm_metadata,
+            infer_method: sampling::InferMethod::Ode,
+            language: p.language.clone(),
+            ..Default::default()
+        };
+        let t = Instant::now();
+        let out = self.pipeline.text2music(&p.prompt, &p.lyrics, &params)?;
+        let audio = out.audio.to_dtype(DType::F32)?.to_device(&Device::Cpu)?;
+        timing.generate_ms = t.elapsed().as_millis() as u64;
+
+        let mut left = audio.get(0)?.to_vec1::<f32>()?;
+        let mut right = audio.get(1)?.to_vec1::<f32>()?;
+        if left.iter().chain(&right).any(|s| !s.is_finite()) {
+            anyhow::bail!("generation produced non-finite samples");
+        }
+        peak_normalize(&mut left, &mut right, PEAK_DB);
+        Ok(AudioGenResult {
+            left,
+            right,
+            sample_rate: out.sample_rate,
+            timing,
+        })
+    }
+}
+
+/// Scale both channels so the loudest sample sits at `target_db` dBFS, as
+/// upstream does before saving. Near-silence is left alone rather than
+/// amplified into noise.
+pub fn peak_normalize(left: &mut [f32], right: &mut [f32], target_db: f64) {
+    let peak = left
+        .iter()
+        .chain(right.iter())
+        .fold(0f32, |m, s| m.max(s.abs()));
+    if peak < 1e-6 {
+        return;
+    }
+    let gain = (10f64.powf(target_db / 20.0) / peak as f64) as f32;
+    for s in left.iter_mut().chain(right.iter_mut()) {
+        *s = (*s * gain).clamp(-1.0, 1.0);
+    }
+}
+
+/// Encode stereo samples as a 16-bit PCM WAV file.
+pub fn encode_wav_pcm16(left: &[f32], right: &[f32], sample_rate: u32) -> Vec<u8> {
+    let frames = left.len().min(right.len());
+    let data_len = (frames * 4) as u32;
+    let mut out = Vec::with_capacity(44 + frames * 4);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVE");
+    out.extend_from_slice(b"fmt ");
+    out.extend_from_slice(&16u32.to_le_bytes()); // fmt chunk size
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&2u16.to_le_bytes()); // channels
+    out.extend_from_slice(&sample_rate.to_le_bytes());
+    out.extend_from_slice(&(sample_rate * 4).to_le_bytes()); // byte rate
+    out.extend_from_slice(&4u16.to_le_bytes()); // block align
+    out.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    let pcm = |s: f32| -> [u8; 2] {
+        ((s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16).to_le_bytes()
+    };
+    for i in 0..frames {
+        out.extend_from_slice(&pcm(left[i]));
+        out.extend_from_slice(&pcm(right[i]));
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_detection() {
+        let mut files: Vec<String> = required_files();
+        files.push("config.json".into());
+        let refs: Vec<&str> = files.iter().map(String::as_str).collect();
+        assert!(is_acestep_layout(&refs));
+        assert!(!is_acestep_layout(&["config.json", "model.safetensors"]));
+        assert!(!is_acestep_layout(&["acestep-v15-turbo/config.json"]));
+    }
+
+    #[test]
+    fn peak_normalize_hits_target_and_spares_silence() {
+        let (mut l, mut r) = (vec![0.5, -0.25], vec![0.1, 0.0]);
+        peak_normalize(&mut l, &mut r, -1.0);
+        let target = 10f32.powf(-1.0 / 20.0);
+        assert!((l[0] - target).abs() < 1e-6);
+        assert!((l[1] + target / 2.0).abs() < 1e-6);
+        let (mut l, mut r) = (vec![1e-8, 0.0], vec![0.0, -1e-8]);
+        peak_normalize(&mut l, &mut r, -1.0);
+        assert_eq!(l, vec![1e-8, 0.0]);
+    }
+
+    #[test]
+    fn wav_header_and_samples() {
+        let wav = encode_wav_pcm16(&[1.0, -1.0], &[0.0, 0.5], 48_000);
+        assert_eq!(wav.len(), 44 + 8);
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(u32::from_le_bytes(wav[4..8].try_into().unwrap()), 36 + 8);
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(u16::from_le_bytes(wav[22..24].try_into().unwrap()), 2);
+        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48_000);
+        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
+        let s = |i: usize| i16::from_le_bytes(wav[44 + 2 * i..46 + 2 * i].try_into().unwrap());
+        assert_eq!((s(0), s(1), s(2), s(3)), (i16::MAX, 0, -i16::MAX, 16384));
+    }
+}
+
+/// End-to-end render against real weights, on the CPU. Ignored by default:
+/// it needs an ACE-Step 1.5 snapshot on disk and minutes of CPU time.
+///
+///   ACESTEP_SNAPSHOT=/path/to/Ace-Step1.5 \
+///     cargo test -p neuron --lib -- --ignored acestep_renders_on_cpu --nocapture
+#[cfg(test)]
+mod hardware {
+    use super::*;
+    use crate::harness::arch::acestep::pipeline::AceStepPipeline;
+
+    #[test]
+    #[ignore = "needs ACESTEP_SNAPSHOT and minutes of CPU"]
+    fn acestep_renders_on_cpu() {
+        let Ok(root) = std::env::var("ACESTEP_SNAPSHOT") else {
+            eprintln!("ACESTEP_SNAPSHOT not set; skipping");
+            return;
+        };
+        let files = AceStepFiles {
+            root: root.into(),
+            planner: None,
+        };
+        let t = Instant::now();
+        let mut engine = AceStepEngine::load(&files, &Device::Cpu).expect("load");
+        eprintln!("loaded in {:.1}s", t.elapsed().as_secs_f32());
+        let params = AudioGenParams {
+            prompt: "Warm lo-fi hip hop beat with mellow Rhodes chords, 82 BPM".into(),
+            lyrics: String::new(),
+            duration_secs: 10.0,
+            seed: 42,
+            steps: None,
+            guidance_scale: None,
+            planner: false,
+            temperature: None,
+            language: None,
+        };
+        let t = Instant::now();
+        let out = engine.generate(&params).expect("generate");
+        eprintln!(
+            "rendered {:.2}s of audio in {:.1}s ({:?})",
+            out.duration_secs(),
+            t.elapsed().as_secs_f32(),
+            out.timing
+        );
+        assert_eq!(out.sample_rate, 48_000);
+        assert!(
+            (out.duration_secs() - 10.0).abs() < 0.5,
+            "{}",
+            out.duration_secs()
+        );
+        let rms = (out.left.iter().map(|s| s * s).sum::<f32>() / out.left.len() as f32).sqrt();
+        assert!(rms > 1e-3, "silent render, rms {rms}");
+        if let Ok(path) = std::env::var("ACESTEP_OUT") {
+            std::fs::write(
+                &path,
+                encode_wav_pcm16(&out.left, &out.right, out.sample_rate),
+            )
+            .expect("write wav");
+            eprintln!("wrote {path}");
+        }
+        // Same seed, same song.
+        let again = engine.generate(&params).expect("generate again");
+        assert_eq!(out.left, again.left, "same seed must render identically");
+    }
+
+    /// Relative L2 distance between two tensors of the same shape.
+    fn rel_l2(a: &candle_core::Tensor, b: &candle_core::Tensor) -> f32 {
+        let a = a.to_dtype(DType::F32).unwrap().flatten_all().unwrap();
+        let b = b.to_dtype(DType::F32).unwrap().flatten_all().unwrap();
+        let diff = (&a - &b)
+            .unwrap()
+            .sqr()
+            .unwrap()
+            .sum_all()
+            .unwrap()
+            .to_scalar::<f32>()
+            .unwrap();
+        let norm = b
+            .sqr()
+            .unwrap()
+            .sum_all()
+            .unwrap()
+            .to_scalar::<f32>()
+            .unwrap();
+        (diff / norm.max(1e-20)).sqrt()
+    }
+
+    /// Parity with the upstream PyTorch reference (#381) on the CPU in f32,
+    /// from the reference's own noise: prompt token ids exactly, then the
+    /// denoised latents and the decoded waveform within float tolerance.
+    #[test]
+    #[ignore = "needs ACESTEP_SNAPSHOT and minutes of CPU"]
+    fn acestep_matches_reference_cpu_f32() {
+        let Ok(root) = std::env::var("ACESTEP_SNAPSHOT") else {
+            eprintln!("ACESTEP_SNAPSHOT not set; skipping");
+            return;
+        };
+        let cases = std::env::var("ACESTEP_CASES")
+            .unwrap_or_else(|_| "instr_10s_noplan,vocal_es_20s_noplan".into());
+        let mut engine = AceStepEngine::load(
+            &AceStepFiles {
+                root: root.into(),
+                planner: None,
+            },
+            &Device::Cpu,
+        )
+        .expect("load");
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/harness/testdata/acestep");
+        for case in cases.split(',') {
+            let meta: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(dir.join(format!("{case}__cpu_f32.json"))).unwrap(),
+            )
+            .unwrap();
+            // Read tensors by name: the file also holds BOOL masks, which
+            // candle cannot load.
+            let file = unsafe {
+                candle_core::safetensors::MmapedSafetensors::new(
+                    dir.join(format!("{case}__cpu_f32.safetensors")),
+                )
+            }
+            .unwrap();
+            let want: std::collections::HashMap<&str, candle_core::Tensor> = [
+                "text_token_ids",
+                "lyric_token_ids",
+                "noise",
+                "target_latents",
+                "vae_waveform",
+            ]
+            .into_iter()
+            .map(|k| (k, file.load(k, &Device::Cpu).unwrap()))
+            .collect();
+            let c = &meta["case"];
+            let caption = c["caption"].as_str().unwrap();
+            let lyrics = c["lyrics"].as_str().unwrap();
+            let language = c["language"].as_str().unwrap();
+            let duration = c["duration"].as_f64().unwrap();
+
+            let (text, lyric) =
+                AceStepPipeline::format_prompts(caption, lyrics, duration, None, Some(language));
+            let (text_ids, lyric_ids) = engine.pipeline.prompt_token_ids(&text, &lyric).unwrap();
+            let ids = |k: &str| -> Vec<u32> {
+                want[k]
+                    .flatten_all()
+                    .unwrap()
+                    .to_vec1::<i64>()
+                    .unwrap()
+                    .into_iter()
+                    .map(|v| v as u32)
+                    .collect()
+            };
+            assert_eq!(text_ids, ids("text_token_ids"), "{case}: text token ids");
+            assert_eq!(lyric_ids, ids("lyric_token_ids"), "{case}: lyric token ids");
+
+            let params = GenerationParams {
+                duration_secs: duration,
+                seed: None,
+                num_steps: Some(DEFAULT_STEPS),
+                shift: TURBO_SHIFT,
+                is_turbo: true,
+                infer_method: sampling::InferMethod::Ode,
+                initial_noise: Some(want["noise"].clone()),
+                language: Some(language.to_string()),
+                ..Default::default()
+            };
+            let t = Instant::now();
+            let out = engine
+                .pipeline
+                .text2music(caption, lyrics, &params)
+                .unwrap();
+            let latents = rel_l2(&out.latents, &want["target_latents"]);
+            let wave_ref = &want["vae_waveform"];
+            let n = wave_ref.dim(2).unwrap();
+            let wave = out.audio.narrow(1, 0, n).unwrap().unsqueeze(0).unwrap();
+            let waveform = rel_l2(&wave, wave_ref);
+            eprintln!(
+                "{case}: latents rel L2 {latents:.2e}, waveform rel L2 {waveform:.2e} ({:.1}s)",
+                t.elapsed().as_secs_f32()
+            );
+            assert!(latents < 1e-3, "{case}: latents rel L2 {latents}");
+            assert!(waveform < 1e-2, "{case}: waveform rel L2 {waveform}");
+        }
+    }
+}

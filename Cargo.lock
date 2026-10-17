@@ -3170,6 +3170,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "unicode-properties",
+ "zip",
 ]
 
 [[package]]

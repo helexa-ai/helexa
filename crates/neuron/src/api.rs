@@ -903,6 +903,12 @@ fn inference_error_response(err: InferenceError) -> axum::response::Response {
         // model. Not retryable against this model — the client should
         // pick a model whose `capabilities` include the endpoint's
         // modality.
+        InferenceError::InvalidAudioParams { detail } => OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "invalid_audio_params",
+            format!("invalid audio generation parameters: {detail}"),
+        ),
         InferenceError::InvalidImageParams { detail } => OpenAiError::new(
             400,
             "invalid_request_error",
