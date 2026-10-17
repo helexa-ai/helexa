@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod audio;
 pub mod build_info;
 pub mod catalogue;
 pub mod config;

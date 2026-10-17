@@ -87,6 +87,7 @@ async fn test_alias_resolves_in_chat_completions() {
         models_config: models_path.to_string_lossy().to_string(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -176,6 +177,7 @@ async fn test_aliases_surface_in_v1_models() {
         models_config: models_path.to_string_lossy().to_string(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -268,6 +270,7 @@ async fn test_alias_falls_through_for_unmapped_model() {
         models_config: models_path.to_string_lossy().to_string(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));

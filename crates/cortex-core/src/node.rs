@@ -186,6 +186,10 @@ pub struct CortexModelEntry {
     /// the absent (not priced) vs `0.0` (intentionally free) distinction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<ModelCost>,
+    /// What an audio model can do (#382), from its catalogue profile:
+    /// duration range, vocals, sample rate. Clients build forms from it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<crate::audio::AudioLimits>,
     /// `true` when any neuron reports this model supports tool calls.
     #[serde(default)]
     pub tool_call: bool,

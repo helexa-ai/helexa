@@ -52,6 +52,8 @@ pub struct CortexState {
     /// rather than an edge — it hid a GGUF that two of three nodes could
     /// describe perfectly well.
     pub capability_probe_attempts: RwLock<HashMap<(String, String), std::time::Instant>>,
+    /// Async audio generation jobs (#382).
+    pub audio_jobs: crate::audio_jobs::AudioJobs,
 }
 
 impl CortexState {
@@ -131,6 +133,7 @@ impl CortexState {
             served_usage: Arc::new(crate::served_usage::ServedUsage::new()),
             discovered_capabilities: RwLock::new(HashMap::new()),
             capability_probe_attempts: RwLock::new(HashMap::new()),
+            audio_jobs: crate::audio_jobs::AudioJobs::new(&config.audio_jobs),
         }
     }
 }

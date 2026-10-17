@@ -14,6 +14,7 @@ pub fn api_routes() -> Router<Arc<RouterState>> {
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/completions", post(completions))
         .route("/v1/images/generations", post(images_generations))
+        .merge(crate::audio::routes())
         .route("/v1/systemone", post(systemone))
         .route("/v1/responses", post(responses))
         .route("/v1/messages", post(messages))

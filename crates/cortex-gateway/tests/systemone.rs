@@ -119,6 +119,7 @@ async fn spawn_gateway(neuron_url: &str, default_alias: bool, hard_cap: Option<u
         models_config: "/dev/null".into(),
         entitlements,
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     let mut state = CortexState::from_config(&config);
     if default_alias {

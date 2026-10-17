@@ -119,6 +119,7 @@ async fn test_no_healthy_nodes() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     let fleet = std::sync::Arc::new(cortex_gateway::state::CortexState::from_config(&config));
 

@@ -10,6 +10,9 @@ Restart=on-failure
 RestartSec=5
 User=cortex
 Group=cortex
+# /var/lib/cortex, owned by the service user: async audio jobs (#382)
+# keep their records and rendered audio here.
+StateDirectory=cortex
 
 [Install]
 WantedBy=multi-user.target

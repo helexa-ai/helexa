@@ -204,6 +204,7 @@ async fn test_capacity_gauges_exported_from_health_poll() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     let fleet = std::sync::Arc::new(cortex_gateway::state::CortexState::from_config(&config));
     cortex_gateway::poller::poll_once(&fleet).await;

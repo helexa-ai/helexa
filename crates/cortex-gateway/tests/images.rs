@@ -165,6 +165,7 @@ async fn spawn_keyed_gateway(neuron_url: &str, hard_cap: u64) -> String {
             }],
         },
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     let fleet = Arc::new(CortexState::from_config(&config));
     {

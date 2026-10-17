@@ -1,4 +1,5 @@
 pub mod anthropic_sse;
+pub mod audio_jobs;
 pub mod auth;
 pub mod entitlements_chain;
 pub mod entitlements_local;
@@ -51,6 +52,10 @@ pub async fn run(config: GatewayConfig) -> Result<()> {
     tokio::spawn(async move {
         poller::poll_loop(poller_fleet).await;
     });
+
+    // Async audio jobs (#382): reload persisted jobs, re-queue unfinished
+    // ones, start the retention sweep.
+    audio_jobs::start(Arc::clone(&fleet)).await;
 
     // Spawn the evictor (reacts to VRAM pressure events from the router).
     let evictor_fleet = Arc::clone(&fleet);

@@ -89,6 +89,7 @@ async fn two_neuron_fleet(endpoint_a: &str, endpoint_b: &str) -> Arc<CortexState
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     Arc::new(CortexState::from_config(&config))
 }

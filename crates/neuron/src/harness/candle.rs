@@ -4998,6 +4998,29 @@ impl CandleHarness {
             .ok_or_else(|| InferenceError::ModelNotLoaded("no decision model is loaded".into()))
     }
 
+    /// Render one audio generation (#382). The cortex job manager sends one
+    /// of these per job and waits for the whole render; the reply is the
+    /// WAV bytes plus the result metadata cortex records on the job.
+    ///
+    /// No audio architecture is loadable yet, so every model reachable
+    /// here is the wrong modality or not loaded. The ACE-Step engine
+    /// (#383) adds a `LoadedHandle::Audio` arm that validates against the
+    /// model's limits, takes an admission permit and runs the device job.
+    pub async fn audio_generation(
+        &self,
+        request: &cortex_core::audio::AudioGenerationRequest,
+        _principal: Option<&str>,
+    ) -> Result<(Vec<u8>, cortex_core::audio::NeuronAudioResult), InferenceError> {
+        let loaded = self.models.read().await.contains_key(&request.model);
+        if loaded {
+            Err(InferenceError::WrongModality {
+                model_id: request.model.clone(),
+            })
+        } else {
+            Err(InferenceError::ModelNotLoaded(request.model.clone()))
+        }
+    }
+
     /// Run one text-to-image generation (#198). This is the internal
     /// path the `/v1/images/generations` handler (#200) fronts;
     /// admission, validation, tokenization, and PNG encoding happen

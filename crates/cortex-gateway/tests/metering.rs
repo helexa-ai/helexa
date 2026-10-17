@@ -54,6 +54,7 @@ async fn spawn_metered_gateway(neuron_url: &str) -> (Arc<CortexState>, String) {
             }],
         },
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -162,6 +163,7 @@ async fn anonymous_request_records_no_spend() {
         models_config: "/dev/null".into(),
         entitlements: EntitlementsConfig::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     let fleet = Arc::new(CortexState::from_config(&config));
     {

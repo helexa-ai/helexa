@@ -89,6 +89,11 @@ pub struct ModelProfile {
     /// are unioned with this set in the gateway's `/v1/models` response.
     #[serde(default)]
     pub capabilities: Vec<String>,
+    /// What an audio model can do (#382): duration range, vocals, sample
+    /// rate. Advertised in `/v1/models` and checked by cortex before a job
+    /// is accepted. `[models.audio]` in TOML.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<crate::audio::AudioLimits>,
 }
 
 fn default_min_devices() -> u32 {
@@ -283,6 +288,7 @@ mod tests {
             limit: None,
             cost: None,
             capabilities: vec![],
+            audio: None,
         }
     }
 

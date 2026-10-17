@@ -24,6 +24,7 @@ pub fn api_routes() -> Router<Arc<CortexState>> {
         .route("/v1/completions", post(completions))
         .route("/v1/responses", post(responses))
         .route("/v1/images/generations", post(images_generations))
+        .merge(crate::audio_jobs::routes())
         .route("/v1/systemone", post(systemone))
         .route("/v1/models", get(list_models))
         .route("/v1/messages", post(anthropic_messages))
@@ -977,6 +978,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 // `cost` stays operator-set and flows from the catalogue.
                 limit: None,
                 cost: profile.cost.clone(),
+                audio: profile.audio.clone(),
                 // Runtime-detected — will be OR-ed in Pass 2 from neuron data.
                 tool_call: false,
                 reasoning: false,
@@ -1059,6 +1061,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     capabilities: entry.capabilities.clone(),
                     limit: entry.limit.clone(),
                     cost: None,
+                    audio: None,
                     tool_call: entry.tool_call,
                     reasoning: entry.reasoning,
                     max_model_len: None,
@@ -1128,6 +1131,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     capabilities: discovered.get(model_id).cloned().unwrap_or_default(),
                     limit: None,
                     cost: None,
+                    audio: None,
                     tool_call: false,
                     reasoning: false,
                     max_model_len: None,
@@ -1169,6 +1173,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 capabilities: target_entry.capabilities,
                 limit: target_entry.limit.clone(),
                 cost: target_entry.cost.clone(),
+                audio: target_entry.audio.clone(),
                 tool_call: target_entry.tool_call,
                 reasoning: target_entry.reasoning,
                 max_model_len: None,
@@ -1455,7 +1460,7 @@ fn context_length_exceeded_response(
 }
 
 /// Update `last_accessed` timestamp for a model on a node (drives LRU eviction).
-async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {
+pub(crate) async fn touch_model(fleet: &CortexState, node_name: &str, model_id: &str) {
     let mut nodes = fleet.nodes.write().await;
     if let Some(node) = nodes.get_mut(node_name)
         && let Some(entry) = node.models.get_mut(model_id)
