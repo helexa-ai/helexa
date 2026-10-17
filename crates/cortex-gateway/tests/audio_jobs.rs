@@ -273,6 +273,8 @@ async fn submit_poll_fetch_content() {
     assert_eq!(job["object"], "audio.generation");
     assert_eq!(job["status"], "queued");
     assert_eq!(job["model"], MODEL);
+    assert_eq!(job["prompt"], "warm lofi");
+    assert!(job.get("lyrics").is_none());
     let id = job["id"].as_str().unwrap().to_string();
     assert!(id.starts_with("audiogen_"));
 

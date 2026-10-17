@@ -28,6 +28,7 @@ const NAMESPACES = [
   "mission",
   "chat",
   "images",
+  "music",
   "decisions",
   "account",
   "privacy",

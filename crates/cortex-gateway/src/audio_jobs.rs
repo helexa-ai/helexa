@@ -350,6 +350,8 @@ async fn submit(
         object: JOB_OBJECT.into(),
         status: JobStatus::Queued,
         model,
+        prompt: Some(request.prompt.clone()),
+        lyrics: request.lyrics.clone(),
         created_at: now_secs(),
         started_at: None,
         completed_at: None,

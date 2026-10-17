@@ -107,6 +107,14 @@ const Header: React.FC = () => {
               {t("nav.images")}
             </NavLink>
             <NavLink
+              to="/music"
+              className={({ isActive }): string =>
+                isActive ? "nav-link active" : "nav-link"
+              }
+            >
+              {t("nav.music")}
+            </NavLink>
+            <NavLink
               to="/playground"
               className={({ isActive }): string =>
                 isActive ? "nav-link active" : "nav-link"

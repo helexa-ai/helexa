@@ -1885,6 +1885,77 @@ html[dir="rtl"] .hx-landing-composer textarea {
     grid-column: 1 / -1;
 }
 
+/* -- Music (/music) -------------------------------------------------------- */
+
+/* The music page reuses the image form controls; these cover what images
+ * has no counterpart for: labelled text areas and a job list. */
+.hx-music-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+}
+.hx-music-field textarea,
+.hx-music input[type="number"] {
+    border-radius: 0.5rem;
+    border: 1px solid var(--color-border-subtle);
+    background-color: var(--color-bg-elevated);
+    color: var(--color-text);
+    padding: 0.45rem 0.6rem;
+    font: inherit;
+    font-size: 0.9rem;
+    min-height: 36px;
+}
+.hx-music input[type="number"] {
+    width: 7rem;
+}
+.hx-music-jobs {
+    margin-top: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+.hx-music-job {
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.75rem;
+    background-color: var(--color-bg-elevated);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+}
+.hx-music-job header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: baseline;
+}
+.hx-music-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+.hx-music-running .hx-music-status,
+.hx-music-queued .hx-music-status {
+    color: var(--color-accent);
+}
+.hx-music-failed .hx-music-status {
+    color: var(--color-accent-hot);
+}
+/* Model ids are long and unbroken; let them wrap rather than widen the card. */
+.hx-music-model {
+    margin-inline-start: auto;
+    overflow-wrap: anywhere;
+}
+.hx-music-job .hx-image-card-actions {
+    flex-wrap: wrap;
+}
+.hx-music-player {
+    width: min(100%, 24rem);
+    height: 36px;
+}
+
 /* -- Documentation (/docs) ------------------------------------------------ */
 
 /* Three columns on a wide screen: navigation, prose, page rail. The prose
