@@ -1,0 +1,252 @@
+{
+  "case": {
+    "name": "instr_12s",
+    "tags": "lo-fi hip hop, mellow, piano, vinyl crackle, relaxed, instrumental",
+    "lyrics": "[Intro]\n\n[Verse]\n\n[Chorus]\n\n[Bridge]\n\n[Chorus]\n\n[Outro]",
+    "duration": 12.0,
+    "seed": 1234,
+    "codec": true
+  },
+  "trace": "cpu_f32",
+  "lm": {
+    "greedy": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 1,
+      "seed": 1234,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 356.88,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8188.0,
+        "mean": 4120.88330078125
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 28.090116500854492,
+        "mean": 2.0777270793914795
+      }
+    },
+    "sampled": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 50,
+      "seed": 1234,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 101.85,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8184.0,
+        "mean": 4056.3046875
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 25.65738296508789,
+        "mean": 2.0897045135498047
+      }
+    }
+  },
+  "tags_prompt": "<tag>lo-fi hip hop, mellow, piano, vinyl crackle, relaxed, instrumental</tag>",
+  "lyrics_prompt": "[intro]\n\n[verse]\n\n[chorus]\n\n[bridge]\n\n[chorus]\n\n[outro]",
+  "muq_idx": 24,
+  "prompt_len": 47,
+  "tags_ids": [
+    128000,
+    17224,
+    29,
+    385,
+    37731,
+    18638,
+    7598,
+    11,
+    296,
+    5412,
+    11,
+    27374,
+    11,
+    34549,
+    17944,
+    273,
+    11,
+    31467,
+    11,
+    42045,
+    524,
+    4681,
+    29,
+    128001
+  ],
+  "lyrics_ids": [
+    128000,
+    19155,
+    299,
+    2595,
+    58,
+    4550,
+    2595,
+    58,
+    6279,
+    355,
+    2595,
+    58,
+    14024,
+    2595,
+    58,
+    6279,
+    355,
+    2595,
+    50797,
+    299,
+    60,
+    128001
+  ],
+  "codec": {
+    "seed": 1234,
+    "detokenize": {
+      "duration": 29.76,
+      "num_steps": 10,
+      "guidance_scale": 1.25
+    },
+    "segments": 1,
+    "codes_frames": 151,
+    "waveform_samples": 579840,
+    "waveform_kept_s": 3.0,
+    "wall_s": 54.51,
+    "stats": {
+      "rvq_quantized": {
+        "shape": [
+          1,
+          372,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.0615558624267578,
+        "mean": -0.0003823470906354487
+      },
+      "rvq_cond": {
+        "shape": [
+          1,
+          372,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 0.7460197806358337,
+        "mean": 0.00029266541241668165
+      },
+      "flow_noise": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 4.995326995849609,
+        "mean": 0.004587189294397831
+      },
+      "flow_mu": {
+        "shape": [
+          1,
+          744,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 0.7460197806358337,
+        "mean": 0.0002926653833128512
+      },
+      "flow_t_span": {
+        "shape": [
+          11
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.0,
+        "mean": 0.4999999701976776
+      },
+      "flow_step1_v": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 5.051046848297119,
+        "mean": 0.0303566325455904
+      },
+      "flow_step5_x": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 2.5317981243133545,
+        "mean": 0.02021361142396927
+      },
+      "flow_final": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.0246235132217407,
+        "mean": 0.03610745444893837
+      }
+    },
+    "waveform_stats": {
+      "shape": [
+        2,
+        579840
+      ],
+      "dtype": "float32",
+      "nan": 0,
+      "inf": 0,
+      "absmax": 0.3804580867290497,
+      "mean": -1.4480815480055753e-05
+    }
+  },
+  "nan_anywhere": false
+}
