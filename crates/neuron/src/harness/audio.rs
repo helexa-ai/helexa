@@ -184,20 +184,17 @@ impl AceStepEngine {
             false,
         )?;
 
+        // The planner is optional and runs only when asked for, so a planner
+        // that will not load leaves a working engine without one rather
+        // than failing the model.
         let has_planner = match &files.planner {
-            Some(dir) => {
-                let lm = root.join(dir);
-                let lm_config: qwen3::Config = read_json(&lm.join("config.json"))?;
-                let lm_vb = unsafe {
-                    VarBuilder::from_mmaped_safetensors(
-                        &[lm.join("model.safetensors")],
-                        dtype,
-                        device,
-                    )?
-                };
-                pipeline.load_lm(&lm_config, lm_vb, &lm.join("tokenizer.json"))?;
-                true
-            }
+            Some(dir) => match Self::load_planner(&mut pipeline, &root.join(dir), dtype, device) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(planner = %dir, error = %format!("{e:#}"), "song planner failed to load; serving without it");
+                    false
+                }
+            },
             None => false,
         };
         Ok(Self {
@@ -208,6 +205,24 @@ impl AceStepEngine {
 
     pub fn has_planner(&self) -> bool {
         self.has_planner
+    }
+
+    /// Load the planner LM into the pipeline. Its checkpoint stores the
+    /// decoder's tensors without the `model.` prefix the causal-LM wrapper
+    /// asks for, and ties the output head to the embeddings.
+    fn load_planner(
+        pipeline: &mut AceStepPipeline,
+        dir: &Path,
+        dtype: DType,
+        device: &Device,
+    ) -> Result<()> {
+        let lm_config: qwen3::Config = read_json(&dir.join("config.json"))?;
+        let lm_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&[dir.join("model.safetensors")], dtype, device)?
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+        pipeline.load_lm(&lm_config, lm_vb, &dir.join("tokenizer.json"))?;
+        Ok(())
     }
 
     /// Render one song.
@@ -841,5 +856,27 @@ mod hardware {
         }
         let again = engine.generate(&params).expect("generate again");
         assert_eq!(out.left, again.left, "same seed must render identically");
+    }
+
+    /// The planner LM loads from the real snapshot (its tensors carry no
+    /// `model.` prefix). Ignored: needs ACESTEP_SNAPSHOT.
+    #[test]
+    #[ignore = "needs ACESTEP_SNAPSHOT"]
+    fn acestep_planner_loads() {
+        let Ok(root) = std::env::var("ACESTEP_SNAPSHOT") else {
+            return;
+        };
+        let dir = PathBuf::from(root).join(PLANNER_DIRS[0]);
+        let cfg: qwen3::Config = read_json(&dir.join("config.json")).unwrap();
+        let vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &[dir.join("model.safetensors")],
+                DType::BF16,
+                &Device::Cpu,
+            )
+            .unwrap()
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+        qwen3::ModelForCausalLM::new(&cfg, vb).expect("planner loads");
     }
 }
