@@ -1,0 +1,151 @@
+{
+  "case": {
+    "name": "instr_12s",
+    "tags": "lo-fi hip hop, mellow, piano, vinyl crackle, relaxed, instrumental",
+    "lyrics": "[Intro]\n\n[Verse]\n\n[Chorus]\n\n[Bridge]\n\n[Chorus]\n\n[Outro]",
+    "duration": 12.0,
+    "seed": 1234,
+    "codec": true
+  },
+  "trace": "cuda_bf16",
+  "lm": {
+    "greedy": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 1,
+      "seed": 1234,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 132.29,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8191.0,
+        "mean": 4002.454345703125
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 27.75,
+        "mean": 2.052893877029419
+      },
+      "vs_cpu_f32": {
+        "frames_equal": false,
+        "first_divergent_frame": 0,
+        "frame0_cb0_logits_rel_l2": 0.006960339844226837,
+        "frame0_cb0_argmax_equal": true,
+        "frame0_backbone_last_h_rel_l2": 0.010020597837865353,
+        "logits_rel_l2": 0.6182592511177063,
+        "backbone_last_h_rel_l2": 0.20473428070545197
+      }
+    },
+    "sampled": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 50,
+      "seed": 1234,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 132.05,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8191.0,
+        "mean": 4123.44287109375
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 27.75,
+        "mean": 1.5885637998580933
+      },
+      "vs_cpu_f32": {
+        "frames_equal": false,
+        "first_divergent_frame": 0,
+        "frame0_cb0_logits_rel_l2": 0.006960339844226837,
+        "frame0_cb0_argmax_equal": true,
+        "frame0_backbone_last_h_rel_l2": 0.010020597837865353,
+        "logits_rel_l2": 1.0340651273727417,
+        "backbone_last_h_rel_l2": 0.5631837248802185
+      }
+    }
+  },
+  "tags_prompt": "<tag>lo-fi hip hop, mellow, piano, vinyl crackle, relaxed, instrumental</tag>",
+  "lyrics_prompt": "[intro]\n\n[verse]\n\n[chorus]\n\n[bridge]\n\n[chorus]\n\n[outro]",
+  "muq_idx": 24,
+  "prompt_len": 47,
+  "tags_ids": [
+    128000,
+    17224,
+    29,
+    385,
+    37731,
+    18638,
+    7598,
+    11,
+    296,
+    5412,
+    11,
+    27374,
+    11,
+    34549,
+    17944,
+    273,
+    11,
+    31467,
+    11,
+    42045,
+    524,
+    4681,
+    29,
+    128001
+  ],
+  "lyrics_ids": [
+    128000,
+    19155,
+    299,
+    2595,
+    58,
+    4550,
+    2595,
+    58,
+    6279,
+    355,
+    2595,
+    58,
+    14024,
+    2595,
+    58,
+    6279,
+    355,
+    2595,
+    50797,
+    299,
+    60,
+    128001
+  ],
+  "vram_peak_gib": 12.79,
+  "nan_anywhere": false
+}

@@ -52,6 +52,7 @@ describe("listMusicModels", () => {
               id: "music-b",
               audio: { min_duration: 10, max_duration: 600, default_duration: 30, vocals: true, sample_rate: 48000, channels: 2 },
               audio_tokens_per_second: 40,
+              notices: [{ text: "Example — Apache-2.0", url: "https://example.org/l" }],
             },
             {
               id: "music-a",
@@ -65,6 +66,8 @@ describe("listMusicModels", () => {
     expect(models.map((m) => m.id)).toEqual(["music-a", "music-b"]);
     expect(models[1].tokensPerSecond).toBe(40);
     expect(models[0].tokensPerSecond).toBeUndefined();
+    expect(models[1].notices).toEqual([{ text: "Example — Apache-2.0", url: "https://example.org/l" }]);
+    expect(models[0].notices).toEqual([]);
   });
 });
 

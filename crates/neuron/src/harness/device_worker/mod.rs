@@ -339,10 +339,10 @@ impl DeviceWorkerHandle {
         }
     }
 
-    /// Load an ACE-Step music pipeline (#383) on the worker thread.
+    /// Load a music engine (#383, #393) on the worker thread.
     pub async fn load_audio(
         &self,
-        files: crate::harness::audio::AceStepFiles,
+        files: crate::harness::audio::AudioFiles,
         model_id: String,
     ) -> Result<AudioHandle, WorkerError> {
         if self.poisoned.load(Ordering::Acquire) {

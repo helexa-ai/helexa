@@ -230,6 +230,39 @@ vocals = true
 sample_rate = 48000
 channels = 2
 
+# HeartMuLa oss-3B (#379/#393): a 3B autoregressive song LM (bf16 on a
+# GPU) and HeartCodec (f32), decoded in chunks. Slower than ACE-Step but
+# leads on musicality; songs of 10 s to 4 min. Its codec and generation
+# config come from the sibling repos HeartMuLa/HeartCodec-oss-20260123 and
+# HeartMuLa/HeartMuLaGen. Benjy only, in the everyday class, taking turns
+# with the 8B, Z-Image and ACE-Step.
+[[models]]
+id = "HeartMuLa/HeartMuLa-oss-3B-happy-new-year"
+harness = "candle"
+vram_mb = 18000
+min_devices = 1
+min_device_vram_mb = 20000
+pinned_on = ["benjy"]
+residency_priority = 200
+
+[models.audio]
+min_duration = 10.0
+max_duration = 240.0
+default_duration = 30.0
+vocals = true
+sample_rate = 48000
+channels = 2
+
+# Model-scoped notices (#389): HeartMuLa is Apache-2.0, and its lyric and
+# tag tokenizer is Meta's Llama 3.2 tokenizer.
+[[models.notices]]
+text = "HeartMuLa by the HeartMuLa Team — Apache-2.0"
+url = "https://github.com/HeartMuLa/heartlib/blob/main/LICENSE"
+
+[[models.notices]]
+text = "Uses the Llama 3.2 tokenizer — Llama 3.2 Community License"
+url = "https://www.llama.com/llama3_2/license/"
+
 # Text-to-image (#197/#203): Z-Image-Turbo, 6B S3-DiT + Qwen3-4B text
 # encoder (runs on host CPU by default — see [harness.candle.image] in
 # neuron.toml) + VAE. BF16 DiT+VAE resident ≈ 14.6 GB; fits benjy's

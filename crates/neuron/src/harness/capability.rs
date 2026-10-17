@@ -66,9 +66,18 @@ pub fn classify_files(
         // entry) is not servable, so claiming "text" would be a lie of
         // the same kind this module exists to remove.
         SourceFormat::Empty => Vec::new(),
+        SourceFormat::HeartMuLa => vec![cortex_core::audio::CAPABILITY.to_string()],
         _ => {
+            let config = read_config();
+            // HeartMuLa (#393) is only recognisable by its config.
+            if config
+                .as_deref()
+                .is_some_and(crate::harness::audio::is_heartmula_config)
+            {
+                return vec![cortex_core::audio::CAPABILITY.to_string()];
+            }
             let mut caps = vec!["text".to_string()];
-            if read_config().is_some_and(|text| declares_vision(&text)) {
+            if config.is_some_and(|text| declares_vision(&text)) {
                 caps.push("vision".to_string());
             }
             caps
@@ -181,5 +190,20 @@ mod tests {
         files.push("acestep-5Hz-lm-1.7B/model.safetensors".into());
         let refs: Vec<&str> = files.iter().map(String::as_str).collect();
         assert_eq!(classify_files(&refs, || None), vec!["audio".to_string()]);
+    }
+
+    #[test]
+    fn heartmula_snapshot_is_audio_by_its_config() {
+        let files = [
+            "config.json",
+            "model-00001-of-00004.safetensors",
+            "model.safetensors.index.json",
+        ];
+        let caps = classify_files(&files, || {
+            Some(r#"{"architectures": ["HeartMuLa"], "model_type": "heartmula"}"#.to_string())
+        });
+        assert_eq!(caps, vec!["audio".to_string()]);
+        let text = classify_files(&files, || Some(r#"{"model_type": "qwen3"}"#.to_string()));
+        assert_eq!(text, vec!["text".to_string()]);
     }
 }

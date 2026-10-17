@@ -94,6 +94,10 @@ pub struct ModelProfile {
     /// is accepted. `[models.audio]` in TOML.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<crate::audio::AudioLimits>,
+    /// Notices an upstream licence asks to be passed on for this model,
+    /// advertised in `/v1/models` beside it. `[[models.notices]]` in TOML.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<crate::audio::ModelNotice>,
 }
 
 fn default_min_devices() -> u32 {
@@ -289,6 +293,7 @@ mod tests {
             cost: None,
             capabilities: vec![],
             audio: None,
+            notices: vec![],
         }
     }
 
@@ -550,5 +555,10 @@ mod repo_catalogue {
             .expect("ACE-Step in models.toml");
         let audio = ace.audio.as_ref().expect("audio limits");
         assert!(audio.vocals && audio.max_duration >= audio.default_duration);
+        let heart = cat
+            .get("HeartMuLa/HeartMuLa-oss-3B-happy-new-year")
+            .expect("HeartMuLa in models.toml");
+        assert!(heart.audio.is_some());
+        assert_eq!(heart.notices.len(), 2, "HeartMuLa's notices (#389)");
     }
 }

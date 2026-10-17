@@ -506,10 +506,28 @@ jobs:
                   sys.stderr.write(msg + chr(10))
               sys.exit(1)
           completed = a.get("completed", [])
-          print(completed[0] if completed else "")
+          print(" ".join(completed))
           ')
+          # Probe the first default that answers chat. A decision model
+          # (Laya on quadbrat) or an image or audio model 422s a chat
+          # request, which made every quadbrat deploy report failure.
+          chat_models=$(curl -s --max-time 10 http://localhost:13131/models | python3 -c '
+          import json, sys
+          for m in json.load(sys.stdin):
+              caps = m.get("capabilities", [])
+              if "text" in caps and not {"decision", "image", "audio"} & set(caps):
+                  print(m["id"])
+          ')
+          probe_model=""
+          for candidate in ${model}; do
+            if printf '%s\n' "${chat_models}" | grep -qxF "${candidate}"; then
+              probe_model="${candidate}"
+              break
+            fi
+          done
+          model="${probe_model}"
           if [ -z "${model}" ]; then
-            echo "no default models configured — skipping LLM probe"
+            echo "no chat-serving default model — skipping LLM probe"
             exit 0
           fi
 

@@ -150,6 +150,15 @@ pub struct AudioLimits {
     pub max_steps: Option<u32>,
 }
 
+/// A notice an upstream licence asks to be passed on, shown beside the one
+/// model it applies to (never as a platform-wide licence).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ModelNotice {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
 /// Lifecycle of a job.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

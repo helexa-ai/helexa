@@ -16,11 +16,19 @@ export interface AudioLimits {
   max_steps?: number;
 }
 
+/** A notice an upstream licence asks to be shown with one model. */
+export interface ModelNotice {
+  text: string;
+  url?: string;
+}
+
 export interface MusicModel {
   id: string;
   limits: AudioLimits;
   /** Ledger tokens per second of audio; absent when not priced. */
   tokensPerSecond?: number;
+  /** Shown beside this model only (#389). */
+  notices: ModelNotice[];
 }
 
 export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
@@ -113,11 +121,21 @@ export async function listMusicModels(opts: { baseUrl?: string; apiKey?: string 
   const resp = await call(`${base(opts.baseUrl)}/v1/models`, { headers: headers(opts.apiKey) });
   if (!resp.ok) await fail(resp);
   const body = (await resp.json()) as {
-    data?: { id: string; audio?: AudioLimits; audio_tokens_per_second?: number }[];
+    data?: {
+      id: string;
+      audio?: AudioLimits;
+      audio_tokens_per_second?: number;
+      notices?: ModelNotice[];
+    }[];
   };
   return (body.data ?? [])
     .filter((m) => m.audio)
-    .map((m) => ({ id: m.id, limits: m.audio!, tokensPerSecond: m.audio_tokens_per_second }))
+    .map((m) => ({
+      id: m.id,
+      limits: m.audio!,
+      tokensPerSecond: m.audio_tokens_per_second,
+      notices: m.notices ?? [],
+    }))
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 

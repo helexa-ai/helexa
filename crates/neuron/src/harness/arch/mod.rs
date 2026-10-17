@@ -21,6 +21,7 @@
 //! the pattern set by `tp_qwen3.rs`.
 
 pub mod acestep;
+pub mod heartmula;
 pub mod laya;
 pub mod phase_probe;
 pub mod qwen3_5;

@@ -664,6 +664,7 @@ mod tests {
             cost: None,
             capabilities: vec![],
             audio: None,
+            notices: vec![],
         }
     }
 

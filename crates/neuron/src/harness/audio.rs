@@ -1,4 +1,5 @@
-//! Music generation engine (#383): ACE-Step 1.5 behind the device worker.
+//! Music generation engines behind the device worker: ACE-Step 1.5 (#383)
+//! and HeartMuLa (#393).
 //!
 //! The ACE-Step repo carries every component as a subfolder of one
 //! snapshot — the turbo DiT (with its `silence_latent.pt`), the song
@@ -99,6 +100,8 @@ pub struct AudioGenParams {
     pub temperature: Option<f64>,
     /// Lyric language code; `None` lets the planner (or `"unknown"`) decide.
     pub language: Option<String>,
+    /// Top-k sampling (autoregressive models).
+    pub top_k: Option<usize>,
 }
 
 /// One generation's output: CPU-side stereo samples in `[-1, 1]`.
@@ -181,20 +184,17 @@ impl AceStepEngine {
             false,
         )?;
 
+        // The planner is optional and runs only when asked for, so a planner
+        // that will not load leaves a working engine without one rather
+        // than failing the model.
         let has_planner = match &files.planner {
-            Some(dir) => {
-                let lm = root.join(dir);
-                let lm_config: qwen3::Config = read_json(&lm.join("config.json"))?;
-                let lm_vb = unsafe {
-                    VarBuilder::from_mmaped_safetensors(
-                        &[lm.join("model.safetensors")],
-                        dtype,
-                        device,
-                    )?
-                };
-                pipeline.load_lm(&lm_config, lm_vb, &lm.join("tokenizer.json"))?;
-                true
-            }
+            Some(dir) => match Self::load_planner(&mut pipeline, &root.join(dir), dtype, device) {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!(planner = %dir, error = %format!("{e:#}"), "song planner failed to load; serving without it");
+                    false
+                }
+            },
             None => false,
         };
         Ok(Self {
@@ -205,6 +205,24 @@ impl AceStepEngine {
 
     pub fn has_planner(&self) -> bool {
         self.has_planner
+    }
+
+    /// Load the planner LM into the pipeline. Its checkpoint stores the
+    /// decoder's tensors without the `model.` prefix the causal-LM wrapper
+    /// asks for, and ties the output head to the embeddings.
+    fn load_planner(
+        pipeline: &mut AceStepPipeline,
+        dir: &Path,
+        dtype: DType,
+        device: &Device,
+    ) -> Result<()> {
+        let lm_config: qwen3::Config = read_json(&dir.join("config.json"))?;
+        let lm_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&[dir.join("model.safetensors")], dtype, device)?
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+        pipeline.load_lm(&lm_config, lm_vb, &dir.join("tokenizer.json"))?;
+        Ok(())
     }
 
     /// Render one song.
@@ -272,6 +290,234 @@ impl AceStepEngine {
     }
 }
 
+// ── HeartMuLa (#393) ─────────────────────────────────────────────────
+
+/// What HeartMuLa oss-3B serves: songs of 10 s to 4 min, as the evaluation
+/// beta did. It is autoregressive (12.5 frames per second), so there is no
+/// step knob.
+pub const HEARTMULA_LIMITS: cortex_core::audio::AudioLimits = cortex_core::audio::AudioLimits {
+    min_duration: 10.0,
+    max_duration: 240.0,
+    default_duration: 30.0,
+    vocals: true,
+    sample_rate: 48_000,
+    channels: 2,
+    max_steps: None,
+};
+
+/// The codec and the generation config live in sibling repos of the LM.
+pub const HEARTCODEC_REPO: &str = "HeartMuLa/HeartCodec-oss-20260123";
+pub const HEARTMULA_GEN_REPO: &str = "HeartMuLa/HeartMuLaGen";
+
+/// heartlib's defaults, as the beta used them.
+const HEART_CFG: f64 = 1.5;
+const HEART_TEMPERATURE: f64 = 1.0;
+const HEART_TOP_K: usize = 50;
+/// Section tags with no words: how an instrumental is asked of HeartMuLa.
+const HEART_INSTRUMENTAL: &str =
+    "[Intro]\n\n[Verse]\n\n[Chorus]\n\n[Bridge]\n\n[Chorus]\n\n[Outro]";
+/// Latent frames per scalar-decoder chunk: bounds decode memory at any length.
+const HEART_DECODE_CHUNK: usize = 256;
+
+/// True when a `config.json` describes a HeartMuLa LM. Its weight files
+/// look like any dense LLM's, so the config is what tells them apart.
+pub fn is_heartmula_config(config_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(config_json)
+        .ok()
+        .and_then(|v| {
+            v.get("model_type")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .is_some_and(|t| t == "heartmula")
+}
+
+/// A resolved HeartMuLa model: the LM, the codec, and the generation files.
+#[derive(Debug, Clone)]
+pub struct HeartMuLaFiles {
+    pub lm_dir: PathBuf,
+    pub codec_dir: PathBuf,
+    pub tokenizer: PathBuf,
+    pub gen_config: PathBuf,
+}
+
+/// HeartMuLa's LM and codec, owned by the device worker. Both stay
+/// resident: the LM in bf16 on a GPU (f32 on the CPU), the codec in f32 as
+/// heartlib recommends.
+pub struct HeartMuLaEngine {
+    lm: super::arch::heartmula::lm::HeartMuLa,
+    codec: super::arch::heartmula::codec::HeartCodec,
+    tokenizer: tokenizers::Tokenizer,
+    gen_cfg: super::arch::heartmula::lm::GenConfig,
+}
+
+fn safetensors_in(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut v: Vec<PathBuf> = std::fs::read_dir(dir)
+        .with_context(|| format!("read {}", dir.display()))?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "safetensors"))
+        .collect();
+    v.sort();
+    anyhow::ensure!(!v.is_empty(), "no safetensors in {}", dir.display());
+    Ok(v)
+}
+
+impl HeartMuLaEngine {
+    pub fn load(files: &HeartMuLaFiles, device: &Device) -> Result<Self> {
+        use super::arch::heartmula::{codec, lm};
+        let lm_dtype = if device.is_cpu() {
+            DType::F32
+        } else {
+            DType::BF16
+        };
+        let lm_config: lm::Config = read_json(&files.lm_dir.join("config.json"))?;
+        // SAFETY: read-only snapshot files the daemon owns.
+        let lm_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(&safetensors_in(&files.lm_dir)?, lm_dtype, device)?
+        };
+        let lm = lm::HeartMuLa::new(lm_config, lm_vb)?;
+        let codec_config: codec::Config = read_json(&files.codec_dir.join("config.json"))?;
+        let codec_vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &safetensors_in(&files.codec_dir)?,
+                DType::F32,
+                device,
+            )?
+        };
+        let codec = codec::HeartCodec::new(codec_config, codec_vb)?;
+        let tokenizer = tokenizers::Tokenizer::from_file(&files.tokenizer)
+            .map_err(|e| anyhow::anyhow!("load tokenizer: {e}"))?;
+        let gen_cfg: lm::GenConfig = read_json(&files.gen_config)?;
+        Ok(Self {
+            lm,
+            codec,
+            tokenizer,
+            gen_cfg,
+        })
+    }
+
+    /// Render one song: tags and lyrics through the LM, then the codec.
+    pub fn generate(&mut self, p: &AudioGenParams) -> Result<AudioGenResult> {
+        use super::arch::heartmula::{codec, lm};
+        let mut timing = cortex_core::audio::AudioTiming::default();
+        let lyrics = if p.lyrics.trim().is_empty() {
+            HEART_INSTRUMENTAL
+        } else {
+            p.lyrics.as_str()
+        };
+        let t = Instant::now();
+        let prompt = lm::build_prompt(&self.tokenizer, &p.prompt, lyrics, &self.gen_cfg)?;
+        timing.encode_ms = t.elapsed().as_millis() as u64;
+
+        let t = Instant::now();
+        let max_frames = (p.duration_secs * codec::CODE_RATE).round() as usize;
+        let mut sampler = lm::Sampler::new(
+            p.temperature.unwrap_or(HEART_TEMPERATURE),
+            p.top_k.unwrap_or(HEART_TOP_K),
+            p.seed,
+        );
+        let frames = self.lm.generate(
+            &prompt,
+            max_frames,
+            p.guidance_scale.unwrap_or(HEART_CFG),
+            &self.gen_cfg,
+            &mut sampler,
+        )?;
+        timing.generate_ms = t.elapsed().as_millis() as u64;
+        anyhow::ensure!(!frames.is_empty(), "the model produced no audio frames");
+
+        let t = Instant::now();
+        let n = frames.len();
+        let flat: Vec<u32> = (0..8)
+            .flat_map(|q| frames.iter().map(move |f| f[q]))
+            .collect();
+        let codes = candle_core::Tensor::from_vec(flat, (8, n), self.codec.device())?;
+        let device = self.codec.device().clone();
+        let out_channels = self.codec.config.out_channels;
+        let mut segment = 0u64;
+        let seed = p.seed;
+        let mut noise = |len: usize| {
+            segment += 1;
+            super::arch::acestep::model::seeded_normal(
+                Some(seed.wrapping_add(segment)),
+                (1, len, out_channels),
+            )?
+            .to_device(&device)
+        };
+        let audio = self.codec.detokenize(
+            &codes,
+            codec::DEFAULT_STEPS,
+            codec::DEFAULT_GUIDANCE,
+            &mut noise,
+            Some(HEART_DECODE_CHUNK),
+        )?;
+        let audio = audio.to_dtype(DType::F32)?.to_device(&Device::Cpu)?;
+        timing.decode_ms = t.elapsed().as_millis() as u64;
+
+        let mut left = audio.get(0)?.to_vec1::<f32>()?;
+        let mut right = audio.get(1)?.to_vec1::<f32>()?;
+        if left.iter().chain(&right).any(|s| !s.is_finite()) {
+            anyhow::bail!("generation produced non-finite samples");
+        }
+        for s in left.iter_mut().chain(right.iter_mut()) {
+            *s = s.clamp(-1.0, 1.0);
+        }
+        Ok(AudioGenResult {
+            left,
+            right,
+            sample_rate: self.codec.config.sample_rate as u32,
+            timing,
+        })
+    }
+}
+
+// ── Engine selection ─────────────────────────────────────────────────
+
+/// What the worker is asked to load.
+#[derive(Debug, Clone)]
+pub enum AudioFiles {
+    AceStep(AceStepFiles),
+    HeartMuLa(HeartMuLaFiles),
+}
+
+/// A loaded music engine in the worker's audio slab.
+pub enum AudioEngine {
+    AceStep(Box<AceStepEngine>),
+    HeartMuLa(Box<HeartMuLaEngine>),
+}
+
+impl AudioEngine {
+    pub fn load(files: &AudioFiles, device: &Device) -> Result<Self> {
+        Ok(match files {
+            AudioFiles::AceStep(f) => Self::AceStep(Box::new(AceStepEngine::load(f, device)?)),
+            AudioFiles::HeartMuLa(f) => {
+                Self::HeartMuLa(Box::new(HeartMuLaEngine::load(f, device)?))
+            }
+        })
+    }
+
+    pub fn generate(&mut self, p: &AudioGenParams) -> Result<AudioGenResult> {
+        match self {
+            Self::AceStep(e) => e.generate(p),
+            Self::HeartMuLa(e) => e.generate(p),
+        }
+    }
+
+    pub fn has_planner(&self) -> bool {
+        match self {
+            Self::AceStep(e) => e.has_planner(),
+            Self::HeartMuLa(_) => false,
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::AceStep(_) => "ace-step",
+            Self::HeartMuLa(_) => "heartmula",
+        }
+    }
+}
+
 /// Scale both channels so the loudest sample sits at `target_db` dBFS, as
 /// upstream does before saving. Near-silence is left alone rather than
 /// amplified into noise.
@@ -320,6 +566,15 @@ pub fn encode_wav_pcm16(left: &[f32], right: &[f32], sample_rate: u32) -> Vec<u8
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heartmula_is_recognised_by_its_config() {
+        assert!(is_heartmula_config(
+            r#"{"architectures": ["HeartMuLa"], "model_type": "heartmula"}"#
+        ));
+        assert!(!is_heartmula_config(r#"{"model_type": "qwen3"}"#));
+        assert!(!is_heartmula_config("not json"));
+    }
 
     #[test]
     fn layout_detection() {
@@ -392,6 +647,7 @@ mod hardware {
             planner: false,
             temperature: None,
             language: None,
+            top_k: None,
         };
         let t = Instant::now();
         let out = engine.generate(&params).expect("generate");
@@ -539,5 +795,88 @@ mod hardware {
             assert!(latents < 1e-3, "{case}: latents rel L2 {latents}");
             assert!(waveform < 1e-2, "{case}: waveform rel L2 {waveform}");
         }
+    }
+
+    /// End-to-end HeartMuLa render on the CPU from the real checkpoints,
+    /// laid out as heartlib does (`<ckpt>/{HeartMuLa-oss-3B,HeartCodec-oss,
+    /// tokenizer.json,gen_config.json}`). About 15.7 GB of f32 LM plus the
+    /// codec, so a host with 32 GB or more.
+    #[test]
+    #[ignore = "needs HEARTMULA_CKPT, ~24 GB of RAM and minutes of CPU"]
+    fn heartmula_renders_on_cpu() {
+        let Ok(root) = std::env::var("HEARTMULA_CKPT") else {
+            eprintln!("HEARTMULA_CKPT not set; skipping");
+            return;
+        };
+        let root = PathBuf::from(root);
+        let files = HeartMuLaFiles {
+            lm_dir: root.join("HeartMuLa-oss-3B"),
+            codec_dir: root.join("HeartCodec-oss"),
+            tokenizer: root.join("tokenizer.json"),
+            gen_config: root.join("gen_config.json"),
+        };
+        let t = Instant::now();
+        let mut engine =
+            AudioEngine::load(&AudioFiles::HeartMuLa(files), &Device::Cpu).expect("load");
+        eprintln!("loaded in {:.1}s", t.elapsed().as_secs_f32());
+        let params = AudioGenParams {
+            prompt: "indie pop, bright guitars, female vocals".into(),
+            lyrics: "[Verse]\nStreetlights hum a quiet tune".into(),
+            duration_secs: 10.0,
+            seed: 7,
+            steps: None,
+            guidance_scale: None,
+            planner: false,
+            temperature: None,
+            language: None,
+            top_k: None,
+        };
+        let t = Instant::now();
+        let out = engine.generate(&params).expect("generate");
+        eprintln!(
+            "rendered {:.2}s in {:.1}s ({:?})",
+            out.duration_secs(),
+            t.elapsed().as_secs_f32(),
+            out.timing
+        );
+        assert_eq!(out.sample_rate, 48_000);
+        assert!(
+            out.duration_secs() > 1.0 && out.duration_secs() <= 10.5,
+            "{}",
+            out.duration_secs()
+        );
+        let rms = (out.left.iter().map(|s| s * s).sum::<f32>() / out.left.len() as f32).sqrt();
+        assert!(rms > 1e-3, "silent render, rms {rms}");
+        if let Ok(path) = std::env::var("HEARTMULA_OUT") {
+            std::fs::write(
+                &path,
+                encode_wav_pcm16(&out.left, &out.right, out.sample_rate),
+            )
+            .unwrap();
+        }
+        let again = engine.generate(&params).expect("generate again");
+        assert_eq!(out.left, again.left, "same seed must render identically");
+    }
+
+    /// The planner LM loads from the real snapshot (its tensors carry no
+    /// `model.` prefix). Ignored: needs ACESTEP_SNAPSHOT.
+    #[test]
+    #[ignore = "needs ACESTEP_SNAPSHOT"]
+    fn acestep_planner_loads() {
+        let Ok(root) = std::env::var("ACESTEP_SNAPSHOT") else {
+            return;
+        };
+        let dir = PathBuf::from(root).join(PLANNER_DIRS[0]);
+        let cfg: qwen3::Config = read_json(&dir.join("config.json")).unwrap();
+        let vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &[dir.join("model.safetensors")],
+                DType::BF16,
+                &Device::Cpu,
+            )
+            .unwrap()
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+        qwen3::ModelForCausalLM::new(&cfg, vb).expect("planner loads");
     }
 }

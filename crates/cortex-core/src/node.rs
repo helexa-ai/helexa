@@ -194,6 +194,9 @@ pub struct CortexModelEntry {
     /// audio models with a configured rate.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio_tokens_per_second: Option<u64>,
+    /// Notices an upstream licence asks to be passed on for this model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notices: Vec<crate::audio::ModelNotice>,
     /// `true` when any neuron reports this model supports tool calls.
     #[serde(default)]
     pub tool_call: bool,
