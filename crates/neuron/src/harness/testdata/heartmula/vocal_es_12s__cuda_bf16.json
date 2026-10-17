@@ -1,0 +1,157 @@
+{
+  "case": {
+    "name": "vocal_es_12s",
+    "tags": "latin ballad, male vocals, nylon string guitar, soft percussion",
+    "lyrics": "[Verse]\nBajo la luna del mar\nTe vuelvo a recordar\n[Chorus]\nCanta conmigo esta noche\n",
+    "duration": 12.0,
+    "seed": 777,
+    "codec": false
+  },
+  "trace": "cuda_bf16",
+  "lm": {
+    "greedy": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 1,
+      "seed": 777,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 132.41,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8183.0,
+        "mean": 3975.351806640625
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 30.375,
+        "mean": 1.9116872549057007
+      },
+      "vs_cpu_f32": {
+        "frames_equal": false,
+        "first_divergent_frame": 2,
+        "frame0_cb0_logits_rel_l2": 0.004577601328492165,
+        "frame0_cb0_argmax_equal": true,
+        "frame0_backbone_last_h_rel_l2": 0.008905723690986633,
+        "logits_rel_l2": 0.008886510506272316,
+        "backbone_last_h_rel_l2": 0.009529853239655495
+      }
+    },
+    "sampled": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 50,
+      "seed": 777,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 132.23,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8191.0,
+        "mean": 4069.567138671875
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 26.25,
+        "mean": 2.024691343307495
+      },
+      "vs_cpu_f32": {
+        "frames_equal": false,
+        "first_divergent_frame": 0,
+        "frame0_cb0_logits_rel_l2": 0.004577601328492165,
+        "frame0_cb0_argmax_equal": true,
+        "frame0_backbone_last_h_rel_l2": 0.008905723690986633,
+        "logits_rel_l2": 0.760331928730011,
+        "backbone_last_h_rel_l2": 0.3825700879096985
+      }
+    }
+  },
+  "tags_prompt": "<tag>latin ballad, male vocals, nylon string guitar, soft percussion</tag>",
+  "lyrics_prompt": "[verse]\nbajo la luna del mar\nte vuelvo a recordar\n[chorus]\ncanta conmigo esta noche\n",
+  "muq_idx": 20,
+  "prompt_len": 53,
+  "tags_ids": [
+    128000,
+    17224,
+    29,
+    61185,
+    5041,
+    329,
+    11,
+    8762,
+    47196,
+    11,
+    52155,
+    925,
+    17418,
+    11,
+    8579,
+    84849,
+    524,
+    4681,
+    29,
+    128001
+  ],
+  "lyrics_ids": [
+    128000,
+    58,
+    4550,
+    933,
+    65,
+    19256,
+    1208,
+    326,
+    8733,
+    1624,
+    3678,
+    198,
+    668,
+    64713,
+    3415,
+    264,
+    3335,
+    277,
+    198,
+    58,
+    6279,
+    355,
+    933,
+    66,
+    8424,
+    390,
+    76,
+    7992,
+    15491,
+    75522,
+    198,
+    128001
+  ],
+  "vram_peak_gib": 12.79,
+  "nan_anywhere": false
+}

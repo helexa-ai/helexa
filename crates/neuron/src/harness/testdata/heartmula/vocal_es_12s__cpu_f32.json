@@ -1,0 +1,138 @@
+{
+  "case": {
+    "name": "vocal_es_12s",
+    "tags": "latin ballad, male vocals, nylon string guitar, soft percussion",
+    "lyrics": "[Verse]\nBajo la luna del mar\nTe vuelvo a recordar\n[Chorus]\nCanta conmigo esta noche\n",
+    "duration": 12.0,
+    "seed": 777,
+    "codec": false
+  },
+  "trace": "cpu_f32",
+  "lm": {
+    "greedy": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 1,
+      "seed": 777,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 121.74,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8187.0,
+        "mean": 4015.451904296875
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 30.434139251708984,
+        "mean": 1.9089064598083496
+      }
+    },
+    "sampled": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 50,
+      "seed": 777,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 142.59,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8191.0,
+        "mean": 4026.951171875
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 26.599273681640625,
+        "mean": 2.025043487548828
+      }
+    }
+  },
+  "tags_prompt": "<tag>latin ballad, male vocals, nylon string guitar, soft percussion</tag>",
+  "lyrics_prompt": "[verse]\nbajo la luna del mar\nte vuelvo a recordar\n[chorus]\ncanta conmigo esta noche\n",
+  "muq_idx": 20,
+  "prompt_len": 53,
+  "tags_ids": [
+    128000,
+    17224,
+    29,
+    61185,
+    5041,
+    329,
+    11,
+    8762,
+    47196,
+    11,
+    52155,
+    925,
+    17418,
+    11,
+    8579,
+    84849,
+    524,
+    4681,
+    29,
+    128001
+  ],
+  "lyrics_ids": [
+    128000,
+    58,
+    4550,
+    933,
+    65,
+    19256,
+    1208,
+    326,
+    8733,
+    1624,
+    3678,
+    198,
+    668,
+    64713,
+    3415,
+    264,
+    3335,
+    277,
+    198,
+    58,
+    6279,
+    355,
+    933,
+    66,
+    8424,
+    390,
+    76,
+    7992,
+    15491,
+    75522,
+    198,
+    128001
+  ],
+  "nan_anywhere": false
+}
