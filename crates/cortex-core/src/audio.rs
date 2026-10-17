@@ -171,6 +171,13 @@ pub struct AudioJob {
     pub object: String,
     pub status: JobStatus,
     pub model: String,
+    /// The submitted style / caption, echoed so a job list is readable on
+    /// its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    /// The submitted lyrics, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyrics: Option<String>,
     /// Unix seconds.
     pub created_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]

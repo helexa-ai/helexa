@@ -14,12 +14,14 @@ import enMission from "./resources/en/mission.json";
 import ruMission from "./resources/ru/mission.json";
 import enChat from "./resources/en/chat.json";
 import enImages from "./resources/en/images.json";
+import enMusic from "./resources/en/music.json";
 import enDecisions from "./resources/en/decisions.json";
 import enDocs from "./resources/en/docs.json";
 import enAccount from "./resources/en/account.json";
 import enPrivacy from "./resources/en/privacy.json";
 import ruChat from "./resources/ru/chat.json";
 import ruImages from "./resources/ru/images.json";
+import ruMusic from "./resources/ru/music.json";
 import ruDecisions from "./resources/ru/decisions.json";
 import ruDocs from "./resources/ru/docs.json";
 import ruAccount from "./resources/ru/account.json";
@@ -30,6 +32,7 @@ import daCommon from "./resources/da/common.json";
 import daMission from "./resources/da/mission.json";
 import daChat from "./resources/da/chat.json";
 import daImages from "./resources/da/images.json";
+import daMusic from "./resources/da/music.json";
 import daDecisions from "./resources/da/decisions.json";
 import daDocs from "./resources/da/docs.json";
 import daAccount from "./resources/da/account.json";
@@ -39,6 +42,7 @@ import fiCommon from "./resources/fi/common.json";
 import fiMission from "./resources/fi/mission.json";
 import fiChat from "./resources/fi/chat.json";
 import fiImages from "./resources/fi/images.json";
+import fiMusic from "./resources/fi/music.json";
 import fiDecisions from "./resources/fi/decisions.json";
 import fiDocs from "./resources/fi/docs.json";
 import fiAccount from "./resources/fi/account.json";
@@ -48,6 +52,7 @@ import noCommon from "./resources/no/common.json";
 import noMission from "./resources/no/mission.json";
 import noChat from "./resources/no/chat.json";
 import noImages from "./resources/no/images.json";
+import noMusic from "./resources/no/music.json";
 import noDecisions from "./resources/no/decisions.json";
 import noDocs from "./resources/no/docs.json";
 import noAccount from "./resources/no/account.json";
@@ -57,6 +62,7 @@ import svCommon from "./resources/sv/common.json";
 import svMission from "./resources/sv/mission.json";
 import svChat from "./resources/sv/chat.json";
 import svImages from "./resources/sv/images.json";
+import svMusic from "./resources/sv/music.json";
 import svDecisions from "./resources/sv/decisions.json";
 import svDocs from "./resources/sv/docs.json";
 import svAccount from "./resources/sv/account.json";
@@ -66,6 +72,7 @@ import bgCommon from "./resources/bg/common.json";
 import bgMission from "./resources/bg/mission.json";
 import bgChat from "./resources/bg/chat.json";
 import bgImages from "./resources/bg/images.json";
+import bgMusic from "./resources/bg/music.json";
 import bgDecisions from "./resources/bg/decisions.json";
 import bgDocs from "./resources/bg/docs.json";
 import bgAccount from "./resources/bg/account.json";
@@ -75,6 +82,7 @@ import etCommon from "./resources/et/common.json";
 import etMission from "./resources/et/mission.json";
 import etChat from "./resources/et/chat.json";
 import etImages from "./resources/et/images.json";
+import etMusic from "./resources/et/music.json";
 import etDecisions from "./resources/et/decisions.json";
 import etDocs from "./resources/et/docs.json";
 import etAccount from "./resources/et/account.json";
@@ -85,6 +93,7 @@ import swCommon from "./resources/sw/common.json";
 import swMission from "./resources/sw/mission.json";
 import swChat from "./resources/sw/chat.json";
 import swImages from "./resources/sw/images.json";
+import swMusic from "./resources/sw/music.json";
 import swDecisions from "./resources/sw/decisions.json";
 import swDocs from "./resources/sw/docs.json";
 import swAccount from "./resources/sw/account.json";
@@ -94,6 +103,7 @@ import arCommon from "./resources/ar/common.json";
 import arMission from "./resources/ar/mission.json";
 import arChat from "./resources/ar/chat.json";
 import arImages from "./resources/ar/images.json";
+import arMusic from "./resources/ar/music.json";
 import arDecisions from "./resources/ar/decisions.json";
 import arDocs from "./resources/ar/docs.json";
 import arAccount from "./resources/ar/account.json";
@@ -103,6 +113,7 @@ import faCommon from "./resources/fa/common.json";
 import faMission from "./resources/fa/mission.json";
 import faChat from "./resources/fa/chat.json";
 import faImages from "./resources/fa/images.json";
+import faMusic from "./resources/fa/music.json";
 import faDecisions from "./resources/fa/decisions.json";
 import faDocs from "./resources/fa/docs.json";
 import faAccount from "./resources/fa/account.json";
@@ -112,6 +123,7 @@ import haCommon from "./resources/ha/common.json";
 import haMission from "./resources/ha/mission.json";
 import haChat from "./resources/ha/chat.json";
 import haImages from "./resources/ha/images.json";
+import haMusic from "./resources/ha/music.json";
 import haDecisions from "./resources/ha/decisions.json";
 import haDocs from "./resources/ha/docs.json";
 import haAccount from "./resources/ha/account.json";
@@ -121,6 +133,7 @@ import amCommon from "./resources/am/common.json";
 import amMission from "./resources/am/mission.json";
 import amChat from "./resources/am/chat.json";
 import amImages from "./resources/am/images.json";
+import amMusic from "./resources/am/music.json";
 import amDecisions from "./resources/am/decisions.json";
 import amDocs from "./resources/am/docs.json";
 import amAccount from "./resources/am/account.json";
@@ -130,6 +143,7 @@ import yoCommon from "./resources/yo/common.json";
 import yoMission from "./resources/yo/mission.json";
 import yoChat from "./resources/yo/chat.json";
 import yoImages from "./resources/yo/images.json";
+import yoMusic from "./resources/yo/music.json";
 import yoDecisions from "./resources/yo/decisions.json";
 import yoDocs from "./resources/yo/docs.json";
 import yoAccount from "./resources/yo/account.json";
@@ -139,6 +153,7 @@ import zuCommon from "./resources/zu/common.json";
 import zuMission from "./resources/zu/mission.json";
 import zuChat from "./resources/zu/chat.json";
 import zuImages from "./resources/zu/images.json";
+import zuMusic from "./resources/zu/music.json";
 import zuDecisions from "./resources/zu/decisions.json";
 import zuDocs from "./resources/zu/docs.json";
 import zuAccount from "./resources/zu/account.json";
@@ -149,6 +164,7 @@ import maCommon from "./resources/ma/common.json";
 import maMission from "./resources/ma/mission.json";
 import maChat from "./resources/ma/chat.json";
 import maImages from "./resources/ma/images.json";
+import maMusic from "./resources/ma/music.json";
 import maDecisions from "./resources/ma/decisions.json";
 import maDocs from "./resources/ma/docs.json";
 import maAccount from "./resources/ma/account.json";
@@ -159,6 +175,7 @@ import esCommon from "./resources/es/common.json";
 import esMission from "./resources/es/mission.json";
 import esChat from "./resources/es/chat.json";
 import esImages from "./resources/es/images.json";
+import esMusic from "./resources/es/music.json";
 import esDecisions from "./resources/es/decisions.json";
 import esDocs from "./resources/es/docs.json";
 import esAccount from "./resources/es/account.json";
@@ -168,6 +185,7 @@ import frCommon from "./resources/fr/common.json";
 import frMission from "./resources/fr/mission.json";
 import frChat from "./resources/fr/chat.json";
 import frImages from "./resources/fr/images.json";
+import frMusic from "./resources/fr/music.json";
 import frDecisions from "./resources/fr/decisions.json";
 import frDocs from "./resources/fr/docs.json";
 import frAccount from "./resources/fr/account.json";
@@ -177,6 +195,7 @@ import deCommon from "./resources/de/common.json";
 import deMission from "./resources/de/mission.json";
 import deChat from "./resources/de/chat.json";
 import deImages from "./resources/de/images.json";
+import deMusic from "./resources/de/music.json";
 import deDecisions from "./resources/de/decisions.json";
 import deDocs from "./resources/de/docs.json";
 import deAccount from "./resources/de/account.json";
@@ -186,6 +205,7 @@ import elCommon from "./resources/el/common.json";
 import elMission from "./resources/el/mission.json";
 import elChat from "./resources/el/chat.json";
 import elImages from "./resources/el/images.json";
+import elMusic from "./resources/el/music.json";
 import elDecisions from "./resources/el/decisions.json";
 import elDocs from "./resources/el/docs.json";
 import elAccount from "./resources/el/account.json";
@@ -195,6 +215,7 @@ import itCommon from "./resources/it/common.json";
 import itMission from "./resources/it/mission.json";
 import itChat from "./resources/it/chat.json";
 import itImages from "./resources/it/images.json";
+import itMusic from "./resources/it/music.json";
 import itDecisions from "./resources/it/decisions.json";
 import itDocs from "./resources/it/docs.json";
 import itAccount from "./resources/it/account.json";
@@ -204,6 +225,7 @@ import heCommon from "./resources/he/common.json";
 import heMission from "./resources/he/mission.json";
 import heChat from "./resources/he/chat.json";
 import heImages from "./resources/he/images.json";
+import heMusic from "./resources/he/music.json";
 import heDecisions from "./resources/he/decisions.json";
 import heDocs from "./resources/he/docs.json";
 import heAccount from "./resources/he/account.json";
@@ -213,6 +235,7 @@ import ptCommon from "./resources/pt/common.json";
 import ptMission from "./resources/pt/mission.json";
 import ptChat from "./resources/pt/chat.json";
 import ptImages from "./resources/pt/images.json";
+import ptMusic from "./resources/pt/music.json";
 import ptDecisions from "./resources/pt/decisions.json";
 import ptDocs from "./resources/pt/docs.json";
 import ptAccount from "./resources/pt/account.json";
@@ -222,6 +245,7 @@ import roCommon from "./resources/ro/common.json";
 import roMission from "./resources/ro/mission.json";
 import roChat from "./resources/ro/chat.json";
 import roImages from "./resources/ro/images.json";
+import roMusic from "./resources/ro/music.json";
 import roDecisions from "./resources/ro/decisions.json";
 import roDocs from "./resources/ro/docs.json";
 import roAccount from "./resources/ro/account.json";
@@ -231,6 +255,7 @@ import kaCommon from "./resources/ka/common.json";
 import kaMission from "./resources/ka/mission.json";
 import kaChat from "./resources/ka/chat.json";
 import kaImages from "./resources/ka/images.json";
+import kaMusic from "./resources/ka/music.json";
 import kaDecisions from "./resources/ka/decisions.json";
 import kaDocs from "./resources/ka/docs.json";
 import kaAccount from "./resources/ka/account.json";
@@ -240,6 +265,7 @@ import trCommon from "./resources/tr/common.json";
 import trMission from "./resources/tr/mission.json";
 import trChat from "./resources/tr/chat.json";
 import trImages from "./resources/tr/images.json";
+import trMusic from "./resources/tr/music.json";
 import trDecisions from "./resources/tr/decisions.json";
 import trDocs from "./resources/tr/docs.json";
 import trAccount from "./resources/tr/account.json";
@@ -249,6 +275,7 @@ import plCommon from "./resources/pl/common.json";
 import plMission from "./resources/pl/mission.json";
 import plChat from "./resources/pl/chat.json";
 import plImages from "./resources/pl/images.json";
+import plMusic from "./resources/pl/music.json";
 import plDecisions from "./resources/pl/decisions.json";
 import plDocs from "./resources/pl/docs.json";
 import plAccount from "./resources/pl/account.json";
@@ -258,6 +285,7 @@ import ukCommon from "./resources/uk/common.json";
 import ukMission from "./resources/uk/mission.json";
 import ukChat from "./resources/uk/chat.json";
 import ukImages from "./resources/uk/images.json";
+import ukMusic from "./resources/uk/music.json";
 import ukDecisions from "./resources/uk/decisions.json";
 import ukDocs from "./resources/uk/docs.json";
 import ukAccount from "./resources/uk/account.json";
@@ -267,6 +295,7 @@ import nlCommon from "./resources/nl/common.json";
 import nlMission from "./resources/nl/mission.json";
 import nlChat from "./resources/nl/chat.json";
 import nlImages from "./resources/nl/images.json";
+import nlMusic from "./resources/nl/music.json";
 import nlDecisions from "./resources/nl/decisions.json";
 import nlDocs from "./resources/nl/docs.json";
 import nlAccount from "./resources/nl/account.json";
@@ -276,6 +305,7 @@ import srCommon from "./resources/sr/common.json";
 import srMission from "./resources/sr/mission.json";
 import srChat from "./resources/sr/chat.json";
 import srImages from "./resources/sr/images.json";
+import srMusic from "./resources/sr/music.json";
 import srDecisions from "./resources/sr/decisions.json";
 import srDocs from "./resources/sr/docs.json";
 import srAccount from "./resources/sr/account.json";
@@ -285,6 +315,7 @@ import kkCommon from "./resources/kk/common.json";
 import kkMission from "./resources/kk/mission.json";
 import kkChat from "./resources/kk/chat.json";
 import kkImages from "./resources/kk/images.json";
+import kkMusic from "./resources/kk/music.json";
 import kkDecisions from "./resources/kk/decisions.json";
 import kkDocs from "./resources/kk/docs.json";
 import kkAccount from "./resources/kk/account.json";
@@ -294,6 +325,7 @@ import uzCommon from "./resources/uz/common.json";
 import uzMission from "./resources/uz/mission.json";
 import uzChat from "./resources/uz/chat.json";
 import uzImages from "./resources/uz/images.json";
+import uzMusic from "./resources/uz/music.json";
 import uzDecisions from "./resources/uz/decisions.json";
 import uzDocs from "./resources/uz/docs.json";
 import uzAccount from "./resources/uz/account.json";
@@ -304,6 +336,7 @@ import caCommon from "./resources/ca/common.json";
 import caMission from "./resources/ca/mission.json";
 import caChat from "./resources/ca/chat.json";
 import caImages from "./resources/ca/images.json";
+import caMusic from "./resources/ca/music.json";
 import caDecisions from "./resources/ca/decisions.json";
 import caDocs from "./resources/ca/docs.json";
 import caAccount from "./resources/ca/account.json";
@@ -312,6 +345,7 @@ import csCommon from "./resources/cs/common.json";
 import csMission from "./resources/cs/mission.json";
 import csChat from "./resources/cs/chat.json";
 import csImages from "./resources/cs/images.json";
+import csMusic from "./resources/cs/music.json";
 import csDecisions from "./resources/cs/decisions.json";
 import csDocs from "./resources/cs/docs.json";
 import csAccount from "./resources/cs/account.json";
@@ -320,6 +354,7 @@ import gaCommon from "./resources/ga/common.json";
 import gaMission from "./resources/ga/mission.json";
 import gaChat from "./resources/ga/chat.json";
 import gaImages from "./resources/ga/images.json";
+import gaMusic from "./resources/ga/music.json";
 import gaDecisions from "./resources/ga/decisions.json";
 import gaDocs from "./resources/ga/docs.json";
 import gaAccount from "./resources/ga/account.json";
@@ -328,6 +363,7 @@ import hrCommon from "./resources/hr/common.json";
 import hrMission from "./resources/hr/mission.json";
 import hrChat from "./resources/hr/chat.json";
 import hrImages from "./resources/hr/images.json";
+import hrMusic from "./resources/hr/music.json";
 import hrDecisions from "./resources/hr/decisions.json";
 import hrDocs from "./resources/hr/docs.json";
 import hrAccount from "./resources/hr/account.json";
@@ -336,6 +372,7 @@ import huCommon from "./resources/hu/common.json";
 import huMission from "./resources/hu/mission.json";
 import huChat from "./resources/hu/chat.json";
 import huImages from "./resources/hu/images.json";
+import huMusic from "./resources/hu/music.json";
 import huDecisions from "./resources/hu/decisions.json";
 import huDocs from "./resources/hu/docs.json";
 import huAccount from "./resources/hu/account.json";
@@ -344,6 +381,7 @@ import ltCommon from "./resources/lt/common.json";
 import ltMission from "./resources/lt/mission.json";
 import ltChat from "./resources/lt/chat.json";
 import ltImages from "./resources/lt/images.json";
+import ltMusic from "./resources/lt/music.json";
 import ltDecisions from "./resources/lt/decisions.json";
 import ltDocs from "./resources/lt/docs.json";
 import ltAccount from "./resources/lt/account.json";
@@ -352,6 +390,7 @@ import lvCommon from "./resources/lv/common.json";
 import lvMission from "./resources/lv/mission.json";
 import lvChat from "./resources/lv/chat.json";
 import lvImages from "./resources/lv/images.json";
+import lvMusic from "./resources/lv/music.json";
 import lvDecisions from "./resources/lv/decisions.json";
 import lvDocs from "./resources/lv/docs.json";
 import lvAccount from "./resources/lv/account.json";
@@ -360,6 +399,7 @@ import mtCommon from "./resources/mt/common.json";
 import mtMission from "./resources/mt/mission.json";
 import mtChat from "./resources/mt/chat.json";
 import mtImages from "./resources/mt/images.json";
+import mtMusic from "./resources/mt/music.json";
 import mtDecisions from "./resources/mt/decisions.json";
 import mtDocs from "./resources/mt/docs.json";
 import mtAccount from "./resources/mt/account.json";
@@ -368,6 +408,7 @@ import skCommon from "./resources/sk/common.json";
 import skMission from "./resources/sk/mission.json";
 import skChat from "./resources/sk/chat.json";
 import skImages from "./resources/sk/images.json";
+import skMusic from "./resources/sk/music.json";
 import skDecisions from "./resources/sk/decisions.json";
 import skDocs from "./resources/sk/docs.json";
 import skAccount from "./resources/sk/account.json";
@@ -376,6 +417,7 @@ import slCommon from "./resources/sl/common.json";
 import slMission from "./resources/sl/mission.json";
 import slChat from "./resources/sl/chat.json";
 import slImages from "./resources/sl/images.json";
+import slMusic from "./resources/sl/music.json";
 import slDecisions from "./resources/sl/decisions.json";
 import slDocs from "./resources/sl/docs.json";
 import slAccount from "./resources/sl/account.json";
@@ -394,6 +436,7 @@ const resources: Resource = {
     mission: enMission,
     chat: enChat,
     images: enImages,
+    music: enMusic,
     decisions: enDecisions,
     docs: enDocs,
     account: enAccount,
@@ -404,6 +447,7 @@ const resources: Resource = {
     mission: ruMission,
     chat: ruChat,
     images: ruImages,
+    music: ruMusic,
     decisions: ruDecisions,
     docs: ruDocs,
     account: ruAccount,
@@ -414,6 +458,7 @@ const resources: Resource = {
     mission: bgMission,
     chat: bgChat,
     images: bgImages,
+    music: bgMusic,
     decisions: bgDecisions,
     docs: bgDocs,
     account: bgAccount,
@@ -424,6 +469,7 @@ const resources: Resource = {
     mission: daMission,
     chat: daChat,
     images: daImages,
+    music: daMusic,
     decisions: daDecisions,
     docs: daDocs,
     account: daAccount,
@@ -434,6 +480,7 @@ const resources: Resource = {
     mission: etMission,
     chat: etChat,
     images: etImages,
+    music: etMusic,
     decisions: etDecisions,
     docs: etDocs,
     account: etAccount,
@@ -444,6 +491,7 @@ const resources: Resource = {
     mission: fiMission,
     chat: fiChat,
     images: fiImages,
+    music: fiMusic,
     decisions: fiDecisions,
     docs: fiDocs,
     account: fiAccount,
@@ -454,6 +502,7 @@ const resources: Resource = {
     mission: kkMission,
     chat: kkChat,
     images: kkImages,
+    music: kkMusic,
     decisions: kkDecisions,
     docs: kkDocs,
     account: kkAccount,
@@ -464,6 +513,7 @@ const resources: Resource = {
     mission: uzMission,
     chat: uzChat,
     images: uzImages,
+    music: uzMusic,
     decisions: uzDecisions,
     docs: uzDocs,
     account: uzAccount,
@@ -476,6 +526,7 @@ const resources: Resource = {
     mission: swMission,
     chat: swChat,
     images: swImages,
+    music: swMusic,
     decisions: swDecisions,
     docs: swDocs,
     account: swAccount,
@@ -486,6 +537,7 @@ const resources: Resource = {
     mission: arMission,
     chat: arChat,
     images: arImages,
+    music: arMusic,
     decisions: arDecisions,
     docs: arDocs,
     account: arAccount,
@@ -496,6 +548,7 @@ const resources: Resource = {
     mission: faMission,
     chat: faChat,
     images: faImages,
+    music: faMusic,
     decisions: faDecisions,
     docs: faDocs,
     account: faAccount,
@@ -506,6 +559,7 @@ const resources: Resource = {
     mission: haMission,
     chat: haChat,
     images: haImages,
+    music: haMusic,
     decisions: haDecisions,
     docs: haDocs,
     account: haAccount,
@@ -516,6 +570,7 @@ const resources: Resource = {
     mission: amMission,
     chat: amChat,
     images: amImages,
+    music: amMusic,
     decisions: amDecisions,
     docs: amDocs,
     account: amAccount,
@@ -526,6 +581,7 @@ const resources: Resource = {
     mission: yoMission,
     chat: yoChat,
     images: yoImages,
+    music: yoMusic,
     decisions: yoDecisions,
     docs: yoDocs,
     account: yoAccount,
@@ -536,6 +592,7 @@ const resources: Resource = {
     mission: zuMission,
     chat: zuChat,
     images: zuImages,
+    music: zuMusic,
     decisions: zuDecisions,
     docs: zuDocs,
     account: zuAccount,
@@ -546,6 +603,7 @@ const resources: Resource = {
     mission: maMission,
     chat: maChat,
     images: maImages,
+    music: maMusic,
     decisions: maDecisions,
     docs: maDocs,
     account: maAccount,
@@ -558,6 +616,7 @@ const resources: Resource = {
     mission: esMission,
     chat: esChat,
     images: esImages,
+    music: esMusic,
     decisions: esDecisions,
     docs: esDocs,
     account: esAccount,
@@ -568,6 +627,7 @@ const resources: Resource = {
     mission: frMission,
     chat: frChat,
     images: frImages,
+    music: frMusic,
     decisions: frDecisions,
     docs: frDocs,
     account: frAccount,
@@ -578,6 +638,7 @@ const resources: Resource = {
     mission: deMission,
     chat: deChat,
     images: deImages,
+    music: deMusic,
     decisions: deDecisions,
     docs: deDocs,
     account: deAccount,
@@ -588,6 +649,7 @@ const resources: Resource = {
     mission: elMission,
     chat: elChat,
     images: elImages,
+    music: elMusic,
     decisions: elDecisions,
     docs: elDocs,
     account: elAccount,
@@ -598,6 +660,7 @@ const resources: Resource = {
     mission: itMission,
     chat: itChat,
     images: itImages,
+    music: itMusic,
     decisions: itDecisions,
     docs: itDocs,
     account: itAccount,
@@ -608,6 +671,7 @@ const resources: Resource = {
     mission: heMission,
     chat: heChat,
     images: heImages,
+    music: heMusic,
     decisions: heDecisions,
     docs: heDocs,
     account: heAccount,
@@ -618,6 +682,7 @@ const resources: Resource = {
     mission: ptMission,
     chat: ptChat,
     images: ptImages,
+    music: ptMusic,
     decisions: ptDecisions,
     docs: ptDocs,
     account: ptAccount,
@@ -628,6 +693,7 @@ const resources: Resource = {
     mission: roMission,
     chat: roChat,
     images: roImages,
+    music: roMusic,
     decisions: roDecisions,
     docs: roDocs,
     account: roAccount,
@@ -638,6 +704,7 @@ const resources: Resource = {
     mission: kaMission,
     chat: kaChat,
     images: kaImages,
+    music: kaMusic,
     decisions: kaDecisions,
     docs: kaDocs,
     account: kaAccount,
@@ -648,6 +715,7 @@ const resources: Resource = {
     mission: trMission,
     chat: trChat,
     images: trImages,
+    music: trMusic,
     decisions: trDecisions,
     docs: trDocs,
     account: trAccount,
@@ -658,6 +726,7 @@ const resources: Resource = {
     mission: plMission,
     chat: plChat,
     images: plImages,
+    music: plMusic,
     decisions: plDecisions,
     docs: plDocs,
     account: plAccount,
@@ -668,6 +737,7 @@ const resources: Resource = {
     mission: ukMission,
     chat: ukChat,
     images: ukImages,
+    music: ukMusic,
     decisions: ukDecisions,
     docs: ukDocs,
     account: ukAccount,
@@ -678,6 +748,7 @@ const resources: Resource = {
     mission: nlMission,
     chat: nlChat,
     images: nlImages,
+    music: nlMusic,
     decisions: nlDecisions,
     docs: nlDocs,
     account: nlAccount,
@@ -688,6 +759,7 @@ const resources: Resource = {
     mission: srMission,
     chat: srChat,
     images: srImages,
+    music: srMusic,
     decisions: srDecisions,
     docs: srDocs,
     account: srAccount,
@@ -698,6 +770,7 @@ const resources: Resource = {
     mission: noMission,
     chat: noChat,
     images: noImages,
+    music: noMusic,
     decisions: noDecisions,
     docs: noDocs,
     account: noAccount,
@@ -708,6 +781,7 @@ const resources: Resource = {
     mission: svMission,
     chat: svChat,
     images: svImages,
+    music: svMusic,
     decisions: svDecisions,
     docs: svDocs,
     account: svAccount,
@@ -719,6 +793,7 @@ const resources: Resource = {
     mission: caMission,
     chat: caChat,
     images: caImages,
+    music: caMusic,
     decisions: caDecisions,
     docs: caDocs,
     account: caAccount,
@@ -729,6 +804,7 @@ const resources: Resource = {
     mission: csMission,
     chat: csChat,
     images: csImages,
+    music: csMusic,
     decisions: csDecisions,
     docs: csDocs,
     account: csAccount,
@@ -739,6 +815,7 @@ const resources: Resource = {
     mission: gaMission,
     chat: gaChat,
     images: gaImages,
+    music: gaMusic,
     decisions: gaDecisions,
     docs: gaDocs,
     account: gaAccount,
@@ -749,6 +826,7 @@ const resources: Resource = {
     mission: hrMission,
     chat: hrChat,
     images: hrImages,
+    music: hrMusic,
     decisions: hrDecisions,
     docs: hrDocs,
     account: hrAccount,
@@ -759,6 +837,7 @@ const resources: Resource = {
     mission: huMission,
     chat: huChat,
     images: huImages,
+    music: huMusic,
     decisions: huDecisions,
     docs: huDocs,
     account: huAccount,
@@ -769,6 +848,7 @@ const resources: Resource = {
     mission: ltMission,
     chat: ltChat,
     images: ltImages,
+    music: ltMusic,
     decisions: ltDecisions,
     docs: ltDocs,
     account: ltAccount,
@@ -779,6 +859,7 @@ const resources: Resource = {
     mission: lvMission,
     chat: lvChat,
     images: lvImages,
+    music: lvMusic,
     decisions: lvDecisions,
     docs: lvDocs,
     account: lvAccount,
@@ -789,6 +870,7 @@ const resources: Resource = {
     mission: mtMission,
     chat: mtChat,
     images: mtImages,
+    music: mtMusic,
     decisions: mtDecisions,
     docs: mtDocs,
     account: mtAccount,
@@ -799,6 +881,7 @@ const resources: Resource = {
     mission: skMission,
     chat: skChat,
     images: skImages,
+    music: skMusic,
     decisions: skDecisions,
     docs: skDocs,
     account: skAccount,
@@ -809,6 +892,7 @@ const resources: Resource = {
     mission: slMission,
     chat: slChat,
     images: slImages,
+    music: slMusic,
     decisions: slDecisions,
     docs: slDocs,
     account: slAccount,
@@ -843,7 +927,7 @@ i18n.use(initReactI18next).init({
   lng: browserLang,
   fallbackLng: "en",
   supportedLngs: SUPPORTED_LANGUAGES,
-  ns: ["common", "mission", "chat", "images", "decisions", "account", "privacy"],
+  ns: ["common", "mission", "chat", "images", "music", "decisions", "account", "privacy"],
   defaultNS: "common",
   // Because we control the keys and interpolate only simple values.
   interpolation: {
