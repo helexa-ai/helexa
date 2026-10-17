@@ -242,7 +242,10 @@ jobs:
 
   test:
     name: Test
-    timeout-minutes: 25
+    # The compile alone took 19 of the old 25 minutes on main (2026-10-17,
+    # 75% Rust cache hits), so any growth in a workspace crate tipped a
+    # healthy run into a timeout. 45 leaves room without hiding a hang.
+    timeout-minutes: 45
     runs-on: rust
     needs: changes
     if: needs.changes.outputs.rust == 'true'
