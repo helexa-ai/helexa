@@ -268,6 +268,93 @@ impl Scenario for ImageLatencyScenario {
     }
 }
 
+/// Fixed-seed music render (#387): one song of a configured length against
+/// the neuron's synchronous `/v1/audio/generations`, recording the
+/// server-side phase timing. The cell dimension is the song length, so the
+/// real-time factor is `seconds / total_s`. Applies only to models
+/// advertising the `audio` capability.
+pub struct AudioLatencyScenario {
+    pub id: String,
+    pub seconds: u32,
+}
+
+#[async_trait]
+impl Scenario for AudioLatencyScenario {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn prompt_size(&self) -> u32 {
+        self.seconds
+    }
+
+    fn applies_to(&self, model: &ModelInfo) -> bool {
+        model.capabilities.iter().any(|c| c == "audio")
+    }
+
+    async fn run(&self, ctx: &RunCtx) -> Result<ScenarioMetrics> {
+        let url = ctx
+            .chat_url
+            .replace("/v1/chat/completions", "/v1/audio/generations");
+        let body = serde_json::json!({
+            "model": ctx.model_id,
+            "prompt": "Warm lo-fi hip hop beat with mellow Rhodes chords and dusty vinyl drums, 82 BPM",
+            "duration": self.seconds,
+            "seed": 42,
+        });
+        let start = std::time::Instant::now();
+        let resp = ctx
+            .client
+            .post(&url)
+            .timeout(ctx.timeout)
+            .json(&body)
+            .send()
+            .await
+            .context("audio request failed")?;
+        let status = resp.status();
+        let result = resp
+            .headers()
+            .get("x-helexa-audio-result")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+        let bytes = resp.bytes().await.context("audio response body")?;
+        anyhow::ensure!(
+            status.is_success(),
+            "audio request {status}: {}",
+            String::from_utf8_lossy(&bytes[..bytes.len().min(512)])
+        );
+        let total_s = start.elapsed().as_secs_f64();
+        // A bench that records latency for broken output is worse than none.
+        anyhow::ensure!(
+            bytes.len() > 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE",
+            "payload is not a WAV file"
+        );
+        let result: serde_json::Value =
+            serde_json::from_str(&result.context("missing x-helexa-audio-result")?)
+                .context("x-helexa-audio-result is not JSON")?;
+        let timing = &result["usage"]["helexa_timing"];
+        Ok(ScenarioMetrics {
+            ttft_s: timing["plan_ms"].as_u64().unwrap_or(0) as f64 / 1000.0,
+            decode_tps: None,
+            total_s,
+            prompt_tokens: None,
+            completion_tokens: 0,
+            prefill_ms: timing["plan_ms"].as_u64(),
+            decode_ms: timing["generate_ms"].as_u64(),
+            prefill_tokens: None,
+            reasoning_tokens: None,
+            cached_tokens: None,
+            tpot_p95_ms: None,
+            concurrency: None,
+            ttft_p95_s: None,
+            queue_wait_ms_median: None,
+            rejected: None,
+            artifact: None,
+            image_units: None,
+        })
+    }
+}
+
 /// Build the active scenario set from config: one chat-latency scenario per
 /// prompt size, plus one concurrency scenario per configured level (#89).
 /// Concurrency levels default to empty (opt-in), since a burst puts real
@@ -306,6 +393,12 @@ pub fn build_scenarios(cfg: &ScenarioConfig) -> Vec<Box<dyn Scenario>> {
         scenarios.push(Box::new(ImageLatencyScenario {
             id: format!("image:{side}"),
             side_px: side,
+        }) as Box<dyn Scenario>);
+    }
+    for &secs in &cfg.audio_durations {
+        scenarios.push(Box::new(AudioLatencyScenario {
+            id: format!("audio:{secs}"),
+            seconds: secs,
         }) as Box<dyn Scenario>);
     }
     for probe in &cfg.capability_probes {
@@ -916,6 +1009,13 @@ mod tests {
         assert!(!serves_chat(&model(&["image"])));
         assert!(!serves_chat(&model(&["decision"])));
         assert!(!serves_chat(&model(&["audio"])));
+        let audio = AudioLatencyScenario {
+            id: "audio:30".into(),
+            seconds: 30,
+        };
+        assert!(audio.applies_to(&model(&["audio"])));
+        assert!(!audio.applies_to(&model(&["text"])));
+        assert!(!audio.applies_to(&model(&["image"])));
         let image = ImageLatencyScenario {
             id: "image:512".into(),
             side_px: 512,
@@ -1070,6 +1170,7 @@ mod tests {
         use crate::config::{CapabilityProbe, ScenarioConfig};
         let cfg = ScenarioConfig {
             image_sizes: vec![],
+            audio_durations: vec![],
             prompt_sizes: vec![128],
             max_tokens: 64,
             concurrency_levels: vec![2, 8],

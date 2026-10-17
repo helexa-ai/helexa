@@ -166,6 +166,11 @@ pub struct ScenarioConfig {
     /// capability. Defaults to `[1024]`.
     #[serde(default = "default_image_sizes")]
     pub image_sizes: Vec<u32>,
+    /// Song lengths (seconds) — one `audio:<secs>` scenario per entry
+    /// (#387), run only against models advertising the `audio`
+    /// capability. Defaults to `[30]`.
+    #[serde(default = "default_audio_durations")]
+    pub audio_durations: Vec<u32>,
     /// Approximate prompt size (tokens) used by the concurrency scenarios.
     #[serde(default = "default_concurrency_prompt_tokens")]
     pub concurrency_prompt_tokens: u32,
@@ -202,6 +207,7 @@ impl Default for ScenarioConfig {
             concurrency_nonstreaming_levels: Vec::new(),
             concurrency_prompt_tokens: default_concurrency_prompt_tokens(),
             image_sizes: default_image_sizes(),
+            audio_durations: default_audio_durations(),
             capability_probes: Vec::new(),
         }
     }
@@ -279,6 +285,9 @@ fn default_api_listen() -> String {
 }
 fn default_image_sizes() -> Vec<u32> {
     vec![1024]
+}
+fn default_audio_durations() -> Vec<u32> {
+    vec![30]
 }
 
 fn default_prompt_sizes() -> Vec<u32> {
