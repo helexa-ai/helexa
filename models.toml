@@ -204,6 +204,32 @@ cost.output = 0.0
 # not serve (a Jev client's own model name).
 "helexa/one" = "convaiinnovations/laya"
 
+# Music generation (#378/#383): ACE-Step 1.5 turbo -- a 2B DiT, the
+# Qwen3-Embedding-0.6B text encoder, a 48 kHz stereo VAE and the 1.7B song
+# planner, all subfolders of one snapshot. bf16 with the planner resident
+# peaks near 10 GiB for long songs, so 24 GB cards only, and benjy only:
+# it takes turns there with the 8B and Z-Image, and is never placed on
+# beast beside the 27B. Served through the async job API, metered per
+# audio-second at the rate in the clearing house (#386); the token cost
+# fields stay unset.
+[[models]]
+id = "ACE-Step/Ace-Step1.5"
+harness = "candle"
+vram_mb = 12000
+min_devices = 1
+min_device_vram_mb = 20000
+pinned_on = ["benjy"]
+# Everyday class, shared with Qwen3-8B and Z-Image on benjy.
+residency_priority = 200
+
+[models.audio]
+min_duration = 10.0
+max_duration = 600.0
+default_duration = 30.0
+vocals = true
+sample_rate = 48000
+channels = 2
+
 # Text-to-image (#197/#203): Z-Image-Turbo, 6B S3-DiT + Qwen3-4B text
 # encoder (runs on host CPU by default — see [harness.candle.image] in
 # neuron.toml) + VAE. BF16 DiT+VAE resident ≈ 14.6 GB; fits benjy's

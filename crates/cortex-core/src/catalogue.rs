@@ -537,3 +537,18 @@ source = "helexa"
         assert_eq!(cat.resolve_alias("helexa/large"), "Qwen/Qwen3.6-27B");
     }
 }
+
+#[cfg(test)]
+mod repo_catalogue {
+    /// The shipped catalogue parses, and the music model carries its limits.
+    #[test]
+    fn repo_models_toml_parses_with_audio_limits() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models.toml");
+        let cat = super::ModelCatalogue::load(&path);
+        let ace = cat
+            .get("ACE-Step/Ace-Step1.5")
+            .expect("ACE-Step in models.toml");
+        let audio = ace.audio.as_ref().expect("audio limits");
+        assert!(audio.vocals && audio.max_duration >= audio.default_duration);
+    }
+}
