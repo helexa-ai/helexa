@@ -872,3 +872,76 @@ async fn test_audio_invalid_params_400() {
         assert_eq!(body["error"]["code"], "invalid_audio_params", "{bad}");
     }
 }
+
+/// A harness whose load takes a while and records when it finishes.
+struct SlowLoadHarness {
+    finished: Arc<std::sync::atomic::AtomicBool>,
+}
+
+#[async_trait::async_trait]
+impl cortex_core::harness::Harness for SlowLoadHarness {
+    fn name(&self) -> &str {
+        "slow"
+    }
+    async fn health(&self) -> cortex_core::harness::HarnessHealth {
+        cortex_core::harness::HarnessHealth {
+            name: "slow".into(),
+            running: true,
+            uptime_secs: None,
+        }
+    }
+    async fn list_models(&self) -> anyhow::Result<Vec<cortex_core::harness::ModelInfo>> {
+        Ok(vec![])
+    }
+    async fn load_model(&self, _spec: &cortex_core::harness::ModelSpec) -> anyhow::Result<()> {
+        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+        self.finished
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+    async fn unload_model(&self, _model_id: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
+    async fn inference_endpoint(&self, _model_id: &str) -> Option<String> {
+        None
+    }
+}
+
+/// A client that gives up mid-load (a timeout during a long first fetch)
+/// must not cancel the load: it runs to completion regardless.
+#[tokio::test]
+async fn test_load_survives_client_disconnect() {
+    let finished = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let mut registry = HarnessRegistry::new();
+    registry.register(Arc::new(SlowLoadHarness {
+        finished: Arc::clone(&finished),
+    }));
+    let state = Arc::new(NeuronState {
+        discovery: fake_discovery(),
+        health_cache: Arc::new(HealthCache::new()),
+        registry: RwLock::new(registry),
+        candle: None,
+        activation: Arc::new(ActivationTracker::new(&[])),
+    });
+    let app = api::neuron_routes().with_state(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let resp = reqwest::Client::new()
+        .post(format!("http://{addr}/models/load"))
+        .timeout(std::time::Duration::from_millis(100))
+        .json(&json!({"model_id": "some/model", "harness": "slow"}))
+        .send()
+        .await;
+    assert!(resp.is_err(), "the client should have timed out mid-load");
+    assert!(!finished.load(std::sync::atomic::Ordering::SeqCst));
+
+    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+    assert!(
+        finished.load(std::sync::atomic::Ordering::SeqCst),
+        "the load was cancelled with the request"
+    );
+}
