@@ -142,8 +142,22 @@ async fn load_model(
         )
             .into_response();
     }
-    let registry = state.registry.read().await;
-    match registry.load_model(&spec).await {
+    // Run the load on its own task. A client that gives up (a curl or
+    // cortex timeout during a first fetch of tens of GB) drops this
+    // handler's future; the load must not be dropped with it, or the
+    // download restarts from the last finished file and a device-worker
+    // reply arrives with nobody to receive it.
+    let load_spec = spec.clone();
+    let load_state = Arc::clone(&state);
+    let load = tokio::spawn(async move {
+        let registry = load_state.registry.read().await;
+        registry.load_model(&load_spec).await
+    });
+    let result = match load.await {
+        Ok(r) => r,
+        Err(e) => Err(anyhow::anyhow!("load task failed: {e}")),
+    };
+    match result {
         Ok(()) => Json(json!({"status": "loaded"})).into_response(),
         Err(e) => {
             // If the underlying failure is a structured preflight
