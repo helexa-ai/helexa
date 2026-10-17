@@ -598,3 +598,223 @@ async fn expired_jobs_are_swept() {
     assert!(!dir.path().join(format!("{id}.json")).exists());
     assert!(!dir.path().join(format!("{id}.wav")).exists());
 }
+
+// ── Per-model rates (#386) ───────────────────────────────────────────
+
+/// A gateway whose keys are capped at `cap` tokens and whose audio rate
+/// table is `rates` (model id → tokens per second; "*" is the default).
+async fn priced_gateway(
+    neuron: &str,
+    dir: &std::path::Path,
+    cap: Option<u64>,
+    rates: &[(&str, u64)],
+) -> (Arc<CortexState>, String) {
+    let mut cfg = config(neuron, dir);
+    for k in &mut cfg.entitlements.keys {
+        k.hard_cap = cap;
+    }
+    let fleet = Arc::new(CortexState::from_config(&cfg));
+    let mut table = cortex_gateway::rates::RateTable::default();
+    for (model, rate) in rates {
+        table.set(cortex_gateway::rates::AUDIO_SECOND, model, *rate);
+    }
+    fleet.rates.replace(table).await;
+    seed_model(&fleet).await;
+    let url = serve(&fleet).await;
+    (fleet, url)
+}
+
+async fn spent(fleet: &CortexState, who: &str) -> u64 {
+    let principal = cortex_core::entitlements::Principal {
+        account_id: format!("acct-{who}"),
+        key_id: format!("acct-{who}"),
+    };
+    fleet
+        .entitlements
+        .snapshot(&principal)
+        .await
+        .map(|s| s.spent)
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn reservation_uses_the_models_rate() {
+    // A 12.5 s song against a 10,000-token cap: refused at 1000 tokens/s
+    // (12,500), accepted at 500 tokens/s (6,250).
+    let mock = spawn_mock(Mode::Ok).await;
+    let dir = tempfile::tempdir().unwrap();
+    let (_f, gw) = priced_gateway(&mock.url, dir.path(), Some(10_000), &[("*", 1000)]).await;
+    let resp = submit(&gw, Some("key-alice"), song()).await;
+    assert_eq!(resp.status(), 429, "{:?}", resp.text().await);
+
+    let dir = tempfile::tempdir().unwrap();
+    let (_f, gw) = priced_gateway(
+        &mock.url,
+        dir.path(),
+        Some(10_000),
+        &[("*", 1000), (MODEL, 500)],
+    )
+    .await;
+    assert_eq!(submit(&gw, Some("key-alice"), song()).await.status(), 202);
+}
+
+#[tokio::test]
+async fn unpriced_model_is_refused_for_metered_callers_only() {
+    let mock = spawn_mock(Mode::Ok).await;
+    let dir = tempfile::tempdir().unwrap();
+    // An empty table: what a cortex with upstream sees before its first fetch.
+    let (_f, gw) = priced_gateway(&mock.url, dir.path(), None, &[]).await;
+    let resp = submit(&gw, Some("key-alice"), song()).await;
+    assert_eq!(resp.status(), 503);
+    let body: Value = resp.json().await.unwrap();
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("no audio rate"),
+        "{body}"
+    );
+    // Anonymous work is not metered, so it does not need a price.
+    assert_eq!(submit(&gw, None, song()).await.status(), 202);
+}
+
+#[tokio::test]
+async fn settles_at_the_rate_reserved_even_if_it_changes_mid_job() {
+    let mock = spawn_mock(Mode::Slow(Duration::from_millis(800))).await;
+    let dir = tempfile::tempdir().unwrap();
+    let (fleet, gw) = priced_gateway(&mock.url, dir.path(), None, &[(MODEL, 300)]).await;
+    let job: Value = submit(&gw, Some("key-alice"), song())
+        .await
+        .json()
+        .await
+        .unwrap();
+    // Reprice while the render is in flight.
+    let mut table = cortex_gateway::rates::RateTable::default();
+    table.set(cortex_gateway::rates::AUDIO_SECOND, MODEL, 1);
+    fleet.rates.replace(table).await;
+
+    let done = wait_terminal(&gw, Some("key-alice"), job["id"].as_str().unwrap(), 10).await;
+    assert_eq!(done["status"], "succeeded");
+    // 12.5 s × 300 tokens/s, settled asynchronously.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let s = spent(&fleet, "alice").await;
+        if s == 3750 {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "spent {s}, want 3750");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+#[tokio::test]
+async fn rates_are_fetched_from_upstream_with_the_client_bearer() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    let app = Router::new().route(
+        "/authz/v1/rates",
+        get(|headers: HeaderMap| async move {
+            if headers.get("authorization").and_then(|v| v.to_str().ok())
+                != Some("Bearer op-secret")
+            {
+                return StatusCode::UNAUTHORIZED.into_response();
+            }
+            Json(json!({"data": [
+                {"model_id": "*", "unit": "audio_second", "tokens_per_unit": 1000},
+                {"model_id": MODEL, "unit": "audio_second", "tokens_per_unit": 40},
+                {"model_id": "bad", "unit": "audio_second", "tokens_per_unit": 0}
+            ]}))
+            .into_response()
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let client = reqwest::Client::new();
+    let table = cortex_gateway::rates::fetch(&client, &url, "op-secret")
+        .await
+        .unwrap();
+    assert_eq!(table.audio_tokens_per_second(MODEL), Some(40));
+    assert_eq!(table.audio_tokens_per_second("other"), Some(1000));
+    // A non-positive rate is skipped, falling back to the default.
+    assert_eq!(table.audio_tokens_per_second("bad"), Some(1000));
+    assert!(
+        cortex_gateway::rates::fetch(&client, &url, "wrong")
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn models_endpoint_advertises_audio_limits_and_rate() {
+    let mock = spawn_mock(Mode::Ok).await;
+    let dir = tempfile::tempdir().unwrap();
+    let catalogue = dir.path().join("models.toml");
+    std::fs::write(
+        &catalogue,
+        format!(
+            r#"
+[[models]]
+id = "{MODEL}"
+harness = "candle"
+quant = "q8_0"
+
+[models.audio]
+min_duration = 10.0
+max_duration = 600.0
+default_duration = 30.0
+vocals = true
+sample_rate = 48000
+channels = 2
+max_steps = 20
+
+[aliases]
+"helexa/music" = "{MODEL}"
+"#
+        ),
+    )
+    .unwrap();
+    let mut cfg = config(&mock.url, dir.path());
+    cfg.models_config = catalogue.to_string_lossy().into_owned();
+    let fleet = Arc::new(CortexState::from_config(&cfg));
+    let mut table = cortex_gateway::rates::RateTable::default();
+    table.set(cortex_gateway::rates::AUDIO_SECOND, MODEL, 77);
+    fleet.rates.replace(table).await;
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+
+    let models: Value = reqwest::get(format!("{gw}/v1/models"))
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let find = |id: &str| {
+        models["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["id"] == id)
+            .cloned()
+            .unwrap_or_else(|| panic!("{id} missing from {models}"))
+    };
+    for id in [MODEL, "helexa/music"] {
+        let m = find(id);
+        assert_eq!(m["audio"]["max_duration"], 600.0, "{m}");
+        assert_eq!(m["audio"]["vocals"], true);
+        assert_eq!(m["audio_tokens_per_second"], 77, "{m}");
+    }
+
+    // The catalogue's limits are enforced at submit.
+    let resp = submit(
+        &gw,
+        None,
+        json!({"model": MODEL, "prompt": "x", "duration": 5.0}),
+    )
+    .await;
+    assert_eq!(resp.status(), 400);
+    // An alias is accepted and resolved to the model.
+    let resp = submit(&gw, None, json!({"model": "helexa/music", "prompt": "x"})).await;
+    assert_eq!(resp.status(), 202);
+    let job: Value = resp.json().await.unwrap();
+    assert_eq!(job["model"], MODEL);
+}

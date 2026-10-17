@@ -54,6 +54,9 @@ pub struct CortexState {
     pub capability_probe_attempts: RwLock<HashMap<(String, String), std::time::Instant>>,
     /// Async audio generation jobs (#382).
     pub audio_jobs: crate::audio_jobs::AudioJobs,
+    /// Per-model rates for non-token units (#386), from upstream when it
+    /// is enabled, else the local default.
+    pub rates: Arc<crate::rates::Rates>,
 }
 
 impl CortexState {
@@ -134,6 +137,11 @@ impl CortexState {
             discovered_capabilities: RwLock::new(HashMap::new()),
             capability_probe_attempts: RwLock::new(HashMap::new()),
             audio_jobs: crate::audio_jobs::AudioJobs::new(&config.audio_jobs),
+            rates: Arc::new(if config.upstream.enabled {
+                crate::rates::Rates::upstream()
+            } else {
+                crate::rates::Rates::local()
+            }),
         }
     }
 }

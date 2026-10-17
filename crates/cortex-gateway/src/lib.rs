@@ -11,6 +11,7 @@ pub mod metering;
 pub mod metrics;
 pub mod poller;
 pub mod proxy;
+pub mod rates;
 pub mod router;
 pub mod served_usage;
 pub mod state;
@@ -52,6 +53,11 @@ pub async fn run(config: GatewayConfig) -> Result<()> {
     tokio::spawn(async move {
         poller::poll_loop(poller_fleet).await;
     });
+
+    // Per-model rates (#386): keep the cached table in step with upstream.
+    if config.upstream.enabled {
+        rates::spawn_refresh(Arc::clone(&fleet.rates), &config.upstream);
+    }
 
     // Async audio jobs (#382): reload persisted jobs, re-queue unfinished
     // ones, start the retention sweep.

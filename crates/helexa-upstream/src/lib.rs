@@ -21,6 +21,7 @@ pub mod email;
 pub mod error;
 pub mod handlers;
 pub mod ledger;
+pub mod rates;
 pub mod reconcile;
 pub mod state;
 pub mod topup;

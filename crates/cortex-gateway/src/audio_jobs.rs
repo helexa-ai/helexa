@@ -60,6 +60,11 @@ struct JobRecord {
     request: AudioGenerationRequest,
     /// The submitting principal; `None` for an anonymous submission.
     owner: Option<Principal>,
+    /// Ledger tokens per audio-second this job was reserved at (#386), so
+    /// it settles at the price it was accepted at even if the rate changes
+    /// while it runs. `None` for anonymous (unmetered) jobs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tokens_per_second: Option<u64>,
 }
 
 /// The job store and dispatcher, held in [`CortexState`].
@@ -220,7 +225,13 @@ pub async fn start(fleet: Arc<CortexState>) {
         // The reservation died with the old process: take a fresh one, and
         // fail the job if the budget no longer allows it.
         let guard = match reserve(&fleet, record.owner.as_ref(), &record.request).await {
-            Ok(g) => g,
+            Ok((g, rate)) => {
+                fleet
+                    .audio_jobs
+                    .update(&id, |r| r.tokens_per_second = rate)
+                    .await;
+                g
+            }
             Err(env) => {
                 fail(&fleet, &id, envelope_error(&env)).await;
                 continue;
@@ -328,8 +339,8 @@ async fn submit(
     let owner = crate::metering::principal_from_headers(&headers);
     let mut request = request;
     request.model = model.clone();
-    let guard = match reserve(&fleet, owner.as_ref(), &request).await {
-        Ok(g) => g,
+    let (guard, tokens_per_second) = match reserve(&fleet, owner.as_ref(), &request).await {
+        Ok(r) => r,
         Err(env) => return crate::error::envelope_response(env),
     };
 
@@ -351,6 +362,7 @@ async fn submit(
         job: job.clone(),
         request,
         owner,
+        tokens_per_second,
     };
     fleet
         .audio_jobs
@@ -732,7 +744,11 @@ async fn complete(
     let units = result.usage.helexa_audio_units;
     match &record.owner {
         Some(owner) => {
-            crate::metering::settle_audio_usage(owner, guard, &fleet.served_usage, units)
+            // An owned job always carries the rate it was reserved at.
+            let rate = record
+                .tokens_per_second
+                .unwrap_or(crate::rates::LOCAL_DEFAULT_TOKENS_PER_AUDIO_SECOND);
+            crate::metering::settle_audio_usage(owner, guard, &fleet.served_usage, units, rate)
         }
         None => drop(guard),
     }
@@ -771,29 +787,39 @@ async fn fail(fleet: &CortexState, id: &str, error: Value) {
     }
 }
 
+/// Reserve budget for a job at its model's current rate (#386). Returns the
+/// guard and the rate it reserved at; anonymous jobs are unmetered.
 #[allow(clippy::result_large_err)] // the Err is the #63 envelope; see metering::reserve_or_reject
 async fn reserve(
     fleet: &Arc<CortexState>,
     owner: Option<&Principal>,
     request: &AudioGenerationRequest,
-) -> Result<ReservationGuard, OpenAiError> {
-    match owner {
-        None => Ok(ReservationGuard::anonymous(Arc::clone(&fleet.entitlements))),
-        Some(p) => {
-            let default = fleet
-                .catalogue
-                .get(&request.model)
-                .and_then(|m| m.audio.as_ref())
-                .map(|l| l.default_duration);
-            let seconds = crate::metering::audio_reservation_seconds(request.duration, default);
-            crate::metering::reserve_or_reject(
-                Arc::clone(&fleet.entitlements),
-                p,
-                crate::metering::audio_seconds_to_tokens(seconds),
-            )
-            .await
-        }
-    }
+) -> Result<(ReservationGuard, Option<u64>), OpenAiError> {
+    let Some(p) = owner else {
+        return Ok((
+            ReservationGuard::anonymous(Arc::clone(&fleet.entitlements)),
+            None,
+        ));
+    };
+    let Some(rate) = fleet.rates.audio_tokens_per_second(&request.model).await else {
+        return Err(OpenAiError::service_unavailable(
+            format!("no audio rate is configured for model '{}'", request.model),
+            Some(5),
+        ));
+    };
+    let default = fleet
+        .catalogue
+        .get(&request.model)
+        .and_then(|m| m.audio.as_ref())
+        .map(|l| l.default_duration);
+    let seconds = crate::metering::audio_reservation_seconds(request.duration, default);
+    let guard = crate::metering::reserve_or_reject(
+        Arc::clone(&fleet.entitlements),
+        p,
+        crate::metering::audio_seconds_to_tokens(seconds, rate),
+    )
+    .await?;
+    Ok((guard, Some(rate)))
 }
 
 impl AudioJobs {

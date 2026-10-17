@@ -190,6 +190,10 @@ pub struct CortexModelEntry {
     /// duration range, vocals, sample rate. Clients build forms from it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<crate::audio::AudioLimits>,
+    /// Ledger tokens charged per second of generated audio (#386), for
+    /// audio models with a configured rate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_tokens_per_second: Option<u64>,
     /// `true` when any neuron reports this model supports tool calls.
     #[serde(default)]
     pub tool_call: bool,
