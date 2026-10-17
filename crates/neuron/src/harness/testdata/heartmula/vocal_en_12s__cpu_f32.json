@@ -1,0 +1,259 @@
+{
+  "case": {
+    "name": "vocal_en_12s",
+    "tags": "pop, female vocals, acoustic guitar, upbeat, bright",
+    "lyrics": "[Verse]\nStreetlights hum a quiet tune\nWe chase the shadows of the moon\n[Chorus]\nHold on, hold on, the night is young\n",
+    "duration": 12.0,
+    "seed": 4242,
+    "codec": true
+  },
+  "trace": "cpu_f32",
+  "lm": {
+    "greedy": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 1,
+      "seed": 4242,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 133.91,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8187.0,
+        "mean": 4069.887451171875
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 31.185508728027344,
+        "mean": 1.8848973512649536
+      }
+    },
+    "sampled": {
+      "cfg_scale": 1.5,
+      "temperature": 1.0,
+      "topk": 50,
+      "seed": 4242,
+      "frames": 151,
+      "stopped_early": false,
+      "wall_s": 106.48,
+      "frames_stats": {
+        "shape": [
+          8,
+          151
+        ],
+        "dtype": "int32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 8186.0,
+        "mean": 4171.93115234375
+      },
+      "logits_stats": {
+        "shape": [
+          2,
+          8,
+          8197
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 27.99889373779297,
+        "mean": 1.9520825147628784
+      }
+    }
+  },
+  "tags_prompt": "<tag>pop, female vocals, acoustic guitar, upbeat, bright</tag>",
+  "lyrics_prompt": "[verse]\nstreetlights hum a quiet tune\nwe chase the shadows of the moon\n[chorus]\nhold on, hold on, the night is young\n",
+  "muq_idx": 18,
+  "prompt_len": 54,
+  "tags_ids": [
+    128000,
+    17224,
+    29,
+    8539,
+    11,
+    8954,
+    47196,
+    11,
+    45166,
+    17418,
+    11,
+    85773,
+    11,
+    10107,
+    524,
+    4681,
+    29,
+    128001
+  ],
+  "lyrics_ids": [
+    128000,
+    58,
+    4550,
+    933,
+    28451,
+    14146,
+    2854,
+    264,
+    11594,
+    26306,
+    198,
+    906,
+    33586,
+    279,
+    35612,
+    315,
+    279,
+    18266,
+    198,
+    58,
+    6279,
+    355,
+    933,
+    6416,
+    389,
+    11,
+    3412,
+    389,
+    11,
+    279,
+    3814,
+    374,
+    3995,
+    198,
+    128001
+  ],
+  "codec": {
+    "seed": 4242,
+    "detokenize": {
+      "duration": 29.76,
+      "num_steps": 10,
+      "guidance_scale": 1.25
+    },
+    "segments": 1,
+    "codes_frames": 151,
+    "waveform_samples": 579840,
+    "waveform_kept_s": 3.0,
+    "wall_s": 53.82,
+    "stats": {
+      "rvq_quantized": {
+        "shape": [
+          1,
+          372,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.0748450756072998,
+        "mean": 0.0015909565845504403
+      },
+      "rvq_cond": {
+        "shape": [
+          1,
+          372,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 0.5393359661102295,
+        "mean": 0.0006034717662259936
+      },
+      "flow_noise": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 4.768066883087158,
+        "mean": 0.004064248409122229
+      },
+      "flow_mu": {
+        "shape": [
+          1,
+          744,
+          512
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 0.5393359661102295,
+        "mean": 0.0006034718826413155
+      },
+      "flow_t_span": {
+        "shape": [
+          11
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.0,
+        "mean": 0.4999999701976776
+      },
+      "flow_step1_v": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 4.929945945739746,
+        "mean": 0.030629687011241913
+      },
+      "flow_step5_x": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 2.4288575649261475,
+        "mean": 0.018275154754519463
+      },
+      "flow_final": {
+        "shape": [
+          1,
+          744,
+          256
+        ],
+        "dtype": "float32",
+        "nan": 0,
+        "inf": 0,
+        "absmax": 1.077981948852539,
+        "mean": 0.03247144818305969
+      }
+    },
+    "waveform_stats": {
+      "shape": [
+        2,
+        579840
+      ],
+      "dtype": "float32",
+      "nan": 0,
+      "inf": 0,
+      "absmax": 0.9147399067878723,
+      "mean": -5.074805085314438e-05
+    }
+  },
+  "nan_anywhere": false
+}

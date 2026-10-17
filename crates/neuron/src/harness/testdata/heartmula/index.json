@@ -1,0 +1,188 @@
+[
+  {
+    "file": "instr_12s__cpu_f32",
+    "case": "instr_12s",
+    "trace": "cpu_f32",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 356.88,
+        "vs_cpu_f32": null
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 101.85,
+        "vs_cpu_f32": null
+      }
+    },
+    "codec": true,
+    "nan_anywhere": false,
+    "vram_peak_gib": null,
+    "bytes": 8428763
+  },
+  {
+    "file": "instr_12s__cuda_bf16",
+    "case": "instr_12s",
+    "trace": "cuda_bf16",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.29,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 0,
+          "frame0_cb0_logits_rel_l2": 0.006960339844226837,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.010020597837865353,
+          "logits_rel_l2": 0.6182592511177063,
+          "backbone_last_h_rel_l2": 0.20473428070545197
+        }
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.05,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 0,
+          "frame0_cb0_logits_rel_l2": 0.006960339844226837,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.010020597837865353,
+          "logits_rel_l2": 1.0340651273727417,
+          "backbone_last_h_rel_l2": 0.5631837248802185
+        }
+      }
+    },
+    "codec": false,
+    "nan_anywhere": false,
+    "vram_peak_gib": 12.79,
+    "bytes": 1171343
+  },
+  {
+    "file": "vocal_en_12s__cpu_f32",
+    "case": "vocal_en_12s",
+    "trace": "cpu_f32",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 133.91,
+        "vs_cpu_f32": null
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 106.48,
+        "vs_cpu_f32": null
+      }
+    },
+    "codec": true,
+    "nan_anywhere": false,
+    "vram_peak_gib": null,
+    "bytes": 8429330
+  },
+  {
+    "file": "vocal_en_12s__cuda_bf16",
+    "case": "vocal_en_12s",
+    "trace": "cuda_bf16",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.13,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 5,
+          "frame0_cb0_logits_rel_l2": 0.004385252483189106,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.008595321327447891,
+          "logits_rel_l2": 0.009899495169520378,
+          "backbone_last_h_rel_l2": 0.0092761917039752
+        }
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.16,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 0,
+          "frame0_cb0_logits_rel_l2": 0.004385252483189106,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.008595321327447891,
+          "logits_rel_l2": 0.7381162643432617,
+          "backbone_last_h_rel_l2": 0.3213067352771759
+        }
+      }
+    },
+    "codec": false,
+    "nan_anywhere": false,
+    "vram_peak_gib": 12.79,
+    "bytes": 1171910
+  },
+  {
+    "file": "vocal_es_12s__cpu_f32",
+    "case": "vocal_es_12s",
+    "trace": "cpu_f32",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 121.74,
+        "vs_cpu_f32": null
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 142.59,
+        "vs_cpu_f32": null
+      }
+    },
+    "codec": false,
+    "nan_anywhere": false,
+    "vram_peak_gib": null,
+    "bytes": 1171829
+  },
+  {
+    "file": "vocal_es_12s__cuda_bf16",
+    "case": "vocal_es_12s",
+    "trace": "cuda_bf16",
+    "lm": {
+      "greedy": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.41,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 2,
+          "frame0_cb0_logits_rel_l2": 0.004577601328492165,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.008905723690986633,
+          "logits_rel_l2": 0.008886510506272316,
+          "backbone_last_h_rel_l2": 0.009529853239655495
+        }
+      },
+      "sampled": {
+        "frames": 151,
+        "stopped_early": false,
+        "wall_s": 132.23,
+        "vs_cpu_f32": {
+          "frames_equal": false,
+          "first_divergent_frame": 0,
+          "frame0_cb0_logits_rel_l2": 0.004577601328492165,
+          "frame0_cb0_argmax_equal": true,
+          "frame0_backbone_last_h_rel_l2": 0.008905723690986633,
+          "logits_rel_l2": 0.760331928730011,
+          "backbone_last_h_rel_l2": 0.3825700879096985
+        }
+      }
+    },
+    "codec": false,
+    "nan_anywhere": false,
+    "vram_peak_gib": 12.79,
+    "bytes": 1171829
+  }
+]
