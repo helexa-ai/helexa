@@ -54,7 +54,9 @@ samples = struct.unpack(f"<{n * 2}h", b[44:44 + n * 4])
 rms = (sum(s * s for s in samples) / len(samples)) ** 0.5 / 32767
 peak = max(abs(s) for s in samples) / 32767
 assert rms > 0.01, f"near-silent: rms {rms:.4f}"
-assert 0.5 < peak <= 1.0, f"peak {peak:.3f}"
+# Levels follow each upstream: ACE-Step normalises to -1 dBFS, HeartMuLa
+# does not. The rms check above is what catches silence.
+assert 0.1 < peak <= 1.0, f"peak {peak:.3f}"
 print(f"   {secs:.2f}s 48kHz stereo | rms {rms:.3f} peak {peak:.3f}")
 PY
 }
