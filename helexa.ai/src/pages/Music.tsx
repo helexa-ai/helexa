@@ -8,6 +8,7 @@ import { CHAT_API_KEY, db } from "../data/db";
 import { ensureChatKey } from "../lib/ensureChatKey";
 import {
   type AudioJob,
+  type ModelNotice,
   type MusicModel,
   MusicError,
   cancelJob,
@@ -212,6 +213,8 @@ export default function Music() {
             </button>
           </div>
 
+          <Notices notices={model?.notices ?? []} />
+
           <label className="hx-music-field">
             <span>{t("music:style")}</span>
             <textarea
@@ -322,6 +325,7 @@ export default function Music() {
               <JobCard
                 key={job.id}
                 job={job}
+                notices={models?.find((m) => m.id === job.model)?.notices ?? []}
                 apiKey={key}
                 onChanged={(j) => setJobs((js) => js.map((x) => (x.id === j.id ? j : x)))}
               />
@@ -339,12 +343,38 @@ export default function Music() {
  * spend the visitor's bandwidth on songs they may never play. The object
  * URL is revoked when the card goes away.
  */
+/**
+ * Notices an upstream licence asks to be passed on, shown beside the one
+ * model they apply to. They are the model's, not the service's terms.
+ */
+function Notices({ notices }: { notices: ModelNotice[] }): React.ReactElement | null {
+  if (notices.length === 0) return null;
+  return (
+    <p className="small text-muted hx-music-notices">
+      {notices.map((n, i) => (
+        <span key={i}>
+          {i > 0 ? " · " : null}
+          {n.url ? (
+            <a href={n.url} target="_blank" rel="noreferrer">
+              {n.text}
+            </a>
+          ) : (
+            n.text
+          )}
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function JobCard({
   job,
+  notices,
   apiKey,
   onChanged,
 }: {
   job: AudioJob;
+  notices: ModelNotice[];
   apiKey?: string;
   onChanged: (j: AudioJob) => void;
 }): React.ReactElement {
@@ -434,6 +464,7 @@ function JobCard({
         ) : null}
       </div>
       {loadError ? <p className="small text-warning">{t("music:errorLoad")}</p> : null}
+      {job.status === "succeeded" ? <Notices notices={notices} /> : null}
     </article>
   );
 }

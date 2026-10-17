@@ -68,12 +68,12 @@ pub struct ImageHandle(pub u64);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DecisionHandle(pub u64);
 
-/// Opaque handle to an ACE-Step music pipeline ([`AceStepEngine`]) stored
+/// Opaque handle to a music engine ([`AudioEngine`]) stored
 /// in the worker thread's audio slab (#383). Same discipline as
 /// [`ImageHandle`]: construction, every generation and `Drop` happen on the
 /// worker thread, and `Job::DropAudio` is the only way to release it.
 ///
-/// [`AceStepEngine`]: crate::harness::audio::AceStepEngine
+/// [`AudioEngine`]: crate::harness::audio::AudioEngine
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u64);
 
@@ -597,7 +597,7 @@ pub enum Job {
     /// Load an ACE-Step snapshot (#383) — already on local disk — into
     /// the audio slab. File resolution (hf-hub) happens on the async side.
     LoadAudio {
-        files: crate::harness::audio::AceStepFiles,
+        files: crate::harness::audio::AudioFiles,
         model_id: String,
         reply: oneshot::Sender<Result<AudioHandle>>,
     },

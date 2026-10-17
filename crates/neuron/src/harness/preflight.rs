@@ -59,6 +59,10 @@ pub enum SourceFormat {
     /// `config.json`. Served by the decision path — single device,
     /// unquantized. Takes precedence over the safetensors sniff.
     DecisionModel,
+    /// A HeartMuLa LM repo (#393): sharded safetensors like any dense LLM,
+    /// told apart by `model_type: heartmula` in its `config.json`. Served by
+    /// the audio path with its codec from a sibling repo; single device.
+    HeartMuLa,
     /// An ACE-Step 1.5 music repo (#383): the turbo DiT, text encoder,
     /// VAE and planner as subfolders of one snapshot. Served by the audio
     /// path — single device, unquantized for now. Takes precedence over
@@ -181,7 +185,17 @@ pub async fn preflight(
     };
 
     let filenames: Vec<&str> = owned_filenames.iter().map(String::as_str).collect();
-    let format = classify(&filenames);
+    let mut format = classify(&filenames);
+    // A HeartMuLa LM (#393) looks like any dense checkpoint by its file
+    // names; only its config says otherwise.
+    if matches!(format, SourceFormat::DenseSafetensors { .. })
+        && filenames.contains(&"config.json")
+        && let Ok(path) = repo.get("config.json").await
+        && std::fs::read_to_string(&path)
+            .is_ok_and(|t| crate::harness::audio::is_heartmula_config(&t))
+    {
+        format = SourceFormat::HeartMuLa;
+    }
     let tp_size = spec.tensor_parallel.unwrap_or(1);
 
     match (&format, tp_size, spec.quant.as_deref()) {
@@ -264,17 +278,21 @@ pub async fn preflight(
             tp_size,
             picked_quant_file: None,
         }),
-        (SourceFormat::AceStep, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
-            model_id: source_id.to_string(),
-            reason: format!(
-                "music models load on a single device; tensor_parallel={tp} is not supported"
-            ),
-        }),
-        (SourceFormat::AceStep, _, Some(q)) => Err(PreflightError::Unsupported {
-            model_id: source_id.to_string(),
-            reason: format!("music models load unquantized for now; remove quant={q:?}"),
-        }),
-        (SourceFormat::AceStep, _, None) => Ok(PlacementPlan {
+        (SourceFormat::AceStep | SourceFormat::HeartMuLa, tp, _) if tp > 1 => {
+            Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!(
+                    "music models load on a single device; tensor_parallel={tp} is not supported"
+                ),
+            })
+        }
+        (SourceFormat::AceStep | SourceFormat::HeartMuLa, _, Some(q)) => {
+            Err(PreflightError::Unsupported {
+                model_id: source_id.to_string(),
+                reason: format!("music models load unquantized for now; remove quant={q:?}"),
+            })
+        }
+        (SourceFormat::AceStep | SourceFormat::HeartMuLa, _, None) => Ok(PlacementPlan {
             model_id: source_id.to_string(),
             format: format.clone(),
             tp_size,
@@ -732,15 +750,19 @@ mod tests {
                 tp_size,
                 picked_quant_file: None,
             }),
-            (SourceFormat::AceStep, tp, _) if tp > 1 => Err(PreflightError::Unsupported {
-                model_id: source_id.to_string(),
-                reason: format!("music models load on a single device; tensor_parallel={tp}"),
-            }),
-            (SourceFormat::AceStep, _, Some(q)) => Err(PreflightError::Unsupported {
-                model_id: source_id.to_string(),
-                reason: format!("music models load unquantized for now; remove quant={q:?}"),
-            }),
-            (SourceFormat::AceStep, _, None) => Ok(PlacementPlan {
+            (SourceFormat::AceStep | SourceFormat::HeartMuLa, tp, _) if tp > 1 => {
+                Err(PreflightError::Unsupported {
+                    model_id: source_id.to_string(),
+                    reason: format!("music models load on a single device; tensor_parallel={tp}"),
+                })
+            }
+            (SourceFormat::AceStep | SourceFormat::HeartMuLa, _, Some(q)) => {
+                Err(PreflightError::Unsupported {
+                    model_id: source_id.to_string(),
+                    reason: format!("music models load unquantized for now; remove quant={q:?}"),
+                })
+            }
+            (SourceFormat::AceStep | SourceFormat::HeartMuLa, _, None) => Ok(PlacementPlan {
                 model_id: source_id.to_string(),
                 format: format.clone(),
                 tp_size,

@@ -73,7 +73,7 @@ struct DeviceWorkerState {
     next_decision_handle: u64,
     /// ACE-Step music pipeline slab (#383). Same lifecycle discipline as
     /// `image_models`, in its own namespace.
-    audio_models: HashMap<AudioHandle, Box<crate::harness::audio::AceStepEngine>>,
+    audio_models: HashMap<AudioHandle, Box<crate::harness::audio::AudioEngine>>,
     /// Counter for minting fresh `AudioHandle`s.
     next_audio_handle: u64,
     /// Leader's NCCL state. Populated by `Job::NcclInit`; the
@@ -823,14 +823,15 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 model_id,
                 reply,
             } => {
-                let result = crate::harness::audio::AceStepEngine::load(&files, &state.device)
-                    .with_context(|| format!("load ace-step pipeline for {model_id}"))
+                let result = crate::harness::audio::AudioEngine::load(&files, &state.device)
+                    .with_context(|| format!("load audio engine for {model_id}"))
                     .map(|engine| {
                         let handle = AudioHandle(state.next_audio_handle);
                         state.next_audio_handle = state.next_audio_handle.wrapping_add(1);
                         tracing::info!(
                             device_index,
                             model_id,
+                            engine = engine.name(),
                             planner = engine.has_planner(),
                             handle = handle.0,
                             "device worker: audio pipeline loaded"

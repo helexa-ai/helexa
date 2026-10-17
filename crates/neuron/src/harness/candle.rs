@@ -4085,7 +4085,21 @@ impl Harness for CandleHarness {
         // ACE-Step music models (#383) take the audio path: one device,
         // unquantized (preflight rejected tp>1 and quant).
         if matches!(plan.format, super::preflight::SourceFormat::AceStep) {
-            return self.load_audio_model(spec, &source_id).await;
+            let files =
+                super::audio::AudioFiles::AceStep(self.resolve_audio_files(&source_id).await?);
+            return self
+                .load_audio_model(spec, files, super::audio::ACESTEP_LIMITS)
+                .await;
+        }
+        // HeartMuLa (#393): the LM repo, plus its codec and generation
+        // config from sibling repos.
+        if matches!(plan.format, super::preflight::SourceFormat::HeartMuLa) {
+            let files = super::audio::AudioFiles::HeartMuLa(
+                self.resolve_heartmula_files(&source_id).await?,
+            );
+            return self
+                .load_audio_model(spec, files, super::audio::HEARTMULA_LIMITS)
+                .await;
         }
 
         let tp_size = spec.tensor_parallel.unwrap_or(1);
@@ -4650,7 +4664,8 @@ impl CandleHarness {
     async fn load_audio_model(
         &self,
         spec: &ModelSpec,
-        source_id: &cortex_core::source::ModelSourceId,
+        files: super::audio::AudioFiles,
+        limits: cortex_core::audio::AudioLimits,
     ) -> Result<()> {
         let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
         let device = Self::pick_device(&devices)?;
@@ -4665,8 +4680,8 @@ impl CandleHarness {
             ),
         };
 
-        let files = self.resolve_audio_files(source_id).await?;
-        let has_planner = files.planner.is_some();
+        let has_planner =
+            matches!(&files, super::audio::AudioFiles::AceStep(f) if f.planner.is_some());
         let handle = worker
             .load_audio(files, spec.model_id.clone())
             .await
@@ -4685,7 +4700,7 @@ impl CandleHarness {
             worker,
             handle,
             has_planner,
-            limits: super::audio::ACESTEP_LIMITS,
+            limits,
             poisoned: Arc::new(AtomicBool::new(false)),
             admission: crate::harness::admission::AdmissionController::new(&admission_cfg),
             inference_lock: Arc::new(tokio::sync::Mutex::new(())),
@@ -4742,6 +4757,59 @@ impl CandleHarness {
             }
         }
         Ok(super::audio::AceStepFiles { root, planner })
+    }
+
+    /// Resolve a HeartMuLa LM repo (#393) and the two sibling repos it
+    /// needs — the codec and the generation config — through the same
+    /// registry, downloading as needed.
+    async fn resolve_heartmula_files(
+        &self,
+        source_id: &cortex_core::source::ModelSourceId,
+    ) -> Result<super::audio::HeartMuLaFiles> {
+        let api = self.hf_api_for(&source_id.scheme)?;
+        // Every file of a repo, fetched; returns the snapshot directory.
+        async fn fetch_all(
+            api: &hf_hub::api::tokio::Api,
+            repo_path: String,
+        ) -> Result<std::path::PathBuf> {
+            let repo = api.model(repo_path.clone());
+            let info = repo
+                .info()
+                .await
+                .with_context(|| format!("list files of {repo_path}"))?;
+            let mut dir = None;
+            for s in info.siblings {
+                let path = repo
+                    .get(&s.rfilename)
+                    .await
+                    .with_context(|| format!("fetch {} from {repo_path}", s.rfilename))?;
+                if s.rfilename == "config.json" || dir.is_none() && !s.rfilename.contains('/') {
+                    dir = path.parent().map(|p| p.to_path_buf());
+                }
+            }
+            dir.with_context(|| format!("{repo_path} has no top-level files"))
+        }
+        let lm_dir = fetch_all(&api, source_id.repo_path()).await?;
+        let codec_dir = fetch_all(&api, super::audio::HEARTCODEC_REPO.to_string()).await?;
+        let gen_repo = api.model(super::audio::HEARTMULA_GEN_REPO.to_string());
+        let tokenizer = gen_repo.get("tokenizer.json").await.with_context(|| {
+            format!(
+                "fetch tokenizer.json from {}",
+                super::audio::HEARTMULA_GEN_REPO
+            )
+        })?;
+        let gen_config = gen_repo.get("gen_config.json").await.with_context(|| {
+            format!(
+                "fetch gen_config.json from {}",
+                super::audio::HEARTMULA_GEN_REPO
+            )
+        })?;
+        Ok(super::audio::HeartMuLaFiles {
+            lm_dir,
+            codec_dir,
+            tokenizer,
+            gen_config,
+        })
     }
 
     /// Load a Laya decision model (#336): resolve the checkpoints' files,
@@ -5235,6 +5303,7 @@ impl CandleHarness {
             planner,
             temperature: request.temperature,
             language: request.language.clone(),
+            top_k: request.top_k.map(|k| k as usize),
         };
 
         let _permit = audio.admission.enter(principal).await?;
