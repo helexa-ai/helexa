@@ -1242,3 +1242,77 @@ retries, a bench `decision:` scenario, a dashboard panel,
 micro-batching); #342 (serving fine-tuned checkpoints); #352 (Z-Image on
 the ampere flash build, unrelated to Laya but enabled by the same
 flavour change).
+
+## 2026-10-17 addendum: music generation (epics #378, #379)
+
+Music is the fourth modality. Two engines serve candle-natively on
+benjy's RTX 4090 through the device-worker discipline (`AudioHandle`
+slab; `LoadAudio` / `DropAudio` / `GenerateAudio` jobs; CPU-side sample
+replies, WAV encoded async-side):
+
+- **ACE-Step 1.5** (MIT): turbo DiT + Qwen3-Embedding text encoder +
+  48 kHz stereo VAE, with an optional 1.7B planner LM. Vendored from
+  candle PR #3451 into `harness/arch/acestep/`. 10–600 s.
+- **HeartMuLa oss-3B** (Apache-2.0; Llama 3.2 tokenizer): an
+  autoregressive LM (bf16) plus HeartCodec (f32), from two sibling repos
+  (`HeartCodec-oss-20260123`, `HeartMuLaGen`). Detected by
+  `model_type: heartmula`. 10–240 s.
+
+**Surface: async jobs only.** `/v1/audio/generations`: POST submits and
+returns 202 with a job; GET lists; `/{id}` polls; `/{id}/content`
+fetches the WAV; DELETE cancels. **cortex owns the jobs**, persisting
+them under `[audio_jobs] dir` and re-queueing unfinished ones on restart.
+neuron renders synchronously and returns the WAV plus an
+`x-helexa-audio-result` header. The router dispatches POST by capacity
+and fans GET/DELETE out across cortexes until one answers non-404. Wire
+types are in `cortex-core/src/audio.rs`; limits (`[models.audio]`) and
+model-scoped licence notices (`[[models.notices]]`) come from the
+catalogue and are advertised in `/v1/models`.
+
+**Metering: per audio-second**, at a per-model rate stored in
+helexa-upstream's `model_rates` table (`GET /authz/v1/rates`, cached by
+cortex's `rates.rs`; lookup is the model id, then `'*'`). Unpriced
+metered submissions get 503. A job settles at the rate it was reserved at.
+
+**Live numbers (benjy 4090, deployed build, 2026-10-17):**
+
+| | Resident | 10 s warm | 30 s | Cold swap from text |
+|---|---|---|---|---|
+| ACE-Step (planner loaded, off) | ~10.2 GB | 0.56 s | — | ~1 s load |
+| HeartMuLa | 14.6 GB | 4.3 s (LM 2.4 + codec 1.9) | 11.1 s | 8 s wall incl. load |
+
+Text restores in 2.5 s. Same seed gives byte-identical output on both
+engines, and the chain render is byte-identical to the direct neuron
+render.
+
+**Sharp edges:**
+
+- **ACE-Step needs DCW.** The Haar "double" correction after every turbo
+  step: without it, latents are 90% off upstream. Parity with the
+  upstream CPU f32 reference is ~1e-5 with it.
+- **Seeding is host-side** (SplitMix64 + Box-Muller): candle's CPU
+  `set_seed` is unsupported, and a host RNG makes CPU and GPU agree.
+- **The ACE planner checkpoint has no `model.` prefix**; it is renamed at
+  load. A planner that fails to load is non-fatal. It stays off unless
+  `planner: "on"` until #384 closes the parity gaps (code-phase CFG,
+  constrained decoding).
+- **Levels follow each upstream.** ACE-Step peak-normalises to −1 dBFS;
+  HeartMuLa does not.
+- **ACE timing is one number.** `text2music` is a single call, so
+  `generate_ms` covers encode + denoise + VAE.
+- **HeartMuLa's first decode after load is slow** (~33 s, one-time
+  warm-up); every decode after that is ~2 s per 10 s of audio.
+- **benjy's root drive is slow under pressure** (DRAM-less, 90% full;
+  ~8 MB/s flush). First fetches of 20 GB take ~25 min because each
+  shard's close() waits on writeback. Before #409 a client timeout
+  cancelled the load and threw the progress away.
+- **Validation:** `script/validate-audio.sh [host] [cortex] [model]`
+  (guarded window: evicts and restores co-resident models). helexa-bench
+  has an `audio:<secs>` scenario.
+
+**Retired:** the PyTorch evaluation beta (`beta.music.helexa.ai`, #388).
+Its ratings data is archived privately.
+
+**Next:** #384 (planner parity), #385 (q8 + an 8 GB profile), and the
+Pascal epic #380 (rig work waits until rigs are named; the fallback if
+ACE-Step cannot run on Pascal is Stable Audio and/or EzAudio).
