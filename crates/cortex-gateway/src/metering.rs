@@ -228,6 +228,46 @@ pub fn settle_image_usage(
     guard.settle(tokens);
 }
 
+/// Budget-equivalence rate for audio generation (#382): token-budget units
+/// per audio-second. A placeholder bridge into the single-currency ledger,
+/// the same way [`TOKENS_PER_IMAGE_UNIT`] bridges images, until #386 moves
+/// audio rates to per-model rows in the clearing house's database.
+pub const TOKENS_PER_AUDIO_SECOND: u64 = 1000;
+
+/// Audio-seconds to reserve for a job: the requested duration, else the
+/// model's advertised default, else a minute. Settle corrects to the actual
+/// length the neuron reports.
+pub fn audio_reservation_seconds(requested: Option<f64>, model_default: Option<f64>) -> f64 {
+    requested
+        .or(model_default)
+        .filter(|d| d.is_finite() && *d > 0.0)
+        .unwrap_or(60.0)
+}
+
+/// Convert audio-seconds to budget tokens, rounding up.
+pub fn audio_seconds_to_tokens(seconds: f64) -> u64 {
+    (seconds * TOKENS_PER_AUDIO_SECOND as f64).ceil() as u64
+}
+
+/// Record per-principal audio spend and settle the reservation with the
+/// audio-seconds actually generated.
+pub fn settle_audio_usage(
+    principal: &Principal,
+    guard: ReservationGuard,
+    served_usage: &crate::served_usage::ServedUsage,
+    audio_seconds: f64,
+) {
+    let labels = [
+        ("account", principal.account_id.clone()),
+        ("key", principal.key_id.clone()),
+    ];
+    metrics::counter!("cortex_spend_audio_milliseconds_total", &labels)
+        .increment((audio_seconds * 1000.0).round() as u64);
+    let tokens = audio_seconds_to_tokens(audio_seconds);
+    served_usage.add(&principal.account_id, &principal.key_id, tokens);
+    guard.settle(tokens);
+}
+
 /// Map a [`BudgetError`] to the #63 envelope. The provider chose the window
 /// semantics; this only translates them to HTTP.
 fn budget_error_to_envelope(err: BudgetError) -> OpenAiError {

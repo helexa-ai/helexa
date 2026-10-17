@@ -82,6 +82,7 @@ fn make_fleet_with_catalogue(
         models_config: path.to_string_lossy().into_owned(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     (Arc::new(CortexState::from_config(&config)), path)
 }
@@ -144,6 +145,7 @@ fn make_fleet(endpoint: &str, defrag_after: u32) -> Arc<CortexState> {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     Arc::new(CortexState::from_config(&config))
 }

@@ -33,6 +33,7 @@ async fn test_poller_discovers_models() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -86,6 +87,7 @@ async fn test_poller_updates_gateway_models_endpoint() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -159,6 +161,7 @@ async fn test_models_endpoint_unions_capabilities_across_nodes() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -223,6 +226,7 @@ async fn test_poller_marks_unreachable_node_unhealthy() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -278,6 +282,7 @@ async fn test_poller_removes_stale_models() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -310,6 +315,7 @@ async fn test_poller_removes_stale_models() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet2 = Arc::new(CortexState::from_config(&config2));
@@ -397,6 +403,7 @@ async fn test_poller_captures_activation_from_health() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -443,6 +450,7 @@ async fn test_poller_parses_recovering_status() {
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));

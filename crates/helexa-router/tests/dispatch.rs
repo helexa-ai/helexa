@@ -37,6 +37,7 @@ fn model_entry(loaded: bool, feasible: bool) -> CortexModelEntry {
         capabilities: vec![],
         limit: None,
         cost: None,
+        audio: None,
         tool_call: false,
         reasoning: false,
         max_model_len: None,

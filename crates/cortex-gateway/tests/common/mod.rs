@@ -498,6 +498,7 @@ pub async fn spawn_gateway_with_state(mock_url: &str) -> (Arc<CortexState>, Stri
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
@@ -559,6 +560,7 @@ pub async fn two_neuron_fleet(endpoint_a: &str, endpoint_b: &str) -> Arc<CortexS
         models_config: "/dev/null".into(),
         entitlements: Default::default(),
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
     Arc::new(CortexState::from_config(&config))
 }

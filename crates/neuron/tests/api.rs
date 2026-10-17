@@ -820,3 +820,55 @@ async fn null_assistant_content_is_not_a_body_rejection() {
     assert_ne!(resp.status(), 422, "null content must not be a body error");
     assert_ne!(resp.status(), 400, "null content must not be a body error");
 }
+
+// ── /v1/audio/generations (#382) ─────────────────────────────────
+//
+// The neuron half of the async audio job API: one synchronous render per
+// call. The envelope and error mapping are tested here; rendering needs an
+// audio engine (#383) and is validated on the fleet.
+
+#[tokio::test]
+async fn test_audio_no_candle_harness_503() {
+    let url = spawn_neuron(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/audio/generations"))
+        .json(&json!({"model": "m", "prompt": "lofi"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 503);
+}
+
+#[tokio::test]
+async fn test_audio_model_not_loaded_404() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    let resp = reqwest::Client::new()
+        .post(format!("{url}/v1/audio/generations"))
+        .json(&json!({"model": "ACE-Step/Ace-Step1.5", "prompt": "lofi"}))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    let body: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "model_not_found");
+}
+
+#[tokio::test]
+async fn test_audio_invalid_params_400() {
+    let url = spawn_neuron_with_candle(fake_discovery()).await;
+    for bad in [
+        json!({"model": "m", "prompt": ""}),
+        json!({"model": "m", "prompt": "lofi", "duration": -3}),
+        json!({"model": "m", "prompt": "lofi", "response_format": "ogg"}),
+    ] {
+        let resp = reqwest::Client::new()
+            .post(format!("{url}/v1/audio/generations"))
+            .json(&bad)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "{bad}");
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["error"]["code"], "invalid_audio_params", "{bad}");
+    }
+}

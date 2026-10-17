@@ -168,6 +168,7 @@ mod tests {
             capabilities: vec![],
             limit: None,
             cost: None,
+            audio: None,
             tool_call: false,
             reasoning: false,
             max_model_len: None,

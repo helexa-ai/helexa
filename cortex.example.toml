@@ -113,3 +113,19 @@ enabled = false
 # timeout_secs = 5
 # How often to flush served-usage counters to upstream for reconciliation (#58).
 # served_usage_report_interval_secs = 60
+
+# -- Async audio generation jobs (#382) -----------------------------------
+# Music renders take seconds to minutes, so /v1/audio/generations is a job
+# API: submit, poll, fetch the audio. Job records and rendered audio live
+# under `dir` and survive a restart (the packaged unit's StateDirectory
+# creates /var/lib/cortex). All values below are the defaults.
+[audio_jobs]
+# dir = "/var/lib/cortex/audio-jobs"
+# Finished jobs and their audio are deleted after this many hours.
+# retention_hours = 72
+# Renders running at once across the fleet; the rest queue in cortex.
+# max_concurrent = 4
+# Dispatch attempts per job; a busy (429/503) model does not use one up.
+# max_attempts = 2
+# How long a job may wait on a busy model before failing, in seconds.
+# queue_timeout_secs = 3600

@@ -166,7 +166,7 @@ pub trait Scenario: Send + Sync {
 
 /// Capabilities that mark a model as serving an endpoint other than
 /// chat completions.
-const NON_CHAT_MODALITIES: [&str; 2] = ["image", "decision"];
+const NON_CHAT_MODALITIES: [&str; 3] = ["image", "decision", "audio"];
 
 /// Whether a model answers `/v1/chat/completions`.
 pub fn serves_chat(model: &ModelInfo) -> bool {
@@ -915,6 +915,7 @@ mod tests {
         assert!(serves_chat(&model(&["text", "vision"])));
         assert!(!serves_chat(&model(&["image"])));
         assert!(!serves_chat(&model(&["decision"])));
+        assert!(!serves_chat(&model(&["audio"])));
         let image = ImageLatencyScenario {
             id: "image:512".into(),
             side_px: 512,

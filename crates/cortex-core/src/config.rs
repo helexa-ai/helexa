@@ -28,6 +28,63 @@ pub struct GatewayConfig {
     /// — a single operator runs purely local.
     #[serde(default)]
     pub upstream: UpstreamClientConfig,
+    /// Async music/audio generation jobs (#382).
+    #[serde(default)]
+    pub audio_jobs: AudioJobsConfig,
+}
+
+/// `[audio_jobs]` — where cortex keeps async audio generation jobs (#382).
+///
+/// A job record and its rendered audio are written under `dir`, so finished
+/// results and the job list survive a cortex restart. If `dir` cannot be
+/// created the store runs in memory only and says so at startup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioJobsConfig {
+    #[serde(default = "default_audio_jobs_dir")]
+    pub dir: String,
+    /// How long a finished job and its audio are kept, in hours.
+    #[serde(default = "default_audio_retention_hours")]
+    pub retention_hours: u64,
+    /// How many renders cortex runs at once across the fleet. Each one
+    /// occupies a neuron device for its whole duration; queued jobs wait
+    /// in cortex rather than piling onto neuron admission queues.
+    #[serde(default = "default_audio_max_concurrent")]
+    pub max_concurrent: usize,
+    /// Dispatch attempts per job before it fails. A busy neuron (429/503)
+    /// does not consume an attempt; an unreachable or failing one does.
+    #[serde(default = "default_audio_max_attempts")]
+    pub max_attempts: u32,
+    /// How long a job may wait for a busy model before it fails, in seconds.
+    #[serde(default = "default_audio_queue_timeout")]
+    pub queue_timeout_secs: u64,
+}
+
+impl Default for AudioJobsConfig {
+    fn default() -> Self {
+        Self {
+            dir: default_audio_jobs_dir(),
+            retention_hours: default_audio_retention_hours(),
+            max_concurrent: default_audio_max_concurrent(),
+            max_attempts: default_audio_max_attempts(),
+            queue_timeout_secs: default_audio_queue_timeout(),
+        }
+    }
+}
+
+fn default_audio_jobs_dir() -> String {
+    "/var/lib/cortex/audio-jobs".into()
+}
+fn default_audio_retention_hours() -> u64 {
+    72
+}
+fn default_audio_max_concurrent() -> usize {
+    4
+}
+fn default_audio_max_attempts() -> u32 {
+    2
+}
+fn default_audio_queue_timeout() -> u64 {
+    3600
 }
 
 /// `[upstream]` — the helexa-upstream authority client (#57). Locally
@@ -200,6 +257,7 @@ impl Default for GatewayConfig {
             models_config: default_models_path(),
             entitlements: EntitlementsConfig::default(),
             upstream: UpstreamClientConfig::default(),
+            audio_jobs: AudioJobsConfig::default(),
         }
     }
 }

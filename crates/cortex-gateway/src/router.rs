@@ -663,6 +663,7 @@ mod tests {
             limit: None,
             cost: None,
             capabilities: vec![],
+            audio: None,
         }
     }
 

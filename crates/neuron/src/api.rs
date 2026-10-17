@@ -55,6 +55,7 @@ pub fn neuron_routes() -> Router<Arc<NeuronState>> {
         .route("/models/{model_id}/capabilities", get(model_capabilities))
         .route("/v1/chat/completions", post(chat_completions))
         .route("/v1/images/generations", post(images_generations))
+        .route("/v1/audio/generations", post(audio_generations))
         .route("/v1/systemone", post(systemone))
         .route("/v1/responses", post(responses))
 }
@@ -665,6 +666,61 @@ async fn images_generations(
                 }),
             })
             .into_response()
+        }
+        Err(e) => inference_error_response(e),
+    }
+}
+
+/// `POST /v1/audio/generations` (#382): render one audio generation and
+/// return it. This is the neuron half of the async job API — cortex owns
+/// the job and calls this once per job, waiting for the whole render. The
+/// body is the audio (`audio/wav`); the result metadata travels in the
+/// [`cortex_core::audio::RESULT_HEADER`] header so the bytes need no
+/// base64 envelope.
+async fn audio_generations(
+    State(state): State<Arc<NeuronState>>,
+    headers: axum::http::HeaderMap,
+    ApiJson(req): ApiJson<cortex_core::audio::AudioGenerationRequest>,
+) -> axum::response::Response {
+    use cortex_core::audio::RESULT_HEADER;
+    use cortex_core::error_envelope::OpenAiError;
+
+    let Some(candle) = state.candle.as_ref().map(Arc::clone) else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "candle harness not enabled on this neuron"})),
+        )
+            .into_response();
+    };
+    if let Err(msg) = req.validate_shape() {
+        return envelope_response(OpenAiError::new(
+            400,
+            "invalid_request_error",
+            "invalid_audio_params",
+            format!("invalid audio generation parameters: {msg}"),
+        ));
+    }
+    let principal = principal_key(&headers);
+    match candle.audio_generation(&req, principal.as_deref()).await {
+        Ok((wav, result)) => {
+            let meta = match serde_json::to_string(&result) {
+                Ok(m) => m,
+                Err(e) => {
+                    return inference_error_response(InferenceError::Other(anyhow::anyhow!(
+                        "serialise audio result: {e}"
+                    )));
+                }
+            };
+            let mut resp = axum::response::Response::new(axum::body::Body::from(wav));
+            let h = resp.headers_mut();
+            h.insert(
+                axum::http::header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("audio/wav"),
+            );
+            if let Ok(v) = axum::http::HeaderValue::from_str(&meta) {
+                h.insert(RESULT_HEADER, v);
+            }
+            resp
         }
         Err(e) => inference_error_response(e),
     }

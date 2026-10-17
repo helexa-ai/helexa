@@ -106,6 +106,7 @@ async fn spawn_gateway(neuron_url: &str, entitlements: EntitlementsConfig) -> St
         models_config: "/dev/null".into(),
         entitlements,
         upstream: Default::default(),
+        audio_jobs: Default::default(),
     };
 
     let fleet = Arc::new(CortexState::from_config(&config));
