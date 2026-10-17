@@ -249,6 +249,13 @@ jobs:
     runs-on: rust
     needs: changes
     if: needs.changes.outputs.rust == 'true'
+    # Line tables only: full debuginfo for the whole graph made the neuron
+    # test binary's compile and link the memory peak of the job, and on the
+    # 15 GB rust runners a Test sharing the host with a Clippy was killed
+    # mid-compile with no log (2026-10-17). Backtraces keep file:line.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: line-tables-only
+      CARGO_PROFILE_TEST_DEBUG: line-tables-only
     steps:
       - uses: actions/checkout@v4
       # See script/ci-cargo-escalate.sh for the escalation rationale.
