@@ -1,0 +1,603 @@
+{
+ "stats": {
+  "text_token_ids": {
+   "shape": [
+    1,
+    67
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 13472.3427734375,
+   "std": 31160.529296875
+  },
+  "text_hidden_states": {
+   "shape": [
+    1,
+    67,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 25.875,
+   "mean": 0.002452658023685217,
+   "std": 3.2396602630615234
+  },
+  "lyric_token_ids": {
+   "shape": [
+    1,
+    41
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 151643.0,
+   "mean": 16989.21875,
+   "std": 36542.62109375
+  },
+  "lyric_embeds": {
+   "shape": [
+    1,
+    41,
+    1024
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.130859375,
+   "mean": 4.701836223830469e-05,
+   "std": 0.030562281608581543
+  },
+  "lyric_encoder_out": {
+   "shape": [
+    1,
+    41,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 5.65625,
+   "mean": 0.0003797631070483476,
+   "std": 0.18188199400901794
+  },
+  "encoder_hidden_states": {
+   "shape": [
+    1,
+    109,
+    2048
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 59.75,
+   "mean": 0.00843824353069067,
+   "std": 2.99655818939209
+  },
+  "encoder_attention_mask": {
+   "shape": [
+    1,
+    109
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 0.9999999403953552,
+   "std": 0.0
+  },
+  "gen_src_latents": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": -0.20528317987918854,
+   "std": 0.9639971852302551
+  },
+  "gen_chunk_masks": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_is_covers": {
+   "shape": [
+    1
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "gen_text_attention_mask": {
+   "shape": [
+    1,
+    67
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "gen_lyric_attention_mask": {
+   "shape": [
+    1,
+    41
+   ],
+   "dtype": "bool",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 0.9999999403953552,
+   "std": 0.0
+  },
+  "gen_refer_audio_acoustic_hidden_states_packed": {
+   "shape": [
+    1,
+    750,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": -0.20527024567127228,
+   "std": 0.9638134837150574
+  },
+  "gen_refer_audio_order_mask": {
+   "shape": [
+    1
+   ],
+   "dtype": "int64",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.0,
+   "mean": 0.0,
+   "std": 0.0
+  },
+  "noise": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0625,
+   "mean": -0.0002941298589576036,
+   "std": 1.0064269304275513
+  },
+  "decoder_attention_mask": {
+   "shape": [
+    1,
+    500
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.0,
+   "mean": 1.0,
+   "std": 0.0
+  },
+  "context_latents": {
+   "shape": [
+    1,
+    500,
+    128
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.71875,
+   "mean": 0.39735841751098633,
+   "std": 0.9098464846611023
+  },
+  "target_latents": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.8125,
+   "mean": -0.0816856101155281,
+   "std": 0.9869979023933411
+  },
+  "vae_input": {
+   "shape": [
+    1,
+    64,
+    500
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 6.8125,
+   "mean": -0.0816856101155281,
+   "std": 0.9869979023933411
+  },
+  "vae_output": {
+   "shape": [
+    1,
+    2,
+    960000
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 1.2890625,
+   "mean": 0.001541613251902163,
+   "std": 0.14664174616336823
+  },
+  "step0_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.0625,
+   "mean": -0.00029413020820356905,
+   "std": 1.0064269304275513
+  },
+  "step0_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.625,
+   "mean": 0.06186574697494507,
+   "std": 1.0502021312713623
+  },
+  "step1_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.03125,
+   "mean": -0.00023740828328300267,
+   "std": 0.9922626614570618
+  },
+  "step1_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 7.53125,
+   "mean": 0.08569718152284622,
+   "std": 1.0762202739715576
+  },
+  "step2_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.921875,
+   "mean": -0.001249109860509634,
+   "std": 0.9704688191413879
+  },
+  "step2_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.0625,
+   "mean": 0.08862171322107315,
+   "std": 1.1320973634719849
+  },
+  "step3_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.734375,
+   "mean": -0.003833203110843897,
+   "std": 0.9413980841636658
+  },
+  "step3_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 8.8125,
+   "mean": 0.09563593566417694,
+   "std": 1.2153935432434082
+  },
+  "step4_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.625,
+   "mean": -0.008681949228048325,
+   "std": 0.9024554491043091
+  },
+  "step4_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.0625,
+   "mean": 0.09556166082620621,
+   "std": 1.268105149269104
+  },
+  "step5_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.4375,
+   "mean": -0.01645704358816147,
+   "std": 0.8540758490562439
+  },
+  "step5_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.375,
+   "mean": 0.09978307783603668,
+   "std": 1.3256272077560425
+  },
+  "step6_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 3.734375,
+   "mean": -0.02926945686340332,
+   "std": 0.8061334490776062
+  },
+  "step6_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.25,
+   "mean": 0.1017167717218399,
+   "std": 1.3300045728683472
+  },
+  "step7_xt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 4.34375,
+   "mean": -0.04877650365233421,
+   "std": 0.8083415031433105
+  },
+  "step7_vt": {
+   "shape": [
+    1,
+    500,
+    64
+   ],
+   "dtype": "bfloat16",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 9.625,
+   "mean": 0.1093549057841301,
+   "std": 1.417820930480957
+  },
+  "final_audio_full": {
+   "shape": [
+    2,
+    960000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.8912509083747864,
+   "mean": 0.001065863179974258,
+   "std": 0.10138732194900513
+  },
+  "vae_waveform": {
+   "shape": [
+    1,
+    2,
+    24000
+   ],
+   "dtype": "float32",
+   "nan": 0,
+   "inf": 0,
+   "absmax": 0.00323486328125,
+   "mean": 0.0012139399768784642,
+   "std": 0.0004421311605256051
+  }
+ },
+ "planner": [],
+ "decoder_calls": 8,
+ "text_prompt": "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n# Caption\nlatin ballad, nylon string guitar, soft percussion, male vocals\n\n# Metas\n- bpm: N/A\n- timesignature: N/A\n- keyscale: N/A\n- duration: 20 seconds\n<|endoftext|>\n<|endoftext|>",
+ "lyric_prompt": "# Languages\nes\n\n# Lyric\n[Verse]\nBajo la luna del mar\nTe vuelvo a recordar\n[Chorus]\nCanta conmigo esta noche\n<|endoftext|><|endoftext|>",
+ "generate_audio_kwargs": {
+  "seed": [
+   777
+  ],
+  "non_cover_text_hidden_states": null,
+  "non_cover_text_attention_mask": null,
+  "precomputed_lm_hints_25Hz": null,
+  "audio_cover_strength": 1.0,
+  "cover_noise_strength": 0.0,
+  "infer_method": "ode",
+  "infer_steps": 8,
+  "diffusion_guidance_scale": 1.0,
+  "use_adg": false,
+  "cfg_interval_start": 0.0,
+  "cfg_interval_end": 1.0,
+  "shift": 3.0,
+  "repaint_mask": null,
+  "clean_src_latents": null,
+  "repaint_crossfade_frames": 12,
+  "repaint_injection_ratio": 0.5,
+  "sampler_mode": "euler",
+  "velocity_norm_threshold": 0.0,
+  "velocity_ema_factor": 0.0,
+  "dcw_enabled": true,
+  "dcw_mode": "double",
+  "dcw_scaler": 0.05,
+  "dcw_high_scaler": 0.02,
+  "dcw_wavelet": "haar",
+  "retake_seed": null,
+  "retake_variance": 0.0
+ },
+ "noise_source": "cpu_f32",
+ "noise_seed": [
+  777
+ ],
+ "vae_path": "tiled_decode",
+ "first_nan": null,
+ "drift_vs_cpu_f32": {
+  "target_latents": {
+   "max_abs": 3.3296356201171875,
+   "rel_l2": 0.16632689535617828,
+   "cos": 0.9861509799957275
+  },
+  "step0_vt": {
+   "max_abs": 0.5992553234100342,
+   "rel_l2": 0.042560987174510956,
+   "cos": 0.9990960359573364
+  },
+  "step4_vt": {
+   "max_abs": 3.8701562881469727,
+   "rel_l2": 0.17493405938148499,
+   "cos": 0.984642505645752
+  },
+  "step7_vt": {
+   "max_abs": 4.730361461639404,
+   "rel_l2": 0.1798926293849945,
+   "cos": 0.983849823474884
+  }
+ },
+ "timesteps": [
+  1.0,
+  0.953125,
+  0.8984375,
+  0.83203125,
+  0.75,
+  0.64453125,
+  0.5,
+  0.30078125
+ ],
+ "steps_saved": {
+  "xt": [],
+  "vt": [
+   0,
+   7
+  ]
+ },
+ "normalisation_gain": 0.6913946270942688,
+ "case": {
+  "name": "vocal_es_20s_noplan",
+  "caption": "latin ballad, nylon string guitar, soft percussion, male vocals",
+  "lyrics": "[Verse]\nBajo la luna del mar\nTe vuelvo a recordar\n[Chorus]\nCanta conmigo esta noche\n",
+  "instrumental": false,
+  "language": "es",
+  "duration": 20.0,
+  "planner": false,
+  "seed": 777
+ },
+ "trace": "cuda_bf16",
+ "sample_rate": 48000,
+ "latent_frames": 500,
+ "wall_s": 7.86,
+ "planner_metadata": {
+  "cot_bpm": null,
+  "cot_keyscale": "",
+  "cot_timesignature": "",
+  "cot_duration": null,
+  "cot_vocal_language": "unknown",
+  "cot_caption": "",
+  "cot_lyrics": ""
+ },
+ "nan_anywhere": false,
+ "dtype": "bfloat16",
+ "time_costs": {
+  "dit_encoder_time_cost": 0.13002800941467285,
+  "dit_diffusion_time_cost": 1.659735918045044,
+  "dit_diffusion_per_step_time_cost": 0.2074669897556305,
+  "dit_total_time_cost": 7.018296480178833,
+  "dit_offload_time_cost": 0.0,
+  "dit_vae_decode_time_cost": 5.228532552719116,
+  "pipeline_total_time": 7.018296480178833
+ },
+ "vram_peak_gib": 10.17
+}
