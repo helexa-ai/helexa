@@ -979,6 +979,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 limit: None,
                 cost: profile.cost.clone(),
                 audio: profile.audio.clone(),
+                audio_tokens_per_second: None,
                 // Runtime-detected — will be OR-ed in Pass 2 from neuron data.
                 tool_call: false,
                 reasoning: false,
@@ -1062,6 +1063,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     limit: entry.limit.clone(),
                     cost: None,
                     audio: None,
+                    audio_tokens_per_second: None,
                     tool_call: entry.tool_call,
                     reasoning: entry.reasoning,
                     max_model_len: None,
@@ -1132,6 +1134,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                     limit: None,
                     cost: None,
                     audio: None,
+                    audio_tokens_per_second: None,
                     tool_call: false,
                     reasoning: false,
                     max_model_len: None,
@@ -1174,6 +1177,7 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
                 limit: target_entry.limit.clone(),
                 cost: target_entry.cost.clone(),
                 audio: target_entry.audio.clone(),
+                audio_tokens_per_second: None,
                 tool_call: target_entry.tool_call,
                 reasoning: target_entry.reasoning,
                 max_model_len: None,
@@ -1191,10 +1195,19 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     // from each entry's now-settled `limit`, so vLLM-convention clients
     // (Hermes Agent et al.) can read the window without knowing helexa's
     // `limit` schema.
+    //
+    // Audio models also carry their current rate (#386), so a client can
+    // estimate a job's cost before submitting it. An alias is priced as
+    // the model it names.
+    let rates = fleet.rates.snapshot().await;
     let data: Vec<Value> = entries
         .values_mut()
         .map(|e| {
             e.sync_flat_limit();
+            if e.audio.is_some() {
+                let priced_as = catalogue.resolve_alias(&e.id);
+                e.audio_tokens_per_second = rates.audio_tokens_per_second(priced_as);
+            }
             json!(e)
         })
         .collect();

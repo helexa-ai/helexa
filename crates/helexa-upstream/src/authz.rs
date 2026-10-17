@@ -21,7 +21,7 @@ use axum::extract::{Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
 use cortex_core::error_envelope::OpenAiError;
 use serde::{Deserialize, Serialize};
@@ -42,6 +42,7 @@ pub fn router(state: &AppState) -> Router<AppState> {
         .route("/authz/v1/release", post(release))
         .route("/authz/v1/snapshot", post(snapshot))
         .route("/authz/v1/served-usage", post(served_usage))
+        .route("/authz/v1/rates", get(rates))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             client_auth,
@@ -337,4 +338,24 @@ fn bad_request(msg: &str) -> Response {
         "invalid_request",
         msg,
     ))
+}
+
+// ── rates (#386) ────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct RatesResp {
+    data: Vec<crate::rates::ModelRate>,
+}
+
+/// `GET /authz/v1/rates` — every per-model rate, for cortex to cache and
+/// resolve locally. A database error is a 500: cortex keeps its last good
+/// table and refuses unpriced work rather than guessing.
+async fn rates(State(state): State<AppState>) -> Response {
+    match crate::rates::list(&state.pool).await {
+        Ok(data) => Json(RatesResp { data }).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "rates query failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "rates unavailable").into_response()
+        }
+    }
 }
