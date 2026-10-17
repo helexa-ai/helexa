@@ -628,8 +628,10 @@ mod tests {
             decoder_channels: 8,
             decoder_input_channels: 4,
             audio_channels: 2,
-            // Keep the real upsampling structure to exercise all 5 blocks.
-            downsampling_ratios: vec![2, 4, 4, 6, 10],
+            // Five blocks, as in production, but 2x each (hop 32 instead of
+            // 1920): the tiling logic is the same, and the full-size hop made
+            // this test peak at 4.6 GB, which got the CI test binary killed.
+            downsampling_ratios: vec![2, 2, 2, 2, 2],
             channel_multiples: vec![1, 1, 1, 1, 1],
             ..VaeConfig::default()
         };
