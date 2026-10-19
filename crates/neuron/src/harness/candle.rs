@@ -5330,16 +5330,17 @@ impl CandleHarness {
         request
             .validate_limits(&audio.limits)
             .map_err(|detail| InferenceError::InvalidAudioParams { detail })?;
-        // The planner runs only when asked for until its port is proven
-        // against the reference (#384); `auto` means off until then.
+        // `auto` (or nothing) follows the vendor default: plan the song
+        // when the model has a planner. The port matches upstream's trace
+        // (#384).
         let planner = match request.planner.as_deref() {
             Some("on") if !audio.has_planner => {
                 return Err(InferenceError::InvalidAudioParams {
                     detail: "this model has no song planner; use planner=off or auto".into(),
                 });
             }
-            Some("on") => true,
-            _ => false,
+            Some("off") => false,
+            _ => audio.has_planner,
         };
         // A random seed small enough to type back in, so any render can be
         // reproduced from what the job reports.

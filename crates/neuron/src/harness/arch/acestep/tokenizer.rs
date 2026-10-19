@@ -256,23 +256,18 @@ impl AttentionPooler {
 
 /// Residual Finite Scalar Quantization.
 ///
-/// Matches `vector_quantize_pytorch.ResidualFSQ` with a single top-level
-/// `project_in` (dim → codebook_dim) and `project_out` (codebook_dim → dim).
-/// Each FSQ layer independently quantizes each codebook dimension to its
-/// corresponding number of levels using `tanh` bounding and rounding.
+/// Matches `vector_quantize_pytorch.ResidualFSQ` 1.27 as ACE-Step builds it
+/// (one quantizer, the library defaults): a top-level `project_in`
+/// (dim → codebook_dim) and `project_out` (codebook_dim → dim), a soft clamp
+/// of the projected input to `±(1 + 1/(L-1))`, and an FSQ layer constructed
+/// with `preserve_symmetry=True` and a hard-clamped bound. Symmetric FSQ puts
+/// level `k` of `L` at `2k/(L-1) - 1`, spanning `[-1, 1]`; the asymmetric
+/// formula (`(k - L/2) / (L/2)`) is not what the checkpoint was trained with.
 #[derive(Debug, Clone)]
 pub struct ResidualFSQ {
     project_in: Linear,
     project_out: Linear,
-    /// Precomputed: (levels - 1) * (1 + eps) / 2 for each codebook dim
-    half_l: Vec<f32>,
-    /// Precomputed: levels // 2
-    half_width: Vec<f32>,
-    /// Precomputed: 0.5 for even levels, 0.0 for odd
-    offset: Vec<f32>,
-    /// Precomputed: atanh(offset / half_l) shift
-    shift: Vec<f32>,
-    /// Precomputed basis for index calculation: [1, L0, L0*L1, ...]
+    /// Basis for the flat index: `[1, L0, L0*L1, ...]`.
     basis: Vec<i64>,
     /// Quantization levels per codebook dimension (e.g. [8, 8, 8, 5, 5, 5]).
     levels: Vec<usize>,
@@ -291,22 +286,6 @@ impl ResidualFSQ {
         let project_in = linear(dim, codebook_dim, vb.pp("project_in"))?;
         let project_out = linear(codebook_dim, dim, vb.pp("project_out"))?;
 
-        let eps = 1e-3f32;
-        let half_l: Vec<f32> = levels
-            .iter()
-            .map(|&l| (l as f32 - 1.0) * (1.0 + eps) / 2.0)
-            .collect();
-        let half_width: Vec<f32> = levels.iter().map(|&l| (l / 2) as f32).collect();
-        let offset: Vec<f32> = levels
-            .iter()
-            .map(|&l| if l % 2 == 0 { 0.5 } else { 0.0 })
-            .collect();
-        let shift: Vec<f32> = half_l
-            .iter()
-            .zip(&offset)
-            .map(|(&hl, &o)| (o / hl).atanh())
-            .collect();
-
         let mut basis = vec![1i64];
         for i in 0..levels.len() - 1 {
             basis.push(basis[i] * levels[i] as i64);
@@ -315,76 +294,54 @@ impl ResidualFSQ {
         Ok(Self {
             project_in,
             project_out,
-            half_l,
-            half_width,
-            offset,
-            shift,
             basis,
             levels: levels.to_vec(),
             model_dtype,
         })
     }
 
-    /// FSQ bound + round: `round(tanh(z + shift) * half_l - offset) / half_width`
-    fn fsq_quantize(&self, z: &Tensor) -> Result<Tensor> {
-        let dev = z.device();
-        let half_l = Tensor::new(&self.half_l[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        let offset = Tensor::new(&self.offset[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        let shift = Tensor::new(&self.shift[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        let half_width = Tensor::new(&self.half_width[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
+    /// A per-codebook-dimension constant as a `(1, 1, d)` f32 tensor.
+    fn per_dim(&self, dev: &candle_core::Device, f: impl Fn(f32) -> f32) -> Result<Tensor> {
+        let v: Vec<f32> = self.levels.iter().map(|&l| f(l as f32)).collect();
+        Tensor::new(&v[..], dev)?.unsqueeze(0)?.unsqueeze(0)
+    }
 
-        // bound: tanh(z + shift) * half_l - offset, then round, then / half_width
-        let bounded = z
-            .broadcast_add(&shift)?
-            .tanh()?
-            .broadcast_mul(&half_l)?
-            .broadcast_sub(&offset)?;
-        let rounded = bounded.round()?;
-        rounded.broadcast_div(&half_width)
+    /// Soft clamp, then the symmetric hard-clamped bound:
+    /// `2/(L-1) * floor((L-1) * (clamp(z, -1, 1) + 1) / 2 + 0.5) - 1`.
+    /// Returns `(codes, level_indices)`.
+    fn fsq_quantize(&self, z: &Tensor) -> Result<(Tensor, Tensor)> {
+        let dev = z.device();
+        let z = z.to_dtype(DType::F32)?;
+        let clamp = self.per_dim(dev, |l| 1.0 + 1.0 / (l - 1.0))?;
+        let z = z.broadcast_div(&clamp)?.tanh()?.broadcast_mul(&clamp)?;
+        let lm1 = self.per_dim(dev, |l| l - 1.0)?;
+        let levels = z
+            .clamp(-1f32, 1f32)?
+            .affine(0.5, 0.5)?
+            .broadcast_mul(&lm1)?
+            .affine(1.0, 0.5)?
+            .floor()?;
+        let codes = levels.broadcast_div(&lm1)?.affine(2.0, -1.0)?;
+        Ok((codes, levels))
     }
 
     /// Quantize continuous representations into discrete tokens.
     /// Input: `(B, N, dim)`. Returns `(quantized_out, indices)` where
     /// `quantized_out` has the same shape as input and `indices` is `(B, N, num_quantizers)`.
     pub fn forward(&self, x: &Tensor) -> Result<(Tensor, Tensor)> {
-        // project_in: (B, N, dim) -> (B, N, codebook_dim)
         let projected = x.apply(&self.project_in)?;
-
-        // FSQ quantize
-        let codes = self.fsq_quantize(&projected)?; // (B, N, codebook_dim)
-
-        // Compute indices from codes: scale_and_shift then dot with basis
-        let dev = x.device();
-        let half_width = Tensor::new(&self.half_width[..], dev)?
+        let (codes, levels) = self.fsq_quantize(&projected)?;
+        let basis: Vec<f32> = self.basis.iter().map(|&b| b as f32).collect();
+        let basis = Tensor::new(&basis[..], x.device())?
             .unsqueeze(0)?
             .unsqueeze(0)?;
-        let offset = Tensor::new(&self.offset[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        let basis = Tensor::new(&self.basis[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        // scale_and_shift: codes * half_width + offset
-        let shifted = codes.broadcast_mul(&half_width)?.broadcast_add(&offset)?;
-        let indices = shifted
-            .to_dtype(DType::F32)?
-            .broadcast_mul(&basis.to_dtype(DType::F32)?)?
+        let indices = levels
+            .broadcast_mul(&basis)?
             .sum(2)?
             .round()?
             .to_dtype(DType::I64)?
             .unsqueeze(2)?; // (B, N, 1)
-
-        // project_out: (B, N, codebook_dim) -> (B, N, dim)
-        let quantized_out = codes.apply(&self.project_out)?;
-
+        let quantized_out = codes.to_dtype(self.model_dtype)?.apply(&self.project_out)?;
         Ok((quantized_out, indices))
     }
 
@@ -394,42 +351,30 @@ impl ResidualFSQ {
         codes.apply(&self.project_out)
     }
 
-    /// Reconstruct from packed indices.
-    /// Input: `(B, N, 1)` → Output: `(B, N, dim)`.
-    ///
-    /// Inverse of the forward path: decompose flat index into per-level values
-    /// via basis, then invert scale_and_shift, then `project_out`.
-    pub fn get_output_from_indices(&self, indices: &Tensor) -> Result<Tensor> {
+    /// The codes for packed indices: level `k = (index / basis) % L` of each
+    /// dimension, at `2k/(L-1) - 1`. Input `(B, N, 1)` → `(B, N, codebook_dim)`.
+    pub fn codes_from_indices(&self, indices: &Tensor) -> Result<Tensor> {
         let dev = indices.device();
         let indices = indices.squeeze(D::Minus1)?.to_dtype(DType::F32)?;
-        let codebook_dim = self.levels.len();
-
-        // Decompose: level_val[i] = floor(index / basis[i]) % levels[i]
-        // F32 has enough precision for indices up to 64000 (max codebook size).
-        let mut code_dims = Vec::with_capacity(codebook_dim);
-        for i in 0..codebook_dim {
-            let b = self.basis[i] as f32;
-            let l = self.levels[i] as f32;
-            let dim_val = indices.affine(1.0 / b as f64, 0.0)?.floor()?;
-            // modulo: dim_val - floor(dim_val / l) * l
-            let dim_val = (&dim_val
-                - dim_val
-                    .affine(1.0 / l as f64, 0.0)?
-                    .floor()?
-                    .affine(l as f64, 0.0)?)?;
-            code_dims.push(dim_val);
+        // F32 holds every index exactly: the codebook has 64000 entries.
+        let mut levels = Vec::with_capacity(self.levels.len());
+        for (i, &l) in self.levels.iter().enumerate() {
+            let l = l as f64;
+            let v = indices.affine(1.0 / self.basis[i] as f64, 0.0)?.floor()?;
+            let v = (&v - v.affine(1.0 / l, 0.0)?.floor()?.affine(l, 0.0)?)?;
+            levels.push(v);
         }
-        let shifted = Tensor::stack(&code_dims, D::Minus1)?;
+        let levels = Tensor::stack(&levels, D::Minus1)?;
+        let lm1 = self.per_dim(dev, |l| l - 1.0)?;
+        levels.broadcast_div(&lm1)?.affine(2.0, -1.0)
+    }
 
-        // Inverse scale_and_shift (Python convention):
-        // forward: shifted = codes * half_width + half_width  →  shifted ∈ [0, levels-1]
-        // inverse: codes = (shifted - half_width) / half_width
-        let hw = Tensor::new(&self.half_width[..], dev)?
-            .unsqueeze(0)?
-            .unsqueeze(0)?;
-        let codes = shifted.broadcast_sub(&hw)?.broadcast_div(&hw)?;
-
-        codes.to_dtype(self.model_dtype)?.apply(&self.project_out)
+    /// Reconstruct from packed indices.
+    /// Input: `(B, N, 1)` → Output: `(B, N, dim)`.
+    pub fn get_output_from_indices(&self, indices: &Tensor) -> Result<Tensor> {
+        self.codes_from_indices(indices)?
+            .to_dtype(self.model_dtype)?
+            .apply(&self.project_out)
     }
 }
 
@@ -438,104 +383,93 @@ mod tests {
     use super::*;
     use candle_core::Device;
 
-    /// Build a minimal ResidualFSQ with identity projections for testing.
+    /// A ResidualFSQ with identity projections, as the library builds one
+    /// when `dim` equals the codebook dimension.
     fn test_fsq() -> Result<ResidualFSQ> {
         let dev = &Device::Cpu;
         let levels = vec![8, 8, 8, 5, 5, 5];
         let codebook_dim = levels.len();
-
-        // Identity-like project_in/project_out (codebook_dim x codebook_dim)
         let eye = Tensor::eye(codebook_dim, DType::F32, dev)?;
         let zeros = Tensor::zeros(codebook_dim, DType::F32, dev)?;
-
-        let eps = 1e-3f32;
-        let half_l: Vec<f32> = levels
-            .iter()
-            .map(|&l| (l as f32 - 1.0) * (1.0 + eps) / 2.0)
-            .collect();
-        let half_width: Vec<f32> = levels.iter().map(|&l| (l / 2) as f32).collect();
-        let offset: Vec<f32> = levels
-            .iter()
-            .map(|&l| if l % 2 == 0 { 0.5 } else { 0.0 })
-            .collect();
-        let shift: Vec<f32> = half_l
-            .iter()
-            .zip(&offset)
-            .map(|(&hl, &o)| (o / hl).atanh())
-            .collect();
         let mut basis = vec![1i64];
         for i in 0..levels.len() - 1 {
             basis.push(basis[i] * levels[i] as i64);
         }
-
         Ok(ResidualFSQ {
             project_in: Linear::from_weights(eye.clone(), Some(zeros.clone())),
             project_out: Linear::from_weights(eye, Some(zeros)),
-            half_l,
-            half_width,
-            offset,
-            shift,
             basis,
             levels,
             model_dtype: DType::F32,
         })
     }
 
+    fn close(got: &[f32], want: &[f32]) {
+        for (i, (g, w)) in got.iter().zip(want).enumerate() {
+            assert!((g - w).abs() < 1e-5, "dim {i}: got {g}, want {w}");
+        }
+    }
+
+    /// Recorded from vector_quantize_pytorch 1.27.20:
+    /// `FSQ([8,8,8,5,5,5], preserve_symmetry=True).indices_to_codes(...)`.
     #[test]
-    fn test_get_output_from_indices_roundtrip() -> Result<()> {
-        // Test that manually-packed Python-convention indices correctly
-        // reconstruct codes via get_output_from_indices.
+    fn indices_decode_to_symmetric_codes() -> Result<()> {
         let fsq = test_fsq()?;
-        let dev = &Device::Cpu;
-        // levels = [8,8,8,5,5,5], half_width = [4,4,4,2,2,2]
-        // basis = [1, 8, 64, 512, 2560, 12800]
-        //
-        // Choose codes: [0.25, -0.5, 0.75, 0.5, -1.0, 0.0]
-        // Python scale_and_shift: shifted = codes * half_width + half_width
-        //   = [0.25*4+4, -0.5*4+4, 0.75*4+4, 0.5*2+2, -1.0*2+2, 0.0*2+2]
-        //   = [5, 2, 7, 3, 0, 2]
-        // index = 5*1 + 2*8 + 7*64 + 3*512 + 0*2560 + 2*12800
-        //       = 5 + 16 + 448 + 1536 + 0 + 25600 = 27605
-        let expected_codes: Vec<f32> = vec![0.25, -0.5, 0.75, 0.5, -1.0, 0.0];
-        let index: i64 = 27605;
-
-        let indices = Tensor::new(&[[index]], dev)?.unsqueeze(2)?; // (1, 1, 1)
-        let reconstructed = fsq.get_output_from_indices(&indices)?;
-        let vals = reconstructed.squeeze(0)?.squeeze(0)?.to_vec1::<f32>()?;
-
-        for (i, (&got, &want)) in vals.iter().zip(expected_codes.iter()).enumerate() {
-            assert!((got - want).abs() < 1e-5, "dim {i}: got={got}, want={want}");
+        let cases: [(i64, [f32; 6]); 4] = [
+            (0, [-1.0; 6]),
+            (27605, [3.0 / 7.0, -3.0 / 7.0, 1.0, 0.5, -1.0, 0.0]),
+            (32036, [1.0 / 7.0, 1.0 / 7.0, 1.0 / 7.0, 0.0, 0.0, 0.0]),
+            (63999, [1.0; 6]),
+        ];
+        for (index, want) in cases {
+            let indices = Tensor::new(&[[index]], &Device::Cpu)?.unsqueeze(2)?;
+            let got = fsq
+                .get_output_from_indices(&indices)?
+                .flatten_all()?
+                .to_vec1::<f32>()?;
+            close(&got, &want);
         }
         Ok(())
     }
 
+    /// Recorded from vector_quantize_pytorch 1.27.20:
+    /// `ResidualFSQ(dim=6, levels=[8,8,8,5,5,5], num_quantizers=1)(x)`.
     #[test]
-    fn test_get_output_from_indices_known_values() -> Result<()> {
+    fn forward_matches_the_library() -> Result<()> {
         let fsq = test_fsq()?;
-        let dev = &Device::Cpu;
-
-        // Index 0 should decompose to level_vals = [0, 0, 0, 0, 0, 0]
-        // Python convention: codes = (level_vals - half_width) / half_width
-        // For levels [8,8,8,5,5,5]: half_width=[4,4,4,2,2,2]
-        // codes = [(0-4)/4, (0-4)/4, (0-4)/4, (0-2)/2, (0-2)/2, (0-2)/2]
-        //       = [-1, -1, -1, -1, -1, -1]
-        let indices = Tensor::new(&[[0i64]], dev)?.unsqueeze(2)?; // (1, 1, 1)
-        let result = fsq.get_output_from_indices(&indices)?;
-        let vals = result.squeeze(0)?.squeeze(0)?.to_vec1::<f32>()?;
-        assert!((vals[0] - (-1.0)).abs() < 1e-5, "val[0]={}", vals[0]);
-        assert!((vals[3] - (-1.0)).abs() < 1e-5, "val[3]={}", vals[3]);
-
-        // Index that corresponds to center: half_width values for each level
-        // level_vals = [4, 4, 4, 2, 2, 2]
-        // packed index = 4*1 + 4*8 + 4*64 + 2*512 + 2*2560 + 2*12800
-        //             = 4 + 32 + 256 + 1024 + 5120 + 25600 = 32036
-        // codes = [0, 0, 0, 0, 0, 0]
-        let indices = Tensor::new(&[[32036i64]], dev)?.unsqueeze(2)?;
-        let result = fsq.get_output_from_indices(&indices)?;
-        let vals = result.squeeze(0)?.squeeze(0)?.to_vec1::<f32>()?;
-        for (i, &v) in vals.iter().enumerate() {
-            assert!(v.abs() < 1e-5, "center val[{i}]={v}, expected 0");
-        }
+        let x = Tensor::new(
+            &[[
+                [0.3f32, -0.9, 2.0, 0.1, -0.05, 0.6],
+                [-3.0, 0.0, 0.49, -0.6, 0.9, -0.2],
+            ]],
+            &Device::Cpu,
+        )?;
+        let (q, idx) = fsq.forward(&x)?;
+        let q = q.flatten_all()?.to_vec1::<f32>()?;
+        close(
+            &q,
+            &[
+                3.0 / 7.0,
+                -5.0 / 7.0,
+                1.0,
+                0.0,
+                0.0,
+                0.5,
+                -1.0,
+                1.0 / 7.0,
+                3.0 / 7.0,
+                -0.5,
+                1.0,
+                0.0,
+            ],
+        );
+        assert_eq!(idx.flatten_all()?.to_vec1::<i64>()?, vec![45005, 36704]);
+        // And the indices decode back to the same codes.
+        let back = fsq
+            .get_output_from_indices(&idx)?
+            .flatten_all()?
+            .to_vec1::<f32>()?;
+        close(&back, &q);
         Ok(())
     }
 }

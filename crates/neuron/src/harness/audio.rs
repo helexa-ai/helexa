@@ -1021,15 +1021,45 @@ mod hardware {
                     temperature: 0.0,
                     ..Default::default()
                 };
-                let (hints, meta) = engine
-                    .pipeline
-                    .generate_lm_hints(caption, lyrics, duration, &cfg)
+                // ACESTEP_PLAN_FROM_TRACE takes the trace's own codes and
+                // plan instead of running the planner, to test what follows
+                // the planner on its own (and in seconds rather than
+                // minutes).
+                let (hints, meta) = if std::env::var("ACESTEP_PLAN_FROM_TRACE").is_ok() {
+                    let codes = file
+                        .load("planner_audio_codes", &Device::Cpu)
+                        .unwrap()
+                        .to_vec1::<i64>()
+                        .unwrap();
+                    let cot = meta["planner"][0]["output_text"].as_str().unwrap();
+                    (
+                        engine.pipeline.audio_codes_to_latents(&codes).unwrap(),
+                        crate::harness::arch::acestep::lm::LmPipeline::parse_metadata(cot),
+                    )
+                } else {
+                    engine
+                        .pipeline
+                        .generate_lm_hints(caption, lyrics, duration, &cfg)
+                        .unwrap()
+                };
+                let want_hints = file
+                    .load("gen_precomputed_lm_hints_25Hz", &Device::Cpu)
                     .unwrap();
+                eprintln!(
+                    "{case}: lm hints rel L2 {:.2e}",
+                    rel_l2(&hints.to_device(&Device::Cpu).unwrap(), &want_hints)
+                );
                 (Some(hints), Some(lm_metadata(&meta)))
             } else {
                 (None, None)
             };
+            let instruction = if hints.is_some() {
+                crate::harness::arch::acestep::pipeline::COVER_INSTRUCTION
+            } else {
+                crate::harness::arch::acestep::pipeline::TEXT2MUSIC_INSTRUCTION
+            };
             let (text, lyric) = AceStepPipeline::format_prompts(
+                instruction,
                 caption,
                 lyrics,
                 duration,

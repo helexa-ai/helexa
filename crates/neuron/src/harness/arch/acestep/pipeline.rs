@@ -18,6 +18,17 @@ use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 
+/// The DiT's task instruction for a text-to-music render (upstream's
+/// `TASK_INSTRUCTIONS["text2music"]`).
+pub const TEXT2MUSIC_INSTRUCTION: &str =
+    "Fill the audio semantic mask based on the given conditions:";
+/// The instruction once audio codes condition the render. Upstream turns a
+/// text-to-music request into a cover when the planner supplies codes
+/// (`_resolve_generate_music_task`), and so does a reference cover.
+pub const COVER_INSTRUCTION: &str = "Generate audio semantic tokens based on the given conditions:";
+/// Upstream's `TASK_INSTRUCTIONS["repaint"]`.
+pub const REPAINT_INSTRUCTION: &str = "Repaint the mask area based on the given conditions:";
+
 /// Metadata from LM CoT output, used to enrich the DiT text prompt.
 ///
 /// When the LM generates chain-of-thought metadata (BPM, keyscale, etc.),
@@ -209,7 +220,13 @@ impl AceStepPipeline {
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
         let t = std::time::Instant::now();
+        let instruction = if params.lm_hints_25hz.is_some() {
+            COVER_INSTRUCTION
+        } else {
+            TEXT2MUSIC_INSTRUCTION
+        };
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            instruction,
             prompt,
             lyrics,
             params.duration_secs,
@@ -256,6 +273,7 @@ impl AceStepPipeline {
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            COVER_INSTRUCTION,
             prompt,
             lyrics,
             params.duration_secs,
@@ -332,6 +350,7 @@ impl AceStepPipeline {
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            REPAINT_INSTRUCTION,
             prompt,
             lyrics,
             params.duration_secs,
@@ -524,6 +543,7 @@ impl AceStepPipeline {
     /// lyrics under their language. `language` defaults to `"unknown"`,
     /// upstream's own default when the caller names none.
     pub fn format_prompts(
+        instruction: &str,
         prompt: &str,
         lyrics: &str,
         duration_secs: f64,
@@ -541,7 +561,7 @@ impl AceStepPipeline {
             .and_then(|m| m.keyscale.as_deref())
             .unwrap_or("N/A");
         let caption_text = format!(
-            "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n\
+            "# Instruction\n{instruction}\n\n\
              # Caption\n{caption}\n\n# Metas\n\
              - bpm: {bpm}\n- timesignature: {timesig}\n- keyscale: {keyscale}\n- duration: {} seconds\n\
              <|endoftext|>\n",
@@ -579,14 +599,21 @@ impl AceStepPipeline {
 
     fn encode_text(
         &mut self,
+        instruction: &str,
         prompt: &str,
         lyrics: &str,
         duration_secs: f64,
         metadata: Option<&LmMetadata>,
         language: Option<&str>,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor)> {
-        let (caption_text, lyric_text) =
-            Self::format_prompts(prompt, lyrics, duration_secs, metadata, language);
+        let (caption_text, lyric_text) = Self::format_prompts(
+            instruction,
+            prompt,
+            lyrics,
+            duration_secs,
+            metadata,
+            language,
+        );
         let encoding = self
             .tokenizer
             .encode(caption_text.as_str(), true)

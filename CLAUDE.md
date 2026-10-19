@@ -1304,9 +1304,17 @@ render.
 - **The 1.7B planner checkpoint has no `model.` prefix; the 0.6B one
   does.** The loader strips it only where it is absent. A planner that
   fails to load is non-fatal, so a wrong prefix shows up only as a
-  warning and `plan_ms: 0`. It stays off unless
-  `planner: "on"` until #384 closes the parity gaps (code-phase CFG,
-  constrained decoding).
+  warning and `plan_ms: 0`.
+- **The planner matches upstream exactly (#384)** — in f32 with greedy
+  decoding, the CoT byte for byte and every audio code of the trace — and
+  `auto` (the default) now runs it. That parity rests on three things a
+  port gets wrong easily: the CoT grammar (`fsm.rs`, a port of
+  `MetadataConstrainedLogitsProcessor`); the codes prompt, which carries
+  the plan *re-dumped by PyYAML* (`cot.rs`: folded at column 80, quoting
+  values that would read back as bools or numbers); and CFG 2.0 in the
+  codes phase only, against `NO USER INPUT` with empty reasoning.
+  Upstream's own bf16 already picks a different first code, so judge
+  parity in f32.
 - **Levels follow each upstream.** ACE-Step peak-normalises to −1 dBFS;
   HeartMuLa does not.
 - **ACE timing is split** into `encode_ms`, `generate_ms` (denoise) and
@@ -1352,5 +1360,5 @@ than upstream's own bf16 (0.32). A 180 s vocal song with the 0.6B
 planner takes 44 s on a 3060 (q8, 7.1 GB peak). The 0.6B planner is a
 separate repo, so name it by id: `planner = "ACE-Step/acestep-5Hz-lm-0.6B"`.
 
-**Next:** #384 (planner parity), and the Pascal epic #380 (rig work waits until rigs are named; the fallback if
+**Next:** the Pascal epic #380 (rig work waits until rigs are named; the fallback if
 ACE-Step cannot run on Pascal is Stable Audio and/or EzAudio).
