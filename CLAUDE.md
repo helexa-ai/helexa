@@ -1315,6 +1315,13 @@ render.
   codes phase only, against `NO USER INPUT` with empty reasoning.
   Upstream's own bf16 already picks a different first code, so judge
   parity in f32.
+- **ACE-Step's FSQ is the symmetric variant.** `vector_quantize_pytorch`'s
+  `ResidualFSQ` builds its layers with `preserve_symmetry=True` (level k
+  of L → `2k/(L-1) − 1`). The vendored port had the asymmetric formula
+  and tests re-derived from that same formula, so they passed while every
+  planner hint was 18% off. Pin vendored maths to values recorded from
+  the reference library, never to the port's own arithmetic. With codes,
+  upstream also switches the DiT instruction to the cover one.
 - **Levels follow each upstream.** ACE-Step peak-normalises to −1 dBFS;
   HeartMuLa does not.
 - **ACE timing is split** into `encode_ms`, `generate_ms` (denoise) and
