@@ -1309,8 +1309,14 @@ render.
   constrained decoding).
 - **Levels follow each upstream.** ACE-Step peak-normalises to −1 dBFS;
   HeartMuLa does not.
-- **ACE timing is one number.** `text2music` is a single call, so
-  `generate_ms` covers encode + denoise + VAE.
+- **ACE timing is split** into `encode_ms`, `generate_ms` (denoise) and
+  `decode_ms` (VAE). Each phase ends with a device synchronize, so queued
+  GPU work is charged to the phase that queued it.
+- **candle only uses its fast transposed-conv path when unpadded.** The
+  Oobleck decoder runs its upsampling unpadded and trims the padding
+  from the output (identical result). Before that, the VAE decode was
+  ~95% of a render: 22.8 s for a 30 s song on a 3060, 27 s for 480 s on
+  benjy. Watch for the same trap in any padded `ConvTranspose1d`.
 - **HeartMuLa's first decode after load is slow** (~33 s, one-time
   warm-up); every decode after that is ~2 s per 10 s of audio.
 - **benjy's root drive is slow under pressure** (DRAM-less, 90% full;
@@ -1324,6 +1330,27 @@ render.
 **Retired:** the PyTorch evaluation beta (`beta.music.helexa.ai`, #388).
 Its ratings data is archived privately.
 
-**Next:** #384 (planner parity), #385 (q8 + an 8 GB profile), and the
-Pascal epic #380 (rig work waits until rigs are named; the fallback if
+**Layouts (#385).** `[harness.candle.audio]` in neuron.toml sets, per
+host: `quant = "q8_0"` (DiT, text encoder and planner linears, f32
+compute), `compute = "f32"`, `placement.<component> = "gpu" | "cpu"`,
+`planner = "<subfolder>" | "none"`, `max_duration_secs`, and
+`vram_budget_mb` (smaller VAE chunks). `enforce_vram_budget` holds the
+rest of the card's memory so a 24 GB card rehearses an 8 GB one.
+Measured peaks (process, CUDA context included):
+
+| Layout | Resident | 180 s song | 240 s | 480 s |
+|---|---|---|---|---|
+| bf16, no planner | 6.4 GB | 7.8 GB | 7.8 GB | 9.1 GB |
+| q8 + 8 GiB budget, no planner | 4.6 GB | 6.0 GB | 6.2 GB | 10.0 GB |
+| q8 + 8 GiB budget + 0.6B planner | 5.8 GB | 7.6 GB | 7.9 GB | 13.1 GB |
+| dense f32 | 13.2 GB | — | — | — |
+
+So an 8 GB card serves q8 with the 0.6B planner up to 240 s; beyond
+that a term grows with the square of song length. q8's mean latent drift
+from upstream's f32 reference (0.26 rel L2 over four cases) is smaller
+than upstream's own bf16 (0.32). A 180 s vocal song with the 0.6B
+planner takes 44 s on a 3060 (q8, 7.1 GB peak). The 0.6B planner is a
+separate repo (`ACE-Step/acestep-5Hz-lm-0.6B`), not a snapshot subfolder.
+
+**Next:** #384 (planner parity), and the Pascal epic #380 (rig work waits until rigs are named; the fallback if
 ACE-Step cannot run on Pascal is Stable Audio and/or EzAudio).
