@@ -183,6 +183,13 @@ jobs:
           # enable --now: start the service AND enable it for boot so the
           # fleet self-heals after a host reboot.
           sudo /usr/bin/systemctl enable --now cortex.service
+          # dnf can exit 0 without installing anything (e.g. an unmet glibc
+          # requirement), so compare what is now installed with what was published.
+          now=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${now}" != "${latest}" ]; then
+            echo "::error::${pkg}: ${now:-nothing} is installed, not the published ${latest}"
+            exit 1
+          fi
           DEPLOY
 
       # Wait for the service to either come up or wedge, then capture
@@ -462,6 +469,13 @@ jobs:
           # enable --now: start the service AND enable it for boot so the
           # fleet self-heals after a host reboot.
           sudo /usr/bin/systemctl enable --now neuron.service
+          # dnf can exit 0 without installing anything (e.g. an unmet glibc
+          # requirement), so compare what is now installed with what was published.
+          now=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${now}" != "${latest}" ]; then
+            echo "::error::${pkg}: ${now:-nothing} is installed, not the published ${latest}"
+            exit 1
+          fi
 
           # ── Post-deploy validation ────────────────────────────────
           # A deploy only goes green if the neuron (a) finishes loading
@@ -858,7 +872,15 @@ jobs:
             fi
             sudo /usr/bin/systemctl daemon-reload
             sudo /usr/bin/systemctl enable --now "${pkg}.service"
+            # dnf can exit 0 without installing anything (e.g. an unmet glibc
+            # requirement), so compare what is now installed with what was published.
+            now=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || true)
+            if [ -n "${latest}" ] && [ "${now}" != "${latest}" ]; then
+              echo "::error::${pkg}: ${now:-nothing} is installed, not the published ${latest}"
+              failed=1
+            fi
           done
+          [ "${failed:-0}" -eq 0 ]
           DEPLOY
 
       # Router config (#287). Tracked because it holds no secrets, and
@@ -1087,6 +1109,13 @@ jobs:
           # enable --now: start the service AND enable it for boot so the
           # bench resumes collecting after a host reboot.
           sudo /usr/bin/systemctl enable --now helexa-bench.service
+          # dnf can exit 0 without installing anything (e.g. an unmet glibc
+          # requirement), so compare what is now installed with what was published.
+          now=$(rpm -q --qf '%{VERSION}-%{RELEASE}' "${pkg}" 2>/dev/null || true)
+          if [ -n "${latest}" ] && [ "${now}" != "${latest}" ]; then
+            echo "::error::${pkg}: ${now:-nothing} is installed, not the published ${latest}"
+            exit 1
+          fi
 
           # ── Post-deploy validation ────────────────────────────────
           # The bench serves a read-only API on :13132 alongside the
