@@ -41,5 +41,13 @@
     "week": "Pēdējās 7 dienas",
     "month": "Pēdējās 30 dienas",
     "older": "Vecāki"
-  }
+  },
+  "length": "Ilgums",
+  "tags": "Stila idejas",
+  "submitting": "Sūta jūsu dziesmu uz studiju…",
+  "needStyle": "Aprakstiet stilu, lai ģenerētu dziesmu.",
+  "needLength": "Izvēlieties ilgumu no {{min}} līdz {{max}} sekundēm.",
+  "close": "Aizvērt",
+  "pause": "Pauze",
+  "seek": "Pozīcija dziesmā"
 }

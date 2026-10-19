@@ -41,5 +41,13 @@
     "week": "Ostatnie 7 dni",
     "month": "Ostatnie 30 dni",
     "older": "Starsze"
-  }
+  },
+  "length": "Długość",
+  "tags": "Pomysły na styl",
+  "submitting": "Wysyłanie utworu do studia…",
+  "needStyle": "Opisz styl, aby wygenerować utwór.",
+  "needLength": "Wybierz długość od {{min}} do {{max}} sekund.",
+  "close": "Zamknij",
+  "pause": "Wstrzymaj",
+  "seek": "Pozycja w utworze"
 }

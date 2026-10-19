@@ -41,5 +41,13 @@
     "week": "Elmúlt 7 nap",
     "month": "Elmúlt 30 nap",
     "older": "Régebbi"
-  }
+  },
+  "length": "Hossz",
+  "tags": "Stílusötletek",
+  "submitting": "A dal küldése a stúdióba…",
+  "needStyle": "Írjon le egy stílust a dal létrehozásához.",
+  "needLength": "Válasszon {{min}} és {{max}} másodperc közötti hosszt.",
+  "close": "Bezárás",
+  "pause": "Szünet",
+  "seek": "Pozíció a dalban"
 }

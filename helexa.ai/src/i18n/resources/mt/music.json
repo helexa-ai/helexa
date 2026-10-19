@@ -41,5 +41,13 @@
     "week": "L-aħħar 7 ijiem",
     "month": "L-aħħar 30 jum",
     "older": "Eqdem"
-  }
+  },
+  "length": "Tul",
+  "tags": "Ideat tal-istil",
+  "submitting": "Qed nibagħtu l-kanzunetta tiegħek lill-istudjo…",
+  "needStyle": "Iddeskrivi stil biex tiġġenera kanzunetta.",
+  "needLength": "Agħżel tul bejn {{min}} u {{max}} sekonda.",
+  "close": "Agħlaq",
+  "pause": "Pawża",
+  "seek": "Pożizzjoni fil-kanzunetta"
 }

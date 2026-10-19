@@ -41,5 +41,13 @@
     "week": "Edelliset 7 päivää",
     "month": "Edelliset 30 päivää",
     "older": "Vanhemmat"
-  }
+  },
+  "length": "Pituus",
+  "tags": "Tyyli-ideoita",
+  "submitting": "Kappaletta lähetetään studioon…",
+  "needStyle": "Kuvaile tyyli luodaksesi kappaleen.",
+  "needLength": "Valitse pituus väliltä {{min}}–{{max}} sekuntia.",
+  "close": "Sulje",
+  "pause": "Tauko",
+  "seek": "Kohta kappaleessa"
 }

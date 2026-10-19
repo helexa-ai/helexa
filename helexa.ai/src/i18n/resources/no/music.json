@@ -41,5 +41,13 @@
     "week": "Siste 7 dager",
     "month": "Siste 30 dager",
     "older": "Eldre"
-  }
+  },
+  "length": "Lengde",
+  "tags": "Stilideer",
+  "submitting": "Sender sangen din til studioet…",
+  "needStyle": "Beskriv en stil for å generere en sang.",
+  "needLength": "Velg en lengde mellom {{min}} og {{max}} sekunder.",
+  "close": "Lukk",
+  "pause": "Pause",
+  "seek": "Posisjon i sangen"
 }

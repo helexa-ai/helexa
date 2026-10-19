@@ -41,5 +41,13 @@
     "week": "Darrers 7 dies",
     "month": "Darrers 30 dies",
     "older": "Més antics"
-  }
+  },
+  "length": "Durada",
+  "tags": "Idees d’estil",
+  "submitting": "S’està enviant la cançó a l’estudi…",
+  "needStyle": "Descriviu un estil per generar una cançó.",
+  "needLength": "Trieu una durada entre {{min}} i {{max}} segons.",
+  "close": "Tanca",
+  "pause": "Pausa",
+  "seek": "Posició a la cançó"
 }

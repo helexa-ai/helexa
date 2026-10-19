@@ -41,5 +41,13 @@
     "week": "Paskutinės 7 dienos",
     "month": "Paskutinės 30 dienų",
     "older": "Senesni"
-  }
+  },
+  "length": "Trukmė",
+  "tags": "Stiliaus idėjos",
+  "submitting": "Jūsų daina siunčiama į studiją…",
+  "needStyle": "Aprašykite stilių, kad sukurtumėte dainą.",
+  "needLength": "Pasirinkite trukmę nuo {{min}} iki {{max}} sekundžių.",
+  "close": "Uždaryti",
+  "pause": "Pristabdyti",
+  "seek": "Vieta dainoje"
 }

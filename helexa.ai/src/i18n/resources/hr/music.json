@@ -41,5 +41,13 @@
     "week": "Zadnjih 7 dana",
     "month": "Zadnjih 30 dana",
     "older": "Starije"
-  }
+  },
+  "length": "Trajanje",
+  "tags": "Ideje za stil",
+  "submitting": "Šaljem vašu pjesmu u studio…",
+  "needStyle": "Opišite stil kako biste generirali pjesmu.",
+  "needLength": "Odaberite trajanje između {{min}} i {{max}} sekundi.",
+  "close": "Zatvori",
+  "pause": "Pauza",
+  "seek": "Položaj u pjesmi"
 }

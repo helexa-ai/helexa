@@ -41,5 +41,13 @@
     "week": "Kwanaki 7 da suka gabata",
     "month": "Kwanaki 30 da suka gabata",
     "older": "Tsofaffi"
-  }
+  },
+  "length": "Tsawo",
+  "tags": "Ra'ayoyin salo",
+  "submitting": "Ana aika wakarka zuwa sitiriyo…",
+  "needStyle": "Bayyana salo don ƙirƙirar waƙa.",
+  "needLength": "Zaɓi tsawo tsakanin daƙiƙa {{min}} da {{max}}.",
+  "close": "Rufe",
+  "pause": "Dakata",
+  "seek": "Matsayi a cikin waƙa"
 }
