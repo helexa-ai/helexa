@@ -1350,7 +1350,7 @@ that a term grows with the square of song length. q8's mean latent drift
 from upstream's f32 reference (0.26 rel L2 over four cases) is smaller
 than upstream's own bf16 (0.32). A 180 s vocal song with the 0.6B
 planner takes 44 s on a 3060 (q8, 7.1 GB peak). The 0.6B planner is a
-separate repo (`ACE-Step/acestep-5Hz-lm-0.6B`), not a snapshot subfolder.
+separate repo, so name it by id: `planner = "ACE-Step/acestep-5Hz-lm-0.6B"`.
 
 **Next:** #384 (planner parity), and the Pascal epic #380 (rig work waits until rigs are named; the fallback if
 ACE-Step cannot run on Pascal is Stable Audio and/or EzAudio).

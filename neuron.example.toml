@@ -179,7 +179,8 @@ name = "candle"
 # "f32" computes unquantized GPU components in f32 (cards without fast
 # bf16). Dense f32 needs about 13 GB resident; on small cards use quant.
 #compute = "bf16"
-# Which planner LM to load: a snapshot subfolder, or "none".
+# Which planner LM to load: a snapshot subfolder, a repo id of its own
+# ("ACE-Step/acestep-5Hz-lm-0.6B" for an 8 GB card), or "none".
 #planner = "acestep-5Hz-lm-1.7B"
 # Shorter songs than the model allows, for a card that runs out first.
 #max_duration_secs = 240

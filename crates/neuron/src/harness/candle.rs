@@ -4767,6 +4767,28 @@ impl CandleHarness {
             None => super::audio::PLANNER_DIRS.to_vec(),
         };
         let mut planner = None;
+        // A name with a slash is a repo of its own (the 0.6B planner ships
+        // as `ACE-Step/acestep-5Hz-lm-0.6B`, not in the main snapshot),
+        // fetched through the same registry; the engine joins an absolute
+        // path onto the root unchanged.
+        if let Some(id) = named.filter(|n| n.contains('/')) {
+            let planner_repo = api.model(id.to_string());
+            let mut dir = None;
+            for file in ["config.json", "model.safetensors", "tokenizer.json"] {
+                let path = planner_repo
+                    .get(file)
+                    .await
+                    .with_context(|| format!("fetch {file} from planner repo {id}"))?;
+                dir = path.parent().map(|p| p.to_path_buf());
+            }
+            let dir = dir.context("planner repo resolved to no directory")?;
+            planner = Some(dir.to_string_lossy().into_owned());
+        }
+        let candidates = if planner.is_some() {
+            Vec::new()
+        } else {
+            candidates
+        };
         for dir in candidates {
             let mut ok = true;
             for file in super::audio::planner_files(dir) {

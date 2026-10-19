@@ -164,9 +164,10 @@ pub struct AudioConfig {
     /// Where each component runs.
     #[serde(default)]
     pub placement: AudioPlacement,
-    /// Which planner LM to load, by its snapshot subfolder (for example
-    /// `"acestep-5Hz-lm-0.6B"`), or `"none"` to load none. Unset takes
-    /// the largest the snapshot has.
+    /// Which planner LM to load: a snapshot subfolder (for example
+    /// `"acestep-5Hz-lm-1.7B"`), a repo id of its own (the 0.6B planner is
+    /// `"ACE-Step/acestep-5Hz-lm-0.6B"`), or `"none"`. Unset takes the
+    /// largest the snapshot has.
     #[serde(default)]
     pub planner: Option<String>,
     /// Treat the device as having this much free memory for the pipeline,
