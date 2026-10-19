@@ -55,6 +55,10 @@ const DEFAULT_BUSY_WAIT: Duration = Duration::from_secs(5);
 /// How often expired jobs are swept.
 const SWEEP_INTERVAL: Duration = Duration::from_secs(600);
 
+/// `Retry-After` on a submission refused for lack of disk space: about as
+/// long as it takes the sweep to come round and expire old jobs.
+const STORAGE_RETRY_AFTER_SECS: u64 = 600;
+
 /// A job as cortex stores it: the public object plus what is needed to run
 /// (or re-run) it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -124,6 +128,30 @@ impl AudioJobs {
                 }
             })
             .as_ref()
+    }
+
+    /// Free space on the filesystem holding the job directory, in MiB.
+    /// `None` when there is no directory (memory only) or it cannot be
+    /// read, in which case submissions are not refused on its account.
+    fn free_mb(&self) -> Option<u64> {
+        let dir = self.dir()?;
+        match rustix::fs::statvfs(dir) {
+            Ok(st) => Some(st.f_bavail.saturating_mul(st.f_frsize) / (1024 * 1024)),
+            Err(e) => {
+                tracing::warn!(dir = %dir.display(), error = %e, "cannot read free space for audio jobs");
+                None
+            }
+        }
+    }
+
+    /// Whether a new job may be accepted: the store's filesystem must keep
+    /// at least `min_free_mb` free. Returns the free space when it may not.
+    fn storage_full(&self) -> Option<u64> {
+        let floor = self.config.min_free_mb;
+        if floor == 0 {
+            return None;
+        }
+        self.free_mb().filter(|free| *free < floor)
     }
 
     fn record_path(&self, id: &str) -> Option<PathBuf> {
@@ -340,6 +368,25 @@ async fn submit(
         && let Err(msg) = request.validate_limits(limits)
     {
         return invalid_params(msg);
+    }
+
+    // Refused before any budget is reserved: nothing to release.
+    if let Some(free) = fleet.audio_jobs.storage_full() {
+        metrics::counter!("cortex_audio_jobs_rejected_total", "reason" => "storage").increment(1);
+        tracing::warn!(
+            free_mb = free,
+            min_free_mb = fleet.audio_jobs.config.min_free_mb,
+            "audio job refused: job store is low on disk space"
+        );
+        return crate::error::envelope_response(
+            OpenAiError::new(
+                503,
+                "server_error",
+                "audio_storage_full",
+                "audio generation is temporarily unavailable: the job store is full",
+            )
+            .with_retry_after(STORAGE_RETRY_AFTER_SECS),
+        );
     }
 
     let owner = crate::metering::principal_from_headers(&headers);

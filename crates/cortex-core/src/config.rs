@@ -57,6 +57,12 @@ pub struct AudioJobsConfig {
     /// How long a job may wait for a busy model before it fails, in seconds.
     #[serde(default = "default_audio_queue_timeout")]
     pub queue_timeout_secs: u64,
+    /// New jobs are refused (503 + `Retry-After`) while the filesystem
+    /// holding `dir` has less than this much free space, in MiB. Rendered
+    /// audio is written there, so this keeps a busy store from filling the
+    /// disk it shares. 0 disables the check.
+    #[serde(default = "default_audio_min_free_mb")]
+    pub min_free_mb: u64,
 }
 
 impl Default for AudioJobsConfig {
@@ -67,6 +73,7 @@ impl Default for AudioJobsConfig {
             max_concurrent: default_audio_max_concurrent(),
             max_attempts: default_audio_max_attempts(),
             queue_timeout_secs: default_audio_queue_timeout(),
+            min_free_mb: default_audio_min_free_mb(),
         }
     }
 }
@@ -85,6 +92,11 @@ fn default_audio_max_attempts() -> u32 {
 }
 fn default_audio_queue_timeout() -> u64 {
     3600
+}
+/// 10 GiB: room for well over a hundred of the longest songs while jobs
+/// already accepted finish.
+fn default_audio_min_free_mb() -> u64 {
+    10 * 1024
 }
 
 /// `[upstream]` — the helexa-upstream authority client (#57). Locally

@@ -129,3 +129,6 @@ enabled = false
 # max_attempts = 2
 # How long a job may wait on a busy model before failing, in seconds.
 # queue_timeout_secs = 3600
+# New jobs are refused (503) while the job directory's filesystem has less
+# than this much free space, in MiB. 0 disables the check.
+# min_free_mb = 10240

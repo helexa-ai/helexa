@@ -28,6 +28,7 @@ bytes = "1"
 urlencoding = "2"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+rustix = { version = "1", default-features = false, features = ["std", "fs"] }
 claxon = "0.4.3"
 mp3lame-encoder = { version = "0.2.5", features = ["std"] }
 
