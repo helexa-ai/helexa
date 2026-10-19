@@ -64,6 +64,10 @@ pub enum RouteError {
         "model '{model_id}' is recovering on node '{node}' (device context rebuild in progress) — retry shortly"
     )]
     ModelRecovering { model_id: String, node: String },
+    #[error(
+        "model '{model_id}' does not fit on '{node}' until a model there finishes its work — retry shortly"
+    )]
+    NodeBusy { model_id: String, node: String },
 }
 
 impl RouteError {
@@ -74,7 +78,8 @@ impl RouteError {
         match self {
             RouteError::NoHealthyNodes
             | RouteError::ModelRecovering { .. }
-            | RouteError::FeasibleNodeUnhealthy { .. } => 503,
+            | RouteError::FeasibleNodeUnhealthy { .. }
+            | RouteError::NodeBusy { .. } => 503,
             _ => 404,
         }
     }
@@ -88,7 +93,8 @@ impl RouteError {
             | RouteError::NoFeasibleNeuron { .. }
             | RouteError::ColdLoadFailed { .. }
             | RouteError::ModelRecovering { .. }
-            | RouteError::FeasibleNodeUnhealthy { .. } => "api_error",
+            | RouteError::FeasibleNodeUnhealthy { .. }
+            | RouteError::NodeBusy { .. } => "api_error",
         }
     }
 
@@ -102,6 +108,7 @@ impl RouteError {
             RouteError::ColdLoadFailed { .. } => "service_unavailable",
             RouteError::ModelRecovering { .. } => "service_unavailable",
             RouteError::FeasibleNodeUnhealthy { .. } => "service_unavailable",
+            RouteError::NodeBusy { .. } => "service_unavailable",
         }
     }
 
@@ -115,6 +122,8 @@ impl RouteError {
             RouteError::ModelRecovering { .. } => Some(2),
             RouteError::FeasibleNodeUnhealthy { .. } => Some(3),
             RouteError::NoHealthyNodes => Some(5),
+            // Clears when the resident model's requests finish.
+            RouteError::NodeBusy { .. } => Some(10),
             _ => None,
         }
     }
@@ -205,11 +214,10 @@ pub async fn resolve(
                     // Loading is gateway-synthesised from neuron's
                     // activation snapshot; it never appears on the
                     // wire from neuron's `/models`. Skip — the model
-                    // isn't actually servable yet. The pre-existing
-                    // race (catalogue cold_load fires a parallel
-                    // /models/load against the in-flight load) is no
-                    // worse than before; fixing it needs neuron-side
-                    // in-flight tracking on /models/load itself.
+                    // isn't actually servable yet. Cortex's own
+                    // cold-loads are serialised per node (priority 4);
+                    // a load neuron started by itself at activation is
+                    // still invisible to that lock.
                     ModelStatus::Loading => {}
                 }
             }
@@ -247,39 +255,107 @@ pub async fn resolve(
 
     // Priority 4: catalogue × topology cold-load.
     if let Some(profile) = fleet.catalogue.get(model_id) {
-        let (node_name, neuron_endpoint, fits_free) = pick_feasible_neuron(fleet, profile).await?;
-        // Cold-swap (#203): when the chosen node's devices don't have the
-        // free VRAM *right now*, evict unpinned LRU models there until
-        // the profile fits (bounded — a node whose evictable set can't
-        // free enough was ranked below one that can).
-        if !fits_free {
-            for _ in 0..3 {
-                match crate::evictor::evict_lru_on_node(fleet, &node_name, Some(&profile.id)).await
-                {
-                    Ok(Some(evicted)) => {
-                        tracing::info!(
-                            model = %profile.id,
-                            node = %node_name,
-                            evicted = %evicted,
-                            "cold-swap: evicted LRU model to make room"
-                        );
-                        if node_fits_free(fleet, &node_name, profile).await {
-                            break;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        tracing::warn!(node = %node_name, error = %e, "cold-swap eviction failed");
-                        break;
-                    }
+        let (node_name, neuron_endpoint, _) = pick_feasible_neuron(fleet, profile).await?;
+        // One cold-load per node at a time. The choice above rests on the
+        // last poll's VRAM, which cannot see a load in progress, so every
+        // decision that follows is re-made inside the lock from a fresh
+        // `/health`.
+        let lock = fleet.cold_load_lock(&node_name);
+        let _turn = lock.lock().await;
+
+        // Whoever held the lock may have been loading this very model.
+        if let Some((node, endpoint)) = loaded_location(fleet, model_id).await {
+            return finish(fleet, &node, &endpoint, model_id, false).await;
+        }
+
+        crate::poller::poll_health(fleet, &node_name, &neuron_endpoint).await;
+        // Cold-swap (#203): when the node's devices don't have the free
+        // VRAM right now, evict unpinned LRU models there until the
+        // profile fits (bounded — a node whose evictable set can't free
+        // enough was ranked below one that can).
+        for _ in 0..3 {
+            if node_fits_free(fleet, &node_name, profile).await {
+                break;
+            }
+            match crate::evictor::evict_lru_on_node(fleet, &node_name, Some(&profile.id)).await {
+                Ok(Some(evicted)) => {
+                    tracing::info!(
+                        model = %profile.id,
+                        node = %node_name,
+                        evicted = %evicted,
+                        "cold-swap: evicted LRU model to make room"
+                    );
+                    crate::poller::poll_health(fleet, &node_name, &neuron_endpoint).await;
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    tracing::warn!(node = %node_name, error = %e, "cold-swap eviction failed");
+                    break;
                 }
             }
         }
+        // Still short, and a model that would otherwise be displaced is
+        // busy: loading now would land beside it and fail out of memory.
+        // Answer "retry shortly" instead; the room appears when its work
+        // ends.
+        if !node_fits_free(fleet, &node_name, profile).await
+            && blocked_displaceable(fleet, &node_name, profile).await
+        {
+            tracing::info!(
+                model = %profile.id,
+                node = %node_name,
+                "cold-load deferred: the model it would displace is busy"
+            );
+            return Err(RouteError::NodeBusy {
+                model_id: profile.id.clone(),
+                node: node_name,
+            });
+        }
         cold_load(fleet, &node_name, &neuron_endpoint, profile).await?;
+        fleet.note_cold_load(&node_name, &profile.id);
+        // The next cold-load in line decides from these readings.
+        crate::poller::poll_health(fleet, &node_name, &neuron_endpoint).await;
+        drop(_turn);
         return finish(fleet, &node_name, &neuron_endpoint, model_id, true).await;
     }
 
     Err(RouteError::ModelNotFound(model_id.to_string()))
+}
+
+/// A healthy node where `model_id` is loaded and servable, if any.
+async fn loaded_location(fleet: &Arc<CortexState>, model_id: &str) -> Option<(String, String)> {
+    let nodes = fleet.nodes.read().await;
+    nodes
+        .values()
+        .filter(|n| n.healthy)
+        .find(|n| {
+            n.models.get(model_id).is_some_and(|m| {
+                matches!(m.status, ModelStatus::Loaded | ModelStatus::Reloading) && m.is_servable()
+            })
+        })
+        .map(|n| (n.name.clone(), n.endpoint.clone()))
+}
+
+/// Whether `node_name` holds a model the profile may displace but that
+/// cannot be evicted right now because it is busy (see
+/// [`CortexState::eviction_blocked`]), or is still loading its startup
+/// models.
+async fn blocked_displaceable(
+    fleet: &Arc<CortexState>,
+    node_name: &str,
+    profile: &ModelProfile,
+) -> bool {
+    let nodes = fleet.nodes.read().await;
+    nodes.get(node_name).is_some_and(|node| {
+        // A startup load cannot be evicted until it finishes, and its
+        // memory is still arriving: wait for it.
+        activating(node)
+            || node.models.values().any(|m| {
+                m.status == ModelStatus::Loaded
+                    && fleet.catalogue.may_displace(&profile.id, &m.id)
+                    && fleet.eviction_blocked(node, &m.id)
+            })
+    })
 }
 
 /// True when `node_name`'s live device readings show enough free VRAM
@@ -289,10 +365,38 @@ pub async fn resolve(
 async fn node_fits_free(fleet: &Arc<CortexState>, node_name: &str, profile: &ModelProfile) -> bool {
     let nodes = fleet.nodes.read().await;
     nodes.get(node_name).is_some_and(|node| {
+        let reserved = activation_reserved_mb(fleet, node);
         node.device_health
             .iter()
-            .any(|d| d.vram_free_mb >= profile.vram_mb.unwrap_or(0))
+            .any(|d| d.vram_free_mb.saturating_sub(reserved) >= profile.vram_mb.unwrap_or(0))
     })
+}
+
+/// VRAM promised to models the neuron is loading on its own at startup
+/// (its `default_models`), by their catalogue footprint. Those loads are
+/// not in the neuron's model list until they finish and their memory
+/// fills in gradually, so free VRAM alone overstates what is available.
+fn activation_reserved_mb(fleet: &CortexState, node: &cortex_core::node::NodeState) -> u64 {
+    node.activation.as_ref().map_or(0, |a| {
+        a.in_progress
+            .iter()
+            .chain(a.pending.iter())
+            .filter(|id| {
+                !node
+                    .models
+                    .get(id.as_str())
+                    .is_some_and(|m| m.status == ModelStatus::Loaded)
+            })
+            .filter_map(|id| fleet.catalogue.get(id).and_then(|p| p.vram_mb))
+            .sum()
+    })
+}
+
+/// Whether the neuron is still loading its startup models.
+fn activating(node: &cortex_core::node::NodeState) -> bool {
+    node.activation
+        .as_ref()
+        .is_some_and(|a| a.in_progress.is_some() || !a.pending.is_empty())
 }
 
 /// Pick a healthy neuron whose discovered topology satisfies the
@@ -332,7 +436,8 @@ async fn pick_feasible_neuron(
             .iter()
             .map(|d| d.vram_free_mb)
             .max()
-            .unwrap_or(0);
+            .unwrap_or(0)
+            .saturating_sub(activation_reserved_mb(fleet, node));
         let need = profile.vram_mb.unwrap_or(0);
         let fits_free = max_free >= need;
         // Evictable estimate: free + the VRAM of loaded models this
@@ -344,6 +449,7 @@ async fn pick_feasible_neuron(
             .values()
             .filter(|m| {
                 matches!(m.status, cortex_core::node::ModelStatus::Loaded)
+                    && !fleet.eviction_blocked(node, &m.id)
                     && fleet.catalogue.may_displace(&profile.id, &m.id)
             })
             // neuron reports vram_used_mb: null today; fall back to the
