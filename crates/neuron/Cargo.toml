@@ -53,6 +53,7 @@ cuda-integration = ["cuda"]
 
 [dependencies]
 cortex-core.workspace = true
+flacenc = { version = "0.5.1", default-features = false, features = ["par"] }
 tokio.workspace = true
 axum.workspace = true
 metrics.workspace = true
@@ -147,6 +148,7 @@ base64 = "0.22"
 tokio = { workspace = true, features = ["test-util"] }
 reqwest.workspace = true
 tempfile = "3"
+claxon = "0.4.3"
 
 [build-dependencies]
 # Used by `build.rs` to compile `src/cuda/*.cu` into `libneuroncuda.a`

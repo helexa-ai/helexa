@@ -688,7 +688,7 @@ async fn images_generations(
 /// `POST /v1/audio/generations` (#382): render one audio generation and
 /// return it. This is the neuron half of the async job API — cortex owns
 /// the job and calls this once per job, waiting for the whole render. The
-/// body is the audio (`audio/wav`); the result metadata travels in the
+/// body is the audio (`audio/flac`); the result metadata travels in the
 /// [`cortex_core::audio::RESULT_HEADER`] header so the bytes need no
 /// base64 envelope.
 async fn audio_generations(
@@ -716,7 +716,7 @@ async fn audio_generations(
     }
     let principal = principal_key(&headers);
     match candle.audio_generation(&req, principal.as_deref()).await {
-        Ok((wav, result)) => {
+        Ok((flac, result)) => {
             let meta = match serde_json::to_string(&result) {
                 Ok(m) => m,
                 Err(e) => {
@@ -725,11 +725,13 @@ async fn audio_generations(
                     )));
                 }
             };
-            let mut resp = axum::response::Response::new(axum::body::Body::from(wav));
+            let mut resp = axum::response::Response::new(axum::body::Body::from(flac));
             let h = resp.headers_mut();
             h.insert(
                 axum::http::header::CONTENT_TYPE,
-                axum::http::HeaderValue::from_static("audio/wav"),
+                axum::http::HeaderValue::from_static(cortex_core::audio::content_type(
+                    cortex_core::audio::STORED_FORMAT,
+                )),
             );
             if let Ok(v) = axum::http::HeaderValue::from_str(&meta) {
                 h.insert(RESULT_HEADER, v);

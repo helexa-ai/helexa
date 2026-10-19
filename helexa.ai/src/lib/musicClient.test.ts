@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MusicError,
   estimateTokens,
+  fetchAudio,
   isTerminal,
   listMusicModels,
   submitJob,
@@ -102,5 +103,18 @@ describe("submitJob", () => {
     await expect(submitJob({ model: "m", prompt: "p" }, { baseUrl: "http://x" })).rejects.toBeInstanceOf(
       MusicError,
     );
+  });
+});
+
+describe("fetchAudio", () => {
+  it("fetches the stored audio, or the format asked for, with the bearer", async () => {
+    const fetchMock = vi.fn(async () => new Response("audio", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await fetchAudio("audiogen_1", { baseUrl: "https://x", apiKey: "k" });
+    await fetchAudio("audiogen_1", { baseUrl: "https://x", apiKey: "k", format: "mp3" });
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe("https://x/v1/audio/generations/audiogen_1/content");
+    expect(calls[1][0]).toBe("https://x/v1/audio/generations/audiogen_1/content?format=mp3");
+    expect((calls[1][1].headers as Record<string, string>).authorization).toBe("Bearer k");
   });
 });

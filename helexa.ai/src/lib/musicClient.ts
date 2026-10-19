@@ -175,10 +175,17 @@ export async function cancelJob(id: string, opts: { baseUrl?: string; apiKey?: s
   return (await resp.json()) as AudioJob;
 }
 
-/** The rendered audio of a finished job. */
-export async function fetchAudio(id: string, opts: { baseUrl?: string; apiKey?: string } = {}): Promise<Blob> {
+/** Download formats: the lossless FLAC master, or an MP3 copy. */
+export type AudioFormat = "flac" | "mp3";
+
+/** The rendered audio of a finished job, as stored (FLAC) unless a format is given. */
+export async function fetchAudio(
+  id: string,
+  opts: { baseUrl?: string; apiKey?: string; format?: AudioFormat } = {},
+): Promise<Blob> {
+  const query = opts.format ? `?format=${opts.format}` : "";
   const resp = await call(
-    `${base(opts.baseUrl)}/v1/audio/generations/${encodeURIComponent(id)}/content`,
+    `${base(opts.baseUrl)}/v1/audio/generations/${encodeURIComponent(id)}/content${query}`,
     { headers: headers(opts.apiKey) },
   );
   if (!resp.ok) await fail(resp);

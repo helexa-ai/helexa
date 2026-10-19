@@ -22,7 +22,24 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 
 const MODEL: &str = "music-model";
+/// What a neuron on an older build rendered: WAV.
 const WAV: &[u8] = b"RIFF\x24\x00\x00\x00WAVEfmt fake-audio-bytes";
+
+/// What a neuron renders: half a second of a real 16-bit stereo FLAC, so
+/// that cortex can transcode it.
+static FLAC: std::sync::LazyLock<Vec<u8>> = std::sync::LazyLock::new(|| {
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+    let samples: Vec<i32> = (0..48_000)
+        .map(|i| ((i as f32 * 0.02).sin() * 8_000.0) as i32)
+        .collect();
+    let config = flacenc::config::Encoder::default().into_verified().unwrap();
+    let source = flacenc::source::MemSource::from_samples(&samples, 2, 16, 48_000);
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size).unwrap();
+    let mut sink = flacenc::bitsink::ByteSink::new();
+    stream.write(&mut sink).unwrap();
+    sink.into_inner()
+});
 
 /// How the mock neuron answers `POST /v1/audio/generations`.
 #[derive(Clone, Copy)]
@@ -41,6 +58,8 @@ enum Mode {
     Slow(Duration),
     /// Always 503.
     AlwaysBusy,
+    /// Render WAV, as neurons did before audio moved to FLAC.
+    LegacyWav,
 }
 
 struct Mock {
@@ -136,13 +155,17 @@ async fn render(
             helexa_timing: None,
         },
     };
+    let (content_type, body) = match mode {
+        Mode::LegacyWav => ("audio/wav", WAV.to_vec()),
+        _ => ("audio/flac", FLAC.clone()),
+    };
     (
         StatusCode::OK,
         [
-            ("content-type", "audio/wav".to_string()),
+            ("content-type", content_type.to_string()),
             (RESULT_HEADER, serde_json::to_string(&result).unwrap()),
         ],
-        WAV,
+        body,
     )
         .into_response()
 }
@@ -283,7 +306,8 @@ async fn submit_poll_fetch_content() {
     assert_eq!(done["result"]["duration"], 12.5);
     assert_eq!(done["result"]["sample_rate"], 48_000);
     assert_eq!(done["result"]["seed"], 42);
-    assert_eq!(done["result"]["bytes"], WAV.len());
+    assert_eq!(done["result"]["bytes"], FLAC.len());
+    assert_eq!(done["result"]["format"], "flac");
     assert_eq!(done["usage"]["helexa_audio_units"], 12.5);
 
     let content = reqwest::Client::new()
@@ -293,8 +317,12 @@ async fn submit_poll_fetch_content() {
         .await
         .unwrap();
     assert_eq!(content.status(), 200);
-    assert_eq!(content.headers()["content-type"], "audio/wav");
-    assert_eq!(content.bytes().await.unwrap().as_ref(), WAV);
+    assert_eq!(content.headers()["content-type"], "audio/flac");
+    assert_eq!(
+        content.headers()["content-disposition"],
+        format!("attachment; filename=\"{id}.flac\"").as_str()
+    );
+    assert_eq!(content.bytes().await.unwrap().as_ref(), FLAC.as_slice());
 
     // The neuron saw the submitting account, for fair-share admission.
     assert_eq!(
@@ -303,7 +331,110 @@ async fn submit_poll_fetch_content() {
     );
     // Record and audio are on disk.
     assert!(dir.path().join(format!("{id}.json")).exists());
+    assert!(dir.path().join(format!("{id}.flac")).exists());
+}
+
+async fn fetch(gw: &str, key: Option<&str>, path: &str) -> reqwest::Response {
+    let mut req = reqwest::Client::new().get(format!("{gw}{path}"));
+    if let Some(k) = key {
+        req = req.bearer_auth(k);
+    }
+    req.send().await.unwrap()
+}
+
+fn is_mp3(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"ID3") || (bytes.len() > 1 && bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0)
+}
+
+#[tokio::test]
+async fn content_transcodes_to_mp3_and_caches_it() {
+    let mock = spawn_mock(Mode::Ok).await;
+    let dir = tempfile::tempdir().unwrap();
+    let fleet = Arc::new(CortexState::from_config(&config(&mock.url, dir.path())));
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+
+    let job: Value = submit(&gw, None, song()).await.json().await.unwrap();
+    let id = job["id"].as_str().unwrap().to_string();
+    wait_terminal(&gw, None, &id, 10).await;
+
+    let path = format!("/v1/audio/generations/{id}/content?format=mp3");
+    let resp = fetch(&gw, None, &path).await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers()["content-type"], "audio/mpeg");
+    assert_eq!(
+        resp.headers()["content-disposition"],
+        format!("attachment; filename=\"{id}.mp3\"").as_str()
+    );
+    let mp3 = resp.bytes().await.unwrap();
+    assert!(is_mp3(&mp3), "not an mp3: {:02x?}", &mp3[..8]);
+    let cached = dir.path().join(format!("{id}.mp3"));
+    assert_eq!(std::fs::read(&cached).unwrap(), mp3.as_ref());
+
+    // The second fetch is served from the cache.
+    std::fs::write(&cached, b"cached").unwrap();
+    let again = fetch(&gw, None, &path).await.bytes().await.unwrap();
+    assert_eq!(again.as_ref(), b"cached");
+
+    // The master is untouched and still the default.
+    let flac = fetch(&gw, None, &format!("/v1/audio/generations/{id}/content")).await;
+    assert_eq!(flac.bytes().await.unwrap().as_ref(), FLAC.as_slice());
+}
+
+#[tokio::test]
+async fn response_format_sets_the_default_download() {
+    let mock = spawn_mock(Mode::Ok).await;
+    let dir = tempfile::tempdir().unwrap();
+    let fleet = Arc::new(CortexState::from_config(&config(&mock.url, dir.path())));
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+
+    let mut body = song();
+    body["response_format"] = json!("mp3");
+    let job: Value = submit(&gw, None, body).await.json().await.unwrap();
+    let id = job["id"].as_str().unwrap().to_string();
+    let done = wait_terminal(&gw, None, &id, 10).await;
+    // Stored as FLAC whatever the download format.
+    assert_eq!(done["result"]["format"], "flac");
+    assert!(dir.path().join(format!("{id}.flac")).exists());
+
+    let base = format!("/v1/audio/generations/{id}/content");
+    let resp = fetch(&gw, None, &base).await;
+    assert_eq!(resp.headers()["content-type"], "audio/mpeg");
+    // An explicit format wins over the job's default.
+    let resp = fetch(&gw, None, &format!("{base}?format=flac")).await;
+    assert_eq!(resp.headers()["content-type"], "audio/flac");
+    // Unknown formats are refused.
+    for f in ["wav", "ogg"] {
+        let resp = fetch(&gw, None, &format!("{base}?format={f}")).await;
+        assert_eq!(resp.status(), 400, "format {f}");
+        let err: Value = resp.json().await.unwrap();
+        assert_eq!(err["error"]["code"], "invalid_audio_params");
+    }
+}
+
+#[tokio::test]
+async fn legacy_wav_results_are_served_as_wav() {
+    let mock = spawn_mock(Mode::LegacyWav).await;
+    let dir = tempfile::tempdir().unwrap();
+    let fleet = Arc::new(CortexState::from_config(&config(&mock.url, dir.path())));
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+
+    let job: Value = submit(&gw, None, song()).await.json().await.unwrap();
+    let id = job["id"].as_str().unwrap().to_string();
+    let done = wait_terminal(&gw, None, &id, 10).await;
+    assert_eq!(done["result"]["format"], "wav");
     assert!(dir.path().join(format!("{id}.wav")).exists());
+
+    let base = format!("/v1/audio/generations/{id}/content");
+    let resp = fetch(&gw, None, &base).await;
+    assert_eq!(resp.headers()["content-type"], "audio/wav");
+    assert_eq!(resp.bytes().await.unwrap().as_ref(), WAV);
+    let resp = fetch(&gw, None, &format!("{base}?format=mp3")).await;
+    assert_eq!(resp.status(), 409);
+    let err: Value = resp.json().await.unwrap();
+    assert_eq!(err["error"]["code"], "format_unavailable");
 }
 
 #[tokio::test]
@@ -572,7 +703,7 @@ async fn jobs_survive_a_restart() {
         .send()
         .await
         .unwrap();
-    assert_eq!(content.bytes().await.unwrap().as_ref(), WAV);
+    assert_eq!(content.bytes().await.unwrap().as_ref(), FLAC.as_slice());
 
     // The unfinished one was re-queued and now completes.
     let resumed = wait_terminal(&gw, Some("key-alice"), &stuck_id, 10).await;
@@ -592,13 +723,22 @@ async fn expired_jobs_are_swept() {
     let job: Value = submit(&gw, None, song()).await.json().await.unwrap();
     let id = job["id"].as_str().unwrap().to_string();
     wait_terminal(&gw, None, &id, 10).await;
+    let mp3 = fetch(
+        &gw,
+        None,
+        &format!("/v1/audio/generations/{id}/content?format=mp3"),
+    )
+    .await;
+    assert_eq!(mp3.status(), 200);
+    assert!(dir.path().join(format!("{id}.mp3")).exists());
     // completed_at has one-second resolution; let it fall behind the cutoff.
     tokio::time::sleep(Duration::from_millis(1100)).await;
 
     cortex_gateway::audio_jobs::sweep_expired(&fleet).await;
     assert_eq!(get_job(&gw, None, &id).await.status(), 404);
     assert!(!dir.path().join(format!("{id}.json")).exists());
-    assert!(!dir.path().join(format!("{id}.wav")).exists());
+    assert!(!dir.path().join(format!("{id}.flac")).exists());
+    assert!(!dir.path().join(format!("{id}.mp3")).exists());
 }
 
 // ── Per-model rates (#386) ───────────────────────────────────────────

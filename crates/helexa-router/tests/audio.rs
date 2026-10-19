@@ -2,7 +2,7 @@
 //! its cortex, so job calls are asked of each cortex until one answers with
 //! something other than 404, and listings merge every cortex's jobs.
 
-use axum::extract::Path;
+use axum::extract::{Path, RawQuery};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -51,18 +51,25 @@ async fn spawn_cortex(job_id: &'static str, created: u64) -> String {
         )
         .route(
             "/v1/audio/generations/{id}/content",
-            get(move |Path(id): Path<String>| async move {
-                if id == job_id {
-                    (
-                        StatusCode::OK,
-                        [("content-type", "audio/wav")],
-                        format!("audio-of-{job_id}"),
-                    )
-                        .into_response()
-                } else {
-                    not_found()
-                }
-            }),
+            get(
+                move |Path(id): Path<String>, RawQuery(q): RawQuery| async move {
+                    if id == job_id {
+                        // Echo the query so the test can see it was forwarded.
+                        let (ct, suffix) = match q.as_deref() {
+                            Some("format=mp3") => ("audio/mpeg", ".mp3"),
+                            _ => ("audio/flac", ""),
+                        };
+                        (
+                            StatusCode::OK,
+                            [("content-type", ct)],
+                            format!("audio-of-{job_id}{suffix}"),
+                        )
+                            .into_response()
+                    } else {
+                        not_found()
+                    }
+                },
+            ),
         );
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -128,8 +135,19 @@ async fn job_calls_find_the_cortex_that_holds_the_job() {
         .await
         .unwrap();
     assert_eq!(content.status(), 200);
-    assert_eq!(content.headers()["content-type"], "audio/wav");
+    assert_eq!(content.headers()["content-type"], "audio/flac");
     assert_eq!(content.text().await.unwrap(), "audio-of-audiogen_b");
+
+    // The download format in the query reaches the cortex.
+    let mp3 = http
+        .get(format!(
+            "{router}/v1/audio/generations/audiogen_b/content?format=mp3"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(mp3.headers()["content-type"], "audio/mpeg");
+    assert_eq!(mp3.text().await.unwrap(), "audio-of-audiogen_b.mp3");
 
     let cancelled: Value = http
         .delete(format!("{router}/v1/audio/generations/audiogen_a"))

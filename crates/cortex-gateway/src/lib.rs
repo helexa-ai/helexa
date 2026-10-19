@@ -1,4 +1,5 @@
 pub mod anthropic_sse;
+pub mod audio_codec;
 pub mod audio_jobs;
 pub mod auth;
 pub mod entitlements_chain;

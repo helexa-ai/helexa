@@ -5236,7 +5236,7 @@ impl CandleHarness {
 
     /// Render one audio generation (#382). The cortex job manager sends one
     /// of these per job and waits for the whole render; the reply is the
-    /// WAV bytes plus the result metadata cortex records on the job.
+    /// FLAC bytes plus the result metadata cortex records on the job.
     ///
     /// Validated against the model's limits before admission; the render
     /// itself is one device-worker job. A request without a seed gets a
@@ -5317,13 +5317,14 @@ impl CandleHarness {
         let duration = result.duration_secs();
         let sample_rate = result.sample_rate;
         let timing = result.timing;
-        let wav = tokio::task::spawn_blocking(move || {
-            super::audio::encode_wav_pcm16(&result.left, &result.right, result.sample_rate)
+        let flac = tokio::task::spawn_blocking(move || {
+            super::audio::encode_flac_pcm16(&result.left, &result.right, result.sample_rate)
         })
         .await
-        .map_err(|e| InferenceError::Other(anyhow::anyhow!("wav encode task: {e:#}")))?;
+        .map_err(|e| InferenceError::Other(anyhow::anyhow!("flac encode task: {e:#}")))?
+        .map_err(InferenceError::Other)?;
         Ok((
-            wav,
+            flac,
             cortex_core::audio::NeuronAudioResult {
                 duration,
                 sample_rate,

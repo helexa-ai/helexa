@@ -5,11 +5,14 @@
 # Two stages:
 #
 # 1. Neuron, directly: load the model, render a fixed-seed 10 s
-#    instrumental twice through /v1/audio/generations, and check the WAV
-#    (header, 48 kHz stereo, duration, not silent, not clipped flat),
-#    the metered units, and that the same seed gives the same bytes.
+#    instrumental twice through /v1/audio/generations, and check the FLAC
+#    (16-bit 48 kHz stereo, duration, not silent, not clipped flat), the
+#    metered units, and that the same seed gives the same samples.
 # 2. The chain, through cortex's async job API: submit, poll to
-#    completion, fetch the content, check it the same way.
+#    completion, fetch the content, check it the same way, then fetch the
+#    MP3 transcode and check that too.
+#
+# Needs ffmpeg and ffprobe on the machine running it.
 #
 # A co-resident model evicted for the probe window is restored on every
 # exit path, failures included. The probe model is unloaded afterwards
@@ -36,28 +39,29 @@ WORK="$(mktemp -d)"
 echo "==> /version"
 curl -sf -m 10 "${BASE}/version" | python3 -c 'import json,sys; b=json.load(sys.stdin); print("  ", b.get("git_sha","?")[:12], b.get("profile"), b.get("features"))'
 
-# The checks every rendered file must pass. Argument: path to the WAV,
-# the expected duration in seconds.
-check_wav() {
-  python3 - "$1" "$2" <<'PY'
-import struct, sys
-path, want = sys.argv[1], float(sys.argv[2])
-b = open(path, "rb").read()
-assert b[:4] == b"RIFF" and b[8:12] == b"WAVE", "not a WAV file"
-fmt, channels, rate = struct.unpack("<HHI", b[20:28])
-bits = struct.unpack("<H", b[34:36])[0]
-assert (fmt, channels, rate, bits) == (1, 2, 48000, 16), (fmt, channels, rate, bits)
-n = struct.unpack("<I", b[40:44])[0] // 4
-secs = n / rate
+# The checks every rendered file must pass. Arguments: path to the audio,
+# the expected codec (flac or mp3), the expected duration in seconds.
+# Writes the decoded 16-bit PCM beside the file as <path>.pcm.
+check_audio() {
+  local probe
+  probe=$(ffprobe -v error -select_streams a:0 \
+    -show_entries stream=codec_name,sample_rate,channels -of csv=p=0 "$1")
+  [[ "${probe}" == "$2,48000,2" ]] || { echo "   FAIL: stream is ${probe}, wanted $2,48000,2"; exit 1; }
+  ffmpeg -v error -y -i "$1" -f s16le -acodec pcm_s16le "$1.pcm"
+  python3 - "$1.pcm" "$3" "$2" "$(stat -c %s "$1")" <<'PY'
+import array, sys
+path, want, codec, size = sys.argv[1], float(sys.argv[2]), sys.argv[3], int(sys.argv[4])
+samples = array.array("h", open(path, "rb").read())
+secs = len(samples) / 2 / 48000
 assert abs(secs - want) < 0.5, f"duration {secs:.2f}s, wanted {want}s"
-samples = struct.unpack(f"<{n * 2}h", b[44:44 + n * 4])
 rms = (sum(s * s for s in samples) / len(samples)) ** 0.5 / 32767
 peak = max(abs(s) for s in samples) / 32767
 assert rms > 0.01, f"near-silent: rms {rms:.4f}"
 # Levels follow each upstream: ACE-Step normalises to -1 dBFS, HeartMuLa
 # does not. The rms check above is what catches silence.
 assert 0.1 < peak <= 1.0, f"peak {peak:.3f}"
-print(f"   {secs:.2f}s 48kHz stereo | rms {rms:.3f} peak {peak:.3f}")
+ratio = size / (len(samples) * 2)
+print(f"   {codec} {secs:.2f}s 48kHz stereo | rms {rms:.3f} peak {peak:.3f} | {size / 1e6:.2f} MB, {ratio:.0%} of PCM")
 PY
 }
 
@@ -128,9 +132,9 @@ print("  ", m["id"], m["status"], m["capabilities"])
 REQ="{\"model\": \"${MODEL_ID}\", \"prompt\": \"Warm lo-fi hip hop beat with mellow Rhodes chords and dusty vinyl drums, 82 BPM\", \"duration\": 10, \"seed\": 42}"
 for run in 1 2; do
   echo "==> neuron render ${run}: 10 s instrumental, seed 42"
-  curl -sf -m 600 -D "${WORK}/h${run}" -o "${WORK}/n${run}.wav" -X POST "${BASE}/v1/audio/generations" \
+  curl -sf -m 600 -D "${WORK}/h${run}" -o "${WORK}/n${run}.flac" -X POST "${BASE}/v1/audio/generations" \
     -H 'Content-Type: application/json' -d "${REQ}"
-  check_wav "${WORK}/n${run}.wav" 10
+  check_audio "${WORK}/n${run}.flac" flac 10
   grep -i '^x-helexa-audio-result:' "${WORK}/h${run}" | cut -d' ' -f2- | python3 -c '
 import json, sys
 r = json.loads(sys.stdin.read())
@@ -141,7 +145,7 @@ units = r["usage"]["helexa_audio_units"]
 print("   units %.2f | encode %sms plan %sms generate %sms decode %sms" % (units, t["encode_ms"], t["plan_ms"], t["generate_ms"], t["decode_ms"]))
 '
 done
-cmp -s "${WORK}/n1.wav" "${WORK}/n2.wav" && echo "   same seed, same bytes" \
+cmp -s "${WORK}/n1.flac.pcm" "${WORK}/n2.flac.pcm" && echo "   same seed, same samples" \
   || { echo "   FAIL: same seed rendered different audio"; exit 1; }
 
 if [[ "${SKIP_CHAIN:-0}" != 1 ]]; then
@@ -156,10 +160,13 @@ if [[ "${SKIP_CHAIN:-0}" != 1 ]]; then
     sleep 2
   done
   [[ "${status}" == succeeded ]] || { curl -s "${CORTEX}/v1/audio/generations/${id}"; echo; echo "   FAIL: job ${status}"; exit 1; }
-  curl -sf -m 60 -o "${WORK}/c.wav" "${CORTEX}/v1/audio/generations/${id}/content"
-  check_wav "${WORK}/c.wav" 10
-  cmp -s "${WORK}/n1.wav" "${WORK}/c.wav" && echo "   chain render matches the direct render" \
+  curl -sf -m 60 -o "${WORK}/c.flac" "${CORTEX}/v1/audio/generations/${id}/content"
+  check_audio "${WORK}/c.flac" flac 10
+  cmp -s "${WORK}/n1.flac.pcm" "${WORK}/c.flac.pcm" && echo "   chain render matches the direct render" \
     || { echo "   FAIL: chain render differs from the direct render at the same seed"; exit 1; }
+  echo "==> chain: mp3 download"
+  curl -sf -m 120 -o "${WORK}/c.mp3" "${CORTEX}/v1/audio/generations/${id}/content?format=mp3"
+  check_audio "${WORK}/c.mp3" mp3 10
 fi
 
 echo "==> health"

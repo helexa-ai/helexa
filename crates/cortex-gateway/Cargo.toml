@@ -28,7 +28,10 @@ bytes = "1"
 urlencoding = "2"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
+claxon = "0.4.3"
+mp3lame-encoder = { version = "0.2.5", features = ["std"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile = "3"
+flacenc = { version = "0.5.1", default-features = false }
