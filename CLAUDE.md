@@ -1274,7 +1274,9 @@ stored as that lossless master. MP3 (320 kbps CBR, LAME) is a download
 format only: `/content?format=mp3` transcodes the FLAC once and caches
 `{id}.mp3` beside it until the job expires; `response_format` sets a
 job's default download. Results stored as WAV by older neurons are
-served as WAV.
+served as WAV. cortex refuses new jobs (503 `audio_storage_full`) while the job
+directory's filesystem has under `[audio_jobs] min_free_mb` free (10 GiB
+default); shared object storage for the Pascal-scale fleet is #411.
 
 **Metering: per audio-second**, at a per-model rate stored in
 helexa-upstream's `model_rates` table (`GET /authz/v1/rates`, cached by

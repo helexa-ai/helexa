@@ -875,6 +875,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "mp3lame-encoder",
  "reqwest",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

@@ -202,6 +202,9 @@ fn config(neuron: &str, dir: &std::path::Path) -> GatewayConfig {
         audio_jobs: AudioJobsConfig {
             dir: dir.to_string_lossy().into_owned(),
             queue_timeout_secs: 20,
+            // The free-space floor is tested on its own below; elsewhere it
+            // must not make results depend on the build host's disk.
+            min_free_mb: 0,
             ..Default::default()
         },
     }
@@ -739,6 +742,46 @@ async fn expired_jobs_are_swept() {
     assert!(!dir.path().join(format!("{id}.json")).exists());
     assert!(!dir.path().join(format!("{id}.flac")).exists());
     assert!(!dir.path().join(format!("{id}.mp3")).exists());
+}
+
+#[tokio::test]
+async fn submissions_are_refused_when_the_store_is_low_on_disk() {
+    let mock = spawn_mock(Mode::Ok).await;
+    let rates = [("*", 1000)];
+
+    // A floor no filesystem can meet: refused, retryable, nothing written,
+    // nothing reserved.
+    let dir = tempfile::tempdir().unwrap();
+    let mut cfg = config(&mock.url, dir.path());
+    cfg.audio_jobs.min_free_mb = u64::MAX;
+    for k in &mut cfg.entitlements.keys {
+        k.hard_cap = Some(1_000_000);
+    }
+    let fleet = Arc::new(CortexState::from_config(&cfg));
+    let mut table = cortex_gateway::rates::RateTable::default();
+    for (model, rate) in rates {
+        table.set(cortex_gateway::rates::AUDIO_SECOND, model, rate);
+    }
+    fleet.rates.replace(table).await;
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+
+    let resp = submit(&gw, Some("key-alice"), song()).await;
+    assert_eq!(resp.status(), 503);
+    assert_eq!(resp.headers()["retry-after"], "600");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"]["code"], "audio_storage_full");
+    assert_eq!(spent(&fleet, "alice").await, 0);
+    assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+
+    // A floor any filesystem meets: accepted.
+    let dir = tempfile::tempdir().unwrap();
+    let mut cfg = config(&mock.url, dir.path());
+    cfg.audio_jobs.min_free_mb = 1;
+    let fleet = Arc::new(CortexState::from_config(&cfg));
+    seed_model(&fleet).await;
+    let gw = serve(&fleet).await;
+    assert_eq!(submit(&gw, None, song()).await.status(), 202);
 }
 
 // ── Per-model rates (#386) ───────────────────────────────────────────
