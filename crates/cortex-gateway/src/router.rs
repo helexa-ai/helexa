@@ -338,7 +338,8 @@ async fn loaded_location(fleet: &Arc<CortexState>, model_id: &str) -> Option<(St
 
 /// Whether `node_name` holds a model the profile may displace but that
 /// cannot be evicted right now because it is busy (see
-/// [`CortexState::eviction_blocked`]).
+/// [`CortexState::eviction_blocked`]), or is still loading its startup
+/// models.
 async fn blocked_displaceable(
     fleet: &Arc<CortexState>,
     node_name: &str,
@@ -346,11 +347,14 @@ async fn blocked_displaceable(
 ) -> bool {
     let nodes = fleet.nodes.read().await;
     nodes.get(node_name).is_some_and(|node| {
-        node.models.values().any(|m| {
-            m.status == ModelStatus::Loaded
-                && fleet.catalogue.may_displace(&profile.id, &m.id)
-                && fleet.eviction_blocked(node, &m.id)
-        })
+        // A startup load cannot be evicted until it finishes, and its
+        // memory is still arriving: wait for it.
+        activating(node)
+            || node.models.values().any(|m| {
+                m.status == ModelStatus::Loaded
+                    && fleet.catalogue.may_displace(&profile.id, &m.id)
+                    && fleet.eviction_blocked(node, &m.id)
+            })
     })
 }
 
@@ -361,10 +365,38 @@ async fn blocked_displaceable(
 async fn node_fits_free(fleet: &Arc<CortexState>, node_name: &str, profile: &ModelProfile) -> bool {
     let nodes = fleet.nodes.read().await;
     nodes.get(node_name).is_some_and(|node| {
+        let reserved = activation_reserved_mb(fleet, node);
         node.device_health
             .iter()
-            .any(|d| d.vram_free_mb >= profile.vram_mb.unwrap_or(0))
+            .any(|d| d.vram_free_mb.saturating_sub(reserved) >= profile.vram_mb.unwrap_or(0))
     })
+}
+
+/// VRAM promised to models the neuron is loading on its own at startup
+/// (its `default_models`), by their catalogue footprint. Those loads are
+/// not in the neuron's model list until they finish and their memory
+/// fills in gradually, so free VRAM alone overstates what is available.
+fn activation_reserved_mb(fleet: &CortexState, node: &cortex_core::node::NodeState) -> u64 {
+    node.activation.as_ref().map_or(0, |a| {
+        a.in_progress
+            .iter()
+            .chain(a.pending.iter())
+            .filter(|id| {
+                !node
+                    .models
+                    .get(id.as_str())
+                    .is_some_and(|m| m.status == ModelStatus::Loaded)
+            })
+            .filter_map(|id| fleet.catalogue.get(id).and_then(|p| p.vram_mb))
+            .sum()
+    })
+}
+
+/// Whether the neuron is still loading its startup models.
+fn activating(node: &cortex_core::node::NodeState) -> bool {
+    node.activation
+        .as_ref()
+        .is_some_and(|a| a.in_progress.is_some() || !a.pending.is_empty())
 }
 
 /// Pick a healthy neuron whose discovered topology satisfies the
@@ -404,7 +436,8 @@ async fn pick_feasible_neuron(
             .iter()
             .map(|d| d.vram_free_mb)
             .max()
-            .unwrap_or(0);
+            .unwrap_or(0)
+            .saturating_sub(activation_reserved_mb(fleet, node));
         let need = profile.vram_mb.unwrap_or(0);
         let fits_free = max_free >= need;
         // Evictable estimate: free + the VRAM of loaded models this

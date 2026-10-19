@@ -42,6 +42,10 @@ struct Card {
     in_flight: HashMap<String, usize>,
     overcommitted: bool,
     unloads: Vec<String>,
+    /// A model the neuron is loading by itself at startup: not resident
+    /// yet, its memory not yet showing.
+    activating: Option<String>,
+    loads: Vec<String>,
 }
 
 fn footprint(model: &str) -> u64 {
@@ -66,6 +70,7 @@ async fn spawn_neuron(card: Arc<Mutex<Card>>) -> String {
                     // request to decide while this one is in progress.
                     tokio::time::sleep(Duration::from_millis(300)).await;
                     let mut card = card.lock().unwrap();
+                    card.loads.push(id.clone());
                     card.resident.insert(id.clone(), footprint(&id));
                     if card.resident.values().sum::<u64>() > CARD_MB {
                         card.overcommitted = true;
@@ -102,8 +107,13 @@ async fn spawn_neuron(card: Arc<Mutex<Card>>) -> String {
                         })
                     })
                     .collect();
+                let activation = match &card.activating {
+                    Some(id) => json!({"state": "pre_warming", "in_progress": id}),
+                    None => json!({"state": "ready"}),
+                };
                 Json(json!({
                     "uptime_secs": 1,
+                    "activation": activation,
                     "devices": [{
                         "index": 0,
                         "vram_used_mb": used,
@@ -260,5 +270,39 @@ async fn an_idle_model_is_swapped_out() {
     let card = card.lock().unwrap();
     assert_eq!(card.unloads, ["music-a"]);
     assert_eq!(card.resident.keys().collect::<Vec<_>>(), ["music-b"]);
+    assert!(!card.overcommitted);
+}
+
+#[tokio::test]
+async fn a_cold_load_waits_for_the_neuron_s_own_startup_load() {
+    // The neuron has just restarted and is loading its default model.
+    // That load is in no model list yet and its memory has barely
+    // started to fill, so the card still looks empty.
+    let card = Arc::new(Mutex::new(Card {
+        activating: Some("music-a".into()),
+        ..Default::default()
+    }));
+    let neuron = spawn_neuron(Arc::clone(&card)).await;
+    let fleet = gateway(&neuron, "activating").await;
+
+    let b = cortex_gateway::router::resolve(&fleet, "music-b").await;
+
+    assert!(matches!(b, Err(RouteError::NodeBusy { .. })), "{b:?}");
+    assert!(
+        card.lock().unwrap().loads.is_empty(),
+        "loaded over a startup load"
+    );
+
+    // Once the startup load finishes and its model is idle, the swap
+    // goes ahead as usual.
+    {
+        let mut c = card.lock().unwrap();
+        c.activating = None;
+    }
+    seed_resident(&fleet, &card, &neuron, "music-a").await;
+    let b = cortex_gateway::router::resolve(&fleet, "music-b").await;
+    assert!(b.is_ok(), "{b:?}");
+    let card = card.lock().unwrap();
+    assert_eq!(card.unloads, ["music-a"]);
     assert!(!card.overcommitted);
 }
