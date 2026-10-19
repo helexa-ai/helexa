@@ -33,5 +33,13 @@
   "cancel": "Anuluj",
   "cost": "Koszt",
   "errorGeneric": "Nie udało się wygenerować utworu.",
-  "errorLoad": "Nie udało się wczytać dźwięku."
+  "errorLoad": "Nie udało się wczytać dźwięku.",
+  "history": "Historia",
+  "period": {
+    "today": "Dzisiaj",
+    "yesterday": "Wczoraj",
+    "week": "Ostatnie 7 dni",
+    "month": "Ostatnie 30 dni",
+    "older": "Starsze"
+  }
 }

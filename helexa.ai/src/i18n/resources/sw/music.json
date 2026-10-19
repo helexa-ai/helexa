@@ -33,5 +33,13 @@
   "cancel": "Ghairi",
   "cost": "Gharama",
   "errorGeneric": "Wimbo haukuweza kutengenezwa.",
-  "errorLoad": "Sauti haikuweza kupakiwa."
+  "errorLoad": "Sauti haikuweza kupakiwa.",
+  "history": "Historia",
+  "period": {
+    "today": "Leo",
+    "yesterday": "Jana",
+    "week": "Siku 7 zilizopita",
+    "month": "Siku 30 zilizopita",
+    "older": "Za zamani"
+  }
 }

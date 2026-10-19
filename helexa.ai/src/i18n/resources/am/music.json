@@ -33,5 +33,13 @@
   "cancel": "ሰርዝ",
   "cost": "ወጪ",
   "errorGeneric": "ዘፈኑን መፍጠር አልተቻለም።",
-  "errorLoad": "ድምጹን መጫን አልተቻለም።"
+  "errorLoad": "ድምጹን መጫን አልተቻለም።",
+  "history": "ታሪክ",
+  "period": {
+    "today": "ዛሬ",
+    "yesterday": "ትናንት",
+    "week": "ያለፉት 7 ቀናት",
+    "month": "ያለፉት 30 ቀናት",
+    "older": "የቆዩ"
+  }
 }

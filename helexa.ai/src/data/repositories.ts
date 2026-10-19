@@ -9,6 +9,7 @@ import {
   type GeneratedImage,
   type Message,
   type MessageRole,
+  type MusicTrack,
   type Project,
   type TurnBlock,
 } from "./db";
@@ -192,4 +193,67 @@ export async function saveImage(
 
 export async function deleteImage(id: string): Promise<void> {
   await db.images.delete(id);
+}
+
+// ── music projects (#402) ───────────────────────────────────────────
+
+export async function listMusicProjects(owner: string): Promise<Project[]> {
+  const rows = await db.musicProjects.where({ owner }).toArray();
+  return rows
+    .filter((p) => !p.archived)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt - b.createdAt);
+}
+
+export async function createMusicProject(owner: string, name: string): Promise<string> {
+  const id = uuid();
+  const ts = now();
+  await db.musicProjects.add({
+    id,
+    owner,
+    name,
+    createdAt: ts,
+    updatedAt: ts,
+    archived: false,
+    sortOrder: ts,
+  });
+  return id;
+}
+
+export async function renameMusicProject(id: string, name: string): Promise<void> {
+  await db.musicProjects.update(id, { name, updatedAt: now() });
+}
+
+export async function archiveMusicProject(id: string): Promise<void> {
+  // Its songs go back to the date sections rather than disappearing.
+  await db.transaction("rw", db.musicProjects, db.musicTracks, async () => {
+    await db.musicProjects.update(id, { archived: true, updatedAt: now() });
+    await db.musicTracks.where({ projectId: id }).modify({ projectId: null });
+  });
+}
+
+export async function listMusicTracks(owner: string): Promise<MusicTrack[]> {
+  return db.musicTracks.where({ owner }).toArray();
+}
+
+/** File a song under a project, or back under its date with `null`. */
+export async function moveMusicTrack(
+  owner: string,
+  jobId: string,
+  projectId: string | null,
+): Promise<void> {
+  const existing = await db.musicTracks.get(jobId);
+  await db.musicTracks.put({ ...existing, jobId, owner, projectId });
+}
+
+export async function renameMusicTrack(owner: string, jobId: string, title: string): Promise<void> {
+  const existing = await db.musicTracks.get(jobId);
+  await db.musicTracks.put({ projectId: null, ...existing, jobId, owner, title });
+}
+
+/** Drop filing for songs the server no longer has (expired or never seen). */
+export async function pruneMusicTracks(owner: string, liveJobIds: Set<string>): Promise<void> {
+  await db.musicTracks
+    .where({ owner })
+    .filter((t) => !liveJobIds.has(t.jobId))
+    .delete();
 }

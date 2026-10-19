@@ -33,5 +33,13 @@
   "cancel": "Tühista",
   "cost": "Kulu",
   "errorGeneric": "Laulu ei õnnestunud luua.",
-  "errorLoad": "Heli ei õnnestunud laadida."
+  "errorLoad": "Heli ei õnnestunud laadida.",
+  "history": "Ajalugu",
+  "period": {
+    "today": "Täna",
+    "yesterday": "Eile",
+    "week": "Viimased 7 päeva",
+    "month": "Viimased 30 päeva",
+    "older": "Vanemad"
+  }
 }

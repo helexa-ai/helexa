@@ -33,5 +33,13 @@
   "cancel": "Prekliči",
   "cost": "Strošek",
   "errorGeneric": "Pesmi ni bilo mogoče ustvariti.",
-  "errorLoad": "Zvoka ni bilo mogoče naložiti."
+  "errorLoad": "Zvoka ni bilo mogoče naložiti.",
+  "history": "Zgodovina",
+  "period": {
+    "today": "Danes",
+    "yesterday": "Včeraj",
+    "week": "Zadnjih 7 dni",
+    "month": "Zadnjih 30 dni",
+    "older": "Starejše"
+  }
 }

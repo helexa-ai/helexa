@@ -33,5 +33,13 @@
   "cancel": "Annullér",
   "cost": "Pris",
   "errorGeneric": "Sangen kunne ikke genereres.",
-  "errorLoad": "Lyden kunne ikke indlæses."
+  "errorLoad": "Lyden kunne ikke indlæses.",
+  "history": "Historik",
+  "period": {
+    "today": "I dag",
+    "yesterday": "I går",
+    "week": "Seneste 7 dage",
+    "month": "Seneste 30 dage",
+    "older": "Ældre"
+  }
 }

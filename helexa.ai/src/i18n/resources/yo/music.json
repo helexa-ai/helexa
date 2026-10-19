@@ -33,5 +33,13 @@
   "cancel": "Fagilé",
   "cost": "Iye owó",
   "errorGeneric": "A kò lè ṣẹ̀dá orin náà.",
-  "errorLoad": "A kò lè gbé ohùn náà wọlé."
+  "errorLoad": "A kò lè gbé ohùn náà wọlé.",
+  "history": "Ìtàn",
+  "period": {
+    "today": "Òní",
+    "yesterday": "Àná",
+    "week": "Ọjọ́ 7 sẹ́yìn",
+    "month": "Ọjọ́ 30 sẹ́yìn",
+    "older": "Àtijọ́"
+  }
 }

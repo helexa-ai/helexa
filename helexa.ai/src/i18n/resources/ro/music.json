@@ -33,5 +33,13 @@
   "cancel": "Anulează",
   "cost": "Cost",
   "errorGeneric": "Melodia nu a putut fi generată.",
-  "errorLoad": "Fișierul audio nu a putut fi încărcat."
+  "errorLoad": "Fișierul audio nu a putut fi încărcat.",
+  "history": "Istoric",
+  "period": {
+    "today": "Astăzi",
+    "yesterday": "Ieri",
+    "week": "Ultimele 7 zile",
+    "month": "Ultimele 30 de zile",
+    "older": "Mai vechi"
+  }
 }

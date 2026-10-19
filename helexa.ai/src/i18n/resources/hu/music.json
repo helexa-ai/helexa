@@ -33,5 +33,13 @@
   "cancel": "Mégse",
   "cost": "Költség",
   "errorGeneric": "A dalt nem sikerült létrehozni.",
-  "errorLoad": "A hangot nem sikerült betölteni."
+  "errorLoad": "A hangot nem sikerült betölteni.",
+  "history": "Előzmények",
+  "period": {
+    "today": "Ma",
+    "yesterday": "Tegnap",
+    "week": "Elmúlt 7 nap",
+    "month": "Elmúlt 30 nap",
+    "older": "Régebbi"
+  }
 }

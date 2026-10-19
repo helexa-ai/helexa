@@ -33,5 +33,13 @@
   "cancel": "Cealaigh",
   "cost": "Costas",
   "errorGeneric": "Níorbh fhéidir an t-amhrán a chruthú.",
-  "errorLoad": "Níorbh fhéidir an fhuaim a lódáil."
+  "errorLoad": "Níorbh fhéidir an fhuaim a lódáil.",
+  "history": "Stair",
+  "period": {
+    "today": "Inniu",
+    "yesterday": "Inné",
+    "week": "Na 7 lá seo caite",
+    "month": "Na 30 lá seo caite",
+    "older": "Níos sine"
+  }
 }

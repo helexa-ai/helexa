@@ -33,5 +33,13 @@
   "cancel": "Cancel·la",
   "cost": "Cost",
   "errorGeneric": "No s’ha pogut generar la cançó.",
-  "errorLoad": "No s’ha pogut carregar l’àudio."
+  "errorLoad": "No s’ha pogut carregar l’àudio.",
+  "history": "Historial",
+  "period": {
+    "today": "Avui",
+    "yesterday": "Ahir",
+    "week": "Darrers 7 dies",
+    "month": "Darrers 30 dies",
+    "older": "Més antics"
+  }
 }

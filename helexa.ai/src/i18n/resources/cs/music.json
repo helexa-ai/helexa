@@ -33,5 +33,13 @@
   "cancel": "Zrušit",
   "cost": "Cena",
   "errorGeneric": "Skladbu se nepodařilo vygenerovat.",
-  "errorLoad": "Zvuk se nepodařilo načíst."
+  "errorLoad": "Zvuk se nepodařilo načíst.",
+  "history": "Historie",
+  "period": {
+    "today": "Dnes",
+    "yesterday": "Včera",
+    "week": "Posledních 7 dní",
+    "month": "Posledních 30 dní",
+    "older": "Starší"
+  }
 }

@@ -33,5 +33,13 @@
   "cancel": "Avbryt",
   "cost": "Kostnad",
   "errorGeneric": "Låten kunde inte skapas.",
-  "errorLoad": "Ljudet kunde inte läsas in."
+  "errorLoad": "Ljudet kunde inte läsas in.",
+  "history": "Historik",
+  "period": {
+    "today": "Idag",
+    "yesterday": "Igår",
+    "week": "Senaste 7 dagarna",
+    "month": "Senaste 30 dagarna",
+    "older": "Äldre"
+  }
 }

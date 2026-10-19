@@ -33,5 +33,13 @@
   "cancel": "Khansela",
   "cost": "Izindleko",
   "errorGeneric": "Ingoma ayikwazanga ukudalwa.",
-  "errorLoad": "Umsindo awukwazanga ukulayishwa."
+  "errorLoad": "Umsindo awukwazanga ukulayishwa.",
+  "history": "Umlando",
+  "period": {
+    "today": "Namuhla",
+    "yesterday": "Izolo",
+    "week": "Izinsuku ezi-7 ezedlule",
+    "month": "Izinsuku ezingama-30 ezedlule",
+    "older": "Ezindala"
+  }
 }

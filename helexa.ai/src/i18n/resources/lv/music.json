@@ -33,5 +33,13 @@
   "cancel": "Atcelt",
   "cost": "Izmaksas",
   "errorGeneric": "Dziesmu neizdevās ģenerēt.",
-  "errorLoad": "Audio neizdevās ielādēt."
+  "errorLoad": "Audio neizdevās ielādēt.",
+  "history": "Vēsture",
+  "period": {
+    "today": "Šodien",
+    "yesterday": "Vakar",
+    "week": "Pēdējās 7 dienas",
+    "month": "Pēdējās 30 dienas",
+    "older": "Vecāki"
+  }
 }

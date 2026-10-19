@@ -33,5 +33,13 @@
   "cancel": "Soke",
   "cost": "Farashi",
   "errorGeneric": "An kasa ƙirƙirar waƙar.",
-  "errorLoad": "An kasa loda sautin."
+  "errorLoad": "An kasa loda sautin.",
+  "history": "Tarihi",
+  "period": {
+    "today": "Yau",
+    "yesterday": "Jiya",
+    "week": "Kwanaki 7 da suka gabata",
+    "month": "Kwanaki 30 da suka gabata",
+    "older": "Tsofaffi"
+  }
 }
