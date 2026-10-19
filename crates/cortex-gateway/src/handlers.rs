@@ -1002,14 +1002,24 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     // in the catalogue, create a new CortexModelEntry from scratch —
     // cortex doesn't refuse to surface a manually-loaded model just
     // because the operator didn't enumerate it in models.toml.
+    //
+    // An unhealthy neuron's models are its last snapshot, not live
+    // state, and the router will not send it anything (#376). They are
+    // listed as `unreachable` and never make a model `loaded`, so
+    // `loaded` means the same thing to a client as it does to routing.
     for node in nodes.values() {
         for (model_id, entry) in &node.models {
+            let status = if node.healthy {
+                entry.status
+            } else {
+                cortex_core::node::ModelStatus::Unreachable
+            };
             let location = ModelLocation {
                 node: node.name.clone(),
-                status: entry.status,
+                status,
                 vram_estimate_mb: entry.vram_estimate_mb,
             };
-            let was_loaded = matches!(entry.status, cortex_core::node::ModelStatus::Loaded);
+            let was_loaded = matches!(status, cortex_core::node::ModelStatus::Loaded);
             entries
                 .entry(model_id.clone())
                 .and_modify(|e| {
@@ -1093,7 +1103,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     // Synthesising a Loading location instead tells clients the model
     // is on its way. Idempotent against Pass 2: if a Loading location
     // for this node already exists (shouldn't, but be safe) we skip.
-    for node in nodes.values() {
+    // An unhealthy neuron's activation snapshot is as stale as its
+    // models, so it reports nothing as on its way.
+    for node in nodes.values().filter(|n| n.healthy) {
         let Some(activation) = node.activation.as_ref() else {
             continue;
         };

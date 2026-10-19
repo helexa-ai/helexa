@@ -219,6 +219,9 @@ pub async fn resolve(
                     // a load neuron started by itself at activation is
                     // still invisible to that lock.
                     ModelStatus::Loading => {}
+                    // Synthesised only by `/v1/models` for unhealthy
+                    // neurons, which this loop has already skipped.
+                    ModelStatus::Unreachable => {}
                 }
             }
         }
