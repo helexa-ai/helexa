@@ -139,6 +139,11 @@ pub enum ModelStatus {
     /// retry error instead of 404, and must not race a second
     /// placement elsewhere.
     Recovering,
+    /// Gateway-side synthetic status for a model cached on a neuron that
+    /// is currently unhealthy (#376). The location stays visible for
+    /// diagnostics, but nothing will be routed there, so it never makes
+    /// the model count as `loaded`.
+    Unreachable,
 }
 
 /// Unified model entry as exposed by the gateway's `/v1/models` endpoint.
