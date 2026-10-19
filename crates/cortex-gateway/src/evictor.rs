@@ -46,6 +46,7 @@ pub async fn evict_lru_on_node(
             .models
             .values()
             .filter(|m| m.status == ModelStatus::Loaded)
+            .filter(|m| !fleet.eviction_blocked(node, &m.id))
             .filter(|m| match incoming {
                 Some(inc) => fleet.catalogue.may_displace(inc, &m.id),
                 None => {

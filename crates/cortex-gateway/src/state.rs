@@ -57,7 +57,21 @@ pub struct CortexState {
     /// Per-model rates for non-token units (#386), from upstream when it
     /// is enabled, else the local default.
     pub rates: Arc<crate::rates::Rates>,
+    /// One lock per node, held across a cold-load's evict → load → fresh
+    /// `/health` sequence. Placement reads VRAM from the last poll, which
+    /// cannot see a load still in progress; two cold-loads deciding at
+    /// once both saw the same free card and loaded side by side into an
+    /// out-of-memory.
+    cold_load_locks: std::sync::Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>,
+    /// When cortex last cold-loaded each `(node, model)`. A model loaded
+    /// for a request is protected from eviction for [`COLD_LOAD_GRACE`],
+    /// long enough for that request to reach it; otherwise the next
+    /// cold-load in line evicts it before it has served anything.
+    recent_cold_loads: std::sync::Mutex<HashMap<(String, String), std::time::Instant>>,
 }
+
+/// How long a freshly cold-loaded model is protected from eviction.
+pub const COLD_LOAD_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 
 impl CortexState {
     pub fn from_config(config: &GatewayConfig) -> Self {
@@ -142,6 +156,53 @@ impl CortexState {
             } else {
                 crate::rates::Rates::local()
             }),
+            cold_load_locks: std::sync::Mutex::new(HashMap::new()),
+            recent_cold_loads: std::sync::Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The lock that serialises cold-loads on `node`.
+    pub fn cold_load_lock(&self, node: &str) -> Arc<tokio::sync::Mutex<()>> {
+        let mut locks = self
+            .cold_load_locks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        Arc::clone(locks.entry(node.to_string()).or_default())
+    }
+
+    /// Record that cortex has just cold-loaded `model` on `node`.
+    pub fn note_cold_load(&self, node: &str, model: &str) {
+        let mut recent = self
+            .recent_cold_loads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        recent.retain(|_, at| at.elapsed() < COLD_LOAD_GRACE);
+        recent.insert(
+            (node.to_string(), model.to_string()),
+            std::time::Instant::now(),
+        );
+    }
+
+    /// Whether `model` on `node` is inside its post-cold-load grace.
+    pub fn recently_cold_loaded(&self, node: &str, model: &str) -> bool {
+        let recent = self
+            .recent_cold_loads
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        recent
+            .get(&(node.to_string(), model.to_string()))
+            .is_some_and(|at| at.elapsed() < COLD_LOAD_GRACE)
+    }
+
+    /// Whether a resident model must not be evicted right now: it has
+    /// requests running or queued (as of the last `/health`), or cortex
+    /// cold-loaded it moments ago for a request that has yet to arrive.
+    /// Evicting either kills work in progress.
+    pub fn eviction_blocked(&self, node: &cortex_core::node::NodeState, model: &str) -> bool {
+        let busy = node
+            .model_load
+            .get(model)
+            .is_some_and(|l| l.in_flight + l.queue_depth > 0);
+        busy || self.recently_cold_loaded(&node.name, model)
     }
 }

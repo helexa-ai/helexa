@@ -310,7 +310,7 @@ async fn discover_capabilities(fleet: &CortexState, name: &str, endpoint: &str) 
 /// Fetch `/health` and stash the activation snapshot on NodeState.
 /// Decoupled from the /models poll so a /health glitch doesn't mark
 /// the neuron unhealthy or evict the model list.
-async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
+pub async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
     let url = format!("{endpoint}/health");
     let resp = match fleet
         .http_client
