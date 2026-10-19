@@ -1956,6 +1956,71 @@ html[dir="rtl"] .hx-landing-composer textarea {
     height: 36px;
 }
 
+/* History sidebar (#402): the chat sidebar, with collapsible sections. */
+.hx-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    text-align: start;
+}
+.hx-group-count {
+    margin-inline-start: auto;
+    padding-inline: 0.4rem;
+    font-weight: 500;
+    opacity: 0.7;
+}
+html[dir="rtl"] .hx-flip-rtl {
+    transform: scaleX(-1);
+}
+.hx-music-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+.hx-music-when {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    opacity: 0.75;
+}
+.hx-music-dot {
+    flex-shrink: 0;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background-color: var(--color-border-strong);
+}
+.hx-music-dot-succeeded {
+    background-color: var(--color-accent);
+}
+.hx-music-dot-queued,
+.hx-music-dot-running {
+    background-color: var(--color-accent);
+    animation: hx-music-pulse 1.2s ease-in-out infinite;
+}
+.hx-music-dot-failed {
+    background-color: var(--color-accent-hot);
+}
+@keyframes hx-music-pulse {
+    50% {
+        opacity: 0.25;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .hx-music-dot-queued,
+    .hx-music-dot-running {
+        animation: none;
+    }
+}
+
 /* -- Documentation (/docs) ------------------------------------------------ */
 
 /* Three columns on a wide screen: navigation, prose, page rail. The prose

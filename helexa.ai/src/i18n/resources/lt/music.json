@@ -33,5 +33,13 @@
   "cancel": "Atšaukti",
   "cost": "Kaina",
   "errorGeneric": "Dainos sukurti nepavyko.",
-  "errorLoad": "Garso įrašo įkelti nepavyko."
+  "errorLoad": "Garso įrašo įkelti nepavyko.",
+  "history": "Istorija",
+  "period": {
+    "today": "Šiandien",
+    "yesterday": "Vakar",
+    "week": "Paskutinės 7 dienos",
+    "month": "Paskutinės 30 dienų",
+    "older": "Senesni"
+  }
 }

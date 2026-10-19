@@ -33,5 +33,13 @@
   "cancel": "Annulla",
   "cost": "Costo",
   "errorGeneric": "Non è stato possibile generare la canzone.",
-  "errorLoad": "Non è stato possibile caricare l’audio."
+  "errorLoad": "Non è stato possibile caricare l’audio.",
+  "history": "Cronologia",
+  "period": {
+    "today": "Oggi",
+    "yesterday": "Ieri",
+    "week": "Ultimi 7 giorni",
+    "month": "Ultimi 30 giorni",
+    "older": "Meno recenti"
+  }
 }

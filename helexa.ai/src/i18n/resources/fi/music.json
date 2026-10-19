@@ -33,5 +33,13 @@
   "cancel": "Peruuta",
   "cost": "Hinta",
   "errorGeneric": "Kappaletta ei voitu luoda.",
-  "errorLoad": "Ääntä ei voitu ladata."
+  "errorLoad": "Ääntä ei voitu ladata.",
+  "history": "Historia",
+  "period": {
+    "today": "Tänään",
+    "yesterday": "Eilen",
+    "week": "Edelliset 7 päivää",
+    "month": "Edelliset 30 päivää",
+    "older": "Vanhemmat"
+  }
 }

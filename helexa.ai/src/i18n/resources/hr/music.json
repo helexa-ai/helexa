@@ -33,5 +33,13 @@
   "cancel": "Odustani",
   "cost": "Trošak",
   "errorGeneric": "Pjesmu nije bilo moguće generirati.",
-  "errorLoad": "Zvuk nije bilo moguće učitati."
+  "errorLoad": "Zvuk nije bilo moguće učitati.",
+  "history": "Povijest",
+  "period": {
+    "today": "Danas",
+    "yesterday": "Jučer",
+    "week": "Zadnjih 7 dana",
+    "month": "Zadnjih 30 dana",
+    "older": "Starije"
+  }
 }

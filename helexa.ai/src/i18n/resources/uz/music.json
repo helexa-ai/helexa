@@ -33,5 +33,13 @@
   "cancel": "Bekor qilish",
   "cost": "Narx",
   "errorGeneric": "Qo‘shiqni yaratib bo‘lmadi.",
-  "errorLoad": "Audioni yuklab bo‘lmadi."
+  "errorLoad": "Audioni yuklab bo‘lmadi.",
+  "history": "Tarix",
+  "period": {
+    "today": "Bugun",
+    "yesterday": "Kecha",
+    "week": "Oxirgi 7 kun",
+    "month": "Oxirgi 30 kun",
+    "older": "Eskiroq"
+  }
 }

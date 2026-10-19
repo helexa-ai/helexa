@@ -33,5 +33,13 @@
   "cancel": "Ikkanċella",
   "cost": "Spiża",
   "errorGeneric": "Il-kanzunetta ma setgħetx tiġi ġġenerata.",
-  "errorLoad": "L-awdjo ma setax jitgħabba."
+  "errorLoad": "L-awdjo ma setax jitgħabba.",
+  "history": "Storja",
+  "period": {
+    "today": "Illum",
+    "yesterday": "Ilbieraħ",
+    "week": "L-aħħar 7 ijiem",
+    "month": "L-aħħar 30 jum",
+    "older": "Eqdem"
+  }
 }

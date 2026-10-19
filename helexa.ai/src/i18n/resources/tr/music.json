@@ -33,5 +33,13 @@
   "cancel": "İptal",
   "cost": "Maliyet",
   "errorGeneric": "Şarkı üretilemedi.",
-  "errorLoad": "Ses yüklenemedi."
+  "errorLoad": "Ses yüklenemedi.",
+  "history": "Geçmiş",
+  "period": {
+    "today": "Bugün",
+    "yesterday": "Dün",
+    "week": "Son 7 gün",
+    "month": "Son 30 gün",
+    "older": "Daha eski"
+  }
 }

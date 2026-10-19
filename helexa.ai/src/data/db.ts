@@ -106,6 +106,20 @@ export interface GeneratedImage {
   createdAt: number;
 }
 
+/**
+ * Local organisation of music jobs (#402). The jobs and their audio live on
+ * the server; which project a song is filed under, and any name given to
+ * it, are this browser's own, like chat projects.
+ */
+export interface MusicTrack {
+  /** The server's job id. */
+  jobId: string;
+  owner: string;
+  projectId: string | null; // null → filed by date
+  /** A name the user gave the song; the prompt is shown otherwise. */
+  title?: string;
+}
+
 /** Small key/value store: fingerprint, active conversation, anon usage. */
 export interface Meta {
   key: string;
@@ -131,6 +145,8 @@ class HelexaDB extends Dexie {
   messages!: Table<Message, string>;
   meta!: Table<Meta, string>;
   images!: Table<GeneratedImage, string>;
+  musicProjects!: Table<Project, string>;
+  musicTracks!: Table<MusicTrack, string>;
 
   constructor() {
     super("helexa");
@@ -166,6 +182,13 @@ class HelexaDB extends Dexie {
             }
           }),
       );
+    // v4 adds music projects and per-song filing (#402). Additive. Music
+    // projects are their own store: a chat topic and a music project are
+    // different things, and sharing one list would mix them.
+    this.version(4).stores({
+      musicProjects: "id, owner, [owner+archived], updatedAt",
+      musicTracks: "jobId, owner, projectId",
+    });
   }
 }
 

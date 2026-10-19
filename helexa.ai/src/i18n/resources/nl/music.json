@@ -33,5 +33,13 @@
   "cancel": "Annuleren",
   "cost": "Kosten",
   "errorGeneric": "Het nummer kon niet worden gegenereerd.",
-  "errorLoad": "De audio kon niet worden geladen."
+  "errorLoad": "De audio kon niet worden geladen.",
+  "history": "Geschiedenis",
+  "period": {
+    "today": "Vandaag",
+    "yesterday": "Gisteren",
+    "week": "Afgelopen 7 dagen",
+    "month": "Afgelopen 30 dagen",
+    "older": "Ouder"
+  }
 }
