@@ -17,18 +17,21 @@
 //! account can see, fetch or cancel it. Anonymous jobs (no principal) are
 //! reachable by id alone — the id is an unguessable capability — and never
 //! appear in a listing.
+//!
+//! Audio is stored as the FLAC the neuron rendered. A content fetch for MP3
+//! transcodes it once and keeps the MP3 beside it until the job expires.
 
 use crate::metering::ReservationGuard;
 use crate::state::CortexState;
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
 use cortex_core::audio::{
     AudioGenerationRequest, AudioJob, AudioJobList, AudioResult, JOB_OBJECT, JobStatus,
-    NeuronAudioResult, RESULT_HEADER,
+    NeuronAudioResult, RESULT_HEADER, STORED_FORMAT, SUPPORTED_FORMATS,
 };
 use cortex_core::config::AudioJobsConfig;
 use cortex_core::entitlements::{HEADER_ACCOUNT_ID, HEADER_KEY_ID, Principal};
@@ -127,8 +130,9 @@ impl AudioJobs {
         self.dir().map(|d| d.join(format!("{id}.json")))
     }
 
-    fn audio_path(&self, id: &str) -> Option<PathBuf> {
-        self.dir().map(|d| d.join(format!("{id}.wav")))
+    /// Where a job's audio in `format` lives (or would be cached).
+    fn audio_path(&self, id: &str, format: &str) -> Option<PathBuf> {
+        self.dir().map(|d| d.join(format!("{id}.{format}")))
     }
 
     async fn persist(&self, record: &JobRecord) {
@@ -270,8 +274,10 @@ pub async fn sweep_expired(fleet: &CortexState) {
         if let Ok(mut m) = jobs.memory_audio.lock() {
             m.remove(&id);
         }
-        for path in [jobs.record_path(&id), jobs.audio_path(&id)]
-            .into_iter()
+        // `wav` covers results stored before audio moved to FLAC.
+        let audio = ["flac", "mp3", "wav"].map(|f| jobs.audio_path(&id, f));
+        for path in std::iter::once(jobs.record_path(&id))
+            .chain(audio)
             .flatten()
         {
             let _ = tokio::fs::remove_file(path).await;
@@ -420,11 +426,20 @@ async fn get_job(
     }
 }
 
-/// `GET /v1/audio/generations/{id}/content` — the rendered audio.
+/// Query string of a content fetch.
+#[derive(Debug, Deserialize)]
+struct ContentQuery {
+    /// `flac` or `mp3`; defaults to the job's `response_format`, then FLAC.
+    format: Option<String>,
+}
+
+/// `GET /v1/audio/generations/{id}/content` — the rendered audio, as the
+/// stored FLAC or transcoded to MP3.
 async fn get_content(
     State(fleet): State<Arc<CortexState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    Query(query): Query<ContentQuery>,
 ) -> Response {
     let Some(record) = visible_record(&fleet, &headers, &id).await else {
         return job_not_found(&id);
@@ -440,25 +455,68 @@ async fn get_content(
             ),
         ));
     }
-    let bytes = match fleet.audio_jobs.audio_path(&id) {
-        Some(path) => tokio::fs::read(&path).await.ok(),
-        None => fleet.audio_jobs.memory_audio(&id),
+    let stored = record
+        .job
+        .result
+        .as_ref()
+        .map(|r| r.format.clone())
+        .unwrap_or_else(|| STORED_FORMAT.into());
+    let wanted = query
+        .format
+        .or_else(|| record.request.response_format.clone())
+        .unwrap_or_else(|| stored.clone());
+    if wanted != stored && !SUPPORTED_FORMATS.contains(&wanted.as_str()) {
+        return invalid_params(format!(
+            "format '{wanted}' is not supported; use one of {SUPPORTED_FORMATS:?}"
+        ));
+    }
+
+    let Some(master) = fleet.audio_jobs.load_audio(&id, &stored).await else {
+        return content_expired(&id);
     };
-    let Some(bytes) = bytes else {
+    let bytes = if wanted == stored {
+        master
+    } else if wanted == "mp3" && stored == "flac" {
+        match fleet.audio_jobs.mp3(&id, master).await {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!(job = %id, error = %e, "mp3 transcode failed");
+                return crate::error::envelope_response(OpenAiError::new(
+                    500,
+                    "api_error",
+                    "transcode_failed",
+                    format!("could not produce mp3 for audio job '{id}'"),
+                ));
+            }
+        }
+    } else {
+        // Only results stored before the move to FLAC get here.
         return crate::error::envelope_response(OpenAiError::new(
-            410,
+            409,
             "invalid_request_error",
-            "content_expired",
-            format!("the audio for job '{id}' is no longer stored"),
+            "format_unavailable",
+            format!("audio job '{id}' is stored as {stored} and is only available as {stored}"),
         ));
     };
+
     let mut resp = Response::new(Body::from(bytes));
-    resp.headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static("audio/wav"));
-    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{id}.wav\"")) {
+    resp.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(cortex_core::audio::content_type(&wanted)),
+    );
+    if let Ok(v) = HeaderValue::from_str(&format!("attachment; filename=\"{id}.{wanted}\"")) {
         resp.headers_mut().insert(header::CONTENT_DISPOSITION, v);
     }
     resp
+}
+
+fn content_expired(id: &str) -> Response {
+    crate::error::envelope_response(OpenAiError::new(
+        410,
+        "invalid_request_error",
+        "content_expired",
+        format!("the audio for job '{id}' is no longer stored"),
+    ))
 }
 
 /// `DELETE /v1/audio/generations/{id}` — cancel a queued or running job.
@@ -530,7 +588,8 @@ fn spawn_worker(fleet: Arc<CortexState>, id: String, guard: ReservationGuard) {
 
 /// Outcome of one dispatch to a neuron.
 enum Dispatch {
-    Done(Bytes, NeuronAudioResult),
+    /// The rendered audio, its format, and the result metadata.
+    Done(Bytes, String, NeuronAudioResult),
     /// The model is busy; try again after the given wait.
     Busy(Duration),
     /// The request itself was refused; retrying will not help.
@@ -571,8 +630,8 @@ async fn run_job(fleet: &Arc<CortexState>, id: &str, guard: ReservationGuard) {
     while attempts < jobs.config.max_attempts.max(1) {
         let outcome = dispatch_once(fleet, &record).await;
         match outcome {
-            Dispatch::Done(bytes, result) => {
-                complete(fleet, id, &record, bytes, result, guard).await;
+            Dispatch::Done(bytes, format, result) => {
+                complete(fleet, id, &record, bytes, &format, result, guard).await;
                 return;
             }
             Dispatch::Busy(wait) => {
@@ -659,6 +718,15 @@ async fn dispatch_once(fleet: &Arc<CortexState>, record: &JobRecord) -> Dispatch
         .get(RESULT_HEADER)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
+    // Neurons render FLAC; one still on an older build sends WAV.
+    let format = match resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(t) if t.starts_with("audio/wav") => "wav",
+        _ => STORED_FORMAT,
+    };
     let bytes = match resp.bytes().await {
         Ok(b) => b,
         Err(e) => {
@@ -678,7 +746,7 @@ async fn dispatch_once(fleet: &Arc<CortexState>, record: &JobRecord) -> Dispatch
             .as_deref()
             .and_then(|h| serde_json::from_str::<NeuronAudioResult>(h).ok());
         return match parsed {
-            Some(result) => Dispatch::Done(bytes, result),
+            Some(result) => Dispatch::Done(bytes, format.to_string(), result),
             None => Dispatch::Failed(error_value(
                 "api_error",
                 "upstream_bad_response",
@@ -712,6 +780,7 @@ async fn complete(
     id: &str,
     record: &JobRecord,
     bytes: Bytes,
+    format: &str,
     result: NeuronAudioResult,
     guard: ReservationGuard,
 ) {
@@ -723,7 +792,7 @@ async fn complete(
         return;
     }
     let size = bytes.len() as u64;
-    match jobs.audio_path(id) {
+    match jobs.audio_path(id, format) {
         Some(path) => {
             if let Err(e) = tokio::fs::write(&path, &bytes).await {
                 drop(guard);
@@ -762,7 +831,7 @@ async fn complete(
             sample_rate: result.sample_rate,
             channels: result.channels,
             seed: result.seed,
-            format: "wav".into(),
+            format: format.to_string(),
             bytes: size,
         });
         r.job.usage = Some(result.usage.clone());
@@ -836,6 +905,37 @@ impl AudioJobs {
             .lock()
             .ok()
             .and_then(|m| m.get(id).map(|b| b.to_vec()))
+    }
+
+    /// A job's stored audio, from disk or memory.
+    async fn load_audio(&self, id: &str, format: &str) -> Option<Vec<u8>> {
+        match self.audio_path(id, format) {
+            Some(path) => tokio::fs::read(&path).await.ok(),
+            None => self.memory_audio(id),
+        }
+    }
+
+    /// The MP3 of a job's FLAC: the cached copy if there is one, else a
+    /// fresh transcode, cached when there is a job directory.
+    async fn mp3(&self, id: &str, flac: Vec<u8>) -> anyhow::Result<Vec<u8>> {
+        let cache = self.audio_path(id, "mp3");
+        if let Some(path) = &cache
+            && let Ok(bytes) = tokio::fs::read(path).await
+        {
+            return Ok(bytes);
+        }
+        let mp3 =
+            tokio::task::spawn_blocking(move || crate::audio_codec::flac_to_mp3(&flac)).await??;
+        if let Some(path) = cache {
+            // Write-then-rename so a concurrent fetch never reads a torn file.
+            let tmp = path.with_extension("mp3.tmp");
+            let written = tokio::fs::write(&tmp, &mp3).await.is_ok()
+                && tokio::fs::rename(&tmp, &path).await.is_ok();
+            if !written {
+                tracing::warn!(job = %id, "could not cache the mp3 transcode");
+            }
+        }
+        Ok(mp3)
     }
 }
 

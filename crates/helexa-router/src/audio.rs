@@ -14,7 +14,7 @@ use crate::error::envelope_response;
 use crate::state::RouterState;
 use axum::Router;
 use axum::body::{Body, Bytes};
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::routing::get;
@@ -66,15 +66,14 @@ async fn content(
     State(state): State<Arc<RouterState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Response {
-    find(
-        &state,
-        Method::GET,
-        &format!("{PATH}/{id}/content"),
-        &headers,
-        &id,
-    )
-    .await
+    // The query carries the download format (`?format=mp3`).
+    let path = match query {
+        Some(q) => format!("{PATH}/{id}/content?{q}"),
+        None => format!("{PATH}/{id}/content"),
+    };
+    find(&state, Method::GET, &path, &headers, &id).await
 }
 
 /// Ask each cortex for the job until one answers with something other than

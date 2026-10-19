@@ -1248,7 +1248,7 @@ flavour change).
 Music is the fourth modality. Two engines serve candle-natively on
 benjy's RTX 4090 through the device-worker discipline (`AudioHandle`
 slab; `LoadAudio` / `DropAudio` / `GenerateAudio` jobs; CPU-side sample
-replies, WAV encoded async-side):
+replies, FLAC encoded async-side):
 
 - **ACE-Step 1.5** (MIT): turbo DiT + Qwen3-Embedding text encoder +
   48 kHz stereo VAE, with an optional 1.7B planner LM. Vendored from
@@ -1260,14 +1260,21 @@ replies, WAV encoded async-side):
 
 **Surface: async jobs only.** `/v1/audio/generations`: POST submits and
 returns 202 with a job; GET lists; `/{id}` polls; `/{id}/content`
-fetches the WAV; DELETE cancels. **cortex owns the jobs**, persisting
+fetches the audio; DELETE cancels. **cortex owns the jobs**, persisting
 them under `[audio_jobs] dir` and re-queueing unfinished ones on restart.
-neuron renders synchronously and returns the WAV plus an
+neuron renders synchronously and returns the FLAC plus an
 `x-helexa-audio-result` header. The router dispatches POST by capacity
 and fans GET/DELETE out across cortexes until one answers non-404. Wire
 types are in `cortex-core/src/audio.rs`; limits (`[models.audio]`) and
 model-scoped licence notices (`[[models.notices]]`) come from the
 catalogue and are advertised in `/v1/models`.
+
+**Formats.** Audio is rendered straight to 16-bit FLAC (no WAV step) and
+stored as that lossless master. MP3 (320 kbps CBR, LAME) is a download
+format only: `/content?format=mp3` transcodes the FLAC once and caches
+`{id}.mp3` beside it until the job expires; `response_format` sets a
+job's default download. Results stored as WAV by older neurons are
+served as WAV.
 
 **Metering: per audio-second**, at a per-model rate stored in
 helexa-upstream's `model_rates` table (`GET /authz/v1/rates`, cached by

@@ -535,32 +535,31 @@ pub fn peak_normalize(left: &mut [f32], right: &mut [f32], target_db: f64) {
     }
 }
 
-/// Encode stereo samples as a 16-bit PCM WAV file.
-pub fn encode_wav_pcm16(left: &[f32], right: &[f32], sample_rate: u32) -> Vec<u8> {
+/// Encode stereo samples as 16-bit FLAC. Lossless at the 16-bit depth the
+/// samples are quantised to, and roughly half the size of the same PCM.
+pub fn encode_flac_pcm16(left: &[f32], right: &[f32], sample_rate: u32) -> anyhow::Result<Vec<u8>> {
+    use flacenc::component::BitRepr;
+    use flacenc::error::Verify;
+
     let frames = left.len().min(right.len());
-    let data_len = (frames * 4) as u32;
-    let mut out = Vec::with_capacity(44 + frames * 4);
-    out.extend_from_slice(b"RIFF");
-    out.extend_from_slice(&(36 + data_len).to_le_bytes());
-    out.extend_from_slice(b"WAVE");
-    out.extend_from_slice(b"fmt ");
-    out.extend_from_slice(&16u32.to_le_bytes()); // fmt chunk size
-    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
-    out.extend_from_slice(&2u16.to_le_bytes()); // channels
-    out.extend_from_slice(&sample_rate.to_le_bytes());
-    out.extend_from_slice(&(sample_rate * 4).to_le_bytes()); // byte rate
-    out.extend_from_slice(&4u16.to_le_bytes()); // block align
-    out.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
-    out.extend_from_slice(b"data");
-    out.extend_from_slice(&data_len.to_le_bytes());
-    let pcm = |s: f32| -> [u8; 2] {
-        ((s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16).to_le_bytes()
-    };
+    let pcm = |s: f32| (s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i32;
+    let mut interleaved = Vec::with_capacity(frames * 2);
     for i in 0..frames {
-        out.extend_from_slice(&pcm(left[i]));
-        out.extend_from_slice(&pcm(right[i]));
+        interleaved.push(pcm(left[i]));
+        interleaved.push(pcm(right[i]));
     }
-    out
+    let config = flacenc::config::Encoder::default()
+        .into_verified()
+        .map_err(|(_, e)| anyhow::anyhow!("flac encoder config: {e:?}"))?;
+    let source =
+        flacenc::source::MemSource::from_samples(&interleaved, 2, 16, sample_rate as usize);
+    let stream = flacenc::encode_with_fixed_block_size(&config, source, config.block_size)
+        .map_err(|e| anyhow::anyhow!("flac encode: {e:?}"))?;
+    let mut sink = flacenc::bitsink::ByteSink::new();
+    stream
+        .write(&mut sink)
+        .map_err(|e| anyhow::anyhow!("flac write: {e:?}"))?;
+    Ok(sink.into_inner())
 }
 
 #[cfg(test)]
@@ -599,17 +598,38 @@ mod tests {
     }
 
     #[test]
-    fn wav_header_and_samples() {
-        let wav = encode_wav_pcm16(&[1.0, -1.0], &[0.0, 0.5], 48_000);
-        assert_eq!(wav.len(), 44 + 8);
-        assert_eq!(&wav[0..4], b"RIFF");
-        assert_eq!(u32::from_le_bytes(wav[4..8].try_into().unwrap()), 36 + 8);
-        assert_eq!(&wav[8..12], b"WAVE");
-        assert_eq!(u16::from_le_bytes(wav[22..24].try_into().unwrap()), 2);
-        assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 48_000);
-        assert_eq!(u32::from_le_bytes(wav[40..44].try_into().unwrap()), 8);
-        let s = |i: usize| i16::from_le_bytes(wav[44 + 2 * i..46 + 2 * i].try_into().unwrap());
-        assert_eq!((s(0), s(1), s(2), s(3)), (i16::MAX, 0, -i16::MAX, 16384));
+    fn flac_round_trips_the_16_bit_samples() {
+        // A second of a decaying tone, plus the clamp at both rails.
+        let n = 48_000;
+        let left: Vec<f32> = (0..n)
+            .map(|i| (i as f32 * 0.05).sin() * (1.0 - i as f32 / n as f32))
+            .collect();
+        let mut right: Vec<f32> = left.iter().map(|s| s * -0.5).collect();
+        right[0] = 2.0;
+        right[1] = -2.0;
+        let flac = encode_flac_pcm16(&left, &right, 48_000).unwrap();
+        assert_eq!(&flac[..4], b"fLaC");
+        assert!(
+            flac.len() < n * 4,
+            "{} bytes is no smaller than PCM",
+            flac.len()
+        );
+
+        let mut reader = claxon::FlacReader::new(std::io::Cursor::new(&flac)).unwrap();
+        let info = reader.streaminfo();
+        assert_eq!(
+            (info.sample_rate, info.channels, info.bits_per_sample),
+            (48_000, 2, 16)
+        );
+        assert_eq!(info.samples, Some(n as u64));
+        let decoded: Vec<i32> = reader.samples().map(Result::unwrap).collect();
+        let pcm = |s: f32| (s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i32;
+        let expected: Vec<i32> = (0..n).flat_map(|i| [pcm(left[i]), pcm(right[i])]).collect();
+        assert_eq!(decoded, expected);
+        assert_eq!(
+            (decoded[1], decoded[3]),
+            (i16::MAX as i32, -(i16::MAX as i32))
+        );
     }
 }
 
@@ -668,9 +688,9 @@ mod hardware {
         if let Ok(path) = std::env::var("ACESTEP_OUT") {
             std::fs::write(
                 &path,
-                encode_wav_pcm16(&out.left, &out.right, out.sample_rate),
+                encode_flac_pcm16(&out.left, &out.right, out.sample_rate).expect("encode flac"),
             )
-            .expect("write wav");
+            .expect("write flac");
             eprintln!("wrote {path}");
         }
         // Same seed, same song.
@@ -850,7 +870,7 @@ mod hardware {
         if let Ok(path) = std::env::var("HEARTMULA_OUT") {
             std::fs::write(
                 &path,
-                encode_wav_pcm16(&out.left, &out.right, out.sample_rate),
+                encode_flac_pcm16(&out.left, &out.right, out.sample_rate).unwrap(),
             )
             .unwrap();
         }

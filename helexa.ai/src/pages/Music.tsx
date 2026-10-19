@@ -398,6 +398,8 @@ function JobCard({
     return () => clearInterval(id);
   }, [unfinished]);
   const since = job.started_at ?? job.created_at;
+  // FLAC, or WAV for a job rendered before audio moved to FLAC.
+  const storedFormat = job.result?.format ?? "flac";
   const elapsed = Math.max(0, Math.round(now / 1000 - since));
 
   async function load(): Promise<void> {
@@ -409,6 +411,27 @@ function JobCard({
       setLoadError(true);
     } finally {
       setLoading(false);
+    }
+  }
+
+  // The content fetch needs the bearer, so a download is a fetched blob
+  // handed to a throwaway link rather than a plain href.
+  const [mp3Loading, setMp3Loading] = useState(false);
+  async function downloadMp3(): Promise<void> {
+    setMp3Loading(true);
+    setLoadError(false);
+    try {
+      const mp3 = await fetchAudio(job.id, { apiKey, format: "mp3" });
+      const href = URL.createObjectURL(mp3);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = `helexa-${job.id}.mp3`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(href), 0);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setMp3Loading(false);
     }
   }
 
@@ -457,9 +480,25 @@ function JobCard({
         {url ? (
           <>
             <audio controls autoPlay src={url} className="hx-music-player" />
-            <a className="hx-btn-ghost" href={url} download={`helexa-${job.id}.wav`}>
-              <FaDownload size={12} /> {t("music:download")}
+            <a
+              className="hx-btn-ghost"
+              href={url}
+              download={`helexa-${job.id}.${storedFormat}`}
+              title={`${t("music:download")} ${storedFormat.toUpperCase()}`}
+            >
+              <FaDownload size={12} /> {storedFormat.toUpperCase()}
             </a>
+            {storedFormat === "flac" ? (
+              <button
+                type="button"
+                className="hx-btn-ghost"
+                disabled={mp3Loading}
+                onClick={() => void downloadMp3()}
+                title={`${t("music:download")} MP3`}
+              >
+                <FaDownload size={12} /> MP3
+              </button>
+            ) : null}
           </>
         ) : null}
       </div>

@@ -12,10 +12,14 @@
 //!
 //! cortex owns the job record. A neuron renders exactly one generation per
 //! dispatch, synchronously, on `POST /v1/audio/generations`: the response
-//! body is the audio (`audio/wav`) and the result metadata travels in the
+//! body is the audio (`audio/flac`) and the result metadata travels in the
 //! [`RESULT_HEADER`] header as JSON ([`NeuronAudioResult`]). Keeping the
 //! bytes out of a JSON envelope matters here — ten minutes of 48 kHz stereo
 //! is over 100 MB of PCM.
+//!
+//! Audio is rendered straight to FLAC (16-bit, lossless) and stored that
+//! way. MP3 is a download format only: cortex transcodes the stored FLAC
+//! when a client asks for it.
 
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +48,9 @@ pub struct AudioGenerationRequest {
     /// always reported back, so a random render can be reproduced too.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
-    /// Container for the delivered audio. Only `"wav"` today.
+    /// Default download format for the job's content: `"flac"` (the
+    /// default, lossless) or `"mp3"`. The render itself is always FLAC; a
+    /// content fetch can still ask for either with `?format=`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<String>,
 
@@ -72,7 +78,21 @@ pub struct AudioGenerationRequest {
 }
 
 /// Response formats the surface delivers.
-pub const SUPPORTED_FORMATS: &[&str] = &["wav"];
+pub const SUPPORTED_FORMATS: &[&str] = &["flac", "mp3"];
+
+/// The format audio is rendered and stored in.
+pub const STORED_FORMAT: &str = "flac";
+
+/// MIME type for an audio format name, including `"wav"` for results stored
+/// before audio moved to FLAC.
+pub fn content_type(format: &str) -> &'static str {
+    match format {
+        "flac" => "audio/flac",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        _ => "application/octet-stream",
+    }
+}
 
 impl AudioGenerationRequest {
     /// True when the request asks for an instrumental (no singing).
@@ -222,7 +242,7 @@ pub struct AudioResult {
     pub channels: u16,
     /// The seed the render used (random when the request gave none).
     pub seed: u64,
-    /// Container of the stored audio (`"wav"`).
+    /// Container of the stored audio (`"flac"`).
     pub format: String,
     /// Size of the stored audio in bytes.
     pub bytes: u64,
@@ -318,6 +338,10 @@ mod tests {
         let mut r = req();
         r.response_format = Some("ogg".into());
         assert!(r.validate_shape().is_err());
+        r.response_format = Some("wav".into());
+        assert!(r.validate_shape().is_err());
+        r.response_format = Some("mp3".into());
+        assert!(r.validate_shape().is_ok());
         let mut r = req();
         r.planner = Some("maybe".into());
         assert!(r.validate_shape().is_err());

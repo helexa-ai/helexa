@@ -325,10 +325,10 @@ impl Scenario for AudioLatencyScenario {
         );
         let total_s = start.elapsed().as_secs_f64();
         // A bench that records latency for broken output is worse than none.
-        anyhow::ensure!(
-            bytes.len() > 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE",
-            "payload is not a WAV file"
-        );
+        // Neurons render FLAC; builds before that rendered WAV.
+        let flac = bytes.len() > 42 && &bytes[..4] == b"fLaC";
+        let wav = bytes.len() > 44 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE";
+        anyhow::ensure!(flac || wav, "payload is not a FLAC (or WAV) file");
         let result: serde_json::Value =
             serde_json::from_str(&result.context("missing x-helexa-audio-result")?)
                 .context("x-helexa-audio-result is not JSON")?;
