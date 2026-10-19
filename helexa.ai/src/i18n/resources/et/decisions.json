@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Mänguväljak",
-    "lead": "Esitage otsustusmudelile tüübitud küsimusi mis tahes teksti või JSON-i kohta ja saage kalibreeritud vastused ühe läbimisega — ilma genereeritud tekstita.",
+    "title": "Otsused",
+    "lead": "Esita jah/ei-, valikvastustega või hindamisküsimusi mis tahes teksti või JSON-i kohta ja saa kohe vastused kalibreeritud kindlusega. Selliseid mudeleid nimetatakse mõnikord System One mudeliteks.",
     "docsLink": "Kuidas see töötab",
     "side": "Tulemused, näited ja kood",
     "tabs": {

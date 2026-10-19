@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Deneme alanı",
-    "lead": "Bir karar modeline herhangi bir metin ya da JSON hakkında tipli sorular sorun ve tek geçişte kalibre edilmiş yanıtlar alın — üretilmiş metin olmadan.",
+    "title": "Kararlar",
+    "lead": "Herhangi bir metin ya da JSON hakkında evet/hayır, çoktan seçmeli veya puanlama soruları sorun ve kalibre edilmiş güvenle anında yanıt alın. Bu tür modellere bazen System One modelleri denir.",
     "docsLink": "Nasıl çalışır",
     "side": "Sonuçlar, örnekler ve kod",
     "tabs": {

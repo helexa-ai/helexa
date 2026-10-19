@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Zona de pruebas",
-    "lead": "Haga a un modelo de decisión preguntas tipadas sobre cualquier texto o JSON y obtenga respuestas calibradas en una sola pasada, sin texto generado.",
+    "title": "Decisiones",
+    "lead": "Haga preguntas de sí/no, de opción múltiple o de puntuación sobre cualquier texto o JSON y obtenga al instante respuestas con una confianza calibrada. A estos modelos a veces se les llama modelos System One.",
     "docsLink": "Cómo funciona",
     "side": "Resultados, ejemplos y código",
     "tabs": {

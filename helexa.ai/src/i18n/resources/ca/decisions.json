@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Espai de proves",
-    "lead": "Feu a un model de decisió preguntes tipades sobre qualsevol text o JSON i obtingueu respostes calibrades en una sola passada, sense text generat.",
+    "title": "Decisions",
+    "lead": "Feu preguntes de sí/no, d’opció múltiple o de puntuació sobre qualsevol text o JSON i obteniu a l’instant respostes amb una confiança calibrada. De vegades se’n diu models System One.",
     "docsLink": "Com funciona",
     "side": "Resultats, exemples i codi",
     "tabs": {

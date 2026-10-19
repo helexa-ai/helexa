@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Playground",
-    "lead": "Poni a un modello decisionale domande tipizzate su qualsiasi testo o JSON e ottieni risposte calibrate in un solo passaggio, senza testo generato.",
+    "title": "Decisioni",
+    "lead": "Fai domande sì/no, a scelta multipla o di punteggio su qualsiasi testo o JSON e ottieni subito risposte con una confidenza calibrata. Modelli di questo tipo sono talvolta chiamati modelli System One.",
     "docsLink": "Come funziona",
     "side": "Risultati, esempi e codice",
     "tabs": {

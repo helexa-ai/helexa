@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Igralište",
-    "lead": "Postavite modelu za odlučivanje tipizirana pitanja o bilo kojem tekstu ili JSON-u i dobijte kalibrirane odgovore u jednom prolazu — bez generiranog teksta.",
+    "title": "Odluke",
+    "lead": "Postavljajte pitanja da/ne, s višestrukim izborom ili s ocjenjivanjem o bilo kojem tekstu ili JSON-u i odmah dobijte odgovore s kalibriranom pouzdanošću. Takvi se modeli ponekad nazivaju modelima System One.",
     "docsLink": "Kako radi",
     "side": "Rezultati, primjeri i kod",
     "tabs": {

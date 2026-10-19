@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Spazju tal-provi",
-    "lead": "Staqsi lil mudell tad-deċiżjonijiet mistoqsijiet tipizzati dwar kwalunkwe test jew JSON u ikseb tweġibiet kalibrati f’passaġġ wieħed — mingħajr test iġġenerat.",
+    "title": "Deċiżjonijiet",
+    "lead": "Staqsi mistoqsijiet iva/le, b’għażla multipla jew ta’ punteġġ dwar kwalunkwe test jew JSON, u ikseb tweġibiet immedjati b’kunfidenza kkalibrata. Mudelli bħal dawn xi drabi jissejħu mudelli System One.",
     "docsLink": "Kif jaħdem",
     "side": "Riżultati, eżempji u kodiċi",
     "tabs": {

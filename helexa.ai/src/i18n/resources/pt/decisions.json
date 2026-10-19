@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Playground",
-    "lead": "Faça a um modelo de decisão perguntas tipadas sobre qualquer texto ou JSON e obtenha respostas calibradas numa só passagem — sem texto gerado.",
+    "title": "Decisões",
+    "lead": "Faça perguntas de sim/não, de escolha múltipla ou de pontuação sobre qualquer texto ou JSON e obtenha respostas instantâneas com confiança calibrada. Modelos deste tipo são por vezes chamados modelos System One.",
     "docsLink": "Como funciona",
     "side": "Resultados, exemplos e código",
     "tabs": {

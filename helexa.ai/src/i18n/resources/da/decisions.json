@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Legeplads",
-    "lead": "Stil en beslutningsmodel typede spørgsmål om enhver tekst eller JSON, og få kalibrerede svar i ét gennemløb — uden genereret tekst.",
+    "title": "Beslutninger",
+    "lead": "Stil ja/nej-, multiple choice- eller pointspørgsmål om enhver tekst eller JSON, og få straks svar med kalibreret sikkerhed. Den slags modeller kaldes nogle gange System One-modeller.",
     "docsLink": "Sådan virker det",
     "side": "Resultater, eksempler og kode",
     "tabs": {

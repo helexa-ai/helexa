@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Playground",
-    "lead": "Ask a decision model typed questions about any text or JSON, and get calibrated answers in one pass — no generated text.",
+    "title": "Decisions",
+    "lead": "Ask yes/no, multiple-choice or scoring questions about any text or JSON, and get instant answers with calibrated confidence. Models like this are sometimes called System One models.",
     "docsLink": "How it works",
     "side": "Results, examples and code",
     "tabs": {

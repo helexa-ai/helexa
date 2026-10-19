@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Lekplats",
-    "lead": "Ställ typade frågor till en beslutsmodell om valfri text eller JSON och få kalibrerade svar i ett enda pass — utan genererad text.",
+    "title": "Beslut",
+    "lead": "Ställ ja/nej-frågor, flervalsfrågor eller poängfrågor om valfri text eller JSON och få omedelbara svar med kalibrerad säkerhet. Sådana modeller kallas ibland System One-modeller.",
     "docsLink": "Så fungerar det",
     "side": "Resultat, exempel och kod",
     "tabs": {

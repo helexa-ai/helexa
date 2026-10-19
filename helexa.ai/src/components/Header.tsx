@@ -115,12 +115,12 @@ const Header: React.FC = () => {
               {t("nav.music")}
             </NavLink>
             <NavLink
-              to="/playground"
+              to="/decisions"
               className={({ isActive }): string =>
                 isActive ? "nav-link active" : "nav-link"
               }
             >
-              {t("nav.playground")}
+              {t("nav.decisions")}
             </NavLink>
             {/* Documentation is reachable on every host — this only
                 decides whether it is advertised. The pages are still
