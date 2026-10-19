@@ -25,6 +25,28 @@ HOST="${1:-benjy.hanzalova.internal}"
 MODEL_ID="${2:-Tongyi-MAI/Z-Image-Turbo}"
 QUANT="${3:-}"
 BASE="http://${HOST}:13131"
+
+# Wait until a resident model has nothing running or queued, so evicting it
+# for the probe window does not kill someone's request. Gives up (and the
+# script fails before touching anything) after WAIT_IDLE_SECS, default 300.
+# A request can still land between the check and the unload; the window is
+# a few milliseconds instead of a whole stream.
+wait_idle() {
+  local id="$1" deadline=$(( SECONDS + ${WAIT_IDLE_SECS:-300} )) busy
+  while :; do
+    busy=$(curl -sf -m 10 "${BASE}/health" | python3 -c '
+import json, sys
+m = [x for x in json.load(sys.stdin).get("models", []) if x["id"] == sys.argv[1]]
+print(sum(x["in_flight"] + x["queue_depth"] for x in m))' "${id}")
+    [[ "${busy}" == 0 ]] && return 0
+    if (( SECONDS >= deadline )); then
+      echo "   FAIL: ${id} still has ${busy} request(s) in flight or queued; not evicting"
+      exit 1
+    fi
+    echo "   ${id} busy (${busy}); waiting"
+    sleep 5
+  done
+}
 if [[ -n "${QUANT}" ]]; then
   LOAD_JSON="{\"model_id\": \"${MODEL_ID}\", \"harness\": \"candle\", \"quant\": \"${QUANT}\"}"
 else
@@ -66,6 +88,7 @@ for m in json.load(sys.stdin):
 ')
 for id in "${RESIDENT[@]}"; do
   [[ -z "${id}" ]] && continue
+  wait_idle "${id}"
   echo "==> evicting co-resident ${id} for the probe window"
   curl -sf -m 120 -X POST "${BASE}/models/unload" \
     -H 'Content-Type: application/json' \
