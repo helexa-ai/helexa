@@ -249,8 +249,19 @@ export default function Music() {
     }
   }
 
+  // Starting the next song (a surprise, or any edit to the form) clears
+  // earlier songs out of the studio: a player beside a form that no longer
+  // describes it reads as the result of the new song. That holds for a
+  // song still rendering too — it stays in view while it renders, but
+  // once finished it goes to the history rather than back into the studio.
+  function compose(): void {
+    setSelectedId(null);
+    setSessionIds((ids) => (ids.size === 0 ? ids : new Set()));
+  }
+
   async function onSurprise(): Promise<void> {
     if (!limits || surprising) return;
+    compose();
     setSurprising(true);
     try {
       const { idea } = await surprise(
@@ -440,7 +451,10 @@ export default function Music() {
             <div className="hx-image-controls">
               <label>
                 <span>{t("music:model")}</span>
-                <select value={modelId} disabled={locked} onChange={(e) => setModelId(e.target.value)}>
+                <select value={modelId} disabled={locked} onChange={(e) => {
+                    compose();
+                    setModelId(e.target.value);
+                  }}>
                   {models.map((m) => (
                     <option key={m.id} value={m.id} dir="ltr">
                       {m.id}
@@ -470,7 +484,10 @@ export default function Music() {
                   value={prompt}
                   disabled={locked}
                   placeholder={t("music:stylePlaceholder")}
-                  onChange={(e) => setPrompt(e.target.value)}
+                  onChange={(e) => {
+                    compose();
+                    setPrompt(e.target.value);
+                  }}
                 />
                 <div className="hx-music-tags" role="group" aria-label={t("music:tags")}>
                   {STYLE_TAGS.map((tag) => {
@@ -483,7 +500,10 @@ export default function Music() {
                         className={`hx-music-tag ${on ? "on" : ""}`}
                         aria-pressed={on}
                         disabled={locked}
-                        onClick={() => setPrompt((p) => toggleTag(p, tag))}
+                        onClick={() => {
+                          compose();
+                          setPrompt((p) => toggleTag(p, tag));
+                        }}
                       >
                         {tag}
                       </button>
@@ -502,7 +522,10 @@ export default function Music() {
                     value={lyrics}
                     disabled={locked}
                     placeholder={t("music:lyricsPlaceholder")}
-                    onChange={(e) => setLyrics(e.target.value)}
+                    onChange={(e) => {
+                      compose();
+                      setLyrics(e.target.value);
+                    }}
                   />
                 </div>
               ) : null}
@@ -521,7 +544,10 @@ export default function Music() {
                     step={1}
                     value={Number.isFinite(seconds) ? seconds : limits.default_duration}
                     disabled={locked}
-                    onChange={(e) => setDuration(e.target.value)}
+                    onChange={(e) => {
+                      compose();
+                      setDuration(e.target.value);
+                    }}
                   />
                 </label>
               ) : null}
@@ -566,7 +592,10 @@ export default function Music() {
                     value={seed}
                     disabled={locked}
                     placeholder={t("music:seedRandom")}
-                    onChange={(e) => setSeed(e.target.value)}
+                    onChange={(e) => {
+                      compose();
+                      setSeed(e.target.value);
+                    }}
                   />
                   <small>{t("music:seedHint")}</small>
                 </label>
@@ -580,7 +609,10 @@ export default function Music() {
                       max={limits.max_steps}
                       value={steps}
                       disabled={locked}
-                      onChange={(e) => setSteps(e.target.value)}
+                      onChange={(e) => {
+                        compose();
+                        setSteps(e.target.value);
+                      }}
                     />
                   </label>
                 ) : null}
