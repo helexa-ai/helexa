@@ -18,6 +18,17 @@ use anyhow::Result;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 
+/// The DiT's task instruction for a text-to-music render (upstream's
+/// `TASK_INSTRUCTIONS["text2music"]`).
+pub const TEXT2MUSIC_INSTRUCTION: &str =
+    "Fill the audio semantic mask based on the given conditions:";
+/// The instruction once audio codes condition the render. Upstream turns a
+/// text-to-music request into a cover when the planner supplies codes
+/// (`_resolve_generate_music_task`), and so does a reference cover.
+pub const COVER_INSTRUCTION: &str = "Generate audio semantic tokens based on the given conditions:";
+/// Upstream's `TASK_INSTRUCTIONS["repaint"]`.
+pub const REPAINT_INSTRUCTION: &str = "Repaint the mask area based on the given conditions:";
+
 /// Metadata from LM CoT output, used to enrich the DiT text prompt.
 ///
 /// When the LM generates chain-of-thought metadata (BPM, keyscale, etc.),
@@ -94,6 +105,21 @@ pub struct AudioOutput {
     pub sample_rate: u32,
     /// The denoised latents `(1, T, acoustic_dim)` the VAE decoded.
     pub latents: Tensor,
+    /// Wall time per phase. Each phase ends with a device synchronize, so
+    /// queued GPU work is charged to the phase that queued it.
+    pub timing: PhaseTiming,
+}
+
+/// Wall time of one render's phases, in milliseconds.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PhaseTiming {
+    pub encode_ms: u64,
+    pub denoise_ms: u64,
+    pub decode_ms: u64,
+}
+
+fn elapsed_ms(since: std::time::Instant) -> u64 {
+    since.elapsed().as_millis() as u64
 }
 
 /// High-level pipeline: text prompt → stereo audio.
@@ -107,8 +133,16 @@ pub struct AceStepPipeline {
     silence_latent: Tensor,
     dit_config: AceStepConfig,
     vae_config: VaeConfig,
+    /// The DiT's device and dtype. Conditioning, latents and the planner's
+    /// hints live here.
     device: Device,
     dtype: DType,
+    /// Where the text encoder and the VAE run, which may differ from the
+    /// DiT's (#385). Only their small outputs cross between devices: the
+    /// prompt's hidden states and the denoised latents.
+    text_device: Device,
+    vae_device: Device,
+    vae_dtype: DType,
 }
 
 struct LmState {
@@ -119,7 +153,8 @@ struct LmState {
 impl AceStepPipeline {
     /// Load all components.
     ///
-    /// - `dit_vb` / `vae_vb` / `text_vb`: VarBuilders for each model
+    /// - `dit_vb` / `vae_vb` / `text_vb`: VarBuilders for each model. Each
+    ///   component runs on its builder's device and dtype.
     /// - `text_config`: Qwen3 config (for the embedding model, NOT the LM)
     /// - `tokenizer_path`: `tokenizer.json` for the text encoder
     /// - `silence_latent`: `(1, T, acoustic_dim)` pre-loaded
@@ -138,6 +173,9 @@ impl AceStepPipeline {
     ) -> Result<Self> {
         let device = dit_vb.device().clone();
         let dtype = dit_vb.dtype();
+        let text_device = text_vb.device().clone();
+        let vae_device = vae_vb.device().clone();
+        let vae_dtype = vae_vb.dtype();
 
         let text_encoder = qwen3::Model::new(text_config, text_vb)?;
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
@@ -162,6 +200,9 @@ impl AceStepPipeline {
             vae_config: vae_config.clone(),
             device,
             dtype,
+            text_device,
+            vae_device,
+            vae_dtype,
         })
     }
 
@@ -178,18 +219,27 @@ impl AceStepPipeline {
         lyrics: &str,
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
+        let t = std::time::Instant::now();
+        let instruction = if params.lm_hints_25hz.is_some() {
+            COVER_INSTRUCTION
+        } else {
+            TEXT2MUSIC_INSTRUCTION
+        };
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            instruction,
             prompt,
             lyrics,
             params.duration_secs,
             params.lm_metadata.as_ref(),
             params.language.as_deref(),
         )?;
+        self.device.synchronize()?;
+        let encode_ms = elapsed_ms(t);
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let timbre_frames = 750.min(self.silence_latent.dim(1)?);
 
-        self.generate_inner(
+        let mut out = self.generate_inner(
             &text_hs,
             &text_mask,
             &lyric_hs,
@@ -198,7 +248,9 @@ impl AceStepPipeline {
             &self.silence_latent.narrow(1, 0, timbre_frames)?,
             params,
             latent_frames,
-        )
+        )?;
+        out.timing.encode_ms = encode_ms;
+        Ok(out)
     }
 
     /// Generate a cover conditioned on reference audio `(1, 2, T)` at 48kHz.
@@ -221,6 +273,7 @@ impl AceStepPipeline {
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            COVER_INSTRUCTION,
             prompt,
             lyrics,
             params.duration_secs,
@@ -232,7 +285,11 @@ impl AceStepPipeline {
             .vae_encoder
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("VAE encoder not loaded (pass load_encoder=true)"))?;
-        let ref_latent = vae.encode_mean(reference_audio)?.transpose(1, 2)?;
+        let ref_latent = vae
+            .encode_mean(reference_audio)?
+            .transpose(1, 2)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let ref_len = ref_latent.dim(1)?;
@@ -246,7 +303,11 @@ impl AceStepPipeline {
 
         // Timbre: use separate timbre audio if provided, otherwise reference audio
         let refer_audio_packed = if let Some(timbre) = timbre_audio {
-            let timbre_latent = vae.encode_mean(timbre)?.transpose(1, 2)?;
+            let timbre_latent = vae
+                .encode_mean(timbre)?
+                .transpose(1, 2)?
+                .to_device(&self.device)?
+                .to_dtype(self.dtype)?;
             let timbre_len = timbre_latent.dim(1)?;
             let timbre_frames = 750.min(timbre_len);
             timbre_latent.narrow(1, 0, timbre_frames)?
@@ -289,6 +350,7 @@ impl AceStepPipeline {
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
+            REPAINT_INSTRUCTION,
             prompt,
             lyrics,
             params.duration_secs,
@@ -300,7 +362,11 @@ impl AceStepPipeline {
             .vae_encoder
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("VAE encoder not loaded (pass load_encoder=true)"))?;
-        let src_latent = vae.encode_mean(source_audio)?.transpose(1, 2)?; // (1, T_lat, D)
+        let src_latent = vae
+            .encode_mean(source_audio)?
+            .transpose(1, 2)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?; // (1, T_lat, D)
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let hop = self.vae_config.hop_length() as f64;
@@ -394,6 +460,9 @@ impl AceStepPipeline {
         lm_vb: VarBuilder,
         lm_tokenizer_path: &std::path::Path,
     ) -> Result<()> {
+        // The planner runs on its builder's device; only its integer codes
+        // reach the DiT.
+        let lm_device = lm_vb.device().clone();
         let lm_model = qwen3::ModelForCausalLM::new(lm_config, lm_vb)?;
         let lm_tokenizer = tokenizers::Tokenizer::from_file(lm_tokenizer_path)
             .map_err(|e| anyhow::anyhow!("LM tokenizer: {e}"))?;
@@ -403,7 +472,7 @@ impl AceStepPipeline {
                 .map_err(|e| candle_core::Error::Msg(format!("encode {s:?}: {e}")))?;
             Ok(enc.get_ids().to_vec())
         })?;
-        let pipeline = LmPipeline::new(lm_model, token_ids, self.device.clone());
+        let pipeline = LmPipeline::new(lm_model, token_ids, lm_device);
         self.lm = Some(LmState {
             pipeline,
             tokenizer: lm_tokenizer,
@@ -427,15 +496,9 @@ impl AceStepPipeline {
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("LM not loaded — call load_lm() first"))?;
 
-        let prompt_text = LmPipeline::format_prompt(prompt, lyrics);
-        let prompt_enc = lm
-            .tokenizer
-            .encode(prompt_text.as_str(), false)
-            .map_err(|e| anyhow::anyhow!("LM encode: {e}"))?;
-
-        let decode_fn = |t: u32| -> candle_core::Result<String> {
+        let decode_fn = |ids: &[u32]| -> candle_core::Result<String> {
             lm.tokenizer
-                .decode(&[t], false)
+                .decode(ids, false)
                 .map_err(|e| candle_core::Error::Msg(format!("{e}")))
         };
         let encode_fn = |s: &str| -> candle_core::Result<Vec<u32>> {
@@ -447,7 +510,8 @@ impl AceStepPipeline {
         };
 
         let output = lm.pipeline.generate(
-            prompt_enc.get_ids(),
+            prompt,
+            lyrics,
             duration_secs,
             lm_config,
             &decode_fn,
@@ -479,6 +543,7 @@ impl AceStepPipeline {
     /// lyrics under their language. `language` defaults to `"unknown"`,
     /// upstream's own default when the caller names none.
     pub fn format_prompts(
+        instruction: &str,
         prompt: &str,
         lyrics: &str,
         duration_secs: f64,
@@ -496,7 +561,7 @@ impl AceStepPipeline {
             .and_then(|m| m.keyscale.as_deref())
             .unwrap_or("N/A");
         let caption_text = format!(
-            "# Instruction\nFill the audio semantic mask based on the given conditions:\n\n\
+            "# Instruction\n{instruction}\n\n\
              # Caption\n{caption}\n\n# Metas\n\
              - bpm: {bpm}\n- timesignature: {timesig}\n- keyscale: {keyscale}\n- duration: {} seconds\n\
              <|endoftext|>\n",
@@ -534,28 +599,44 @@ impl AceStepPipeline {
 
     fn encode_text(
         &mut self,
+        instruction: &str,
         prompt: &str,
         lyrics: &str,
         duration_secs: f64,
         metadata: Option<&LmMetadata>,
         language: Option<&str>,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor)> {
-        let (caption_text, lyric_text) =
-            Self::format_prompts(prompt, lyrics, duration_secs, metadata, language);
+        let (caption_text, lyric_text) = Self::format_prompts(
+            instruction,
+            prompt,
+            lyrics,
+            duration_secs,
+            metadata,
+            language,
+        );
         let encoding = self
             .tokenizer
             .encode(caption_text.as_str(), true)
             .map_err(|e| anyhow::anyhow!("tokenization: {e}"))?;
-        let prompt_tokens = Tensor::new(encoding.get_ids(), &self.device)?.unsqueeze(0)?;
-        let text_hidden_states = self.text_encoder.forward(&prompt_tokens, 0)?;
+        let prompt_tokens = Tensor::new(encoding.get_ids(), &self.text_device)?.unsqueeze(0)?;
+        let text_hidden_states = self
+            .text_encoder
+            .forward(&prompt_tokens, 0)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
         self.text_encoder.clear_kv_cache();
 
         let lyric_encoding = self
             .tokenizer
             .encode(lyric_text.as_str(), true)
             .map_err(|e| anyhow::anyhow!("lyric tokenization: {e}"))?;
-        let lyric_tokens = Tensor::new(lyric_encoding.get_ids(), &self.device)?.unsqueeze(0)?;
-        let lyric_hidden_states = self.text_encoder.embed_tokens(&lyric_tokens)?;
+        let lyric_tokens =
+            Tensor::new(lyric_encoding.get_ids(), &self.text_device)?.unsqueeze(0)?;
+        let lyric_hidden_states = self
+            .text_encoder
+            .embed_tokens(&lyric_tokens)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
 
         let text_mask = Tensor::new(encoding.get_attention_mask(), &self.device)?
             .unsqueeze(0)?
@@ -638,6 +719,7 @@ impl AceStepPipeline {
             .num_steps
             .unwrap_or(if params.is_turbo { 8 } else { 50 });
 
+        let t = std::time::Instant::now();
         let xt = self.model.generate_latents(
             &condition,
             None,
@@ -657,17 +739,32 @@ impl AceStepPipeline {
             self.dtype,
         )?;
 
+        self.device.synchronize()?;
+        let denoise_ms = elapsed_ms(t);
+
+        let t = std::time::Instant::now();
+        let latents = xt
+            .transpose(1, 2)?
+            .to_device(&self.vae_device)?
+            .to_dtype(self.vae_dtype)?;
         let audio = self.vae_decoder.tiled_decode(
-            &xt.transpose(1, 2)?,
+            &latents,
             params.vae_chunk_frames,
             params.vae_chunk_overlap,
         )?;
         let audio = audio.squeeze(0)?;
+        self.vae_device.synchronize()?;
+        let decode_ms = elapsed_ms(t);
 
         Ok(AudioOutput {
             audio,
             sample_rate: self.vae_config.sampling_rate as u32,
             latents: xt,
+            timing: PhaseTiming {
+                encode_ms: 0,
+                denoise_ms,
+                decode_ms,
+            },
         })
     }
 }

@@ -30,7 +30,10 @@
 //! - [GitHub Repository](https://github.com/ACE-Step/ACE-Step-1.5)
 
 pub mod condition;
+pub mod cot;
 pub mod dit;
+pub mod fsm;
+pub mod linear;
 pub mod lm;
 pub mod model;
 pub mod pipeline;

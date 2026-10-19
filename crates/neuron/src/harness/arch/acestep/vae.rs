@@ -171,7 +171,10 @@ impl Module for OobleckEncoderBlock {
 #[derive(Debug, Clone)]
 pub struct OobleckDecoderBlock {
     snake1: Snake1d,
+    /// Built unpadded; the padding is trimmed from its output instead. See
+    /// [`upsample`].
     conv_t1: ConvTranspose1d,
+    trim: usize,
     res_unit1: OobleckResidualUnit,
     res_unit2: OobleckResidualUnit,
     res_unit3: OobleckResidualUnit,
@@ -182,7 +185,7 @@ impl OobleckDecoderBlock {
         let snake1 = Snake1d::new(input_dim, vb.pp("snake1"))?;
         let cfg = ConvTranspose1dConfig {
             stride,
-            padding: stride.div_ceil(2),
+            padding: 0,
             ..Default::default()
         };
         let conv_t1 = encodec::conv_transpose1d_weight_norm(
@@ -199,6 +202,7 @@ impl OobleckDecoderBlock {
         Ok(Self {
             snake1,
             conv_t1,
+            trim: stride.div_ceil(2),
             res_unit1,
             res_unit2,
             res_unit3,
@@ -208,12 +212,23 @@ impl OobleckDecoderBlock {
 
 impl Module for OobleckDecoderBlock {
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
-        xs.apply(&self.snake1)?
-            .apply(&self.conv_t1)?
+        upsample(&xs.apply(&self.snake1)?, &self.conv_t1, self.trim)?
             .apply(&self.res_unit1)?
             .apply(&self.res_unit2)?
             .apply(&self.res_unit3)
     }
+}
+
+/// A transposed convolution with `padding = trim`, computed as the
+/// unpadded convolution with `trim` samples cut from each end, which is
+/// the same result. candle's CUDA backend only takes its matmul (col2im)
+/// path for unpadded transposed convolutions; with padding it falls back
+/// to a direct kernel that made the VAE decode some 30x slower than the
+/// denoise on an RTX 3060.
+fn upsample(xs: &Tensor, conv: &ConvTranspose1d, trim: usize) -> Result<Tensor> {
+    let ys = xs.apply(conv)?;
+    let len = ys.dim(2)?;
+    ys.narrow(2, trim, len - 2 * trim)
 }
 
 // ---------------------------------------------------------------------------
@@ -716,6 +731,41 @@ mod tests {
             err.is_err(),
             "expected tiled_decode to reject chunk<=2*overlap"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn unpadded_then_trimmed_matches_the_padded_transposed_conv() -> Result<()> {
+        let dev = Device::Cpu;
+        for stride in [2usize, 4, 5, 8, 10] {
+            let k = 2 * stride;
+            let pad = stride.div_ceil(2);
+            let x = Tensor::randn(0f32, 1.0, (1, 6, 9), &dev)?;
+            let w = Tensor::randn(0f32, 1.0, (6, 4, k), &dev)?;
+            let b = Tensor::randn(0f32, 1.0, 4, &dev)?;
+            let padded = ConvTranspose1d::new(
+                w.clone(),
+                Some(b.clone()),
+                ConvTranspose1dConfig {
+                    stride,
+                    padding: pad,
+                    ..Default::default()
+                },
+            );
+            let unpadded = ConvTranspose1d::new(
+                w,
+                Some(b),
+                ConvTranspose1dConfig {
+                    stride,
+                    ..Default::default()
+                },
+            );
+            let want = x.apply(&padded)?;
+            let got = upsample(&x, &unpadded, pad)?;
+            assert_eq!(want.dims(), got.dims(), "stride {stride}");
+            let diff = (want - got)?.abs()?.max_all()?.to_scalar::<f32>()?;
+            assert!(diff < 1e-4, "stride {stride}: max diff {diff}");
+        }
         Ok(())
     }
 }

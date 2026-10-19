@@ -1,9 +1,7 @@
+use super::linear::{Linear, linear_b, linear_no_bias};
 use candle_core::{DType, Device, Module, Result, Tensor};
 use candle_nn::{Activation, VarBuilder, kv_cache::ConcatKvCache};
-use candle_transformers::{
-    models::with_tracing::{Linear, RmsNorm, linear_b, linear_no_bias},
-    utils::repeat_kv,
-};
+use candle_transformers::{models::with_tracing::RmsNorm, utils::repeat_kv};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]

@@ -167,3 +167,32 @@ name = "candle"
 # Resolution ceiling per side; oversized requests are rejected before
 # admission. Dimensions must be multiples of 16.
 #max_dim = 2048
+
+# Music generation layout (#385). Applies to ACE-Step pipelines. These
+# describe this host's card, not the model, so the same model id can
+# serve bf16 on a 24 GB card and q8 on an 8 GB one. All fields optional.
+#[harness.candle.audio]
+# In-situ q8_0 quantization of the DiT, text encoder and planner linear
+# layers; quantized pipelines compute in f32. About 4.6 GB resident
+# against 6.4 GB for bf16, with no planner loaded.
+#quant = "q8_0"
+# "f32" computes unquantized GPU components in f32 (cards without fast
+# bf16). Dense f32 needs about 13 GB resident; on small cards use quant.
+#compute = "bf16"
+# Which planner LM to load: a snapshot subfolder, a repo id of its own
+# ("ACE-Step/acestep-5Hz-lm-0.6B" for an 8 GB card), or "none".
+#planner = "acestep-5Hz-lm-1.7B"
+# Shorter songs than the model allows, for a card that runs out first.
+#max_duration_secs = 240
+# Treat the device as having this much memory for the pipeline (MiB);
+# under a budget the VAE decodes in smaller chunks.
+#vram_budget_mb = 8192
+# Hold the rest of the card's free memory so a large card behaves like
+# one of the budget's size. For rehearsing a small card; never in serving.
+#enforce_vram_budget = false
+# Where each component runs: "gpu" (default) or "cpu".
+#[harness.candle.audio.placement]
+#text_encoder = "gpu"
+#planner = "gpu"
+#dit = "gpu"
+#vae = "gpu"

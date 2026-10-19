@@ -13,9 +13,10 @@
 //! All encoder layers share the same architecture: pre-norm (RmsNorm) bidirectional
 //! GQA attention followed by a gated SiLU MLP, matching the Qwen3 block design.
 
+use super::linear::{Linear, linear_b, linear_no_bias};
 use candle_core::{DType, Device, Module, Result, Tensor};
 use candle_nn::{Activation, VarBuilder};
-use candle_transformers::models::with_tracing::{Linear, RmsNorm, linear_b, linear_no_bias};
+use candle_transformers::models::with_tracing::RmsNorm;
 use candle_transformers::utils::repeat_kv;
 
 use super::AceStepConfig;
