@@ -94,6 +94,21 @@ pub struct AudioOutput {
     pub sample_rate: u32,
     /// The denoised latents `(1, T, acoustic_dim)` the VAE decoded.
     pub latents: Tensor,
+    /// Wall time per phase. Each phase ends with a device synchronize, so
+    /// queued GPU work is charged to the phase that queued it.
+    pub timing: PhaseTiming,
+}
+
+/// Wall time of one render's phases, in milliseconds.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PhaseTiming {
+    pub encode_ms: u64,
+    pub denoise_ms: u64,
+    pub decode_ms: u64,
+}
+
+fn elapsed_ms(since: std::time::Instant) -> u64 {
+    since.elapsed().as_millis() as u64
 }
 
 /// High-level pipeline: text prompt → stereo audio.
@@ -193,6 +208,7 @@ impl AceStepPipeline {
         lyrics: &str,
         params: &GenerationParams,
     ) -> Result<AudioOutput> {
+        let t = std::time::Instant::now();
         let (text_hs, text_mask, lyric_hs, lyric_mask) = self.encode_text(
             prompt,
             lyrics,
@@ -200,11 +216,13 @@ impl AceStepPipeline {
             params.lm_metadata.as_ref(),
             params.language.as_deref(),
         )?;
+        self.device.synchronize()?;
+        let encode_ms = elapsed_ms(t);
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let timbre_frames = 750.min(self.silence_latent.dim(1)?);
 
-        self.generate_inner(
+        let mut out = self.generate_inner(
             &text_hs,
             &text_mask,
             &lyric_hs,
@@ -213,7 +231,9 @@ impl AceStepPipeline {
             &self.silence_latent.narrow(1, 0, timbre_frames)?,
             params,
             latent_frames,
-        )
+        )?;
+        out.timing.encode_ms = encode_ms;
+        Ok(out)
     }
 
     /// Generate a cover conditioned on reference audio `(1, 2, T)` at 48kHz.
@@ -677,6 +697,7 @@ impl AceStepPipeline {
             .num_steps
             .unwrap_or(if params.is_turbo { 8 } else { 50 });
 
+        let t = std::time::Instant::now();
         let xt = self.model.generate_latents(
             &condition,
             None,
@@ -696,6 +717,10 @@ impl AceStepPipeline {
             self.dtype,
         )?;
 
+        self.device.synchronize()?;
+        let denoise_ms = elapsed_ms(t);
+
+        let t = std::time::Instant::now();
         let latents = xt
             .transpose(1, 2)?
             .to_device(&self.vae_device)?
@@ -706,11 +731,18 @@ impl AceStepPipeline {
             params.vae_chunk_overlap,
         )?;
         let audio = audio.squeeze(0)?;
+        self.vae_device.synchronize()?;
+        let decode_ms = elapsed_ms(t);
 
         Ok(AudioOutput {
             audio,
             sample_rate: self.vae_config.sampling_rate as u32,
             latents: xt,
+            timing: PhaseTiming {
+                encode_ms: 0,
+                denoise_ms,
+                decode_ms,
+            },
         })
     }
 }
