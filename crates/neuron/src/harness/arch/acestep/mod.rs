@@ -31,6 +31,7 @@
 
 pub mod condition;
 pub mod dit;
+pub mod linear;
 pub mod lm;
 pub mod model;
 pub mod pipeline;

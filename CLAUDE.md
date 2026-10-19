@@ -1301,8 +1301,10 @@ render.
   upstream CPU f32 reference is ~1e-5 with it.
 - **Seeding is host-side** (SplitMix64 + Box-Muller): candle's CPU
   `set_seed` is unsupported, and a host RNG makes CPU and GPU agree.
-- **The ACE planner checkpoint has no `model.` prefix**; it is renamed at
-  load. A planner that fails to load is non-fatal. It stays off unless
+- **The 1.7B planner checkpoint has no `model.` prefix; the 0.6B one
+  does.** The loader strips it only where it is absent. A planner that
+  fails to load is non-fatal, so a wrong prefix shows up only as a
+  warning and `plan_ms: 0`. It stays off unless
   `planner: "on"` until #384 closes the parity gaps (code-phase CFG,
   constrained decoding).
 - **Levels follow each upstream.** ACE-Step peak-normalises to −1 dBFS;

@@ -138,6 +138,65 @@ pub struct CandleHarnessConfig {
     /// text-to-image pipeline.
     #[serde(default)]
     pub image: ImageConfig,
+
+    /// `[harness.candle.audio]` settings (#385) — how an ACE-Step
+    /// pipeline is laid out on this host.
+    #[serde(default)]
+    pub audio: AudioConfig,
+}
+
+/// `[harness.candle.audio]` settings (#385).
+///
+/// These describe the host, not the model, which is why they live here
+/// and not in the catalogue: the same ACE-Step id serves bf16 on a 4090
+/// and q8 with f32 compute on an 8 GB Pascal card.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AudioConfig {
+    /// In-situ weight quantization of the DiT, the text encoder and the
+    /// planner: `"q8_0"`, or unset for none. Quantized components compute
+    /// in f32. The VAE is never quantized.
+    #[serde(default)]
+    pub quant: Option<String>,
+    /// Compute dtype of the unquantized GPU components: `"bf16"`
+    /// (default) or `"f32"`. Cards without fast bf16 (Pascal) need f32.
+    #[serde(default)]
+    pub compute: Option<String>,
+    /// Where each component runs.
+    #[serde(default)]
+    pub placement: AudioPlacement,
+    /// Which planner LM to load, by its snapshot subfolder (for example
+    /// `"acestep-5Hz-lm-0.6B"`), or `"none"` to load none. Unset takes
+    /// the largest the snapshot has.
+    #[serde(default)]
+    pub planner: Option<String>,
+    /// Treat the device as having this much free memory for the pipeline,
+    /// in MiB. Under a budget the VAE decodes in smaller chunks.
+    #[serde(default)]
+    pub vram_budget_mb: Option<u64>,
+    /// Make the budget real by holding the rest of the device's free
+    /// memory while the pipeline is loaded, so a larger card fails exactly
+    /// where a card of the budget's size would. For rehearsing a small
+    /// card's profile on a large one; never for serving.
+    #[serde(default)]
+    pub enforce_vram_budget: bool,
+    /// Longest song this host accepts, in seconds, when it is less than
+    /// the model's own limit.
+    #[serde(default)]
+    pub max_duration_secs: Option<f64>,
+}
+
+/// Per-component placement (#385): `"gpu"` (the model's device, the
+/// default) or `"cpu"`. CPU components compute in f32.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AudioPlacement {
+    #[serde(default)]
+    pub text_encoder: Option<String>,
+    #[serde(default)]
+    pub planner: Option<String>,
+    #[serde(default)]
+    pub dit: Option<String>,
+    #[serde(default)]
+    pub vae: Option<String>,
 }
 
 /// `[harness.candle.image]` settings (#198).

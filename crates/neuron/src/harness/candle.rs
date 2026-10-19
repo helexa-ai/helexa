@@ -116,6 +116,8 @@ pub struct CandleHarness {
     /// Image-pipeline settings (#198): text-encoder residency and the
     /// resolution ceiling.
     image_cfg: crate::config::ImageConfig,
+    /// `[harness.candle.audio]` (#385).
+    audio_cfg: crate::config::AudioConfig,
 }
 
 /// Devices/capabilities snapshot of a model entering auto-recovery
@@ -2522,6 +2524,7 @@ impl CandleHarness {
             reasoning_budget_cfg: config.reasoning_budget.clone(),
             admission_cfg: config.admission.clone(),
             image_cfg: config.image.clone(),
+            audio_cfg: config.audio.clone(),
         });
         // Background auto-recovery task (#17). Holds a `Weak` so it can't
         // keep the harness alive. Spawned only when a tokio runtime is
@@ -4682,6 +4685,20 @@ impl CandleHarness {
 
         let has_planner =
             matches!(&files, super::audio::AudioFiles::AceStep(f) if f.planner.is_some());
+        // A host may accept shorter songs than the model allows (#385), for
+        // a card whose memory runs out first.
+        let mut limits = limits;
+        if let super::audio::AudioFiles::AceStep(_) = &files
+            && let Some(max) = self.audio_cfg.max_duration_secs
+        {
+            anyhow::ensure!(
+                max >= limits.min_duration,
+                "[harness.candle.audio] max_duration_secs {max} is below the model's minimum {}",
+                limits.min_duration
+            );
+            limits.max_duration = limits.max_duration.min(max);
+            limits.default_duration = limits.default_duration.min(limits.max_duration);
+        }
         let handle = worker
             .load_audio(files, spec.model_id.clone())
             .await
@@ -4741,8 +4758,16 @@ impl CandleHarness {
                 .context("snapshot path shorter than its repo path")?
                 .to_path_buf();
         }
+        // `[harness.candle.audio] planner` names one planner, or none;
+        // unset tries them largest first.
+        let named = self.audio_cfg.planner.as_deref();
+        let candidates: Vec<&str> = match named {
+            Some(n) if n.eq_ignore_ascii_case("none") => Vec::new(),
+            Some(n) => vec![n],
+            None => super::audio::PLANNER_DIRS.to_vec(),
+        };
         let mut planner = None;
-        for dir in super::audio::PLANNER_DIRS {
+        for dir in candidates {
             let mut ok = true;
             for file in super::audio::planner_files(dir) {
                 if let Err(e) = repo.get(&file).await {
@@ -4756,7 +4781,19 @@ impl CandleHarness {
                 break;
             }
         }
-        Ok(super::audio::AceStepFiles { root, planner })
+        if let (Some(n), None) = (named, &planner)
+            && !n.eq_ignore_ascii_case("none")
+        {
+            anyhow::bail!(
+                "{display_id} has no planner '{n}' (named by [harness.candle.audio] planner)"
+            );
+        }
+        let layout = super::audio::AceStepLayout::from_config(&self.audio_cfg)?;
+        Ok(super::audio::AceStepFiles {
+            root,
+            planner,
+            layout,
+        })
     }
 
     /// Resolve a HeartMuLa LM repo (#393) and the two sibling repos it

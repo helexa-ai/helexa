@@ -12,9 +12,10 @@
 //! - `AttentionPooler` / `AudioTokenizer`: structurally correct, minor
 //!   float precision differences propagate through FSQ rounding.
 
+use super::linear::{Linear, linear, linear_no_bias};
 use candle_core::{D, DType, Module, Result, Tensor};
 use candle_nn::{Activation, VarBuilder};
-use candle_transformers::models::with_tracing::{Linear, RmsNorm, linear, linear_no_bias};
+use candle_transformers::models::with_tracing::RmsNorm;
 use candle_transformers::utils::repeat_kv;
 use std::sync::Arc;
 

@@ -107,8 +107,16 @@ pub struct AceStepPipeline {
     silence_latent: Tensor,
     dit_config: AceStepConfig,
     vae_config: VaeConfig,
+    /// The DiT's device and dtype. Conditioning, latents and the planner's
+    /// hints live here.
     device: Device,
     dtype: DType,
+    /// Where the text encoder and the VAE run, which may differ from the
+    /// DiT's (#385). Only their small outputs cross between devices: the
+    /// prompt's hidden states and the denoised latents.
+    text_device: Device,
+    vae_device: Device,
+    vae_dtype: DType,
 }
 
 struct LmState {
@@ -119,7 +127,8 @@ struct LmState {
 impl AceStepPipeline {
     /// Load all components.
     ///
-    /// - `dit_vb` / `vae_vb` / `text_vb`: VarBuilders for each model
+    /// - `dit_vb` / `vae_vb` / `text_vb`: VarBuilders for each model. Each
+    ///   component runs on its builder's device and dtype.
     /// - `text_config`: Qwen3 config (for the embedding model, NOT the LM)
     /// - `tokenizer_path`: `tokenizer.json` for the text encoder
     /// - `silence_latent`: `(1, T, acoustic_dim)` pre-loaded
@@ -138,6 +147,9 @@ impl AceStepPipeline {
     ) -> Result<Self> {
         let device = dit_vb.device().clone();
         let dtype = dit_vb.dtype();
+        let text_device = text_vb.device().clone();
+        let vae_device = vae_vb.device().clone();
+        let vae_dtype = vae_vb.dtype();
 
         let text_encoder = qwen3::Model::new(text_config, text_vb)?;
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
@@ -162,6 +174,9 @@ impl AceStepPipeline {
             vae_config: vae_config.clone(),
             device,
             dtype,
+            text_device,
+            vae_device,
+            vae_dtype,
         })
     }
 
@@ -232,7 +247,11 @@ impl AceStepPipeline {
             .vae_encoder
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("VAE encoder not loaded (pass load_encoder=true)"))?;
-        let ref_latent = vae.encode_mean(reference_audio)?.transpose(1, 2)?;
+        let ref_latent = vae
+            .encode_mean(reference_audio)?
+            .transpose(1, 2)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let ref_len = ref_latent.dim(1)?;
@@ -246,7 +265,11 @@ impl AceStepPipeline {
 
         // Timbre: use separate timbre audio if provided, otherwise reference audio
         let refer_audio_packed = if let Some(timbre) = timbre_audio {
-            let timbre_latent = vae.encode_mean(timbre)?.transpose(1, 2)?;
+            let timbre_latent = vae
+                .encode_mean(timbre)?
+                .transpose(1, 2)?
+                .to_device(&self.device)?
+                .to_dtype(self.dtype)?;
             let timbre_len = timbre_latent.dim(1)?;
             let timbre_frames = 750.min(timbre_len);
             timbre_latent.narrow(1, 0, timbre_frames)?
@@ -300,7 +323,11 @@ impl AceStepPipeline {
             .vae_encoder
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("VAE encoder not loaded (pass load_encoder=true)"))?;
-        let src_latent = vae.encode_mean(source_audio)?.transpose(1, 2)?; // (1, T_lat, D)
+        let src_latent = vae
+            .encode_mean(source_audio)?
+            .transpose(1, 2)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?; // (1, T_lat, D)
 
         let latent_frames = self.latent_frames(params.duration_secs);
         let hop = self.vae_config.hop_length() as f64;
@@ -394,6 +421,9 @@ impl AceStepPipeline {
         lm_vb: VarBuilder,
         lm_tokenizer_path: &std::path::Path,
     ) -> Result<()> {
+        // The planner runs on its builder's device; only its integer codes
+        // reach the DiT.
+        let lm_device = lm_vb.device().clone();
         let lm_model = qwen3::ModelForCausalLM::new(lm_config, lm_vb)?;
         let lm_tokenizer = tokenizers::Tokenizer::from_file(lm_tokenizer_path)
             .map_err(|e| anyhow::anyhow!("LM tokenizer: {e}"))?;
@@ -403,7 +433,7 @@ impl AceStepPipeline {
                 .map_err(|e| candle_core::Error::Msg(format!("encode {s:?}: {e}")))?;
             Ok(enc.get_ids().to_vec())
         })?;
-        let pipeline = LmPipeline::new(lm_model, token_ids, self.device.clone());
+        let pipeline = LmPipeline::new(lm_model, token_ids, lm_device);
         self.lm = Some(LmState {
             pipeline,
             tokenizer: lm_tokenizer,
@@ -546,16 +576,25 @@ impl AceStepPipeline {
             .tokenizer
             .encode(caption_text.as_str(), true)
             .map_err(|e| anyhow::anyhow!("tokenization: {e}"))?;
-        let prompt_tokens = Tensor::new(encoding.get_ids(), &self.device)?.unsqueeze(0)?;
-        let text_hidden_states = self.text_encoder.forward(&prompt_tokens, 0)?;
+        let prompt_tokens = Tensor::new(encoding.get_ids(), &self.text_device)?.unsqueeze(0)?;
+        let text_hidden_states = self
+            .text_encoder
+            .forward(&prompt_tokens, 0)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
         self.text_encoder.clear_kv_cache();
 
         let lyric_encoding = self
             .tokenizer
             .encode(lyric_text.as_str(), true)
             .map_err(|e| anyhow::anyhow!("lyric tokenization: {e}"))?;
-        let lyric_tokens = Tensor::new(lyric_encoding.get_ids(), &self.device)?.unsqueeze(0)?;
-        let lyric_hidden_states = self.text_encoder.embed_tokens(&lyric_tokens)?;
+        let lyric_tokens =
+            Tensor::new(lyric_encoding.get_ids(), &self.text_device)?.unsqueeze(0)?;
+        let lyric_hidden_states = self
+            .text_encoder
+            .embed_tokens(&lyric_tokens)?
+            .to_device(&self.device)?
+            .to_dtype(self.dtype)?;
 
         let text_mask = Tensor::new(encoding.get_attention_mask(), &self.device)?
             .unsqueeze(0)?
@@ -657,8 +696,12 @@ impl AceStepPipeline {
             self.dtype,
         )?;
 
+        let latents = xt
+            .transpose(1, 2)?
+            .to_device(&self.vae_device)?
+            .to_dtype(self.vae_dtype)?;
         let audio = self.vae_decoder.tiled_decode(
-            &xt.transpose(1, 2)?,
+            &latents,
             params.vae_chunk_frames,
             params.vae_chunk_overlap,
         )?;
