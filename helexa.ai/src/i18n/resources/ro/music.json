@@ -41,5 +41,13 @@
     "week": "Ultimele 7 zile",
     "month": "Ultimele 30 de zile",
     "older": "Mai vechi"
-  }
+  },
+  "length": "Durată",
+  "tags": "Idei de stil",
+  "submitting": "Se trimite piesa la studio…",
+  "needStyle": "Descrieți un stil pentru a genera o piesă.",
+  "needLength": "Alegeți o durată între {{min}} și {{max}} secunde.",
+  "close": "Închide",
+  "pause": "Pauză",
+  "seek": "Poziția în piesă"
 }

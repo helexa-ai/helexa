@@ -41,5 +41,13 @@
     "week": "Senaste 7 dagarna",
     "month": "Senaste 30 dagarna",
     "older": "Äldre"
-  }
+  },
+  "length": "Längd",
+  "tags": "Stilidéer",
+  "submitting": "Skickar din låt till studion…",
+  "needStyle": "Beskriv en stil för att skapa en låt.",
+  "needLength": "Välj en längd mellan {{min}} och {{max}} sekunder.",
+  "close": "Stäng",
+  "pause": "Pausa",
+  "seek": "Position i låten"
 }

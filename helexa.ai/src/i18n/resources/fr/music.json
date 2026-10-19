@@ -41,5 +41,13 @@
     "week": "7 derniers jours",
     "month": "30 derniers jours",
     "older": "Plus anciens"
-  }
+  },
+  "length": "Durée",
+  "tags": "Idées de style",
+  "submitting": "Envoi de votre chanson au studio…",
+  "needStyle": "Décrivez un style pour générer une chanson.",
+  "needLength": "Choisissez une durée entre {{min}} et {{max}} secondes.",
+  "close": "Fermer",
+  "pause": "Pause",
+  "seek": "Position dans la chanson"
 }

@@ -41,5 +41,13 @@
     "week": "Posledních 7 dní",
     "month": "Posledních 30 dní",
     "older": "Starší"
-  }
+  },
+  "length": "Délka",
+  "tags": "Nápady na styl",
+  "submitting": "Odesílám skladbu do studia…",
+  "needStyle": "Popište styl, abyste mohli vygenerovat skladbu.",
+  "needLength": "Zvolte délku mezi {{min}} a {{max}} sekundami.",
+  "close": "Zavřít",
+  "pause": "Pozastavit",
+  "seek": "Pozice ve skladbě"
 }

@@ -41,5 +41,13 @@
     "week": "Letzte 7 Tage",
     "month": "Letzte 30 Tage",
     "older": "Älter"
-  }
+  },
+  "length": "Länge",
+  "tags": "Stilideen",
+  "submitting": "Ihr Song wird ans Studio gesendet…",
+  "needStyle": "Beschreiben Sie einen Stil, um einen Song zu erzeugen.",
+  "needLength": "Wählen Sie eine Länge zwischen {{min}} und {{max}} Sekunden.",
+  "close": "Schließen",
+  "pause": "Pause",
+  "seek": "Position im Song"
 }

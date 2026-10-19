@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useLiveQuery } from "dexie-react-hooks";
-import { FaArrowUp, FaBarsStaggered, FaDownload, FaPlay, FaStop, FaDice } from "react-icons/fa6";
+import { FaArrowUp, FaBarsStaggered, FaDownload, FaPause, FaPlay, FaStop, FaDice } from "react-icons/fa6";
 import {
   LuCheck,
   LuChevronDown,
@@ -41,6 +41,17 @@ import {
 } from "../lib/musicClient";
 import { clampDuration, surprise } from "../lib/musicSurprise";
 import { groupHistory, periodKey, projectKey } from "../lib/musicHistory";
+import {
+  STYLE_TAGS,
+  type Blocker,
+  clock,
+  coverArt,
+  generateBlocker,
+  hasTag,
+  peaks,
+  placeholderPeaks,
+  toggleTag,
+} from "../lib/musicUi";
 
 /** How often the job list is refreshed while any job is unfinished. */
 const POLL_MS = 3_000;
@@ -65,9 +76,13 @@ const COLLAPSED_KEY = "musicCollapsed";
  *
  * Past songs are navigated from a sidebar, like chat history: songs filed
  * under a project are listed there, the rest by date, every section
- * collapsible. The main column shows the form and the one song selected.
- * Projects and song names are kept in this browser; the songs themselves
- * are the server's.
+ * collapsible. Projects and song names are kept in this browser; the
+ * songs themselves are the server's.
+ *
+ * The main column is the studio: the form, and beneath it what is
+ * happening now — an idea being written, songs rendering, songs made in
+ * this visit. A fresh load shows no old song there; one is opened only by
+ * picking it from the history.
  */
 export default function Music() {
   const { t, i18n } = useTranslation(["music", "chat", "common"]);
@@ -101,7 +116,11 @@ export default function Music() {
   const [surprising, setSurprising] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<AudioJob[]>([]);
+  // A song opened from the history. Nothing is opened on arrival.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Songs submitted since the page loaded; they stay in the studio panel.
+  const [sessionIds, setSessionIds] = useState<ReadonlySet<string>>(() => new Set());
+  const panelRef = useRef<HTMLElement>(null);
 
   const projects = useLiveQuery(() => listMusicProjects(owner), [owner], []);
   const tracks = useLiveQuery(() => listMusicTracks(owner), [owner], []);
@@ -185,15 +204,21 @@ export default function Music() {
     () => groupHistory(jobs, filing, new Set((projects ?? []).map((p) => p.id)), new Date()),
     [jobs, filing, projects],
   );
-  // The newest song is shown until another is picked.
-  const selected = jobs.find((j) => j.id === selectedId) ?? jobs[0];
+  const selected = jobs.find((j) => j.id === selectedId);
   function select(id: string): void {
     setSelectedId(id);
     setSidebarOpen(false);
+    requestAnimationFrame(() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }));
   }
+  // The studio panel: the opened song first, then this visit's songs and
+  // anything still rendering from before, newest first.
+  const studio = [
+    ...(selected ? [selected] : []),
+    ...jobs.filter((j) => j.id !== selected?.id && (sessionIds.has(j.id) || !isTerminal(j.status))),
+  ].slice(0, 4);
 
   async function run(): Promise<void> {
-    if (!model || !prompt.trim() || submitting) return;
+    if (!model || blocker) return;
     setError(null);
     setSubmitting(true);
     const parsedSeed = seed.trim() === "" ? undefined : Number(seed.trim());
@@ -215,7 +240,8 @@ export default function Music() {
         { apiKey: key },
       );
       setJobs((js) => [job, ...js.filter((j) => j.id !== job.id)]);
-      setSelectedId(job.id);
+      setSessionIds((ids) => new Set(ids).add(job.id));
+      setSelectedId(null);
     } catch (e) {
       setError(e instanceof MusicError ? e.message : t("music:errorGeneric"));
     } finally {
@@ -244,7 +270,19 @@ export default function Music() {
     }
   }
 
-  const canGenerate = !!model && !!prompt.trim() && !submitting && authed && apiKey !== null;
+  const blocker = generateBlocker({
+    ready: authed && apiKey !== null,
+    hasModel: !!model,
+    surprising,
+    submitting,
+    prompt,
+    seconds,
+    min: limits?.min_duration,
+    max: limits?.max_duration,
+  });
+  // Fields are locked while an idea is being written into them, and while
+  // a submission is in flight.
+  const locked = submitting || surprising;
 
   const rowProps = {
     projects: projects ?? [],
@@ -393,7 +431,7 @@ export default function Music() {
           <p className="text-muted small">{t("music:noModels")}</p>
         ) : (
           <form
-            className="hx-image-form"
+            className="hx-image-form hx-music-form"
             onSubmit={(e) => {
               e.preventDefault();
               void run();
@@ -402,7 +440,7 @@ export default function Music() {
             <div className="hx-image-controls">
               <label>
                 <span>{t("music:model")}</span>
-                <select value={modelId} disabled={submitting} onChange={(e) => setModelId(e.target.value)}>
+                <select value={modelId} disabled={locked} onChange={(e) => setModelId(e.target.value)}>
                   {models.map((m) => (
                     <option key={m.id} value={m.id} dir="ltr">
                       {m.id}
@@ -412,55 +450,81 @@ export default function Music() {
               </label>
               <button
                 type="button"
-                className="hx-btn-ghost"
-                disabled={surprising || submitting}
+                className="hx-btn-ghost hx-music-surprise"
+                disabled={locked}
                 onClick={() => void onSurprise()}
               >
-                <FaDice size={13} /> {surprising ? t("music:surpriseWorking") : t("music:surprise")}
+                <FaDice size={13} className={surprising ? "hx-music-spin" : undefined} />{" "}
+                {surprising ? t("music:surpriseWorking") : t("music:surprise")}
               </button>
             </div>
 
             <Notices notices={model?.notices ?? []} />
 
-            <label className="hx-music-field">
-              <span>{t("music:style")}</span>
-              <textarea
-                rows={2}
-                value={prompt}
-                disabled={submitting}
-                placeholder={t("music:stylePlaceholder")}
-                onChange={(e) => setPrompt(e.target.value)}
-              />
-            </label>
-
-            {limits?.vocals ? (
-              <label className="hx-music-field">
-                <span>{t("music:lyrics")}</span>
+            <div className={`hx-music-words ${limits?.vocals ? "two" : ""}`}>
+              <div className="hx-music-field">
+                <label htmlFor="hx-music-style">{t("music:style")}</label>
                 <textarea
-                  rows={8}
-                  value={lyrics}
-                  disabled={submitting}
-                  placeholder={t("music:lyricsPlaceholder")}
-                  onChange={(e) => setLyrics(e.target.value)}
+                  id="hx-music-style"
+                  rows={limits?.vocals ? 6 : 3}
+                  value={prompt}
+                  disabled={locked}
+                  placeholder={t("music:stylePlaceholder")}
+                  onChange={(e) => setPrompt(e.target.value)}
                 />
-              </label>
-            ) : null}
+                <div className="hx-music-tags" role="group" aria-label={t("music:tags")}>
+                  {STYLE_TAGS.map((tag) => {
+                    const on = hasTag(prompt, tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        lang="en"
+                        className={`hx-music-tag ${on ? "on" : ""}`}
+                        aria-pressed={on}
+                        disabled={locked}
+                        onClick={() => setPrompt((p) => toggleTag(p, tag))}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-            <div className="hx-image-controls">
-              <label>
-                <span>{t("music:duration")}</span>
-                <input
-                  type="number"
-                  dir="ltr"
-                  min={limits?.min_duration}
-                  max={limits?.max_duration}
-                  step={1}
-                  value={duration}
-                  placeholder={limits ? String(limits.default_duration) : ""}
-                  disabled={submitting}
-                  onChange={(e) => setDuration(e.target.value)}
-                />
-              </label>
+              {limits?.vocals ? (
+                <div className="hx-music-field">
+                  <label htmlFor="hx-music-lyrics">{t("music:lyrics")}</label>
+                  <textarea
+                    id="hx-music-lyrics"
+                    className="hx-music-lyrics"
+                    rows={10}
+                    value={lyrics}
+                    disabled={locked}
+                    placeholder={t("music:lyricsPlaceholder")}
+                    onChange={(e) => setLyrics(e.target.value)}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="hx-image-controls hx-music-bottom">
+              {limits ? (
+                <label className="hx-music-length">
+                  <span>
+                    {t("music:length")} <strong dir="ltr">{clock(seconds)}</strong>
+                  </span>
+                  <input
+                    type="range"
+                    min={limits.min_duration}
+                    max={limits.max_duration}
+                    step={1}
+                    value={Number.isFinite(seconds) ? seconds : limits.default_duration}
+                    disabled={locked}
+                    onChange={(e) => setDuration(e.target.value)}
+                  />
+                </label>
+              ) : null}
               <button
                 type="button"
                 className="hx-image-advanced"
@@ -475,11 +539,21 @@ export default function Music() {
                     {t("music:estimate")}: <span dir="ltr">{estimate.toLocaleString()}</span>
                   </small>
                 ) : null}
-                <button type="submit" className="hx-btn-primary" disabled={!canGenerate}>
+                <button
+                  type="submit"
+                  className="hx-btn-primary hx-music-generate"
+                  disabled={blocker !== null}
+                  aria-describedby={blocker ? "hx-music-blocker" : undefined}
+                >
                   <FaArrowUp size={13} /> {t("music:generate")}
                 </button>
               </div>
             </div>
+            {blocker && blocker.reason !== "submitting" && blocker.reason !== "surprising" ? (
+              <p id="hx-music-blocker" className="hx-music-blocker small">
+                {blockerText(blocker, t)}
+              </p>
+            ) : null}
 
             {advanced ? (
               <div className="hx-image-advanced-panel">
@@ -490,7 +564,7 @@ export default function Music() {
                     inputMode="numeric"
                     dir="ltr"
                     value={seed}
-                    disabled={submitting}
+                    disabled={locked}
                     placeholder={t("music:seedRandom")}
                     onChange={(e) => setSeed(e.target.value)}
                   />
@@ -505,7 +579,7 @@ export default function Music() {
                       min={1}
                       max={limits.max_steps}
                       value={steps}
-                      disabled={submitting}
+                      disabled={locked}
                       onChange={(e) => setSteps(e.target.value)}
                     />
                   </label>
@@ -515,8 +589,6 @@ export default function Music() {
           </form>
         )}
 
-        {authed && apiKey === null ? <p className="text-muted small mt-2">{t("music:preparing")}</p> : null}
-
         {error ? (
           <div className="alert alert-warning mt-3" role="alert">
             {error}
@@ -524,19 +596,40 @@ export default function Music() {
         ) : null}
 
         {authed ? (
-          <section className="hx-music-jobs">
-            {selected ? (
+          <section ref={panelRef} className="hx-music-studio" aria-live="polite">
+            {surprising ? (
+              <div className="hx-music-activity">
+                <span className="hx-music-eq" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {t("music:surpriseWorking")}
+              </div>
+            ) : null}
+            {submitting ? (
+              <div className="hx-music-activity">
+                <span className="hx-music-eq" aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {t("music:submitting")}
+              </div>
+            ) : null}
+            {studio.map((j) => (
               <JobCard
-                key={selected.id}
-                job={selected}
-                title={titles.get(selected.id)}
-                notices={models?.find((m) => m.id === selected.model)?.notices ?? []}
+                key={j.id}
+                job={j}
+                title={titles.get(j.id)}
+                notices={models?.find((m) => m.id === j.model)?.notices ?? []}
                 apiKey={key}
-                onChanged={(j) => setJobs((js) => js.map((x) => (x.id === j.id ? j : x)))}
+                onChanged={(next) => setJobs((js) => js.map((x) => (x.id === next.id ? next : x)))}
+                onClose={j.id === selected?.id ? () => setSelectedId(null) : undefined}
               />
-            ) : (
-              <p className="text-muted small hx-image-empty">{t("music:jobsEmpty")}</p>
-            )}
+            ))}
           </section>
         ) : null}
       </main>
@@ -682,7 +775,11 @@ function TrackRow({
         className={`hx-chat-item hx-music-item flex-grow-1 ${job.id === selectedId ? "active" : ""}`}
         title={title}
       >
-        <span className={`hx-music-dot hx-music-dot-${job.status}`} aria-label={t(`music:status.${job.status}`)} />
+        {job.status === "succeeded" ? (
+          <span className="hx-music-swatch" style={{ background: coverArt(job.id) }} aria-hidden="true" />
+        ) : (
+          <span className={`hx-music-dot hx-music-dot-${job.status}`} aria-label={t(`music:status.${job.status}`)} />
+        )}
         <span className="text-truncate flex-grow-1">{title}</span>
         <span className="hx-music-when" dir="ltr">
           {when(job.created_at, locale)}
@@ -759,11 +856,29 @@ function Notices({ notices }: { notices: ModelNotice[] }): React.ReactElement | 
   );
 }
 
+/** The line under the generate button saying what it is waiting for. */
+function blockerText(b: Blocker, t: (k: string, o?: Record<string, unknown>) => string): string {
+  switch (b.reason) {
+    case "preparing":
+      return t("music:preparing");
+    case "noModel":
+      return t("music:noModels");
+    case "surprising":
+      return t("music:surpriseWorking");
+    case "submitting":
+      return t("music:submitting");
+    case "needStyle":
+      return t("music:needStyle");
+    case "needLength":
+      return t("music:needLength", { min: b.min, max: b.max });
+  }
+}
+
 /**
- * The selected job. Audio is fetched only when asked for — a finished song
- * is megabytes of FLAC, and fetching on every selection would spend the
- * visitor's bandwidth on songs they are only browsing past. The object URL
- * is revoked when the card goes away.
+ * One song in the studio panel: its cover, what it is, where it is up to,
+ * and once it is ready a player. Audio is fetched only when asked for — a
+ * finished song is megabytes of FLAC, and fetching on sight would spend
+ * the visitor's bandwidth on songs they are only glancing at.
  */
 function JobCard({
   job,
@@ -771,22 +886,20 @@ function JobCard({
   notices,
   apiKey,
   onChanged,
+  onClose,
 }: {
   job: AudioJob;
   title?: string;
   notices: ModelNotice[];
   apiKey?: string;
   onChanged: (j: AudioJob) => void;
+  /** Present for a song opened from the history: puts it away again. */
+  onClose?: () => void;
 }): React.ReactElement {
   const { t } = useTranslation(["music", "common"]);
   const [blob, setBlob] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
-  useEffect(() => {
-    if (!url) return;
-    return () => URL.revokeObjectURL(url);
-  }, [url]);
 
   // A ticking elapsed time while the job is unfinished: like images, the
   // only honest progress signal there is.
@@ -802,13 +915,17 @@ function JobCard({
   const storedFormat = job.result?.format ?? "flac";
   const elapsed = Math.max(0, Math.round(now / 1000 - since));
 
-  async function load(): Promise<void> {
+  async function load(): Promise<Blob | null> {
+    if (blob) return blob;
     setLoading(true);
     setLoadError(false);
     try {
-      setBlob(await fetchAudio(job.id, { apiKey }));
+      const b = await fetchAudio(job.id, { apiKey });
+      setBlob(b);
+      return b;
     } catch {
       setLoadError(true);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -816,22 +933,23 @@ function JobCard({
 
   // The content fetch needs the bearer, so a download is a fetched blob
   // handed to a throwaway link rather than a plain href.
-  const [mp3Loading, setMp3Loading] = useState(false);
-  async function downloadMp3(): Promise<void> {
-    setMp3Loading(true);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  async function download(format: "stored" | "mp3"): Promise<void> {
+    setDownloading(format);
     setLoadError(false);
     try {
-      const mp3 = await fetchAudio(job.id, { apiKey, format: "mp3" });
-      const href = URL.createObjectURL(mp3);
+      const file = format === "mp3" ? await fetchAudio(job.id, { apiKey, format: "mp3" }) : await load();
+      if (!file) return;
+      const href = URL.createObjectURL(file);
       const a = document.createElement("a");
       a.href = href;
-      a.download = `helexa-${job.id}.mp3`;
+      a.download = `helexa-${job.id}.${format === "mp3" ? "mp3" : storedFormat}`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(href), 0);
     } catch {
       setLoadError(true);
     } finally {
-      setMp3Loading(false);
+      setDownloading(null);
     }
   }
 
@@ -843,68 +961,255 @@ function JobCard({
     }
   }
 
+  const name = title ?? job.prompt ?? job.id;
   return (
     <article className={`hx-music-job hx-music-${job.status}`}>
-      <header>
-        <span className="hx-music-status">{t(`music:status.${job.status}`)}</span>
+      <div className="hx-music-cover" style={{ background: coverArt(job.id) }} aria-hidden="true">
         {unfinished ? (
-          <span className="text-muted small" dir="ltr">
-            {elapsed}s
+          <span className="hx-music-eq">
+            <i />
+            <i />
+            <i />
+            <i />
           </span>
         ) : null}
-        <span className="text-muted small hx-music-model" dir="ltr">
-          {job.model}
-        </span>
-      </header>
-      {title ? <h2 className="h6 mb-1">{title}</h2> : null}
-      {job.prompt ? <p className="hx-image-prompt">{job.prompt}</p> : null}
-      {job.result ? (
-        <div className="hx-image-meta" dir="ltr">
-          {job.result.duration.toFixed(1)}s · seed {job.result.seed}
-          {job.usage ? ` · ${t("music:cost")} ${Math.round(job.usage.helexa_audio_units)}s` : ""}
-        </div>
-      ) : null}
-      {job.status === "failed" && job.error?.message ? (
-        <p className="small text-warning">{job.error.message}</p>
-      ) : null}
-      <div className="hx-image-card-actions">
-        {unfinished ? (
-          <button type="button" className="hx-btn-ghost" onClick={() => void cancel()}>
-            <FaStop size={12} /> {t("music:cancel")}
-          </button>
-        ) : null}
-        {job.status === "succeeded" && !url ? (
-          <button type="button" className="hx-btn-ghost" disabled={loading} onClick={() => void load()}>
-            <FaPlay size={12} /> {t("music:play")}
-          </button>
-        ) : null}
-        {url ? (
-          <>
-            <audio controls autoPlay src={url} className="hx-music-player" />
-            <a
-              className="hx-btn-ghost"
-              href={url}
-              download={`helexa-${job.id}.${storedFormat}`}
-              title={`${t("music:download")} ${storedFormat.toUpperCase()}`}
+      </div>
+      <div className="hx-music-job-body">
+        <header>
+          <h2 className="hx-music-title" title={name}>
+            {name}
+          </h2>
+          {onClose ? (
+            <button
+              type="button"
+              className="hx-icon-btn hx-music-close"
+              title={t("music:close")}
+              aria-label={t("music:close")}
+              onClick={onClose}
             >
-              <FaDownload size={12} /> {storedFormat.toUpperCase()}
-            </a>
-            {storedFormat === "flac" ? (
+              <LuX size={15} />
+            </button>
+          ) : null}
+        </header>
+        {title && job.prompt ? <p className="hx-music-prompt">{job.prompt}</p> : null}
+        <div className="hx-music-meta">
+          <span className="hx-music-status">{t(`music:status.${job.status}`)}</span>
+          {unfinished ? <span dir="ltr">{clock(elapsed)}</span> : null}
+          {job.result ? (
+            <span dir="ltr">
+              {clock(job.result.duration)} · seed {job.result.seed}
+              {job.usage ? ` · ${t("music:cost")} ${Math.round(job.usage.helexa_audio_units)}s` : ""}
+            </span>
+          ) : null}
+          <span className="hx-music-model" dir="ltr">
+            {job.model}
+          </span>
+        </div>
+        {job.status === "failed" && job.error?.message ? (
+          <p className="small text-warning mb-0">{job.error.message}</p>
+        ) : null}
+        {job.status === "succeeded" ? (
+          <Player
+            id={job.id}
+            blob={blob}
+            loading={loading}
+            duration={job.result?.duration ?? 0}
+            onLoad={() => void load()}
+          />
+        ) : null}
+        <div className="hx-image-card-actions">
+          {unfinished ? (
+            <button type="button" className="hx-btn-ghost" onClick={() => void cancel()}>
+              <FaStop size={12} /> {t("music:cancel")}
+            </button>
+          ) : null}
+          {job.status === "succeeded" ? (
+            <>
               <button
                 type="button"
                 className="hx-btn-ghost"
-                disabled={mp3Loading}
-                onClick={() => void downloadMp3()}
-                title={`${t("music:download")} MP3`}
+                disabled={downloading !== null}
+                onClick={() => void download("stored")}
+                title={`${t("music:download")} ${storedFormat.toUpperCase()}`}
               >
-                <FaDownload size={12} /> MP3
+                <FaDownload size={12} /> {storedFormat.toUpperCase()}
               </button>
-            ) : null}
-          </>
-        ) : null}
+              {storedFormat === "flac" ? (
+                <button
+                  type="button"
+                  className="hx-btn-ghost"
+                  disabled={downloading !== null}
+                  onClick={() => void download("mp3")}
+                  title={`${t("music:download")} MP3`}
+                >
+                  <FaDownload size={12} /> MP3
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        {loadError ? <p className="small text-warning mb-0">{t("music:errorLoad")}</p> : null}
+        {job.status === "succeeded" ? <Notices notices={notices} /> : null}
       </div>
-      {loadError ? <p className="small text-warning">{t("music:errorLoad")}</p> : null}
-      {job.status === "succeeded" ? <Notices notices={notices} /> : null}
     </article>
+  );
+}
+
+const BARS = 96;
+
+/**
+ * Play/pause and a waveform that is also the seek bar. Before the audio
+ * has been fetched the waveform is a stand-in shape; pressing play fetches
+ * the song, and its real waveform replaces the stand-in once decoded. A
+ * browser that cannot decode the format still plays it, over the
+ * stand-in.
+ */
+function Player({
+  id,
+  blob,
+  loading,
+  duration,
+  onLoad,
+}: {
+  id: string;
+  blob: Blob | null;
+  loading: boolean;
+  duration: number;
+  onLoad: () => void;
+}): React.ReactElement {
+  const { t } = useTranslation(["music"]);
+  const audio = useRef<HTMLAudioElement>(null);
+  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+  useEffect(() => {
+    if (!url) return;
+    return () => URL.revokeObjectURL(url);
+  }, [url]);
+
+  const [levels, setLevels] = useState<number[] | null>(null);
+  useEffect(() => {
+    if (!blob) return;
+    const Ctx =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    let live = true;
+    const ctx = new Ctx();
+    blob
+      .arrayBuffer()
+      .then((buf) => ctx.decodeAudioData(buf))
+      .then((audioBuf) => {
+        if (!live) return;
+        const channels = Array.from({ length: audioBuf.numberOfChannels }, (_, c) => audioBuf.getChannelData(c));
+        setLevels(peaks(channels, BARS));
+      })
+      .catch(() => {
+        /* keep the stand-in */
+      })
+      .finally(() => void ctx.close());
+    return () => {
+      live = false;
+    };
+  }, [blob]);
+
+  const [playing, setPlaying] = useState(false);
+  const [time, setTime] = useState(0);
+  const [total, setTotal] = useState(duration);
+  // Smooth progress while playing; timeupdate alone fires ~4 times a second.
+  useEffect(() => {
+    if (!playing) return;
+    let frame = 0;
+    const tick = (): void => {
+      setTime(audio.current?.currentTime ?? 0);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing]);
+
+  // Pressing play before the audio is here fetches it; the element then
+  // mounts with autoplay, which is what the press asked for.
+  const [wantPlay, setWantPlay] = useState(false);
+
+  function toggle(): void {
+    const a = audio.current;
+    if (!url) {
+      setWantPlay(true);
+      onLoad();
+      return;
+    }
+    if (!a) return;
+    if (a.paused) void a.play();
+    else a.pause();
+  }
+
+  function seekTo(fraction: number): void {
+    const a = audio.current;
+    if (!a || !url) return;
+    a.currentTime = Math.min(Math.max(fraction, 0), 1) * (total || duration);
+    setTime(a.currentTime);
+  }
+
+  const shown = levels ?? placeholderPeaks(id, BARS);
+  const length = total || duration;
+  const done = length > 0 ? time / length : 0;
+  return (
+    <div className={`hx-music-player ${levels ? "" : "standin"}`}>
+      <button
+        type="button"
+        className="hx-music-play"
+        onClick={toggle}
+        disabled={loading}
+        aria-label={playing ? t("music:pause") : t("music:play")}
+        title={playing ? t("music:pause") : t("music:play")}
+      >
+        {loading ? <span className="hx-music-spinner" /> : playing ? <FaPause size={14} /> : <FaPlay size={14} />}
+      </button>
+      <div
+        className="hx-music-wave"
+        role="slider"
+        tabIndex={url ? 0 : -1}
+        aria-label={t("music:seek")}
+        aria-valuemin={0}
+        aria-valuemax={Math.round(length)}
+        aria-valuenow={Math.round(time)}
+        aria-valuetext={`${clock(time)} / ${clock(length)}`}
+        onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          const x = e.clientX - r.left;
+          const rtl = getComputedStyle(e.currentTarget).direction === "rtl";
+          seekTo((rtl ? r.width - x : x) / r.width);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            const a = audio.current;
+            if (!a) return;
+            seekTo((a.currentTime + (e.key === "ArrowRight" ? 5 : -5)) / (length || 1));
+          }
+        }}
+      >
+        {shown.map((v, i) => (
+          <i key={i} className={i / shown.length < done ? "on" : ""} style={{ height: `${12 + v * 88}%` }} />
+        ))}
+      </div>
+      <span className="hx-music-time" dir="ltr">
+        {clock(time)} / {clock(length)}
+      </span>
+      {url ? (
+        <audio
+          ref={audio}
+          src={url}
+          preload="auto"
+          autoPlay={wantPlay}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onEnded={() => {
+            setPlaying(false);
+            setTime(0);
+          }}
+          onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+          onLoadedMetadata={(e) => setTotal(e.currentTarget.duration)}
+        />
+      ) : null}
+    </div>
   );
 }

@@ -41,5 +41,13 @@
     "week": "Seneste 7 dage",
     "month": "Seneste 30 dage",
     "older": "Ældre"
-  }
+  },
+  "length": "Længde",
+  "tags": "Stilidéer",
+  "submitting": "Sender din sang til studiet…",
+  "needStyle": "Beskriv en stil for at generere en sang.",
+  "needLength": "Vælg en længde mellem {{min}} og {{max}} sekunder.",
+  "close": "Luk",
+  "pause": "Pause",
+  "seek": "Position i sangen"
 }

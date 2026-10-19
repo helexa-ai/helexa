@@ -41,5 +41,13 @@
     "week": "Viimased 7 päeva",
     "month": "Viimased 30 päeva",
     "older": "Vanemad"
-  }
+  },
+  "length": "Pikkus",
+  "tags": "Stiiliideed",
+  "submitting": "Saadan su laulu stuudiosse…",
+  "needStyle": "Laulu loomiseks kirjelda stiili.",
+  "needLength": "Vali pikkus vahemikus {{min}}–{{max}} sekundit.",
+  "close": "Sulge",
+  "pause": "Paus",
+  "seek": "Asukoht laulus"
 }

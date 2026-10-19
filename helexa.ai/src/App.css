@@ -1888,39 +1888,164 @@ html[dir="rtl"] .hx-landing-composer textarea {
 /* -- Music (/music) -------------------------------------------------------- */
 
 /* The music page reuses the image form controls; these cover what images
- * has no counterpart for: labelled text areas and a job list. */
+ * has no counterpart for. */
 .hx-music-field {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.35rem;
+    min-width: 0;
     font-size: 0.82rem;
     color: var(--color-text-muted);
 }
-.hx-music-field textarea,
-.hx-music input[type="number"] {
+.hx-music-field textarea {
     border-radius: 0.5rem;
     border: 1px solid var(--color-border-subtle);
     background-color: var(--color-bg-elevated);
     color: var(--color-text);
-    padding: 0.45rem 0.6rem;
+    padding: 0.55rem 0.7rem;
     font: inherit;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    line-height: 1.5;
     min-height: 36px;
+    resize: vertical;
 }
-.hx-music input[type="number"] {
-    width: 7rem;
+/* Style beside lyrics on a wide screen: lyrics are short lines, so a
+ * full-width box wastes most of its width. Both boxes share one height. */
+.hx-music-words {
+    display: grid;
+    gap: 1rem;
 }
-.hx-music-jobs {
+@media (min-width: 768px) {
+    .hx-music-words.two {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .hx-music-words.two .hx-music-field textarea {
+        flex: 1 1 auto;
+    }
+}
+.hx-music-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+.hx-music-tag {
+    padding: 0.2rem 0.65rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 999px;
+    background: none;
+    color: var(--color-text-muted);
+    font-size: 0.78rem;
+    transition:
+        border-color var(--transition-fast),
+        color var(--transition-fast),
+        background-color var(--transition-fast);
+}
+.hx-music-tag:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-text);
+}
+.hx-music-tag.on {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-soft);
+    color: var(--color-text);
+}
+.hx-music-length {
+    flex: 1 1 14rem;
+    max-width: 22rem;
+}
+.hx-music-length strong {
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+}
+.hx-music-length input[type="range"] {
+    width: 100%;
+    accent-color: var(--color-accent);
+}
+/* A disabled generate button must read as unavailable at a glance, not
+ * as a slightly faded gradient. */
+.hx-music .hx-music-generate:disabled {
+    background: var(--color-bg-subtle);
+    color: var(--color-text-muted);
+    box-shadow: inset 0 0 0 1px var(--color-border-subtle);
+    opacity: 1;
+    cursor: not-allowed;
+}
+/* Phone widths: the history button sits over the title's start. */
+@media (max-width: 768px) {
+    .hx-music > h1 {
+        padding-inline-start: 2.75rem;
+    }
+}
+.hx-music-blocker {
+    margin: -0.4rem 0 0;
+    text-align: end;
+    color: var(--color-text-muted);
+}
+.hx-music-spin {
+    animation: hx-music-turn 0.9s linear infinite;
+}
+@keyframes hx-music-turn {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* The studio: what is happening now, below the form. Empty on arrival. */
+.hx-music-studio {
     margin-top: 1.5rem;
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
 }
-.hx-music-job {
-    padding: 0.7rem 0.8rem;
-    border: 1px solid var(--color-border-subtle);
+.hx-music-studio:empty {
+    display: none;
+}
+.hx-music-activity {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.8rem 1rem;
+    border: 1px dashed var(--color-border-strong);
     border-radius: 0.75rem;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+}
+.hx-music-job {
+    display: grid;
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+    gap: 1rem;
+    padding: 0.9rem;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 0.9rem;
     background-color: var(--color-bg-elevated);
+}
+.hx-music-cover {
+    width: 5.5rem;
+    aspect-ratio: 1;
+    border-radius: 0.6rem;
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+}
+/* A record's label and groove sheen over the gradient. */
+.hx-music-cover::after {
+    content: "";
+    position: absolute;
+    inset: 18%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgb(255 255 255 / 0.35) 0 12%, transparent 13% 100%),
+        repeating-radial-gradient(circle, rgb(0 0 0 / 0.12) 0 1px, transparent 1px 4px);
+    mix-blend-mode: overlay;
+}
+.hx-music-cover .hx-music-eq {
+    position: relative;
+    z-index: 1;
+    color: #fff;
+    height: 1.6rem;
+}
+.hx-music-job-body {
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
@@ -1928,13 +2053,44 @@ html[dir="rtl"] .hx-landing-composer textarea {
 }
 .hx-music-job header {
     display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+.hx-music-title {
+    margin: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.hx-music-close {
+    flex-shrink: 0;
+    margin-block-start: -0.25rem;
+}
+.hx-music-prompt {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.hx-music-meta {
+    display: flex;
     flex-wrap: wrap;
-    gap: 0.6rem;
     align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
 }
 .hx-music-status {
-    font-size: 0.8rem;
     font-weight: 600;
+    color: var(--color-text);
 }
 .hx-music-running .hx-music-status,
 .hx-music-queued .hx-music-status {
@@ -1951,9 +2107,135 @@ html[dir="rtl"] .hx-landing-composer textarea {
 .hx-music-job .hx-image-card-actions {
     flex-wrap: wrap;
 }
+@media (max-width: 575.98px) {
+    .hx-music-job {
+        grid-template-columns: 3.5rem minmax(0, 1fr);
+        gap: 0.75rem;
+    }
+    .hx-music-cover {
+        width: 3.5rem;
+    }
+}
+
+/* Equaliser bars: the "something is being made" signal. */
+.hx-music-eq {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 1.1rem;
+    color: var(--color-accent);
+}
+.hx-music-eq i {
+    width: 3px;
+    height: 100%;
+    border-radius: 2px;
+    background: currentColor;
+    transform-origin: bottom;
+    animation: hx-music-bounce 0.9s ease-in-out infinite;
+}
+.hx-music-eq i:nth-child(2) {
+    animation-delay: -0.3s;
+}
+.hx-music-eq i:nth-child(3) {
+    animation-delay: -0.6s;
+}
+.hx-music-eq i:nth-child(4) {
+    animation-delay: -0.15s;
+}
+@keyframes hx-music-bounce {
+    0%,
+    100% {
+        transform: scaleY(0.25);
+    }
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+/* The player: a round play button, a waveform that is the seek bar, the
+ * time. */
 .hx-music-player {
-    width: min(100%, 24rem);
-    height: 36px;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-block: 0.25rem;
+}
+.hx-music-play {
+    flex-shrink: 0;
+    width: 2.6rem;
+    height: 2.6rem;
+    border: none;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: var(--gradient-helix);
+    color: #fff;
+    transition: transform var(--transition-fast);
+}
+.hx-music-play:hover:not(:disabled) {
+    transform: scale(1.06);
+}
+html[dir="rtl"] .hx-music-play svg {
+    transform: scaleX(-1);
+}
+.hx-music-wave {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 2.6rem;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    cursor: pointer;
+}
+.hx-music-wave i {
+    flex: 1 1 0;
+    min-width: 0;
+    border-radius: 1px;
+    background-color: var(--color-border-strong);
+    transition: background-color 80ms linear;
+}
+.hx-music-wave i.on {
+    background-color: var(--color-accent);
+}
+.hx-music-player.standin .hx-music-wave i {
+    opacity: 0.55;
+}
+.hx-music-wave:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+}
+.hx-music-time {
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+.hx-music-spinner {
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    border: 2px solid rgb(255 255 255 / 0.4);
+    border-top-color: #fff;
+    animation: hx-music-turn 0.8s linear infinite;
+}
+@media (max-width: 575.98px) {
+    .hx-music-time {
+        display: none;
+    }
+    .hx-music-wave {
+        gap: 1px;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .hx-music-eq i,
+    .hx-music-spin,
+    .hx-music-spinner {
+        animation: none;
+    }
+    .hx-music-eq i {
+        transform: scaleY(0.6);
+    }
 }
 
 /* History sidebar (#402): the chat sidebar, with collapsible sections. */
@@ -2008,6 +2290,12 @@ html[dir="rtl"] .hx-flip-rtl {
 }
 .hx-music-dot-failed {
     background-color: var(--color-accent-hot);
+}
+.hx-music-swatch {
+    flex-shrink: 0;
+    width: 0.9rem;
+    height: 0.9rem;
+    border-radius: 0.2rem;
 }
 @keyframes hx-music-pulse {
     50% {

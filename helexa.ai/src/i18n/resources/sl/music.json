@@ -41,5 +41,13 @@
     "week": "Zadnjih 7 dni",
     "month": "Zadnjih 30 dni",
     "older": "Starejše"
-  }
+  },
+  "length": "Dolžina",
+  "tags": "Ideje za slog",
+  "submitting": "Pošiljam pesem v studio…",
+  "needStyle": "Opišite slog, da ustvarite pesem.",
+  "needLength": "Izberite dolžino med {{min}} in {{max}} sekundami.",
+  "close": "Zapri",
+  "pause": "Premor",
+  "seek": "Položaj v pesmi"
 }

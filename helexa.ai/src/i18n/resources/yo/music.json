@@ -41,5 +41,13 @@
     "week": "Ọjọ́ 7 sẹ́yìn",
     "month": "Ọjọ́ 30 sẹ́yìn",
     "older": "Àtijọ́"
-  }
+  },
+  "length": "Gígùn",
+  "tags": "Àwọn èrò àṣà",
+  "submitting": "À ń fi orin rẹ ránṣẹ́ sí sítúdíò…",
+  "needStyle": "Ṣàpèjúwe àṣà kan láti ṣe orin.",
+  "needLength": "Yan gígùn láàárín ìṣẹ́jú-àáyá {{min}} sí {{max}}.",
+  "close": "Pa á dé",
+  "pause": "Dádúró",
+  "seek": "Ipò nínú orin"
 }

@@ -41,5 +41,13 @@
     "week": "Siku 7 zilizopita",
     "month": "Siku 30 zilizopita",
     "older": "Za zamani"
-  }
+  },
+  "length": "Urefu",
+  "tags": "Mawazo ya mtindo",
+  "submitting": "Tunatuma wimbo wako studio…",
+  "needStyle": "Eleza mtindo ili kutengeneza wimbo.",
+  "needLength": "Chagua urefu kati ya sekunde {{min}} na {{max}}.",
+  "close": "Funga",
+  "pause": "Sitisha",
+  "seek": "Mahali katika wimbo"
 }

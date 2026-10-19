@@ -41,5 +41,13 @@
     "week": "Son 7 gün",
     "month": "Son 30 gün",
     "older": "Daha eski"
-  }
+  },
+  "length": "Uzunluk",
+  "tags": "Tarz fikirleri",
+  "submitting": "Şarkınız stüdyoya gönderiliyor…",
+  "needStyle": "Şarkı oluşturmak için bir tarz tanımlayın.",
+  "needLength": "{{min}} ile {{max}} saniye arasında bir uzunluk seçin.",
+  "close": "Kapat",
+  "pause": "Duraklat",
+  "seek": "Şarkıdaki konum"
 }

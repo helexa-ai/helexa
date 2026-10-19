@@ -41,5 +41,13 @@
     "week": "Na 7 lá seo caite",
     "month": "Na 30 lá seo caite",
     "older": "Níos sine"
-  }
+  },
+  "length": "Fad",
+  "tags": "Smaointe stíle",
+  "submitting": "Do d’amhrán á sheoladh chuig an stiúideo…",
+  "needStyle": "Déan cur síos ar stíl chun amhrán a ghiniúint.",
+  "needLength": "Roghnaigh fad idir {{min}} agus {{max}} soicind.",
+  "close": "Dún",
+  "pause": "Sos",
+  "seek": "Suíomh san amhrán"
 }

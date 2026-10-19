@@ -41,5 +41,13 @@
     "week": "Oxirgi 7 kun",
     "month": "Oxirgi 30 kun",
     "older": "Eskiroq"
-  }
+  },
+  "length": "Davomiylik",
+  "tags": "Uslub g‘oyalari",
+  "submitting": "Qo‘shig‘ingiz studiyaga yuborilmoqda…",
+  "needStyle": "Qo‘shiq yaratish uchun uslubni tasvirlang.",
+  "needLength": "{{min}} dan {{max}} soniyagacha davomiylikni tanlang.",
+  "close": "Yopish",
+  "pause": "Pauza",
+  "seek": "Qo‘shiqdagi joy"
 }

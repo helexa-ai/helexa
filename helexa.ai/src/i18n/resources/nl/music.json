@@ -41,5 +41,13 @@
     "week": "Afgelopen 7 dagen",
     "month": "Afgelopen 30 dagen",
     "older": "Ouder"
-  }
+  },
+  "length": "Lengte",
+  "tags": "Stijlideeën",
+  "submitting": "Uw nummer wordt naar de studio gestuurd…",
+  "needStyle": "Beschrijf een stijl om een nummer te genereren.",
+  "needLength": "Kies een lengte tussen {{min}} en {{max}} seconden.",
+  "close": "Sluiten",
+  "pause": "Pauzeren",
+  "seek": "Positie in het nummer"
 }

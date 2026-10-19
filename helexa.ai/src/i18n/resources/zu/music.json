@@ -41,5 +41,13 @@
     "week": "Izinsuku ezi-7 ezedlule",
     "month": "Izinsuku ezingama-30 ezedlule",
     "older": "Ezindala"
-  }
+  },
+  "length": "Ubude",
+  "tags": "Imibono yesitayela",
+  "submitting": "Sithumela ingoma yakho estudiyo…",
+  "needStyle": "Chaza isitayela ukuze wakhe ingoma.",
+  "needLength": "Khetha ubude phakathi kwamasekhondi angu-{{min}} no-{{max}}.",
+  "close": "Vala",
+  "pause": "Misa okwesikhashana",
+  "seek": "Indawo engomeni"
 }
