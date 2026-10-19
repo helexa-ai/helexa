@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Piaskownica",
-    "lead": "Zadawaj modelowi decyzyjnemu typowane pytania o dowolny tekst lub JSON i otrzymuj skalibrowane odpowiedzi w jednym przebiegu — bez generowanego tekstu.",
+    "title": "Decyzje",
+    "lead": "Zadawaj pytania tak/nie, wielokrotnego wyboru lub z oceną na temat dowolnego tekstu lub JSON i od razu otrzymuj odpowiedzi ze skalibrowaną pewnością. Takie modele nazywa się czasem modelami System One.",
     "docsLink": "Jak to działa",
     "side": "Wyniki, przykłady i kod",
     "tabs": {

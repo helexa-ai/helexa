@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Sinov maydoni",
-    "lead": "Qaror modeliga istalgan matn yoki JSON haqida turlangan savollar bering va bir o‘tishda kalibrlangan javoblar oling — matn generatsiya qilinmaydi.",
+    "title": "Qarorlar",
+    "lead": "Har qanday matn yoki JSON haqida ha/yo‘q, variantli yoki baholash savollarini bering va kalibrlangan ishonch bilan darhol javob oling. Bunday modellar ba’zan System One modellari deb ataladi.",
     "docsLink": "Qanday ishlaydi",
     "side": "Natijalar, misollar va kod",
     "tabs": {

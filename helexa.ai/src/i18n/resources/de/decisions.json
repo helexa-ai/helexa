@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Playground",
-    "lead": "Stellen Sie einem Entscheidungsmodell typisierte Fragen zu beliebigem Text oder JSON und erhalten Sie kalibrierte Antworten in einem Durchlauf – ganz ohne generierten Text.",
+    "title": "Entscheidungen",
+    "lead": "Stellen Sie Ja/Nein-, Auswahl- oder Bewertungsfragen zu beliebigem Text oder JSON und erhalten Sie sofort Antworten mit kalibrierter Konfidenz. Solche Modelle werden manchmal System-One-Modelle genannt.",
     "docsLink": "So funktioniert es",
     "side": "Ergebnisse, Beispiele und Code",
     "tabs": {

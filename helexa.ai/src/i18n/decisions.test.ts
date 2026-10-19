@@ -64,9 +64,9 @@ describe("decisions translations", () => {
     }
   });
 
-  it.each(Object.keys(COMMON))("%s names the playground in the nav", (lang) => {
+  it.each(Object.keys(COMMON))("%s names the decisions page in the nav", (lang) => {
     const nav = COMMON[lang].nav as Tree;
-    expect(typeof nav.playground).toBe("string");
-    expect((nav.playground as string).trim()).not.toBe("");
+    expect(typeof nav.decisions).toBe("string");
+    expect((nav.decisions as string).trim()).not.toBe("");
   });
 });

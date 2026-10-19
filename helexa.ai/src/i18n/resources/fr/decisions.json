@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Bac à sable",
-    "lead": "Posez à un modèle de décision des questions typées sur n’importe quel texte ou JSON, et obtenez des réponses calibrées en une seule passe — sans texte généré.",
+    "title": "Décisions",
+    "lead": "Posez des questions oui/non, à choix multiples ou de notation sur n’importe quel texte ou JSON, et obtenez instantanément des réponses avec une confiance calibrée. On appelle parfois ces modèles des modèles System One.",
     "docsLink": "Comment ça marche",
     "side": "Résultats, exemples et code",
     "tabs": {

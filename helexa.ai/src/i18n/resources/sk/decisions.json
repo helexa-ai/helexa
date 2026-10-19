@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Pieskovisko",
-    "lead": "Klaďte rozhodovaciemu modelu typované otázky o akomkoľvek texte alebo JSON a dostávajte kalibrované odpovede v jedinom prechode — bez generovaného textu.",
+    "title": "Rozhodnutia",
+    "lead": "Pýtajte sa otázky áno/nie, s výberom z možností alebo s hodnotením o akomkoľvek texte či JSON a okamžite dostanete odpovede s kalibrovanou istotou. Takéto modely sa niekedy nazývajú modely System One.",
     "docsLink": "Ako to funguje",
     "side": "Výsledky, príklady a kód",
     "tabs": {

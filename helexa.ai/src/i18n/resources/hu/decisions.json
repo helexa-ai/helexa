@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Játszótér",
-    "lead": "Tegyen fel egy döntési modellnek típusos kérdéseket bármilyen szövegről vagy JSON-ról, és kapjon kalibrált válaszokat egyetlen lépésben — generált szöveg nélkül.",
+    "title": "Döntések",
+    "lead": "Tegyen fel igen/nem, feleletválasztós vagy pontozó kérdéseket bármilyen szövegről vagy JSON-ról, és azonnal kalibrált megbízhatóságú válaszokat kap. Az ilyen modelleket néha System One modelleknek nevezik.",
     "docsLink": "Hogyan működik",
     "side": "Eredmények, példák és kód",
     "tabs": {

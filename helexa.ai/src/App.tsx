@@ -43,7 +43,7 @@ export default function App() {
               <Route path="/chat" element={<Chat />} />
               <Route path="/images" element={<Images />} />
               <Route path="/music" element={<Music />} />
-              <Route path="/playground" element={<Playground />} />
+              <Route path="/decisions" element={<Playground />} />
               {/* Documentation. The splat route lets the sidebar tree be
                   arbitrarily deep without enumerating routes here — the
                   page resolves the slug against the content tree. */}

@@ -1,7 +1,7 @@
 ---
 title: Using decisions
 sidebar_label: Decisions
-description: Typed questions over text or JSON, answered with calibrated probabilities — the System-One endpoint and its playground.
+description: Typed questions over text or JSON, answered with calibrated probabilities — the System-One endpoint and the Decisions page.
 ---
 
 # Using decisions
@@ -13,7 +13,7 @@ request. That makes it fast (tens of milliseconds), cheap, and
 predictable enough to put in front of a workflow: routing a ticket,
 screening a message, deciding whether to escalate.
 
-Try it without writing code in [the playground](/playground).
+Try it without writing code on [the Decisions page](/decisions).
 
 The endpoint is `POST https://helexa.ai/v1/systemone`, and it speaks the
 TypeSafe Jev protocol, so existing Jev clients work unchanged.

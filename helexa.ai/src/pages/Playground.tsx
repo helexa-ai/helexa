@@ -22,7 +22,7 @@ const TABS: Tab[] = ["results", "examples", "code"];
 const FIRST_DRAFT: Draft = exampleDraft(EXAMPLES.find((e) => e.id === "triage") ?? EXAMPLES[0]);
 
 /**
- * `/playground` — try a decision model (System-One, `/v1/systemone`) in the
+ * `/decisions` — try a decision model (System-One, `/v1/systemone`) in the
  * browser (#356).
  *
  * Write a state and some typed questions, run them, and read calibrated

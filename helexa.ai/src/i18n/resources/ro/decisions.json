@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Playground",
-    "lead": "Puneți unui model de decizie întrebări tipizate despre orice text sau JSON și primiți răspunsuri calibrate dintr-o singură trecere — fără text generat.",
+    "title": "Decizii",
+    "lead": "Puneți întrebări da/nu, cu variante multiple sau de punctaj despre orice text sau JSON și primiți instantaneu răspunsuri cu încredere calibrată. Astfel de modele sunt numite uneori modele System One.",
     "docsLink": "Cum funcționează",
     "side": "Rezultate, exemple și cod",
     "tabs": {

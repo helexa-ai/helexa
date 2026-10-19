@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Smėlio dėžė",
-    "lead": "Užduokite sprendimų modeliui tipizuotus klausimus apie bet kokį tekstą ar JSON ir gaukite kalibruotus atsakymus vienu perėjimu — be sugeneruoto teksto.",
+    "title": "Sprendimai",
+    "lead": "Užduokite taip/ne, pasirinkimo ar vertinimo klausimus apie bet kokį tekstą ar JSON ir iškart gaukite atsakymus su kalibruotu patikimumu. Tokie modeliai kartais vadinami System One modeliais.",
     "docsLink": "Kaip tai veikia",
     "side": "Rezultatai, pavyzdžiai ir kodas",
     "tabs": {

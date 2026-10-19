@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Lekeplass",
-    "lead": "Still en beslutningsmodell typede spørsmål om hvilken som helst tekst eller JSON, og få kalibrerte svar i én enkelt runde — uten generert tekst.",
+    "title": "Beslutninger",
+    "lead": "Still ja/nei-, flervalgs- eller poengspørsmål om hvilken som helst tekst eller JSON, og få umiddelbare svar med kalibrert sikkerhet. Slike modeller kalles noen ganger System One-modeller.",
     "docsLink": "Slik fungerer det",
     "side": "Resultater, eksempler og kode",
     "tabs": {

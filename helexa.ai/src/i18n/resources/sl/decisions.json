@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Peskovnik",
-    "lead": "Postavite modelu za odločanje tipizirana vprašanja o katerem koli besedilu ali JSON in prejmite umerjene odgovore v enem prehodu — brez ustvarjenega besedila.",
+    "title": "Odločitve",
+    "lead": "Postavite vprašanja da/ne, z izbiro odgovorov ali z ocenjevanjem o poljubnem besedilu ali JSON in takoj prejmite odgovore z umerjeno zanesljivostjo. Takim modelom včasih rečemo modeli System One.",
     "docsLink": "Kako deluje",
     "side": "Rezultati, primeri in koda",
     "tabs": {

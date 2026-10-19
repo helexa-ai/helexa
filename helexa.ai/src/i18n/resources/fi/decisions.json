@@ -1,7 +1,7 @@
 {
   "page": {
-    "title": "Hiekkalaatikko",
-    "lead": "Esitä päätösmallille tyypitettyjä kysymyksiä mistä tahansa tekstistä tai JSONista ja saat kalibroidut vastaukset yhdellä läpikäynnillä — ilman tuotettua tekstiä.",
+    "title": "Päätökset",
+    "lead": "Esitä kyllä/ei-, monivalinta- tai pisteytyskysymyksiä mistä tahansa tekstistä tai JSONista ja saat heti vastaukset kalibroidulla varmuudella. Tällaisia malleja kutsutaan joskus System One -malleiksi.",
     "docsLink": "Miten se toimii",
     "side": "Tulokset, esimerkit ja koodi",
     "tabs": {
