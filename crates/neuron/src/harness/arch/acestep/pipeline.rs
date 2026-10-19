@@ -477,15 +477,9 @@ impl AceStepPipeline {
             .as_mut()
             .ok_or_else(|| anyhow::anyhow!("LM not loaded — call load_lm() first"))?;
 
-        let prompt_text = LmPipeline::format_prompt(prompt, lyrics);
-        let prompt_enc = lm
-            .tokenizer
-            .encode(prompt_text.as_str(), false)
-            .map_err(|e| anyhow::anyhow!("LM encode: {e}"))?;
-
-        let decode_fn = |t: u32| -> candle_core::Result<String> {
+        let decode_fn = |ids: &[u32]| -> candle_core::Result<String> {
             lm.tokenizer
-                .decode(&[t], false)
+                .decode(ids, false)
                 .map_err(|e| candle_core::Error::Msg(format!("{e}")))
         };
         let encode_fn = |s: &str| -> candle_core::Result<Vec<u32>> {
@@ -497,7 +491,8 @@ impl AceStepPipeline {
         };
 
         let output = lm.pipeline.generate(
-            prompt_enc.get_ids(),
+            prompt,
+            lyrics,
             duration_secs,
             lm_config,
             &decode_fn,

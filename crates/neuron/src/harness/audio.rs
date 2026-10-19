@@ -382,17 +382,7 @@ impl AceStepEngine {
                 self.pipeline
                     .generate_lm_hints(&p.prompt, &p.lyrics, p.duration_secs, &cfg)?;
             timing.plan_ms = t.elapsed().as_millis() as u64;
-            let metadata = LmMetadata {
-                bpm: meta.get("bpm").cloned(),
-                timesignature: meta.get("timesignature").cloned(),
-                keyscale: meta.get("keyscale").cloned(),
-                caption: meta.get("caption").cloned(),
-                language: meta
-                    .get("language")
-                    .or_else(|| meta.get("vocal_language"))
-                    .cloned(),
-            };
-            (Some(hints), Some(metadata))
+            (Some(hints), Some(lm_metadata(&meta)))
         } else {
             (None, None)
         };
@@ -431,6 +421,20 @@ impl AceStepEngine {
             sample_rate: out.sample_rate,
             timing,
         })
+    }
+}
+
+/// The plan's fields the DiT prompt carries.
+fn lm_metadata(meta: &std::collections::BTreeMap<String, String>) -> LmMetadata {
+    LmMetadata {
+        bpm: meta.get("bpm").cloned(),
+        timesignature: meta.get("timesignature").cloned(),
+        keyscale: meta.get("keyscale").cloned(),
+        caption: meta.get("caption").cloned(),
+        language: meta
+            .get("language")
+            .or_else(|| meta.get("vocal_language"))
+            .cloned(),
     }
 }
 
@@ -968,15 +972,19 @@ mod hardware {
         let parity = layout_toml.trim().is_empty() && device.is_cpu();
         // (case, this layout's drift, upstream bf16's drift)
         let mut drifts: Vec<(String, f32, f32)> = Vec::new();
+        // A planned case (`*_plan`) runs the planner greedily first, as the
+        // trace did; its plan and codes then condition the DiT (#384).
+        let planned = cases.split(',').any(|c| c.ends_with("_plan"));
         let mut engine = AceStepEngine::load(
             &AceStepFiles {
                 root: root.into(),
-                planner: None,
+                planner: planned.then(|| PLANNER_DIRS[0].to_string()),
                 layout: AceStepLayout::from_config(&cfg).unwrap(),
             },
             &device,
         )
         .expect("load");
+        assert_eq!(engine.has_planner(), planned, "planner load");
         let dir =
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/harness/testdata/acestep");
         for case in cases.split(',') {
@@ -1008,8 +1016,26 @@ mod hardware {
             let language = c["language"].as_str().unwrap();
             let duration = c["duration"].as_f64().unwrap();
 
-            let (text, lyric) =
-                AceStepPipeline::format_prompts(caption, lyrics, duration, None, Some(language));
+            let (hints, metadata) = if c["planner"].as_bool() == Some(true) {
+                let cfg = crate::harness::arch::acestep::lm::LmConfig {
+                    temperature: 0.0,
+                    ..Default::default()
+                };
+                let (hints, meta) = engine
+                    .pipeline
+                    .generate_lm_hints(caption, lyrics, duration, &cfg)
+                    .unwrap();
+                (Some(hints), Some(lm_metadata(&meta)))
+            } else {
+                (None, None)
+            };
+            let (text, lyric) = AceStepPipeline::format_prompts(
+                caption,
+                lyrics,
+                duration,
+                metadata.as_ref(),
+                Some(language),
+            );
             let (text_ids, lyric_ids) = engine.pipeline.prompt_token_ids(&text, &lyric).unwrap();
             let ids = |k: &str| -> Vec<u32> {
                 want[k]
@@ -1033,6 +1059,8 @@ mod hardware {
                 infer_method: sampling::InferMethod::Ode,
                 initial_noise: Some(want["noise"].clone()),
                 language: Some(language.to_string()),
+                lm_hints_25hz: hints,
+                lm_metadata: metadata,
                 ..Default::default()
             };
             let t = Instant::now();
@@ -1153,6 +1181,86 @@ mod hardware {
         }
         let again = engine.generate(&params).expect("generate again");
         assert_eq!(out.left, again.left, "same seed must render identically");
+    }
+
+    /// Planner parity with upstream (#384): greedy decoding in f32 over the
+    /// `vocal_en_30s_plan` case must reproduce upstream's CoT text exactly,
+    /// and its audio codes (CFG 2.0, 150 of them). Ignored: needs
+    /// ACESTEP_SNAPSHOT; ACESTEP_DEVICE=cuda runs it on the GPU.
+    #[test]
+    #[ignore = "needs ACESTEP_SNAPSHOT"]
+    fn acestep_planner_matches_reference() {
+        use crate::harness::arch::acestep::lm::{LmConfig, LmPipeline, TokenIds};
+        let Ok(root) = std::env::var("ACESTEP_SNAPSHOT") else {
+            return;
+        };
+        let device = match std::env::var("ACESTEP_DEVICE").as_deref() {
+            Ok("cuda") => Device::new_cuda(0).unwrap(),
+            _ => Device::Cpu,
+        };
+        let dir = PathBuf::from(root).join(PLANNER_DIRS[0]);
+        let cfg: qwen3::Config = read_json(&dir.join("config.json")).unwrap();
+        let vb = unsafe {
+            VarBuilder::from_mmaped_safetensors(
+                &[dir.join("model.safetensors")],
+                DType::F32,
+                &device,
+            )
+            .unwrap()
+        }
+        .rename_f(|n| n.strip_prefix("model.").unwrap_or(n).to_string());
+        let model = qwen3::ModelForCausalLM::new(&cfg, vb).unwrap();
+        let tok = tokenizers::Tokenizer::from_file(dir.join("tokenizer.json")).unwrap();
+        let encode = |s: &str| -> candle_core::Result<Vec<u32>> {
+            Ok(tok.encode(s, false).unwrap().get_ids().to_vec())
+        };
+        let decode =
+            |ids: &[u32]| -> candle_core::Result<String> { Ok(tok.decode(ids, false).unwrap()) };
+        let ids = TokenIds::discover(encode).unwrap();
+        let mut lm = LmPipeline::new(model, ids, device);
+
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/harness/testdata/acestep/vocal_en_30s_plan__cpu_f32.json");
+        let f: serde_json::Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        let case = &f["case"];
+        let config = LmConfig {
+            temperature: 0.0,
+            ..Default::default()
+        };
+        let t = Instant::now();
+        let out = lm
+            .generate(
+                case["caption"].as_str().unwrap(),
+                case["lyrics"].as_str().unwrap(),
+                case["duration"].as_f64().unwrap(),
+                &config,
+                &decode,
+                &encode,
+            )
+            .unwrap();
+        eprintln!("planner ran in {:.1}s", t.elapsed().as_secs_f32());
+
+        let want_cot = f["planner"][0]["output_text"].as_str().unwrap();
+        // raw_text is the CoT, a newline, then the re-dumped plan and codes.
+        let got_cot = &out.raw_text[..want_cot.len().min(out.raw_text.len())];
+        assert_eq!(got_cot, want_cot, "CoT text");
+
+        let want_codes = crate::harness::arch::acestep::lm::parse_audio_codes_from_text(
+            f["planner"][1]["output_text"].as_str().unwrap(),
+        );
+        let same = out
+            .audio_codes
+            .iter()
+            .zip(&want_codes)
+            .take_while(|(a, b)| a == b)
+            .count();
+        eprintln!(
+            "codes: {} generated, {} expected, first {same} identical",
+            out.audio_codes.len(),
+            want_codes.len()
+        );
+        assert_eq!(out.audio_codes.len(), want_codes.len(), "code count");
+        assert_eq!(out.audio_codes, want_codes, "audio codes");
     }
 
     /// The planner LM loads from the real snapshot (its tensors carry no
