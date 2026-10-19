@@ -1,3 +1,5 @@
+mod glibc_compat;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use cortex_core::config::GatewayConfig;

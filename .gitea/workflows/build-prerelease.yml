@@ -52,6 +52,11 @@ concurrency:
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: "always"
+  # Every RPM here is built for Fedora 43, but the runners build on their
+  # host, which may run a newer release. Each Stage step fails a binary that
+  # needs a newer glibc than Fedora 43 ships, rather than letting dnf skip
+  # the upgrade at deploy.
+  GLIBC_FLOOR: "2.42"
 
 jobs:
   prepare:
@@ -315,6 +320,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/cortex artifacts/cortex
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/cortex
           ./artifacts/cortex --version || true
 
       - uses: actions/upload-artifact@v3
@@ -354,6 +360,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/helexa-bench artifacts/helexa-bench
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/helexa-bench
           ./artifacts/helexa-bench --version || true
 
       - uses: actions/upload-artifact@v3
@@ -393,6 +400,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/helexa-upstream artifacts/helexa-upstream
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/helexa-upstream
           ./artifacts/helexa-upstream --version || true
 
       - uses: actions/upload-artifact@v3
@@ -432,6 +440,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/helexa-angels artifacts/helexa-angels
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/helexa-angels
           ./artifacts/helexa-angels --version || true
 
       - uses: actions/upload-artifact@v3
@@ -467,6 +476,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/helexa-router artifacts/helexa-router
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/helexa-router
           ./artifacts/helexa-router --version || true
 
       - uses: actions/upload-artifact@v3
@@ -502,6 +512,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/helexa-tools artifacts/helexa-tools
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" artifacts/helexa-tools
           ./artifacts/helexa-tools --version || true
 
       - uses: actions/upload-artifact@v3
@@ -619,6 +630,7 @@ jobs:
         run: |
           mkdir --parents artifacts
           cp target/release/neuron artifacts/neuron-${{ matrix.flavour }}
+          script/check-glibc-floor.sh "$GLIBC_FLOOR" "artifacts/neuron-${{ matrix.flavour }}"
           file "artifacts/neuron-${{ matrix.flavour }}"
 
       - uses: actions/upload-artifact@v3
