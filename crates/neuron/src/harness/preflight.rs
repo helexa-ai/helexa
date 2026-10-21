@@ -490,6 +490,7 @@ mod tests {
             preserve_thinking: None,
             expert_residency: None,
             max_in_flight: None,
+            replicas: None,
         }
     }
 

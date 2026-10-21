@@ -1367,5 +1367,40 @@ than upstream's own bf16 (0.32). A 180 s vocal song with the 0.6B
 planner takes 44 s on a 3060 (q8, 7.1 GB peak). The 0.6B planner is a
 separate repo, so name it by id: `planner = "ACE-Step/acestep-5Hz-lm-0.6B"`.
 
+**Rigs: replicas and power schedules (#397).** A mining rig's cards sit
+on PCIe x1 risers, where tensor parallelism floods the bus, so a rig
+serves one independent copy of a music model per card.
+`[harness.candle.audio] replicas = "per-device"` (or a device list, or a
+model's own `replicas` in its load spec) loads a copy on each card behind
+one model id; cortex keeps seeing one model per host. Design choices:
+
+- **Neuron-internal dispatch, one admission controller per model** with a
+  slot per copy, then an idle copy from a round-robin `ReplicaPool`
+  (`harness/replica.rs`). Queue, fair share and the anonymous ceiling see
+  the whole capacity, and `/health` sums naturally: `max_in_flight` is the
+  copy count, with a per-copy `replicas` breakdown; `/models` reports
+  `replicas`. A copy whose device worker is poisoned is retired and never
+  handed out again; otherwise it would fail requests fastest and attract
+  them. One card failing to load leaves the others serving.
+- **cortex weighs load as a share of capacity**, `(in_flight + queue) /
+  max_in_flight`, so an 8-copy rig with two renders running counts as
+  less busy than a single card with one.
+- **The audio job gate follows the fleet**: `[audio_jobs] max_concurrent
+  = 0` (now the default) sums the in-flight capacity of loaded music
+  models on hosts taking work, minimum 1. A fixed number would leave most
+  of an 18-card rig idle.
+
+Solar hosts go dark daily. `[availability] online = ["06:30-18:45"]`
+(UTC) makes `/health` announce `next_dark {drain_at, starts_at,
+ends_at}`. The host sets `drain_at` (`drain_secs`, default 900) because it
+knows how long its jobs run. cortex stops routing and cold-loading there
+from `drain_at` (`NodeState::takes_work`), marks it unhealthy at once
+when it goes silent inside the window, logs the departure and return once
+each at `info` instead of warning every poll, and reports
+`nodes.scheduled_dark` on its `/health` (gauge
+`cortex_node_scheduled_dark`). An unannounced outage is still debounced
+and warned about as before. Component placement across cards (HeartMuLa's
+LM on one card and codec on another) is not built yet.
+
 **Next:** the Pascal epic #380 (rig work waits until rigs are named; the fallback if
 ACE-Step cannot run on Pascal is Stable Audio and/or EzAudio).

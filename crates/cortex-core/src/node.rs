@@ -50,6 +50,34 @@ pub struct NodeState {
     /// neuron reports the same rungs — and duplicating it onto each
     /// model entry would invite the two to disagree.
     pub reasoning_budget: Vec<crate::harness::ReasoningBudgetRung>,
+    /// The neuron's last-announced scheduled absence (#397), from
+    /// `/health`. Kept while the neuron is unreachable: that is when it
+    /// says the silence is planned.
+    pub next_dark: Option<crate::discovery::DarkWindow>,
+    /// Whether the neuron is currently away inside its announced dark
+    /// window, so the poller logs the departure and return once each
+    /// rather than every failed poll.
+    pub in_scheduled_absence: bool,
+}
+
+impl NodeState {
+    /// Whether new work may be sent here at `now` (unix seconds): the node
+    /// is healthy and not draining ahead of a scheduled absence (#397).
+    pub fn takes_work_at(&self, now: u64) -> bool {
+        self.healthy && self.next_dark.is_none_or(|d| d.takes_work_at(now))
+    }
+
+    /// [`Self::takes_work_at`] the current time.
+    pub fn takes_work(&self) -> bool {
+        self.takes_work_at(unix_now())
+    }
+}
+
+/// Seconds since the unix epoch.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// A model registered on a node, with its runtime status.

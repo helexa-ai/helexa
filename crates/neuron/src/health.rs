@@ -10,6 +10,8 @@ const POLL_INTERVAL: Duration = Duration::from_secs(5);
 pub struct HealthCache {
     inner: RwLock<HealthResponse>,
     has_gpus: RwLock<bool>,
+    /// This host's power schedule (#397); unset for an always-on host.
+    schedule: std::sync::OnceLock<crate::availability::Schedule>,
 }
 
 impl Default for HealthCache {
@@ -33,8 +35,11 @@ impl HealthCache {
                 // Per-model admission load is overlaid by the api handler
                 // from the candle harness (#53); the cache doesn't own it.
                 models: Vec::new(),
+                // Overlaid by the api handler from `[availability]`.
+                next_dark: None,
             }),
             has_gpus: RwLock::new(false),
+            schedule: std::sync::OnceLock::new(),
         }
     }
 
@@ -45,7 +50,20 @@ impl HealthCache {
 
     /// Get a snapshot of the current health state.
     pub async fn snapshot(&self) -> HealthResponse {
-        self.inner.read().await.clone()
+        let mut snapshot = self.inner.read().await.clone();
+        if let Some(schedule) = self.schedule.get() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            snapshot.next_dark = schedule.next_dark(now);
+        }
+        snapshot
+    }
+
+    /// Announce this host's power schedule on `/health` (#397). Set once,
+    /// at startup.
+    pub fn set_schedule(&self, schedule: crate::availability::Schedule) {
+        let _ = self.schedule.set(schedule);
     }
 
     /// Run forever, polling nvidia-smi every 5 seconds and updating the cache.

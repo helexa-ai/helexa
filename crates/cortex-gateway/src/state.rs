@@ -94,6 +94,8 @@ impl CortexState {
                     activation: None,
                     model_load: HashMap::new(),
                     consecutive_poll_failures: 0,
+                    next_dark: None,
+                    in_scheduled_absence: false,
                 },
             );
         }

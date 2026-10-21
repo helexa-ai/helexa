@@ -1,5 +1,6 @@
 pub mod activation;
 pub mod api;
+pub mod availability;
 pub mod config;
 pub mod cuda;
 pub mod discovery;

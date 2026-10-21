@@ -223,6 +223,7 @@ impl TargetClient {
             // reconstructed spec cannot carry it either.
             expert_residency: None,
             max_in_flight: None,
+            replicas: None,
         })
     }
 
@@ -292,6 +293,7 @@ impl TargetClient {
                         // serviceability, and absent means "no opinion".
                         servable: None,
                         reasoning_budget: Vec::new(),
+                        replicas: None,
                     })
                     .collect())
             }

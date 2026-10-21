@@ -663,27 +663,98 @@ impl LoadedImageModel {
     }
 }
 
-/// A loaded ACE-Step music pipeline (#383). Every component lives in the
-/// device worker's audio slab, addressed via [`Self::handle`]; this
-/// async-side struct holds admission bookkeeping and the model's limits.
-/// A render is one `Job::GenerateAudio` round-trip.
+/// A loaded music pipeline (#383): one copy per replica device (#397).
+/// Every component of a copy lives in its device worker's audio slab,
+/// addressed via [`AudioReplica::handle`]; this async-side struct holds
+/// admission bookkeeping and the model's limits. A render is one
+/// `Job::GenerateAudio` round-trip on one replica.
 pub struct LoadedAudioModel {
     pub model_id: String,
     pub spec: ModelSpec,
+    /// Every device a copy lives on.
     pub devices: Vec<u32>,
-    pub worker: Arc<super::device_worker::DeviceWorkerHandle>,
-    pub handle: super::device_worker::AudioHandle,
+    pub replicas: Vec<AudioReplica>,
+    /// Which copies are idle; a render holds one for its whole duration.
+    pub pool: Arc<super::replica::ReplicaPool>,
     /// Whether the snapshot carried a song planner.
     pub has_planner: bool,
     /// What a request may ask of this model; validated before admission.
     pub limits: cortex_core::audio::AudioLimits,
-    /// Set when a render fails at the driver level: subsequent requests
-    /// fast-reject and `/models` reports `poisoned`.
+    /// Set once every replica's device has failed: requests fast-reject
+    /// and `/models` reports `poisoned`.
     pub poisoned: Arc<AtomicBool>,
-    /// Admission control (#53) with `max_in_flight` forced to 1 — a render
-    /// saturates the device. The cortex job queue is the real backlog.
+    /// Admission control (#53) with one in-flight slot per replica — a
+    /// render saturates its device. The cortex job queue is the real
+    /// backlog.
     pub admission: super::admission::AdmissionController,
-    pub inference_lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+/// One copy of a music pipeline (#397).
+pub struct AudioReplica {
+    pub device: u32,
+    pub worker: Arc<super::device_worker::DeviceWorkerHandle>,
+    pub handle: super::device_worker::AudioHandle,
+}
+
+impl LoadedAudioModel {
+    /// Per-replica load for `/health`; empty for a single copy, whose
+    /// load the model-level numbers already say.
+    pub fn replica_loads(&self) -> Vec<cortex_core::discovery::ReplicaLoad> {
+        if self.replicas.len() < 2 {
+            return Vec::new();
+        }
+        self.replicas
+            .iter()
+            .enumerate()
+            .map(|(i, r)| cortex_core::discovery::ReplicaLoad {
+                device: r.device,
+                in_flight: self.pool.in_flight(i),
+                healthy: self.pool.is_healthy(i),
+            })
+            .collect()
+    }
+}
+
+/// The devices a music model's copies go on (#397): one per entry of
+/// `replicas`, or the model's single device when it is not replicated.
+///
+/// `"per-device"` means every device the model may use: its `devices` when
+/// the spec names them, else every CUDA device on the host.
+fn replica_devices(
+    replicas: Option<&cortex_core::harness::Replicas>,
+    devices: Option<&[u32]>,
+    device_count: fn() -> usize,
+) -> Result<Vec<u32>> {
+    use cortex_core::harness::Replicas;
+    let picked = match replicas {
+        None => vec![devices.and_then(|d| d.first().copied()).unwrap_or(0)],
+        Some(Replicas::Devices(list)) => list.clone(),
+        Some(Replicas::PerDevice) => match devices {
+            Some(d) if !d.is_empty() => d.to_vec(),
+            _ => (0..device_count() as u32).collect(),
+        },
+    };
+    anyhow::ensure!(
+        !picked.is_empty(),
+        "replicas = \"per-device\" found no CUDA devices"
+    );
+    let mut seen = std::collections::HashSet::new();
+    for d in &picked {
+        anyhow::ensure!(seen.insert(*d), "replicas lists device {d} twice");
+    }
+    Ok(picked)
+}
+
+/// CUDA devices on this host; 0 without CUDA.
+fn cuda_device_count() -> usize {
+    #[cfg(feature = "cuda")]
+    {
+        cudarc::driver::CudaContext::device_count().map_or(0, |n| n.max(0) as usize)
+    }
+    #[cfg(not(feature = "cuda"))]
+    {
+        0
+    }
 }
 
 /// A loaded model with its tokenizer, device placement, and architecture-
@@ -3825,6 +3896,10 @@ impl CandleHarness {
                     kv_available_mb,
                     tok_s_prefill,
                     tok_s_decode,
+                    replicas: match handle {
+                        LoadedHandle::Audio(a) => a.replica_loads(),
+                        _ => Vec::new(),
+                    },
                 }
             })
             .collect()
@@ -3955,6 +4030,10 @@ impl Harness for CandleHarness {
                 reasoning: h.has_reasoning(),
                 preserve_thinking: h.preserve_thinking(),
                 servable: h.servability(&self.context_limit_cfg),
+                replicas: match h {
+                    LoadedHandle::Audio(a) if a.replicas.len() > 1 => Some(a.replicas.len()),
+                    _ => None,
+                },
                 // The rungs this model's own template accepts (#290),
                 // discovered at load rather than invented. Advertising a
                 // rung the template rejects hands callers a name that
@@ -4015,6 +4094,7 @@ impl Harness for CandleHarness {
                     // A recovering model is a trigger-time snapshot; it
                     // is not serving, so it advertises no controls.
                     reasoning_budget: Vec::new(),
+                    replicas: None,
                 });
             }
         }
@@ -4476,14 +4556,17 @@ impl Harness for CandleHarness {
                 dm.release().await;
             }
             LoadedHandle::Audio(audio) => {
-                // Drop the pipeline on the worker thread so its CUDA
-                // tensors release on the context that allocated them.
-                if let Err(e) = audio.worker.drop_audio(audio.handle).await {
-                    tracing::warn!(
-                        model = %model_id,
-                        error = %e,
-                        "audio unload: DropAudio RPC failed (pipeline may leak in worker slab)"
-                    );
+                // Drop each copy on its worker thread so its CUDA tensors
+                // release on the context that allocated them.
+                for r in &audio.replicas {
+                    if let Err(e) = r.worker.drop_audio(r.handle).await {
+                        tracing::warn!(
+                            model = %model_id,
+                            device = r.device,
+                            error = %e,
+                            "audio unload: DropAudio RPC failed (pipeline may leak in worker slab)"
+                        );
+                    }
                 }
             }
             #[cfg(feature = "cuda")]
@@ -4670,18 +4753,20 @@ impl CandleHarness {
         files: super::audio::AudioFiles,
         limits: cortex_core::audio::AudioLimits,
     ) -> Result<()> {
-        let devices = spec.devices.clone().unwrap_or_else(|| vec![0]);
+        let devices = replica_devices(
+            spec.replicas.as_ref().or(self.audio_cfg.replicas.as_ref()),
+            spec.devices.as_deref(),
+            cuda_device_count,
+        )?;
         let device = Self::pick_device(&devices)?;
-        let worker: Arc<super::device_worker::DeviceWorkerHandle> = match &device {
-            #[cfg(feature = "cuda")]
-            Device::Cuda(_) => self.ensure_device_worker(devices[0]).await?,
-            // On CPU builds this arm is the whole match: a song on the CPU
-            // takes many minutes and is not a serving target.
-            _ => anyhow::bail!(
+        if !matches!(device, Device::Cuda(_)) {
+            // A song on the CPU takes many minutes and is not a serving
+            // target.
+            anyhow::bail!(
                 "music generation requires a CUDA device; '{}' resolved to a CPU device",
                 spec.model_id
-            ),
-        };
+            );
+        }
 
         let has_planner =
             matches!(&files, super::audio::AudioFiles::AceStep(f) if f.planner.is_some());
@@ -4699,32 +4784,62 @@ impl CandleHarness {
             limits.max_duration = limits.max_duration.min(max);
             limits.default_duration = limits.default_duration.min(limits.max_duration);
         }
-        let handle = worker
-            .load_audio(files, spec.model_id.clone())
-            .await
-            .map_err(|e| anyhow::anyhow!("worker load_audio: {e:#}"))?;
+        // Every copy loads at once: each device has its own worker thread,
+        // and on a rig the slow part is each card's own riser.
+        let loads = devices.iter().map(|&d| {
+            let files = files.clone();
+            let model_id = spec.model_id.clone();
+            async move {
+                let worker = self.ensure_device_worker(d).await?;
+                let handle = worker
+                    .load_audio(files, model_id)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("worker load_audio on device {d}: {e:#}"))?;
+                anyhow::Ok(AudioReplica {
+                    device: d,
+                    worker,
+                    handle,
+                })
+            }
+        });
+        let mut replicas = Vec::with_capacity(devices.len());
+        let mut first_error = None;
+        for (device, outcome) in devices.iter().zip(futures::future::join_all(loads).await) {
+            match outcome {
+                Ok(r) => replicas.push(r),
+                // One bad card must not take the rig's other copies down
+                // with it. The replica count on `/models` shows the loss.
+                Err(e) => {
+                    tracing::warn!(model = %spec.model_id, device, error = %e, "audio replica failed to load");
+                    first_error.get_or_insert(e);
+                }
+            }
+        }
+        if replicas.is_empty() {
+            return Err(first_error.unwrap_or_else(|| anyhow::anyhow!("no devices to load on")));
+        }
 
-        // Admission (#53) with the in-flight ceiling forced to 1: a render
-        // saturates the device. cortex queues jobs ahead of this.
+        // Admission (#53) with one in-flight slot per replica: a render
+        // saturates its device. cortex queues jobs ahead of this.
         let admission_cfg = crate::config::AdmissionConfig {
-            max_in_flight: 1,
+            max_in_flight: replicas.len(),
             ..self.admission_cfg.clone()
         };
         let loaded = LoadedAudioModel {
             model_id: spec.model_id.clone(),
             spec: spec.clone(),
-            devices,
-            worker,
-            handle,
+            devices: replicas.iter().map(|r| r.device).collect(),
+            pool: super::replica::ReplicaPool::new(replicas.len()),
+            replicas,
             has_planner,
             limits,
             poisoned: Arc::new(AtomicBool::new(false)),
             admission: crate::harness::admission::AdmissionController::new(&admission_cfg),
-            inference_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
+        let copies = loaded.replicas.len();
         let mut models = self.models.write().await;
         models.insert(spec.model_id.clone(), LoadedHandle::Audio(Arc::new(loaded)));
-        tracing::info!(model = %spec.model_id, planner = has_planner, "audio pipeline loaded");
+        tracing::info!(model = %spec.model_id, planner = has_planner, replicas = copies, "audio pipeline loaded");
         Ok(())
     }
 
@@ -5367,11 +5482,28 @@ impl CandleHarness {
         };
 
         let _permit = audio.admission.enter(principal).await?;
-        let _guard = audio.inference_lock.lock().await;
-        let result = audio
-            .worker
-            .generate_audio(audio.handle, params)
-            .await
+        // Admission lets in no more renders than there are copies, so one
+        // is idle here unless a device has failed.
+        let Some(lease) = audio.pool.checkout().await else {
+            audio.poisoned.store(true, Ordering::Release);
+            return Err(InferenceError::Other(anyhow::anyhow!(
+                "every replica of audio model '{}' has failed; unload and reload it",
+                request.model
+            )));
+        };
+        let replica = &audio.replicas[lease.index()];
+        let outcome = replica.worker.generate_audio(replica.handle, params).await;
+        if replica.worker.is_poisoned() {
+            // The device is gone for good: stop handing this copy work,
+            // or it becomes the fastest way to fail a request.
+            tracing::error!(model = %request.model, device = replica.device, "audio replica's device failed; retiring it");
+            lease.mark_failed();
+            if audio.pool.healthy_count() == 0 {
+                audio.poisoned.store(true, Ordering::Release);
+            }
+        }
+        drop(lease);
+        let result = outcome
             .map_err(|e| InferenceError::Other(anyhow::anyhow!("audio generation: {e:#}")))?;
 
         let duration = result.duration_secs();
@@ -8664,6 +8796,34 @@ mod tests {
     /// admission controller. Those are separate readers of the same
     /// number, and a model bounded at 1 while an engine starts with 8
     /// slots is the failure this function exists to prevent.
+    #[test]
+    fn replica_devices_follow_the_spec_then_the_host() {
+        use cortex_core::harness::Replicas;
+        fn four() -> usize {
+            4
+        }
+        // Unreplicated: the model's first device, as before #397.
+        assert_eq!(replica_devices(None, None, four).unwrap(), [0]);
+        assert_eq!(replica_devices(None, Some(&[2, 3]), four).unwrap(), [2]);
+        // Per-device: the spec's devices when it names them, else every card.
+        let per = Some(&Replicas::PerDevice);
+        assert_eq!(replica_devices(per, None, four).unwrap(), [0, 1, 2, 3]);
+        assert_eq!(replica_devices(per, Some(&[1, 3]), four).unwrap(), [1, 3]);
+        // An explicit list wins over the spec's devices.
+        let list = Replicas::Devices(vec![5, 6]);
+        assert_eq!(
+            replica_devices(Some(&list), Some(&[0]), four).unwrap(),
+            [5, 6]
+        );
+        // Nothing to load on, or a card named twice, is a config error.
+        fn none() -> usize {
+            0
+        }
+        assert!(replica_devices(per, None, none).is_err());
+        let twice = Replicas::Devices(vec![1, 1]);
+        assert!(replica_devices(Some(&twice), None, four).is_err());
+    }
+
     #[test]
     fn a_model_may_lower_max_in_flight_below_the_host() {
         let host = crate::config::AdmissionConfig {

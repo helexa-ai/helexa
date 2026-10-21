@@ -61,6 +61,7 @@ async fn seed_loaded(fleet: &CortexState, node: &str, in_flight: usize, queue_de
             rejected_anon_yield: 0,
             tok_s_prefill: 0.0,
             tok_s_decode: 0.0,
+            replicas: vec![],
         },
     );
 }

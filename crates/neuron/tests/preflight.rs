@@ -110,6 +110,7 @@ fn spec(model_id: &str, tp: Option<u32>, quant: Option<&str>) -> ModelSpec {
         preserve_thinking: None,
         expert_residency: None,
         max_in_flight: None,
+        replicas: None,
     }
 }
 

@@ -48,6 +48,11 @@ pub struct AudioJobsConfig {
     /// How many renders cortex runs at once across the fleet. Each one
     /// occupies a neuron device for its whole duration; queued jobs wait
     /// in cortex rather than piling onto neuron admission queues.
+    ///
+    /// `0` (the default) follows the fleet (#397): the summed in-flight
+    /// capacity of the music models loaded on hosts taking work, which
+    /// counts every replica of a model on a multi-card host, and at least
+    /// one so a cold model can still be loaded.
     #[serde(default = "default_audio_max_concurrent")]
     pub max_concurrent: usize,
     /// Dispatch attempts per job before it fails. A busy neuron (429/503)
@@ -85,7 +90,7 @@ fn default_audio_retention_hours() -> u64 {
     72
 }
 fn default_audio_max_concurrent() -> usize {
-    4
+    0
 }
 fn default_audio_max_attempts() -> u32 {
     2

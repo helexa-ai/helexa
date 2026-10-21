@@ -75,6 +75,10 @@ pub struct HealthResponse {
     /// interoperable (absent → empty → treated as no load info).
     #[serde(default)]
     pub models: Vec<ModelLoad>,
+    /// This host's next scheduled absence (#397), or the one it is in.
+    /// Absent for a host with no schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_dark: Option<DarkWindow>,
 }
 
 /// Live admission load for one loaded model (#53).
@@ -153,6 +157,48 @@ pub struct ModelLoad {
     /// sample. `#[serde(default)]` for back-compat.
     #[serde(default)]
     pub tok_s_decode: f64,
+    /// Per-replica load for a model with copies on several devices (#397).
+    /// The model-level fields above are their sums; this says how the
+    /// work is spread. Empty for an unreplicated model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replicas: Vec<ReplicaLoad>,
+}
+
+/// One replica of a replicated model (#397).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicaLoad {
+    pub device: u32,
+    /// Requests this replica is running.
+    pub in_flight: usize,
+    /// `false` once its device has failed; it takes no more work.
+    pub healthy: bool,
+}
+
+/// A window in which a host is expected to be off (#397), in unix
+/// seconds. Solar-powered hosts leave the mesh on a schedule; announcing
+/// it lets cortex stop sending work before the host goes, and treat its
+/// absence as planned rather than as a fault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DarkWindow {
+    /// From here on the host takes no new work, so what it is running can
+    /// finish before it goes. The host sets it: it knows how long its work
+    /// takes.
+    pub drain_at: u64,
+    pub starts_at: u64,
+    pub ends_at: u64,
+}
+
+impl DarkWindow {
+    /// Whether a host announcing this window should be sent new work at
+    /// `now`.
+    pub fn takes_work_at(&self, now: u64) -> bool {
+        now < self.drain_at || now >= self.ends_at
+    }
+
+    /// Whether `now` falls in the planned absence, draining included.
+    pub fn expects_absence_at(&self, now: u64) -> bool {
+        now >= self.drain_at && now < self.ends_at
+    }
 }
 
 #[cfg(test)]
@@ -193,7 +239,9 @@ mod health_load_tests {
                 rejected_anon_yield: 0,
                 tok_s_prefill: 0.0,
                 tok_s_decode: 0.0,
+                replicas: vec![],
             }],
+            next_dark: None,
         };
         let s = serde_json::to_string(&resp).unwrap();
         let back: HealthResponse = serde_json::from_str(&s).unwrap();

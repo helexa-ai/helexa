@@ -933,7 +933,9 @@ async fn list_models(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     for profile in &catalogue.models {
         let mut feasible_on = Vec::new();
         for node in nodes.values() {
-            if !node.healthy {
+            // A host draining ahead of its dark window (#397) offers no
+            // new capacity.
+            if !node.takes_work() {
                 continue;
             }
             let Some(disc) = node.discovery.as_ref() else {
@@ -1244,6 +1246,9 @@ async fn health(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
     let nodes = fleet.nodes.read().await;
     let healthy_count = nodes.values().filter(|n| n.healthy).count();
     let total_count = nodes.len();
+    // Away inside a dark window they announced (#397): reduced capacity,
+    // not a fault, so monitoring can tell the two apart.
+    let scheduled_dark = nodes.values().filter(|n| n.in_scheduled_absence).count();
 
     // Models resident on a node that cannot currently serve them. Worth
     // surfacing even when another node can pick the work up, because it
@@ -1277,7 +1282,11 @@ async fn health(State(fleet): State<Arc<CortexState>>) -> Json<Value> {
 
     let mut body = json!({
         "status": status,
-        "nodes": { "healthy": healthy_count, "total": total_count },
+        "nodes": {
+            "healthy": healthy_count,
+            "total": total_count,
+            "scheduled_dark": scheduled_dark,
+        },
     });
     if !unservable.is_empty() {
         body["unservable"] = Value::Array(unservable);
