@@ -124,7 +124,9 @@ enabled = false
 # Finished jobs and their audio are deleted after this many hours.
 # retention_hours = 72
 # Renders running at once across the fleet; the rest queue in cortex.
-# max_concurrent = 4
+# 0 follows the fleet: the in-flight capacity its loaded music models
+# advertise, counting every replica on a multi-card host (minimum 1).
+# max_concurrent = 0
 # Dispatch attempts per job; a busy (429/503) model does not use one up.
 # max_attempts = 2
 # How long a job may wait on a busy model before failing, in seconds.

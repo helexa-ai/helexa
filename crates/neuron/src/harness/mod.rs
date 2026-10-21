@@ -20,6 +20,7 @@ pub mod preprocess;
 pub(crate) mod quant;
 pub mod reasoning_budget;
 pub mod reasoning_effort;
+pub mod replica;
 pub mod sampling;
 pub mod speculative;
 pub mod tp;

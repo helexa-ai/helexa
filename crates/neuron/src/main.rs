@@ -191,6 +191,10 @@ async fn daemon(args: Args) -> Result<()> {
     let shutdown_candle = candle.clone();
 
     let health_cache = Arc::new(health::HealthCache::new());
+    if let Some(schedule) = neuron::availability::Schedule::from_config(&cfg.availability)? {
+        tracing::info!(online = ?cfg.availability.online, "power schedule (UTC)");
+        health_cache.set_schedule(schedule);
+    }
     health_cache
         .set_has_gpus(!discovery_result.devices.is_empty())
         .await;

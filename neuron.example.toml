@@ -190,9 +190,24 @@ name = "candle"
 # Hold the rest of the card's free memory so a large card behaves like
 # one of the budget's size. For rehearsing a small card; never in serving.
 #enforce_vram_budget = false
+# A copy of each music model on several cards, for a rig of identical
+# cards: "per-device" (every card) or a list of device indices. Each copy
+# renders one song at a time; cortex sees one model whose capacity is the
+# number of copies. A model's own `replicas` in [[default_models]] wins.
+#replicas = "per-device"
 # Where each component runs: "gpu" (default) or "cpu".
 #[harness.candle.audio.placement]
 #text_encoder = "gpu"
 #planner = "gpu"
 #dit = "gpu"
 #vae = "gpu"
+
+# When this host is powered, for hosts that leave the mesh on a schedule
+# (solar). /health announces the next dark window; cortex stops sending
+# new work at its drain time and treats the absence as planned.
+#[availability]
+# UTC windows; one may wrap past midnight ("22:00-06:00").
+#online = ["06:30-18:45"]
+# Stop taking new work this long before each dark window (seconds). Make
+# it longer than this host's longest job.
+#drain_secs = 900

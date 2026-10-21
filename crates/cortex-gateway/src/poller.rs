@@ -28,8 +28,31 @@ const CAPABILITY_RETRY: Duration = Duration::from_secs(600);
 /// reach [`POLL_FAILURE_THRESHOLD`]. Below the threshold the node keeps its
 /// last-known health, riding over transient misses. A successful poll resets
 /// the counter (see the success arm in `poll_once`).
-fn record_poll_failure(node: &mut NodeState) {
+///
+/// A node that is away inside the dark window it announced (#397) is a
+/// planned absence, not a fault: it is marked unhealthy at once, with
+/// nothing to debounce, and the departure is logged once at `info` instead
+/// of a warning every poll for the length of the night.
+fn record_poll_failure(node: &mut NodeState, error: &dyn std::fmt::Display) {
     node.consecutive_poll_failures = node.consecutive_poll_failures.saturating_add(1);
+    if let Some(dark) = node
+        .next_dark
+        .filter(|d| d.expects_absence_at(cortex_core::node::unix_now()))
+    {
+        node.healthy = false;
+        if !node.in_scheduled_absence {
+            node.in_scheduled_absence = true;
+            tracing::info!(
+                node = %node.name,
+                until = dark.ends_at,
+                "neuron is away for its scheduled dark window"
+            );
+            gauge!("cortex_node_scheduled_dark", "node" => node.name.clone()).set(1.0);
+        }
+        tracing::debug!(node = %node.name, error = %error, "poll failed during scheduled dark window");
+        return;
+    }
+    tracing::warn!(node = %node.name, error = %error, "neuron poll failed");
     if node.consecutive_poll_failures >= POLL_FAILURE_THRESHOLD {
         node.healthy = false;
     }
@@ -180,26 +203,27 @@ async fn poll_neuron(fleet: &CortexState, name: &str, endpoint: &str) {
 
                     node.consecutive_poll_failures = 0;
                     node.healthy = true;
+                    if node.in_scheduled_absence {
+                        node.in_scheduled_absence = false;
+                        tracing::info!(
+                            node = name,
+                            "neuron is back from its scheduled dark window"
+                        );
+                        gauge!("cortex_node_scheduled_dark", "node" => name.to_string()).set(0.0);
+                    }
                     node.last_poll = Some(Utc::now());
                     tracing::debug!(node = name, models = models.len(), "poll ok");
                 }
                 Err(e) => {
-                    tracing::warn!(node = name, error = %e, "failed to parse /models response");
-                    record_poll_failure(node);
+                    record_poll_failure(node, &format_args!("unparseable /models response: {e}"));
                 }
             }
         }
         Ok(resp) => {
-            tracing::warn!(
-                node = name,
-                status = %resp.status(),
-                "neuron returned non-success status"
-            );
-            record_poll_failure(node);
+            record_poll_failure(node, &format_args!("/models answered {}", resp.status()));
         }
         Err(e) => {
-            tracing::warn!(node = name, error = %e, "failed to reach neuron");
-            record_poll_failure(node);
+            record_poll_failure(node, &format_args!("unreachable: {e}"));
         }
     }
 
@@ -346,6 +370,9 @@ pub async fn poll_health(fleet: &CortexState, name: &str, endpoint: &str) {
                 // Per-device VRAM readings (#203) for free-fit
                 // cold-load placement.
                 node.device_health = h.devices.clone();
+                // The host's power schedule (#397): when to stop sending
+                // it work, and when its silence is planned.
+                node.next_dark = h.next_dark;
             }
         }
         Err(e) => {

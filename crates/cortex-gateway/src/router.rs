@@ -152,12 +152,16 @@ pub async fn resolve(
         let nodes = fleet.nodes.read().await;
         // All healthy nodes with the model loaded, each with its current
         // admission load (#53) so we can pick the least-busy replica (#55).
-        let mut loaded_candidates: Vec<(String, String, usize)> = Vec::new();
+        let mut loaded_candidates: Vec<(String, String, f64)> = Vec::new();
         let mut unloaded_route = None;
         let mut recovering_node = None;
         let mut any_healthy = false;
+        let now = cortex_core::node::unix_now();
         for node in nodes.values() {
-            if !node.healthy {
+            // A node draining ahead of its scheduled dark window (#397) is
+            // healthy but takes nothing new: what it is running finishes,
+            // and the work it would have got goes elsewhere.
+            if !node.takes_work_at(now) {
                 continue;
             }
             any_healthy = true;
@@ -186,13 +190,20 @@ pub async fn resolve(
                             continue;
                         }
                         // Least-busy score: in-flight + queued from the
-                        // neuron's last /health (#53). Unknown load (no poll
-                        // yet) scores 0 so the replica stays eligible.
+                        // neuron's last /health (#53), as a share of the
+                        // model's in-flight capacity there, so a host with
+                        // eight replicas (#397) and two renders running
+                        // counts as less busy than a single card with one.
+                        // Unknown load (no poll yet) scores 0 so the
+                        // replica stays eligible; unknown capacity (0, an
+                        // older neuron) counts as one slot.
                         let score = node
                             .model_load
                             .get(model_id)
-                            .map(|l| l.in_flight + l.queue_depth)
-                            .unwrap_or(0);
+                            .map(|l| {
+                                (l.in_flight + l.queue_depth) as f64 / l.max_in_flight.max(1) as f64
+                            })
+                            .unwrap_or(0.0);
                         loaded_candidates.push((node.name.clone(), node.endpoint.clone(), score));
                     }
                     ModelStatus::Unloaded => {
@@ -229,7 +240,7 @@ pub async fn resolve(
         // deterministic routing. `false` = not a cold start.
         let loaded_route = loaded_candidates
             .into_iter()
-            .min_by(|a, b| a.2.cmp(&b.2).then_with(|| a.0.cmp(&b.0)))
+            .min_by(|a, b| a.2.total_cmp(&b.2).then_with(|| a.0.cmp(&b.0)))
             .map(|(name, endpoint, _score)| (name, endpoint, false));
         (loaded_route, unloaded_route, recovering_node, any_healthy)
     };
@@ -330,7 +341,7 @@ async fn loaded_location(fleet: &Arc<CortexState>, model_id: &str) -> Option<(St
     let nodes = fleet.nodes.read().await;
     nodes
         .values()
-        .filter(|n| n.healthy)
+        .filter(|n| n.takes_work())
         .find(|n| {
             n.models.get(model_id).is_some_and(|m| {
                 matches!(m.status, ModelStatus::Loaded | ModelStatus::Reloading) && m.is_servable()
@@ -424,7 +435,8 @@ async fn pick_feasible_neuron(
     let nodes = fleet.nodes.read().await;
     let mut candidates: Vec<(String, String, bool, bool, bool, u64)> = Vec::new();
     for node in nodes.values() {
-        if !node.healthy {
+        // Never cold-load onto a host about to go dark (#397).
+        if !node.takes_work() {
             continue;
         }
         let Some(disc) = node.discovery.as_ref() else {
@@ -492,7 +504,7 @@ async fn pick_feasible_neuron(
     // and retries instead of treating a 404 as a hard failure. Only when no
     // neuron could *ever* satisfy the topology is it a permanent 404.
     let feasible_but_unhealthy = nodes.values().any(|node| {
-        !node.healthy
+        !node.takes_work()
             && node
                 .discovery
                 .as_ref()
@@ -660,6 +672,9 @@ async fn profile_to_spec(
         // decides from its own config.
         expert_residency: None,
         max_in_flight: None,
+        // Like expert residency, how many cards carry a copy is the
+        // host's decision (#397).
+        replicas: None,
     }
 }
 

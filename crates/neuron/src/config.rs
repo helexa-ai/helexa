@@ -60,6 +60,10 @@ pub struct NeuronConfig {
     /// don't prevent the rest of the fleet from starting.
     #[serde(default)]
     pub default_models: Vec<ModelSpec>,
+    /// When this host is powered (#397), for hosts that leave the mesh
+    /// on a schedule.
+    #[serde(default)]
+    pub availability: crate::availability::AvailabilityConfig,
 }
 
 /// Settings for individual harness implementations. Each harness owns
@@ -184,6 +188,13 @@ pub struct AudioConfig {
     /// the model's own limit.
     #[serde(default)]
     pub max_duration_secs: Option<f64>,
+    /// Load a copy of each music model on several devices (#397):
+    /// `"per-device"` for every card, or a list of device indices. One
+    /// render runs on each copy at once, so a rig of identical cards
+    /// serves as many songs in parallel as it has cards. A model's own
+    /// `replicas` in its load spec wins.
+    #[serde(default)]
+    pub replicas: Option<cortex_core::harness::Replicas>,
 }
 
 /// Per-component placement (#385): `"gpu"` (the model's device, the
@@ -594,6 +605,7 @@ impl Default for NeuronConfig {
             harnesses: vec![],
             harness: HarnessSettings::default(),
             default_models: vec![],
+            availability: Default::default(),
         }
     }
 }

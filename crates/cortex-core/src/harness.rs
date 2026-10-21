@@ -216,6 +216,60 @@ pub struct ModelSpec {
     /// `None` takes the host's setting, which is every model today.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_in_flight: Option<usize>,
+
+    /// Run an independent copy of this model on each of several devices
+    /// (#397), overriding the host's own setting.
+    ///
+    /// Each replica has its own weights and device worker; the neuron
+    /// hands each admitted request to an idle one. cortex keeps seeing one
+    /// model per host whose capacity is the replicas' sum. Only music
+    /// models replicate today; anything else refuses a spec that asks.
+    ///
+    /// `None` takes the host's setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replicas: Option<Replicas>,
+}
+
+/// Which devices carry a copy of a replicated model (#397).
+///
+/// Written `"per-device"` (every device the model may use: its `devices`
+/// when given, else every CUDA device on the host) or as an explicit list
+/// of device indices.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "ReplicasRepr", into = "ReplicasRepr")]
+pub enum Replicas {
+    PerDevice,
+    Devices(Vec<u32>),
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum ReplicasRepr {
+    Word(String),
+    List(Vec<u32>),
+}
+
+impl TryFrom<ReplicasRepr> for Replicas {
+    type Error = String;
+    fn try_from(r: ReplicasRepr) -> Result<Self, String> {
+        match r {
+            ReplicasRepr::Word(w) if w == "per-device" => Ok(Replicas::PerDevice),
+            ReplicasRepr::Word(w) => Err(format!(
+                "replicas must be \"per-device\" or a list of device indices, got \"{w}\""
+            )),
+            ReplicasRepr::List(d) if d.is_empty() => Err("replicas lists no devices".to_string()),
+            ReplicasRepr::List(d) => Ok(Replicas::Devices(d)),
+        }
+    }
+}
+
+impl From<Replicas> for ReplicasRepr {
+    fn from(r: Replicas) -> Self {
+        match r {
+            Replicas::PerDevice => ReplicasRepr::Word("per-device".into()),
+            Replicas::Devices(d) => ReplicasRepr::List(d),
+        }
+    }
 }
 
 /// Where a sparse MoE's routed experts are held (#318).
@@ -435,6 +489,10 @@ pub struct ModelInfo {
     /// budget to offer.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub reasoning_budget: Vec<ReasoningBudgetRung>,
+    /// How many independent copies of the model this host runs (#397).
+    /// Absent for an unreplicated model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replicas: Option<usize>,
 }
 
 /// Why a loaded model can or cannot be served right now (#245).

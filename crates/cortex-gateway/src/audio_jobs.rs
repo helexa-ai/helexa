@@ -42,7 +42,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tokio::sync::{RwLock, Semaphore};
+use tokio::sync::{Notify, RwLock};
 use tokio::task::JoinHandle;
 
 /// Path of the job collection; `{id}` and `{id}/content` hang off it.
@@ -82,8 +82,10 @@ pub struct AudioJobs {
     jobs: RwLock<HashMap<String, JobRecord>>,
     /// Worker tasks for jobs that are queued or running, for cancellation.
     workers: Mutex<HashMap<String, JoinHandle<()>>>,
-    /// Bounds concurrent renders across the fleet.
-    slots: Arc<Semaphore>,
+    /// Renders running now, bounded by [`AudioJobs::render_capacity`].
+    running: Mutex<usize>,
+    /// Signalled whenever a render ends.
+    render_ended: Notify,
     /// Rendered audio, when there is no job directory to write it to.
     memory_audio: Mutex<HashMap<String, Bytes>>,
     /// Client for neuron dispatches. A neuron sends nothing until the render
@@ -102,7 +104,8 @@ impl AudioJobs {
             dir: std::sync::OnceLock::new(),
             jobs: RwLock::new(HashMap::new()),
             workers: Mutex::new(HashMap::new()),
-            slots: Arc::new(Semaphore::new(config.max_concurrent.max(1))),
+            running: Mutex::new(0),
+            render_ended: Notify::new(),
             memory_audio: Mutex::new(HashMap::new()),
             http,
         }
@@ -647,9 +650,7 @@ enum Dispatch {
 
 async fn run_job(fleet: &Arc<CortexState>, id: &str, guard: ReservationGuard) {
     let jobs = &fleet.audio_jobs;
-    let Ok(_slot) = Arc::clone(&jobs.slots).acquire_owned().await else {
-        return;
-    };
+    let _slot = render_slot(fleet).await;
     let Some(record) = jobs
         .update(id, |r| {
             if !r.job.status.is_terminal() {
@@ -708,6 +709,79 @@ async fn run_job(fleet: &Arc<CortexState>, id: &str, guard: ReservationGuard) {
     }
     drop(guard); // releases the reservation: nothing was rendered
     fail(fleet, id, last_error).await;
+}
+
+/// A render's place in the fleet-wide bound; dropping it frees the place.
+struct RenderSlot<'a>(&'a AudioJobs);
+
+impl Drop for RenderSlot<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut running) = self.0.running.lock() {
+            *running = running.saturating_sub(1);
+        }
+        self.0.render_ended.notify_waiters();
+    }
+}
+
+/// How often a job waiting for a render slot re-reads the fleet's
+/// capacity, which changes as hosts come and go and models load.
+const CAPACITY_RECHECK: Duration = Duration::from_secs(2);
+
+/// Wait for a place among the renders the fleet can run at once.
+async fn render_slot(fleet: &CortexState) -> RenderSlot<'_> {
+    let jobs = &fleet.audio_jobs;
+    loop {
+        let ended = jobs.render_ended.notified();
+        tokio::pin!(ended);
+        // Registered before the check, so a render ending in between
+        // still wakes this waiter.
+        ended.as_mut().enable();
+        let capacity = match jobs.config.max_concurrent {
+            0 => {
+                let nodes = fleet.nodes.read().await;
+                fleet_render_capacity(nodes.values(), cortex_core::node::unix_now())
+            }
+            n => n,
+        };
+        {
+            let mut running = jobs.running.lock().expect("render count poisoned");
+            if *running < capacity {
+                *running += 1;
+                return RenderSlot(jobs);
+            }
+        }
+        let _ = tokio::time::timeout(CAPACITY_RECHECK, ended).await;
+    }
+}
+
+/// Renders the fleet can run at once (#397): the in-flight capacity of
+/// every music model loaded on a host taking work. A host with a copy of a
+/// model on each of its cards advertises one slot per copy. At least one,
+/// so a job for a model nobody has loaded can still cold-load it.
+pub fn fleet_render_capacity<'a>(
+    nodes: impl Iterator<Item = &'a cortex_core::node::NodeState>,
+    now: u64,
+) -> usize {
+    use cortex_core::node::ModelStatus;
+    nodes
+        .filter(|n| n.takes_work_at(now))
+        .flat_map(|n| {
+            n.models
+                .values()
+                .filter(|m| {
+                    matches!(m.status, ModelStatus::Loaded | ModelStatus::Reloading)
+                        && m.capabilities
+                            .iter()
+                            .any(|c| c == cortex_core::audio::CAPABILITY)
+                })
+                .map(|m| {
+                    n.model_load
+                        .get(&m.id)
+                        .map_or(1, |l| l.max_in_flight.max(1))
+                })
+        })
+        .sum::<usize>()
+        .max(1)
 }
 
 async fn dispatch_once(fleet: &Arc<CortexState>, record: &JobRecord) -> Dispatch {
