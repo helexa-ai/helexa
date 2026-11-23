@@ -29,7 +29,7 @@
 //! replaces the loop behind the same `forward` signature.
 
 use anyhow::{Context, Result};
-use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
+use candle_core::quantized::{GgmlDType, QMatMul, QStorage, QTensor};
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
@@ -99,6 +99,34 @@ impl QuantizedExpert {
             QMatMul::QTensor(t) => Some(t.device()),
             _ => None,
         }
+    }
+}
+
+/// Rows at which host-resident experts run on the GPU instead (#318).
+///
+/// A prompt chunk routes many tokens to each active expert, so moving
+/// the expert's weights once is cheaper than computing every row on the
+/// CPU. A decode step routes one token to ten experts, where the copy
+/// would cost more than the arithmetic. Unset leaves execution on the
+/// host.
+fn expert_stream_min_rows() -> Option<usize> {
+    static MIN_ROWS: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *MIN_ROWS.get_or_init(|| {
+        std::env::var("NEURON_EXPERT_STREAM_MIN_ROWS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&rows| rows > 0)
+    })
+}
+
+/// A transient copy of a quantised projection on `device`.
+fn quantized_on(m: &QMatMul, device: &Device) -> candle_core::Result<QMatMul> {
+    match m {
+        QMatMul::QTensor(t) => {
+            let storage = QStorage::from_data(t.data()?, device, t.dtype())?;
+            QMatMul::from_qtensor(QTensor::new(storage, t.shape().clone())?)
+        }
+        _ => candle_core::bail!("only a quantised expert can be streamed"),
     }
 }
 
@@ -364,6 +392,24 @@ impl Experts {
             }
         }
     }
+
+    /// Expert `e` computed on `xs`'s device from a transient copy of
+    /// its weights. Layouts that are not quantised run as usual.
+    pub(crate) fn forward_streamed(&self, e: usize, xs: &Tensor) -> candle_core::Result<Tensor> {
+        let Experts::Quantized(v) = self else {
+            return self.forward_one(e, xs);
+        };
+        let q = &v[e];
+        let device = xs.device();
+        let dtype = xs.dtype();
+        let gate = quantized_on(&q.gate, device)?;
+        let up = quantized_on(&q.up, device)?;
+        let down = quantized_on(&q.down, device)?;
+        let xs32 = xs.to_dtype(DType::F32)?;
+        let lhs = candle_nn::ops::silu(&gate.forward(&xs32)?)?;
+        let rhs = up.forward(&xs32)?;
+        down.forward(&(lhs * rhs)?)?.to_dtype(dtype)
+    }
 }
 
 pub struct Qwen3_5MoeBlock {
@@ -546,7 +592,15 @@ impl Module for Qwen3_5MoeBlock {
         // dominates.
         let home = self.experts.device();
         let off_device = home.is_some();
-        let routed_dev = home.unwrap_or_else(|| xs.device().clone());
+        let stream = xs.device().is_cuda()
+            && home.as_ref().is_some_and(Device::is_cpu)
+            && expert_stream_min_rows()
+                .is_some_and(|min_rows| xs_flat.dim(0).is_ok_and(|n| n >= min_rows));
+        let routed_dev = if stream {
+            xs.device().clone()
+        } else {
+            home.unwrap_or_else(|| xs.device().clone())
+        };
         let xs_routed = xs_flat.to_device(&routed_dev)?;
 
         let started = std::time::Instant::now();
@@ -557,7 +611,11 @@ impl Module for Qwen3_5MoeBlock {
             }
             let rows = Tensor::new(tokens_for[e].as_slice(), &routed_dev)?;
             let picked = xs_routed.index_select(&rows, 0)?;
-            let out = self.experts.forward_one(e, &picked)?;
+            let out = if stream {
+                self.experts.forward_streamed(e, &picked)?
+            } else {
+                self.experts.forward_one(e, &picked)?
+            };
             let w = Tensor::new(weights_for[e].as_slice(), &routed_dev)?
                 .to_dtype(out.dtype())?
                 .reshape(((), 1))?;
@@ -575,6 +633,7 @@ impl Module for Qwen3_5MoeBlock {
                 expert_ms = started.elapsed().as_secs_f64() * 1e3,
                 rows = xs_routed.dims()[0],
                 active = tokens_for.iter().filter(|t| !t.is_empty()).count(),
+                stream,
                 "moe: routed experts (#318)"
             );
         }
@@ -895,6 +954,26 @@ mod tests {
                     .same_device(&dev),
                 "expert {e} came back on the wrong device"
             );
+        }
+    }
+
+    /// The streamed path must run the same arithmetic as the resident
+    /// one. A CPU test host cannot exercise the transfer, so this pins
+    /// the transient copy and the dtype round trip.
+    #[test]
+    fn streamed_expert_matches_the_resident_forward() {
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let experts =
+            Experts::quantize_banked_onto(&gate_up, &down, inter, GgmlDType::Q4K, &Device::Cpu)
+                .unwrap();
+        let xs = randn(&[3, hidden]);
+        for e in 0..n_experts {
+            let resident: Vec<Vec<f32>> = experts.forward_one(e, &xs).unwrap().to_vec2().unwrap();
+            let streamed: Vec<Vec<f32>> =
+                experts.forward_streamed(e, &xs).unwrap().to_vec2().unwrap();
+            assert_eq!(resident, streamed, "expert {e}");
         }
     }
 
