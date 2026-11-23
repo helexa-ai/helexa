@@ -125,6 +125,7 @@ impl MtpHead {
                     experts_onto: vb.device(),
                     experts_vb: None,
                     expert_tier: None,
+                    external_experts: None,
                 },
             )
             .context("load mtp.layers.0")?,

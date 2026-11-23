@@ -850,6 +850,7 @@ mod tests {
                 experts_onto: &Device::Cpu,
                 experts_vb: None,
                 expert_tier: None,
+                external_experts: None,
             },
         )
         .unwrap();

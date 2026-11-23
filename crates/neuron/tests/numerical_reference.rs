@@ -424,6 +424,7 @@ fn qwen4_exp_case(name: &str, max_abs_bound: f32) {
             experts_onto: &device,
             experts_vb: None,
             expert_tier: None,
+            external_experts: None,
         },
     )
     .expect("load the fixture through the production loader");

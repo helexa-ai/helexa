@@ -70,6 +70,11 @@ pub(crate) enum Experts {
     /// dropped once its 512 experts are quantised, so the full 241.6 GB
     /// never exists at once.
     Quantized(Vec<QuantizedExpert>),
+    /// Weights and execution live outside candle.
+    External {
+        count: usize,
+        inner: Box<dyn ExternalExperts>,
+    },
     Banked {
         /// `(num_experts, 2 * intermediate, hidden)` — gate rows first,
         /// then up. Reversing them computes `silu(up) * gate`, which is
@@ -79,6 +84,27 @@ pub(crate) enum Experts {
         down: Tensor,
         intermediate: usize,
     },
+}
+
+/// Routed experts executed outside candle.
+///
+/// Routing stays with the block. `xs` is `(tokens, hidden)`;
+/// `tokens_for[e]` and `weights_for[e]` are expert `e`'s rows and mixing
+/// weights. Returns the weighted sum of each token's `k` experts,
+/// `(tokens, hidden)`.
+pub trait ExternalExperts: Send + Sync {
+    fn forward(
+        &self,
+        xs: &Tensor,
+        tokens_for: &[Vec<u32>],
+        weights_for: &[Vec<f32>],
+        k: usize,
+    ) -> candle_core::Result<Tensor>;
+}
+
+/// Supplies each MoE layer's [`ExternalExperts`] at load.
+pub trait ExternalExpertSource: Send + Sync {
+    fn block(&self, layer: usize) -> Result<Box<dyn ExternalExperts>>;
 }
 
 /// The VRAM tier as host-resident quantised experts use it (#318).
@@ -246,6 +272,7 @@ impl Experts {
             Experts::PerExpert(v) => v.len(),
             Experts::Banked { gate_up, .. } => gate_up.dims()[0],
             Experts::Quantized(v) => v.len(),
+            Experts::External { count, .. } => *count,
         }
     }
 
@@ -398,6 +425,9 @@ impl Experts {
     pub(crate) fn forward_one(&self, e: usize, xs: &Tensor) -> candle_core::Result<Tensor> {
         match self {
             Experts::PerExpert(v) => v[e].forward(xs),
+            Experts::External { .. } => {
+                candle_core::bail!("external experts run per layer, not per expert")
+            }
             Experts::Banked {
                 gate_up,
                 down,
@@ -655,6 +685,20 @@ impl Module for Qwen3_5MoeBlock {
             self.norm_topk_prob,
         )?;
 
+        if let Experts::External { inner, .. } = &self.experts {
+            let ys = inner
+                .forward(
+                    &xs_flat,
+                    &tokens_for,
+                    &weights_for,
+                    self.num_experts_per_tok,
+                )?
+                .to_dtype(xs.dtype())?;
+            return self
+                .add_shared_expert(ys, &xs_flat)?
+                .reshape((b, l, hidden));
+        }
+
         // Cross to the experts once for the whole layer, not once per
         // expert (#318). With host-resident experts the old shape was
         // 10 round trips per layer and 480 per token; this is one in
@@ -723,15 +767,23 @@ impl Module for Qwen3_5MoeBlock {
                 "moe: routed experts (#318)"
             );
         }
-        let mut ys = ys.to_device(xs.device())?;
+        let ys = ys.to_device(xs.device())?;
+        self.add_shared_expert(ys, &xs_flat)?
+            .reshape((b, l, hidden))
+    }
+}
 
-        if let (Some(shared), Some(gate)) = (&self.shared_expert, &self.shared_expert_gate) {
-            let mix = candle_nn::ops::sigmoid(&gate.forward(&xs_flat)?)?;
-            let shared_out = shared.forward(&xs_flat)?.broadcast_mul(&mix)?;
-            ys = (ys + shared_out)?;
+impl Qwen3_5MoeBlock {
+    /// Adds the sigmoid-gated shared expert, when the model has one.
+    fn add_shared_expert(&self, ys: Tensor, xs_flat: &Tensor) -> candle_core::Result<Tensor> {
+        match (&self.shared_expert, &self.shared_expert_gate) {
+            (Some(shared), Some(gate)) => {
+                let mix = candle_nn::ops::sigmoid(&gate.forward(xs_flat)?)?;
+                let shared_out = shared.forward(xs_flat)?.broadcast_mul(&mix)?;
+                ys + shared_out
+            }
+            _ => Ok(ys),
         }
-
-        ys.reshape((b, l, hidden))
     }
 }
 
@@ -1063,6 +1115,60 @@ mod tests {
                 experts.forward_streamed(e, &xs).unwrap().to_vec2().unwrap();
             assert_eq!(resident, streamed, "expert {e}");
         }
+    }
+
+    /// External experts receive the block's routing and their result is
+    /// mixed with the shared expert exactly as resident experts' is.
+    #[test]
+    fn external_experts_receive_the_routing_and_join_the_shared_expert() {
+        struct Fixed;
+        impl ExternalExperts for Fixed {
+            fn forward(
+                &self,
+                xs: &Tensor,
+                tokens_for: &[Vec<u32>],
+                weights_for: &[Vec<f32>],
+                k: usize,
+            ) -> candle_core::Result<Tensor> {
+                let routed: usize = tokens_for.iter().map(Vec::len).sum();
+                assert_eq!(routed, xs.dim(0)? * k);
+                assert_eq!(tokens_for.len(), 6);
+                for (t, w) in tokens_for.iter().zip(weights_for) {
+                    assert_eq!(t.len(), w.len());
+                }
+                xs.ones_like()
+            }
+        }
+        let (hidden, inter, n_exp, top_k) = (8, 4, 6, 2);
+        let shared = rand_mlp(hidden, inter);
+        let shared_gate = Linear::new(randn(&[1, hidden]), None);
+        let xs = randn(&[1, 3, hidden]);
+        let flat = xs.reshape(((), hidden)).unwrap();
+        let mix = candle_nn::ops::sigmoid(&shared_gate.forward(&flat).unwrap()).unwrap();
+        let expected = (shared.forward(&flat).unwrap().broadcast_mul(&mix).unwrap()
+            + flat.ones_like().unwrap())
+        .unwrap();
+        let block = Qwen3_5MoeBlock {
+            gate: Linear::new(randn(&[n_exp, hidden]), None),
+            experts: Experts::External {
+                count: n_exp,
+                inner: Box::new(Fixed),
+            },
+            shared_expert: Some(shared),
+            shared_expert_gate: Some(shared_gate),
+            num_experts_per_tok: top_k,
+            norm_topk_prob: true,
+            tier: None,
+        };
+        let got: Vec<Vec<f32>> = block
+            .forward(&xs)
+            .unwrap()
+            .reshape(((), hidden))
+            .unwrap()
+            .to_vec2()
+            .unwrap();
+        let want: Vec<Vec<f32>> = expected.to_vec2().unwrap();
+        assert_eq!(got, want);
     }
 
     /// The tiered path runs the same arithmetic as the resident one,

@@ -99,7 +99,7 @@ pub fn load(
     // A hit skips reading the fused tensors at all, which is the point:
     // the cost being avoided is the 5.03 GB read *and* the ~32 s of
     // quantisation, not just the latter.
-    let cached = match (quant, isq_cache) {
+    let cached = match (quant, isq_cache.filter(|_| opts.external_experts.is_none())) {
         (Some(_), Some(cache)) => cache.load(&cache_key, experts_onto).and_then(|entries| {
             match Experts::from_cache_entries(entries, cfg.num_experts) {
                 Ok(e) => Some(e),
@@ -113,7 +113,19 @@ pub fn load(
         _ => None,
     };
 
-    let experts = match cached {
+    let external = match &opts.external_experts {
+        Some(source) => {
+            let layer = layer_of(&vb.prefix())
+                .with_context(|| format!("no layer index in '{}'", vb.prefix()))?;
+            Some(Experts::External {
+                count: cfg.num_experts,
+                inner: source.block(layer)?,
+            })
+        }
+        None => None,
+    };
+
+    let experts = match external.or(cached) {
         Some(experts) => experts,
         None => {
             let gate_up = experts_vb
@@ -177,6 +189,14 @@ pub fn load(
     .with_tier(opts.expert_tier.clone()))
 }
 
+/// The layer index in a tensor prefix such as
+/// `model.language_model.layers.7.mlp`.
+fn layer_of(prefix: &str) -> Option<usize> {
+    let mut parts = prefix.split('.');
+    parts.find(|p| *p == "layers")?;
+    parts.next()?.parse().ok()
+}
+
 /// Validate the fused pair before it is banked.
 ///
 /// The block will take views of these per routed expert, so a
@@ -209,6 +229,12 @@ mod tests {
     /// The loader validates the fused pair up front. Without this the
     /// first token to route to a bad expert fails mid-forward, which is
     /// a worse place to learn the checkpoint disagrees with the config.
+    #[test]
+    fn the_layer_index_comes_from_the_tensor_prefix() {
+        assert_eq!(layer_of("model.language_model.layers.17.mlp"), Some(17));
+        assert_eq!(layer_of("mtp.mlp"), None);
+    }
+
     #[test]
     fn a_fused_pair_that_disagrees_with_the_config_is_rejected() {
         let dev = Device::Cpu;

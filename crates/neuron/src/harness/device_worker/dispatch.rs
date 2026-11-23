@@ -1353,8 +1353,12 @@ fn load_dense_inner(
             };
             // A byte budget, because what else the card must hold (KV,
             // activations) is the operator's trade to make.
-            let expert_tier = crate::harness::arch::qwen3_5::expert_tier::configured_budget_mb()
-                .filter(|_| experts_on_host)
+            let tier_budget = crate::harness::arch::qwen3_5::expert_tier::configured_budget_mb()
+                .filter(|_| experts_on_host);
+            let external_experts =
+                native_expert_source(&cfg, device, experts_on_host, tier_budget)?;
+            let expert_tier = tier_budget
+                .filter(|_| external_experts.is_none())
                 .map(|mb| {
                     tracing::info!(budget_mb = mb, "VRAM expert tier enabled (#318)");
                     crate::harness::arch::qwen3_5::moe::DeviceExpertTier::new(mb << 20)
@@ -1370,6 +1374,7 @@ fn load_dense_inner(
                     isq_cache,
                     experts_vb: host_vb.as_ref(),
                     expert_tier,
+                    external_experts,
                     // Host residency (#318) is what makes a model whose
                     // experts exceed VRAM loadable; everything else in
                     // the model still lands on the device.
@@ -1389,6 +1394,48 @@ fn load_dense_inner(
              must stay in sync"
         ),
     }
+}
+
+/// Strata's kernels over the GGUF named by `NEURON_STRATA_EXPERT_GGUF`.
+#[cfg(feature = "strata-kernels")]
+fn native_expert_source(
+    cfg: &crate::harness::arch::qwen4_exp::config::Config,
+    device: &candle_core::Device,
+    experts_on_host: bool,
+    tier_budget_mb: Option<u64>,
+) -> anyhow::Result<
+    Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>,
+> {
+    use crate::harness::arch::qwen4_exp::native_experts::{GgufExpertSource, NativeExpertFactory};
+    let Some(path) = std::env::var_os("NEURON_STRATA_EXPERT_GGUF").filter(|_| experts_on_host)
+    else {
+        return Ok(None);
+    };
+    let text = &cfg.text_config;
+    let source = GgufExpertSource::open(
+        std::path::Path::new(&path),
+        device,
+        text.num_hidden_layers,
+        text.num_experts,
+        text.hidden_size,
+        text.moe_intermediate_size,
+        tier_budget_mb,
+    )?;
+    Ok(Some(std::sync::Arc::new(NativeExpertFactory(
+        std::sync::Arc::new(source),
+    ))))
+}
+
+#[cfg(not(feature = "strata-kernels"))]
+fn native_expert_source(
+    _cfg: &crate::harness::arch::qwen4_exp::config::Config,
+    _device: &candle_core::Device,
+    _experts_on_host: bool,
+    _tier_budget_mb: Option<u64>,
+) -> anyhow::Result<
+    Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>,
+> {
+    Ok(None)
 }
 
 /// Load the leader's TP shard on the worker thread. Reads the Comm

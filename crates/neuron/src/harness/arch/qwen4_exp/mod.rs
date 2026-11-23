@@ -37,11 +37,15 @@
 pub mod config;
 pub mod decoder;
 pub mod full_attn;
+#[cfg(any(test, feature = "strata-kernels"))]
+pub mod gguf_index;
 pub mod hyper;
 pub mod linear_attn;
 pub mod model;
 pub mod moe;
 pub mod mtp;
+#[cfg(feature = "strata-kernels")]
+pub mod native_experts;
 pub mod ple;
 pub mod qsa;
 
@@ -90,4 +94,7 @@ pub struct LoadOptions<'a> {
     /// VRAM tier for host-resident experts (#318). `None` computes them
     /// where they live.
     pub expert_tier: Option<std::sync::Arc<super::qwen3_5::moe::DeviceExpertTier>>,
+    /// Routed experts served outside candle. When set, the checkpoint's
+    /// expert tensors are not read at all.
+    pub external_experts: Option<std::sync::Arc<dyn super::qwen3_5::moe::ExternalExpertSource>>,
 }
