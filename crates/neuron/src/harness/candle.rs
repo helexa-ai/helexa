@@ -1241,8 +1241,8 @@ impl ModelArch {
     /// the wrapper).
     pub fn clear_kv_cache(&mut self) -> Result<()> {
         match self {
-            ModelArch::Qwen3Quantized(_) => Ok(()), /* keeps cache by design;
-            * forward() handles offset */
+            // Keeps its cache by design: forward() handles the offset.
+            ModelArch::Qwen3Quantized(_) => Ok(()),
             ModelArch::Qwen3Dense(m) => {
                 m.clear_kv_cache();
                 Ok(())
