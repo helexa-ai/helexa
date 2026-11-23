@@ -73,6 +73,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 
 pub mod decoder;
+pub mod expert_tier;
 pub mod full_attn;
 pub mod linear_attn;
 pub mod mlp;

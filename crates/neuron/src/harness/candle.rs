@@ -3067,6 +3067,7 @@ impl CandleHarness {
                             // choice here.
                             experts_onto: &device_for_load,
                             experts_vb: None,
+                            expert_tier: None,
                         },
                     )
                     .context("build qwen4_exp model")?;
@@ -4489,8 +4490,18 @@ impl Harness for CandleHarness {
             // Publish the KV budget while nothing is in flight (#257) —
             // the only moment a free-VRAM reading is not already net of
             // some running sequence's reservations.
+            // The expert tier fills after this reading, so what it may
+            // come to hold is not available to KV.
+            let tier_reserved_mb = if matches!(
+                spec.expert_residency,
+                Some(cortex_core::harness::ExpertResidency::Host)
+            ) {
+                super::arch::qwen3_5::expert_tier::configured_budget_mb().unwrap_or(0)
+            } else {
+                0
+            };
             let budget = kv_budget_mb(
-                free_mb,
+                free_mb.saturating_sub(tier_reserved_mb),
                 &self.context_limit_cfg,
                 prefix_cache_reserved_mb(&self.prefix_cache_cfg),
             );
@@ -4498,6 +4509,7 @@ impl Harness for CandleHarness {
             tracing::info!(
                 model = %spec.model_id,
                 free_at_load_mb = free_mb,
+                tier_reserved_mb,
                 kv_budget_mb = budget,
                 "admission: KV budget published"
             );

@@ -87,4 +87,7 @@ pub struct LoadOptions<'a> {
     /// Reading them straight into host memory removes the transit
     /// rather than managing it.
     pub experts_vb: Option<&'a candle_nn::var_builder::ShardedVarBuilder<'a>>,
+    /// VRAM tier for host-resident experts (#318). `None` computes them
+    /// where they live.
+    pub expert_tier: Option<std::sync::Arc<super::qwen3_5::moe::DeviceExpertTier>>,
 }

@@ -319,6 +319,9 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 reply,
             } => {
                 let result = forward_logits(&mut state, handle, &tokens, offset);
+                if crate::harness::arch::qwen3_5::moe::prompt_chunk_streams_experts(tokens.len()) {
+                    trim_device_pool(&state);
+                }
                 let _ = reply.send(result);
             }
             Job::AssembleKvBatch {
@@ -1348,6 +1351,14 @@ fn load_dense_inner(
             } else {
                 None
             };
+            // A byte budget, because what else the card must hold (KV,
+            // activations) is the operator's trade to make.
+            let expert_tier = crate::harness::arch::qwen3_5::expert_tier::configured_budget_mb()
+                .filter(|_| experts_on_host)
+                .map(|mb| {
+                    tracing::info!(budget_mb = mb, "VRAM expert tier enabled (#318)");
+                    crate::harness::arch::qwen3_5::moe::DeviceExpertTier::new(mb << 20)
+                });
             let model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                 &cfg,
                 dtype,
@@ -1358,6 +1369,7 @@ fn load_dense_inner(
                     safetensors_paths,
                     isq_cache,
                     experts_vb: host_vb.as_ref(),
+                    expert_tier,
                     // Host residency (#318) is what makes a model whose
                     // experts exceed VRAM loadable; everything else in
                     // the model still lands on the device.

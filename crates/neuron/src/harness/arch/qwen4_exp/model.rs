@@ -849,6 +849,7 @@ mod tests {
                 isq_cache: None,
                 experts_onto: &Device::Cpu,
                 experts_vb: None,
+                expert_tier: None,
             },
         )
         .unwrap();

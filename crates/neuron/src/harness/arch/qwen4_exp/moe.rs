@@ -173,7 +173,8 @@ pub fn load(
         shared_expert_gate,
         cfg.num_experts_per_tok,
         cfg.norm_topk_prob,
-    ))
+    )
+    .with_tier(opts.expert_tier.clone()))
 }
 
 /// Validate the fused pair before it is banked.

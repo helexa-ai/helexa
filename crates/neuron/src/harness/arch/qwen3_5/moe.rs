@@ -81,8 +81,11 @@ pub(crate) enum Experts {
     },
 }
 
+/// The VRAM tier as host-resident quantised experts use it (#318).
+pub type DeviceExpertTier = super::expert_tier::ExpertTier<QuantizedExpert>;
+
 /// One expert's three projections, quantised.
-pub(crate) struct QuantizedExpert {
+pub struct QuantizedExpert {
     gate: QMatMul,
     up: QMatMul,
     down: QMatMul,
@@ -99,6 +102,36 @@ impl QuantizedExpert {
             QMatMul::QTensor(t) => Some(t.device()),
             _ => None,
         }
+    }
+
+    /// Bytes of quantised weights, for the tier's budget.
+    fn storage_bytes(&self) -> u64 {
+        [&self.gate, &self.up, &self.down]
+            .into_iter()
+            .map(|m| match m {
+                QMatMul::QTensor(t) => t.storage_size_in_bytes() as u64,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// A copy of this expert on `device`.
+    fn on_device(&self, device: &Device) -> candle_core::Result<Self> {
+        Ok(Self {
+            gate: quantized_on(&self.gate, device)?,
+            up: quantized_on(&self.up, device)?,
+            down: quantized_on(&self.down, device)?,
+        })
+    }
+
+    /// The SwiGLU on `xs`, which must be on this expert's device. The
+    /// kernels accumulate in f32; the result returns in `xs`'s dtype.
+    fn forward_here(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
+        let dtype = xs.dtype();
+        let xs32 = xs.to_dtype(DType::F32)?;
+        let lhs = candle_nn::ops::silu(&self.gate.forward(&xs32)?)?;
+        let rhs = self.up.forward(&xs32)?;
+        self.down.forward(&(lhs * rhs)?)?.to_dtype(dtype)
     }
 }
 
@@ -117,6 +150,18 @@ fn expert_stream_min_rows() -> Option<usize> {
             .and_then(|v| v.parse().ok())
             .filter(|&rows| rows > 0)
     })
+}
+
+/// The most rows a forward may have and still admit experts to the VRAM
+/// tier. Decode windows are below it; prompt chunks are not.
+pub(crate) const TIER_ADMIT_MAX_ROWS: usize = 16;
+
+/// Whether a prompt chunk may have left transient expert copies in the
+/// allocator pool, which holds freed VRAM until it is trimmed.
+pub(crate) fn prompt_chunk_streams_experts(rows: usize) -> bool {
+    rows > TIER_ADMIT_MAX_ROWS
+        && (expert_stream_min_rows().is_some()
+            || super::expert_tier::configured_budget_mb().is_some())
 }
 
 /// A transient copy of a quantised projection on `device`.
@@ -399,16 +444,33 @@ impl Experts {
         let Experts::Quantized(v) = self else {
             return self.forward_one(e, xs);
         };
+        v[e].on_device(xs.device())?.forward_here(xs)
+    }
+
+    /// Expert `e` computed on `xs`'s device from the VRAM tier, loading
+    /// it there if it is not already held.
+    pub(crate) fn forward_tiered(
+        &self,
+        e: usize,
+        xs: &Tensor,
+        tier: &DeviceExpertTier,
+        block: u32,
+        admit: bool,
+    ) -> candle_core::Result<Tensor> {
+        let Experts::Quantized(v) = self else {
+            return self.forward_one(e, xs);
+        };
         let q = &v[e];
-        let device = xs.device();
-        let dtype = xs.dtype();
-        let gate = quantized_on(&q.gate, device)?;
-        let up = quantized_on(&q.up, device)?;
-        let down = quantized_on(&q.down, device)?;
-        let xs32 = xs.to_dtype(DType::F32)?;
-        let lhs = candle_nn::ops::silu(&gate.forward(&xs32)?)?;
-        let rhs = up.forward(&xs32)?;
-        down.forward(&(lhs * rhs)?)?.to_dtype(dtype)
+        if !admit {
+            return match tier.peek(block, e as u32) {
+                Some(resident) => resident.forward_here(xs),
+                None => q.on_device(xs.device())?.forward_here(xs),
+            };
+        }
+        let resident = tier.get_or_load(block, e as u32, q.storage_bytes(), || {
+            q.on_device(xs.device())
+        })?;
+        resident.forward_here(xs)
     }
 }
 
@@ -426,6 +488,8 @@ pub struct Qwen3_5MoeBlock {
     shared_expert_gate: Option<Linear>,
     num_experts_per_tok: usize,
     norm_topk_prob: bool,
+    /// The model's VRAM tier and this block's number in it (#318).
+    tier: Option<(std::sync::Arc<DeviceExpertTier>, u32)>,
 }
 
 impl Qwen3_5MoeBlock {
@@ -452,7 +516,17 @@ impl Qwen3_5MoeBlock {
             shared_expert_gate,
             num_experts_per_tok,
             norm_topk_prob,
+            tier: None,
         }
+    }
+
+    /// Serve this block's host-resident experts through `tier`.
+    pub(crate) fn with_tier(mut self, tier: Option<std::sync::Arc<DeviceExpertTier>>) -> Self {
+        self.tier = tier.map(|t| {
+            let block = t.register_block();
+            (t, block)
+        });
+        self
     }
 
     pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<Self> {
@@ -511,6 +585,7 @@ impl Qwen3_5MoeBlock {
             shared_expert_gate,
             num_experts_per_tok: cfg.num_experts_per_tok,
             norm_topk_prob: cfg.norm_topk_prob,
+            tier: None,
         })
     }
 }
@@ -592,10 +667,12 @@ impl Module for Qwen3_5MoeBlock {
         // dominates.
         let home = self.experts.device();
         let off_device = home.is_some();
-        let stream = xs.device().is_cuda()
-            && home.as_ref().is_some_and(Device::is_cpu)
-            && expert_stream_min_rows()
-                .is_some_and(|min_rows| xs_flat.dim(0).is_ok_and(|n| n >= min_rows));
+        let host_resident = xs.device().is_cuda() && home.as_ref().is_some_and(Device::is_cpu);
+        let tier = self.tier.as_ref().filter(|_| host_resident);
+        let stream = tier.is_some()
+            || host_resident
+                && expert_stream_min_rows()
+                    .is_some_and(|min_rows| xs_flat.dim(0).is_ok_and(|n| n >= min_rows));
         let routed_dev = if stream {
             xs.device().clone()
         } else {
@@ -611,7 +688,11 @@ impl Module for Qwen3_5MoeBlock {
             }
             let rows = Tensor::new(tokens_for[e].as_slice(), &routed_dev)?;
             let picked = xs_routed.index_select(&rows, 0)?;
-            let out = if stream {
+            let out = if let Some((tier, block)) = tier {
+                let admit = xs_routed.dim(0)? <= TIER_ADMIT_MAX_ROWS;
+                self.experts
+                    .forward_tiered(e, &picked, tier, *block, admit)?
+            } else if stream {
                 self.experts.forward_streamed(e, &picked)?
             } else {
                 self.experts.forward_one(e, &picked)?
@@ -634,6 +715,11 @@ impl Module for Qwen3_5MoeBlock {
                 rows = xs_routed.dims()[0],
                 active = tokens_for.iter().filter(|t| !t.is_empty()).count(),
                 stream,
+                tier_hits = tier.map_or(0, |(t, _)| t.stats().hits),
+                tier_misses = tier.map_or(0, |(t, _)| t.stats().misses),
+                tier_prompt_hits = tier.map_or(0, |(t, _)| t.stats().prompt_hits),
+                tier_prompt_misses = tier.map_or(0, |(t, _)| t.stats().prompt_misses),
+                tier_mb = tier.map_or(0, |(t, _)| t.stats().used_bytes >> 20),
                 "moe: routed experts (#318)"
             );
         }
@@ -682,6 +768,7 @@ mod tests {
             shared_expert_gate: Some(Linear::new(randn(&[1, hidden]), None)),
             num_experts_per_tok: top_k,
             norm_topk_prob: true,
+            tier: None,
         };
 
         let (b, l) = (2, 3);
@@ -767,6 +854,7 @@ mod tests {
             shared_expert_gate: None,
             num_experts_per_tok: 1,
             norm_topk_prob: false,
+            tier: None,
         };
         let xs = randn(&[1, 1, hidden]);
         let got: Vec<f32> = block
@@ -975,6 +1063,35 @@ mod tests {
                 experts.forward_streamed(e, &xs).unwrap().to_vec2().unwrap();
             assert_eq!(resident, streamed, "expert {e}");
         }
+    }
+
+    /// The tiered path runs the same arithmetic as the resident one,
+    /// and a second use of an expert comes from the tier.
+    #[test]
+    fn tiered_expert_matches_the_resident_forward() {
+        let (n_experts, hidden, inter) = (2usize, 2560usize, 640usize);
+        let gate_up = randn(&[n_experts, inter * 2, hidden]);
+        let down = randn(&[n_experts, hidden, inter]);
+        let experts =
+            Experts::quantize_banked_onto(&gate_up, &down, inter, GgmlDType::Q4K, &Device::Cpu)
+                .unwrap();
+        let tier = DeviceExpertTier::new(1 << 30);
+        let block = tier.register_block();
+        let xs = randn(&[3, hidden]);
+        for e in 0..n_experts {
+            let resident: Vec<Vec<f32>> = experts.forward_one(e, &xs).unwrap().to_vec2().unwrap();
+            for _ in 0..2 {
+                let tiered: Vec<Vec<f32>> = experts
+                    .forward_tiered(e, &xs, &tier, block, true)
+                    .unwrap()
+                    .to_vec2()
+                    .unwrap();
+                assert_eq!(resident, tiered, "expert {e}");
+            }
+        }
+        let stats = tier.stats();
+        assert_eq!((stats.misses, stats.hits, stats.entries), (2, 2, 2));
+        assert!(stats.used_bytes > 0);
     }
 
     /// Host-resident experts compute the same function as device-
