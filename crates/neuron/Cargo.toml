@@ -17,6 +17,11 @@ path = "src/main.rs"
 # numbers, and exists so the go/no-go gate is a measurement rather than
 # an argument.
 [[bin]]
+name = "neuron-strata-expert-probe"
+path = "src/bin/strata_expert_probe.rs"
+required-features = ["strata-kernels"]
+
+[[bin]]
 name = "neuron-mtp-probe"
 path = "src/bin/mtp_probe.rs"
 
@@ -48,6 +53,9 @@ flash-attn = [
     "candle-transformers/flash-attn",
     "dep:candle-flash-attn",
 ]
+# The expert kernels vendored from Strata (`vendor/strata`, MIT). Needs
+# nvcc with C++20 and `CUDA_COMPUTE_CAP`.
+strata-kernels = ["cuda"]
 # Reserved for GPU-only integration tests in later stages.
 cuda-integration = ["cuda"]
 

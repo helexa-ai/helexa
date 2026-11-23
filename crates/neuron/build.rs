@@ -54,6 +54,8 @@ fn main() {
             .expect("neuron cuda build failed");
         println!("cargo:rustc-link-search={}", build_dir.display());
         println!("cargo:rustc-link-lib=neuroncuda");
+        #[cfg(feature = "strata-kernels")]
+        build_strata_kernels(&build_dir);
         println!("cargo:rustc-link-lib=dylib=cudart");
 
         if target.contains("msvc") {
@@ -69,6 +71,72 @@ fn main() {
             println!("cargo:rustc-link-lib=dylib=stdc++");
         }
     }
+}
+
+/// Compile the vendored Strata expert kernels and neuron's C shim.
+///
+/// They need C++20 and must not get the `--use_fast_math` the kernels
+/// above are built with: upstream builds this file without it, and
+/// contraction would change the rounding its parity relies on.
+#[cfg(feature = "strata-kernels")]
+fn build_strata_kernels(build_dir: &std::path::Path) {
+    println!("cargo:rerun-if-changed=vendor/strata");
+    println!("cargo:rerun-if-changed=src/cuda/strata_adapter/strata_shim.cu");
+    println!("cargo:rerun-if-changed=src/cuda/strata_adapter/strata_probe.cu");
+    println!("cargo:rerun-if-env-changed=CUDA_COMPUTE_CAP");
+    let cap = std::env::var("CUDA_COMPUTE_CAP").expect("strata-kernels needs CUDA_COMPUTE_CAP");
+    let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let vendor = root.join("vendor/strata/engine");
+    let sources = [
+        // UD-IQ4_XS has no NVFP4 experts, so upstream's stub satisfies
+        // the reference from the grouped dispatch.
+        (
+            "strata_nvfp4_absent.o",
+            vendor.join("src/kernels/cuda/nvfp4_decode_sm120_absent.cpp"),
+        ),
+        (
+            "strata_iq_kernels.o",
+            vendor.join("src/kernels/cuda/iq_kernels.cu"),
+        ),
+        (
+            "strata_shim.o",
+            root.join("src/cuda/strata_adapter/strata_shim.cu"),
+        ),
+        (
+            "strata_probe.o",
+            root.join("src/cuda/strata_adapter/strata_probe.cu"),
+        ),
+    ];
+    let mut objects = Vec::new();
+    for (name, source) in &sources {
+        let object = build_dir.join(name);
+        let status = Command::new("nvcc")
+            .args(["-O3", "-DNDEBUG", "-std=c++20"])
+            .arg(format!(
+                "--generate-code=arch=compute_{cap},code=[compute_{cap},sm_{cap}]"
+            ))
+            .args(["-DSTRATA_Q6K_EXPERTS=1", "-DSTRATA_VERIFY_MAX_T=8"])
+            .arg(format!("-I{}", vendor.join("third_party/ggml").display()))
+            .arg(format!("-I{}", vendor.join("include").display()))
+            .args(["--compiler-options", "-fPIC", "-c"])
+            .arg(source)
+            .arg("-o")
+            .arg(&object)
+            .status()
+            .expect("run nvcc");
+        assert!(status.success(), "nvcc failed on {}", source.display());
+        objects.push(object);
+    }
+    let library = build_dir.join("libneuronstrata.a");
+    let _ = std::fs::remove_file(&library);
+    let status = Command::new("ar")
+        .arg("rcs")
+        .arg(&library)
+        .args(&objects)
+        .status()
+        .expect("run ar");
+    assert!(status.success(), "ar failed");
+    println!("cargo:rustc-link-lib=static=neuronstrata");
 }
 
 /// Emit `cargo:rustc-env=` vars consumed by `env!()` in `src/version.rs`

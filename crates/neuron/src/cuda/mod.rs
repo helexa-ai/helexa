@@ -13,3 +13,5 @@
 pub mod ffi;
 #[cfg(feature = "cuda")]
 pub mod gdn;
+#[cfg(feature = "strata-kernels")]
+pub mod strata;
