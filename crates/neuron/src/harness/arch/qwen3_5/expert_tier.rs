@@ -201,6 +201,11 @@ impl<T> ExpertTier<T> {
         value
     }
 
+    /// The byte budget.
+    pub fn capacity_bytes(&self) -> u64 {
+        self.state.lock().expect("expert tier lock").lru.capacity
+    }
+
     pub fn stats(&self) -> TierStats {
         let state = self.state.lock().expect("expert tier lock");
         TierStats {

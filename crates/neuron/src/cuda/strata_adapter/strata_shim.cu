@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <cuda_runtime.h>
+
 #include "strata/kernels/iq_kernels.hpp"
 
 namespace k = strata::kernels;
@@ -42,6 +44,17 @@ void neuron_strata_expert_grouped(int gu_type, int d_type, int64_t n_embd, int64
     const k::NativeExpertLayout layout = k::native_expert_layout(gu_type, d_type, n_embd, n_ff);
     k::native_expert_grouped(layout, grp_ptr, grp_start, n_groups, ent_dst, ent_tok, cap_groups, cap_entries, x_q8_1,
                              scratch, out, stream);
+}
+
+void* neuron_strata_pinned_alloc(size_t bytes) {
+    void* p = nullptr;
+    return cudaHostAlloc(&p, bytes, cudaHostAllocDefault) == cudaSuccess ? p : nullptr;
+}
+
+void neuron_strata_pinned_free(void* p) { cudaFreeHost(p); }
+
+int neuron_strata_copy_to_device(void* dst, const void* pinned_src, size_t bytes, void* stream) {
+    return cudaMemcpyAsync(dst, pinned_src, bytes, cudaMemcpyHostToDevice, static_cast<cudaStream_t>(stream));
 }
 
 }  // extern "C"

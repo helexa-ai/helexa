@@ -21,6 +21,16 @@ unsafe extern "C" {
         relative_error: *mut f64,
         kernel_ms: *mut f64,
     ) -> i32;
+    pub fn neuron_strata_pinned_alloc(bytes: usize) -> *mut c_void;
+    pub fn neuron_strata_pinned_free(p: *mut c_void);
+    /// Queues a copy on `stream`. `pinned_src` must stay unchanged until
+    /// the stream has passed it. Returns the CUDA status.
+    pub fn neuron_strata_copy_to_device(
+        dst: *mut c_void,
+        pinned_src: *const c_void,
+        bytes: usize,
+        stream: *mut c_void,
+    ) -> i32;
     pub fn neuron_strata_expert_supported(gu_type: i32, d_type: i32, n_embd: i64, n_ff: i64)
     -> i32;
     pub fn neuron_strata_row_bytes(ggml_type: i32, n: i64) -> usize;

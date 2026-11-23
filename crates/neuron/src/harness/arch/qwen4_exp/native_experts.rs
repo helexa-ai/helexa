@@ -21,7 +21,7 @@ use candle_core::{CudaDevice, CudaStorage, DType, Device, Storage, Tensor};
 use memmap2::{Advice, Mmap};
 use rayon::prelude::*;
 
-use super::gguf_index::{GgufIndex, GgufTensor};
+use super::gguf_index::{GgufIndex, GgufTensor, read_expert_profile};
 use crate::cuda::strata as ffi;
 use crate::harness::arch::qwen3_5::expert_tier::ExpertTier;
 use crate::harness::arch::qwen3_5::moe::{
@@ -30,6 +30,38 @@ use crate::harness::arch::qwen3_5::moe::{
 
 const Q8_1_BLOCK_BYTES: usize = 36;
 const Q8_1_BLOCK_VALUES: usize = 32;
+/// Pinned host memory expert blobs are staged through. Pinned because
+/// an unpinned source makes the driver stage it again, at a fraction of
+/// the link's speed.
+const STAGING_BYTES: usize = 2 << 30;
+
+/// Pinned host memory. Freed on the device worker with the model.
+struct PinnedBuffer {
+    ptr: *mut u8,
+    len: usize,
+}
+
+// SAFETY: the buffer is plain host memory, and every access is made
+// while holding the workspace lock.
+unsafe impl Send for PinnedBuffer {}
+
+impl PinnedBuffer {
+    fn new(len: usize) -> candle_core::Result<Self> {
+        // SAFETY: returns null or an allocation of `len` bytes.
+        let ptr = unsafe { ffi::neuron_strata_pinned_alloc(len) }.cast::<u8>();
+        if ptr.is_null() {
+            candle_core::bail!("cannot pin {len} bytes of staging memory");
+        }
+        Ok(Self { ptr, len })
+    }
+}
+
+impl Drop for PinnedBuffer {
+    fn drop(&mut self) {
+        // SAFETY: allocated by `neuron_strata_pinned_alloc`, freed once.
+        unsafe { ffi::neuron_strata_pinned_free(self.ptr.cast()) };
+    }
+}
 
 /// An expert's blob held in VRAM.
 pub struct ExpertSlot {
@@ -40,6 +72,12 @@ fn device_address<T: candle_core::cuda_backend::cudarc::driver::DeviceRepr + 'st
     slice: &CudaSlice<T>,
 ) -> u64 {
     slice.device_ptr(slice.stream()).0
+}
+
+/// Per-layer timing, from `NEURON_EXPERT_TIMING`.
+fn timing_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("NEURON_EXPERT_TIMING").is_some())
 }
 
 fn candle_err(e: impl std::fmt::Display) -> candle_core::Error {
@@ -63,6 +101,14 @@ struct Layer {
     blob_bytes: usize,
 }
 
+/// One expert blob to copy to the device.
+#[derive(Clone, Copy)]
+struct Upload {
+    expert: usize,
+    address: u64,
+    in_arena: bool,
+}
+
 /// Device buffers reused from layer to layer.
 ///
 /// Reuse is safe because each layer synchronizes the stream before
@@ -77,7 +123,7 @@ struct Workspace {
     ent_dst: Option<CudaSlice<i32>>,
     ent_tok: Option<CudaSlice<i32>>,
     arena: Option<CudaSlice<u8>>,
-    host_arena: Vec<u8>,
+    staging: Option<PinnedBuffer>,
 }
 
 fn ensure_capacity<T: candle_core::cuda_backend::cudarc::driver::DeviceRepr + 'static>(
@@ -213,13 +259,16 @@ impl GgufExpertSource {
             });
         }
         let tier = tier_budget_mb.map(|mb| ExpertTier::new(mb << 20));
+        let profile = std::env::var_os("NEURON_EXPERT_PROFILE")
+            .map(|path| read_expert_profile(Path::new(&path), layers, experts))
+            .transpose()?;
         tracing::info!(
             shards = maps.len(),
             layers,
             tier_budget_mb,
             "native expert kernels enabled, reading experts from GGUF"
         );
-        Ok(Self {
+        let source = Self {
             device,
             n_embd,
             n_ff,
@@ -227,7 +276,17 @@ impl GgufExpertSource {
             layers: parsed,
             tier,
             workspace: Mutex::new(Workspace::default()),
-        })
+        };
+        if let Some(ranked) = profile {
+            let started = std::time::Instant::now();
+            let filled = source.warm_tier(&ranked)?;
+            tracing::info!(
+                filled,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "VRAM expert tier filled from profile"
+            );
+        }
+        Ok(source)
     }
 
     fn copy_blob(&self, layer: &Layer, expert: usize, dst: &mut [u8]) {
@@ -239,13 +298,107 @@ impl GgufExpertSource {
         }
     }
 
-    fn load_slot(&self, layer: &Layer, expert: usize) -> candle_core::Result<ExpertSlot> {
-        let mut host = vec![0_u8; layer.blob_bytes];
-        self.copy_blob(layer, expert, &mut host);
-        // SAFETY: fully written by the copy below.
-        let mut blob = unsafe { self.device.alloc::<u8>(host.len())? };
-        self.device.memcpy_htod(&host, &mut blob)?;
-        Ok(ExpertSlot { blob })
+    /// Queues blob copies on the stream.
+    ///
+    /// The last batch's staging memory stays in use until the caller
+    /// synchronizes. Neighbouring arena blobs are copied as one; slots
+    /// are separate allocations even when their addresses adjoin, and a
+    /// copy may not span two allocations.
+    fn stage_blobs(
+        &self,
+        staging: &mut Option<PinnedBuffer>,
+        layer: &Layer,
+        items: &[Upload],
+    ) -> candle_core::Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        if staging.is_none() {
+            *staging = Some(PinnedBuffer::new(STAGING_BYTES)?);
+        }
+        let pinned = staging.as_ref().expect("allocated above");
+        let stream = self.device.cuda_stream();
+        let per_batch = pinned.len / layer.blob_bytes;
+        for (b, batch) in items.chunks(per_batch).enumerate() {
+            if b > 0 {
+                stream.synchronize().map_err(candle_err)?;
+            }
+            // SAFETY: the stream has passed any earlier use of this
+            // range, and the lock gives this call the only reference.
+            let host = unsafe {
+                std::slice::from_raw_parts_mut(pinned.ptr, batch.len() * layer.blob_bytes)
+            };
+            host.par_chunks_mut(layer.blob_bytes)
+                .zip(batch.par_iter())
+                .for_each(|(dst, item)| self.copy_blob(layer, item.expert, dst));
+            let mut i = 0;
+            while i < batch.len() {
+                let mut run = 1;
+                while batch[i].in_arena
+                    && i + run < batch.len()
+                    && batch[i + run].in_arena
+                    && batch[i + run].address == batch[i].address + (run * layer.blob_bytes) as u64
+                {
+                    run += 1;
+                }
+                // SAFETY: both ranges are live for `run` blobs, and the
+                // staging range is not rewritten before a synchronize.
+                let status = unsafe {
+                    ffi::neuron_strata_copy_to_device(
+                        batch[i].address as *mut c_void,
+                        host.as_ptr().add(i * layer.blob_bytes).cast(),
+                        run * layer.blob_bytes,
+                        stream.cu_stream() as *mut c_void,
+                    )
+                };
+                if status != 0 {
+                    candle_core::bail!("expert upload failed with CUDA status {status}");
+                }
+                i += run;
+            }
+        }
+        Ok(())
+    }
+
+    /// Fills the tier with the profile's hottest experts, so the first
+    /// requests do not pay for its warm-up.
+    fn warm_tier(&self, ranked: &[(u16, u16)]) -> candle_core::Result<usize> {
+        let Some(tier) = &self.tier else {
+            return Ok(0);
+        };
+        let mut workspace = self.workspace.lock().map_err(candle_err)?;
+        let capacity = tier.capacity_bytes();
+        let mut used = 0_u64;
+        let mut by_layer: Vec<Vec<Upload>> = vec![Vec::new(); self.layers.len()];
+        let mut filled = 0;
+        for &(l, e) in ranked {
+            let (l, e) = (l as usize, e as usize);
+            let bytes = self.layers[l].blob_bytes as u64;
+            if used + bytes > capacity {
+                break;
+            }
+            used += bytes;
+            let pending = &mut by_layer[l];
+            tier.get_or_load(l as u32, e as u32, bytes, || -> candle_core::Result<_> {
+                // SAFETY: filled by `stage_blobs` before first use.
+                let blob = unsafe { self.device.alloc::<u8>(bytes as usize)? };
+                pending.push(Upload {
+                    expert: e,
+                    address: device_address(&blob),
+                    in_arena: false,
+                });
+                Ok(ExpertSlot { blob })
+            })?;
+            filled += 1;
+        }
+        for (l, pending) in by_layer.iter().enumerate() {
+            self.stage_blobs(&mut workspace.staging, &self.layers[l], pending)?;
+            self.device
+                .cuda_stream()
+                .synchronize()
+                .map_err(candle_err)?;
+        }
+        Ok(filled)
     }
 
     fn forward_layer(
@@ -256,6 +409,7 @@ impl GgufExpertSource {
         weights_for: &[Vec<f32>],
         k: usize,
     ) -> candle_core::Result<Tensor> {
+        let started = std::time::Instant::now();
         let layer = &self.layers[layer_index];
         let (rows, hidden) = xs.dims2()?;
         if hidden != self.n_embd {
@@ -277,13 +431,23 @@ impl GgufExpertSource {
         let mut held = Vec::with_capacity(active.len());
         let mut addresses = vec![0_u64; active.len()];
         let mut misses = Vec::new();
+        let mut uploads: Vec<Upload> = Vec::new();
         for (g, &e) in active.iter().enumerate() {
             let slot = match &self.tier {
                 Some(tier) if admit => Some(tier.get_or_load(
                     layer_index as u32,
                     e as u32,
                     layer.blob_bytes as u64,
-                    || self.load_slot(layer, e),
+                    || -> candle_core::Result<_> {
+                        // SAFETY: filled by `stage_blobs` before the launch.
+                        let blob = unsafe { self.device.alloc::<u8>(layer.blob_bytes)? };
+                        uploads.push(Upload {
+                            expert: e,
+                            address: device_address(&blob),
+                            in_arena: false,
+                        });
+                        Ok(ExpertSlot { blob })
+                    },
                 )?),
                 Some(tier) => tier.peek(layer_index as u32, e as u32),
                 None => None,
@@ -296,20 +460,22 @@ impl GgufExpertSource {
                 None => misses.push((g, e)),
             }
         }
+        let resolved = started.elapsed();
         if !misses.is_empty() {
-            let bytes = misses.len() * layer.blob_bytes;
-            if ws.host_arena.len() < bytes {
-                ws.host_arena.resize(bytes, 0);
-            }
-            ws.host_arena[..bytes]
-                .par_chunks_mut(layer.blob_bytes)
-                .zip(misses.par_iter())
-                .for_each(|(dst, &(_, e))| self.copy_blob(layer, e, dst));
-            let arena_address = upload(&self.device, &mut ws.arena, &ws.host_arena[..bytes])?;
-            for (i, &(g, _)) in misses.iter().enumerate() {
-                addresses[g] = arena_address + (i * layer.blob_bytes) as u64;
+            ensure_capacity(&self.device, &mut ws.arena, misses.len() * layer.blob_bytes)?;
+            let arena_address = device_address(ws.arena.as_ref().expect("allocated above"));
+            for (i, &(g, e)) in misses.iter().enumerate() {
+                let address = arena_address + (i * layer.blob_bytes) as u64;
+                addresses[g] = address;
+                uploads.push(Upload {
+                    expert: e,
+                    address,
+                    in_arena: true,
+                });
             }
         }
+        self.stage_blobs(&mut ws.staging, layer, &uploads)?;
+        let streamed = started.elapsed();
 
         // Each token writes its k outputs side by side, so the mix below
         // is one multiply and one sum rather than a scatter.
@@ -349,6 +515,7 @@ impl GgufExpertSource {
             unsafe { ffi::neuron_strata_expert_scratch_bytes(entries as i64, self.n_ff as i64) };
         ensure_capacity(&self.device, &mut ws.scratch, scratch_bytes)?;
 
+        let prepared = started.elapsed();
         let x = xs.to_dtype(DType::F32)?.contiguous()?;
         let (storage, x_layout) = x.storage_and_layout();
         let Storage::Cuda(storage) = &*storage else {
@@ -392,6 +559,20 @@ impl GgufExpertSource {
             .synchronize()
             .map_err(candle_err)?;
         drop(held);
+        if timing_enabled() {
+            let finished = started.elapsed();
+            tracing::info!(
+                layer = layer_index,
+                rows,
+                active = active.len(),
+                misses = misses.len(),
+                resolve_us = resolved.as_micros() as u64,
+                arena_us = (streamed - resolved).as_micros() as u64,
+                arrays_us = (prepared - streamed).as_micros() as u64,
+                kernel_us = (finished - prepared).as_micros() as u64,
+                "native experts"
+            );
+        }
 
         let out = Tensor::from((
             Storage::Cuda(CudaStorage::wrap_cuda_slice(out, self.device.clone())),

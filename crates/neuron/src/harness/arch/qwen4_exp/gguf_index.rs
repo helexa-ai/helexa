@@ -189,6 +189,48 @@ impl GgufIndex {
     }
 }
 
+/// The `(layer, expert)` pairs of a Strata expert profile, hottest first.
+pub fn read_expert_profile(path: &Path, layers: usize, experts: usize) -> Result<Vec<(u16, u16)>> {
+    let blob = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    parse_expert_profile(&blob, layers, experts)
+        .with_context(|| format!("parse {}", path.display()))
+}
+
+fn parse_expert_profile(blob: &[u8], layers: usize, experts: usize) -> Result<Vec<(u16, u16)>> {
+    const HEADER: usize = 24;
+    ensure!(
+        blob.len() >= HEADER && &blob[..4] == b"STRP",
+        "not an expert profile"
+    );
+    let field = |i: usize| {
+        u32::from_le_bytes(blob[4 + i * 4..8 + i * 4].try_into().expect("four bytes")) as usize
+    };
+    ensure!(field(0) == 1, "profile version {}", field(0));
+    ensure!(
+        (field(1), field(2)) == (layers, experts),
+        "profile is {}x{}, the model is {layers}x{experts}",
+        field(1),
+        field(2)
+    );
+    let count = field(4);
+    ensure!(count <= layers * experts, "profile ranks {count} pairs");
+    ensure!(blob.len() >= HEADER + count * 4, "profile is truncated");
+    blob[HEADER..HEADER + count * 4]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|pair| {
+            let layer = u16::from_le_bytes([pair[0], pair[1]]);
+            let expert = u16::from_le_bytes([pair[2], pair[3]]);
+            ensure!(
+                (layer as usize) < layers && (expert as usize) < experts,
+                "pair ({layer}, {expert}) is out of range"
+            );
+            Ok((layer, expert))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +306,42 @@ mod tests {
         let index = GgufIndex::open(&dir.path().join("m-Q-00001-of-00002.gguf")).unwrap();
         assert_eq!(index.shards.len(), 2);
         assert_eq!((index.tensors["a"].shard, index.tensors["b"].shard), (0, 1));
+    }
+
+    fn profile(version: u32, layers: u32, experts: u32, pairs: &[(u16, u16)]) -> Vec<u8> {
+        let mut b = b"STRP".to_vec();
+        for v in [
+            version,
+            layers,
+            experts,
+            layers * experts,
+            pairs.len() as u32,
+        ] {
+            b.extend(v.to_le_bytes());
+        }
+        for (l, e) in pairs {
+            b.extend(l.to_le_bytes());
+            b.extend(e.to_le_bytes());
+        }
+        b
+    }
+
+    #[test]
+    fn a_profile_keeps_its_rank_order() {
+        let blob = profile(1, 2, 4, &[(1, 3), (0, 2)]);
+        assert_eq!(
+            parse_expert_profile(&blob, 2, 4).unwrap(),
+            vec![(1, 3), (0, 2)]
+        );
+    }
+
+    #[test]
+    fn a_profile_for_another_shape_or_out_of_range_is_refused() {
+        assert!(parse_expert_profile(&profile(1, 2, 4, &[]), 3, 4).is_err());
+        assert!(parse_expert_profile(&profile(2, 2, 4, &[]), 2, 4).is_err());
+        assert!(parse_expert_profile(&profile(1, 2, 4, &[(2, 0)]), 2, 4).is_err());
+        let truncated = profile(1, 2, 4, &[(1, 1)]);
+        assert!(parse_expert_profile(&truncated[..truncated.len() - 1], 2, 4).is_err());
     }
 
     #[test]
