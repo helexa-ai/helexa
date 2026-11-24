@@ -896,6 +896,14 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
     // semantics in mod.rs for the Phase 3+ refinement.
 }
 
+/// `NEURON_CUDA_EVENT_TRACKING=0` turns cudarc's cross-stream event
+/// tracking off for the worker's context. On by default until measured
+/// across the fleet's models.
+#[cfg(feature = "cuda")]
+fn cuda_event_tracking() -> bool {
+    std::env::var("NEURON_CUDA_EVENT_TRACKING").map_or(true, |v| v != "0")
+}
+
 fn init_state(device_index: u32) -> DeviceWorkerState {
     #[cfg(feature = "cuda")]
     {
@@ -905,6 +913,23 @@ fn init_state(device_index: u32) -> DeviceWorkerState {
         // CudaContext::new and Device::new_cuda end up sharing state.
         let (device, ctx) = match candle_core::Device::new_cuda(device_index as usize) {
             Ok(device) => match CudaContext::new(device_index as usize) {
+                Ok(ctx) if !cuda_event_tracking() => {
+                    // cudarc gives every allocation two events and waits
+                    // on them when it is freed, which only matters when
+                    // a buffer crosses streams. All of this worker's
+                    // work runs on candle's one stream, and the events
+                    // cost ~74k driver calls per qwen4_exp decode token.
+                    if let Ok(cuda) = device.as_cuda_device() {
+                        // SAFETY: nothing has been allocated yet, and
+                        // this context's work is on a single stream.
+                        unsafe { cuda.disable_event_tracking() };
+                        tracing::info!(device_index, "CUDA event tracking off");
+                    }
+                    if let Err(e) = ctx.bind_to_thread() {
+                        tracing::warn!(device_index, error = ?e, "device worker: bind_to_thread failed");
+                    }
+                    (device, Some(ctx))
+                }
                 Ok(ctx) => {
                     if let Err(e) = ctx.bind_to_thread() {
                         tracing::warn!(
