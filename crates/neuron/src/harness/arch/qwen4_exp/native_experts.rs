@@ -117,37 +117,58 @@ impl Drop for HostStore {
     }
 }
 
-/// A CUDA event, for knowing when a queued copy has landed.
-struct Event(*mut c_void);
-
-// SAFETY: a CUDA event handle may be used from any thread.
-unsafe impl Send for Event {}
-
-impl Event {
-    fn new() -> candle_core::Result<Self> {
-        // SAFETY: returns a fresh event or null.
-        let e = unsafe { ffi::neuron_strata_event_new() };
-        if e.is_null() {
-            candle_core::bail!("cannot create a CUDA event");
-        }
-        Ok(Self(e))
-    }
-}
-
-impl Drop for Event {
-    fn drop(&mut self) {
-        // SAFETY: created by `new`, destroyed once.
-        unsafe { ffi::neuron_strata_event_free(self.0) };
-    }
-}
-
 /// One layer's last device-routed ids, on their way to the host so the
 /// tier can learn from them between steps.
+///
+/// No event guards the read: every caller adapts only after it has read
+/// the previous step's logits, which waits for the whole step, and an
+/// event recorded inside a captured step cannot be waited on from the
+/// host.
 struct Pending {
-    ids: PinnedBuffer,
+    ids: MappedIds,
     entries: usize,
-    event: Event,
     recorded: bool,
+}
+
+/// Mapped pinned host memory for a layer's ids: written by a kernel
+/// through `device`, read by the host at `ptr` (#427).
+struct MappedIds {
+    ptr: *mut u32,
+    device: u64,
+    len: usize,
+}
+
+// SAFETY: plain host memory, read by the host only after the step whose
+// kernel writes it has been waited on.
+unsafe impl Send for MappedIds {}
+
+impl MappedIds {
+    fn new(words: usize) -> candle_core::Result<Self> {
+        // SAFETY: returns null or `words * 4` bytes of mapped host memory.
+        let ptr = unsafe { ffi::neuron_strata_host_alloc_mapped(words * 4) }.cast::<u32>();
+        if ptr.is_null() {
+            candle_core::bail!("cannot pin {words} words for expert usage");
+        }
+        // SAFETY: as allocated just above.
+        let device = unsafe { ffi::neuron_strata_host_device_ptr(ptr.cast()) };
+        if device == 0 {
+            // SAFETY: allocated above, freed once.
+            unsafe { ffi::neuron_strata_pinned_free(ptr.cast()) };
+            candle_core::bail!("the device cannot address the expert usage buffer");
+        }
+        Ok(Self {
+            ptr,
+            device,
+            len: words,
+        })
+    }
+}
+
+impl Drop for MappedIds {
+    fn drop(&mut self) {
+        // SAFETY: allocated by `neuron_strata_host_alloc_mapped`, freed once.
+        unsafe { ffi::neuron_strata_pinned_free(self.ptr.cast()) };
+    }
 }
 
 /// Decode-sized MoE layers routed on the device (#425).
@@ -725,11 +746,6 @@ impl GgufExpertSource {
         let Some(pending) = guard.as_mut().filter(|p| p.recorded) else {
             return Ok(());
         };
-        // SAFETY: recorded after the copy into `ids` was queued.
-        let status = unsafe { ffi::neuron_strata_event_sync(pending.event.0) };
-        if status != 0 {
-            candle_core::bail!("expert usage copy failed with CUDA status {status}");
-        }
         pending.recorded = false;
         // SAFETY: the copy above wrote `entries` ids, and the next copy
         // into this buffer is only queued after this read.
@@ -946,6 +962,10 @@ impl GgufExpertSource {
                 q8 as *mut c_void,
                 stream,
             );
+            let status = ffi::neuron_strata_last_error();
+            if status != 0 {
+                candle_core::bail!("expert activation quantize failed with CUDA status {status}");
+            }
             ffi::neuron_strata_expert_grouped(
                 layer.gu_type,
                 layer.d_type,
@@ -963,6 +983,10 @@ impl GgufExpertSource {
                 parts as *mut f32,
                 stream,
             );
+            let status = ffi::neuron_strata_last_error();
+            if status != 0 {
+                candle_core::bail!("grouped expert kernel failed with CUDA status {status}");
+            }
         }
         Ok(())
     }
@@ -979,33 +1003,28 @@ impl GgufExpertSource {
             return Ok(());
         };
         let mut guard = routing.pending[layer_index].lock().map_err(candle_err)?;
-        if guard.as_ref().is_none_or(|p| p.ids.len < entries * 4) {
-            // Sized once for the largest batch: a captured step copies
-            // into this address on every replay.
+        if guard.as_ref().is_none_or(|p| p.ids.len < entries) {
+            // Sized once for the largest batch: a captured step writes
+            // this address on every replay.
             *guard = Some(Pending {
-                ids: PinnedBuffer::new((TIER_ADMIT_MAX_ROWS * 64 * 4).max(entries * 4))?,
+                ids: MappedIds::new((TIER_ADMIT_MAX_ROWS * 64).max(entries))?,
                 entries: 0,
-                event: Event::new()?,
                 recorded: false,
             });
         }
         let pending = guard.as_mut().expect("set above");
         let stream = self.device.cuda_stream().cu_stream() as *mut c_void;
-        // SAFETY: the buffer holds `entries` ids and is not read until
-        // the event below has completed.
+        // SAFETY: the buffer holds `entries` ids and is not read until the
+        // step has been waited on.
         unsafe {
-            let status = ffi::neuron_strata_copy_to_host(
-                pending.ids.ptr.cast(),
-                ids as *const c_void,
-                entries * 4,
+            let status = ffi::neuron_strata_copy_words(
+                pending.ids.device as *mut u32,
+                ids as *const u32,
+                entries as i32,
                 stream,
             );
             if status != 0 {
                 candle_core::bail!("expert usage copy failed with CUDA status {status}");
-            }
-            let status = ffi::neuron_strata_event_record(pending.event.0, stream);
-            if status != 0 {
-                candle_core::bail!("event record failed with CUDA status {status}");
             }
         }
         pending.entries = entries;

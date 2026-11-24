@@ -74,6 +74,17 @@ unsafe extern "C" {
         bytes: u64,
         stream: *mut c_void,
     ) -> i32;
+    /// `cudaGetLastError`: the error of the most recent failing call,
+    /// cleared by reading.
+    pub fn neuron_strata_last_error() -> i32;
+    /// Queues a kernel copying `n` 32-bit words (`dst` may be the device
+    /// address of mapped pinned host memory).
+    pub fn neuron_strata_copy_words(
+        dst: *mut u32,
+        src: *const u32,
+        n: i32,
+        stream: *mut c_void,
+    ) -> i32;
     /// Queues a device-to-host copy into pinned memory.
     pub fn neuron_strata_copy_to_host(
         pinned_dst: *mut c_void,

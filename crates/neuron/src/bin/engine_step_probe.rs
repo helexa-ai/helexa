@@ -8,7 +8,7 @@
 //! Decodes a fixed token sequence from position 0 through both, one token
 //! at a time, and compares each step's next-token distribution: KL from
 //! candle's to the engine's, and whether the top token agrees. Both share
-//! one expert source (no tier, so both read every expert alike) and the
+//! one expert source (and its VRAM tier, if NEURON_EXPERT_CACHE_MB is set) and the
 //! GGUF's Q8_0 dense projections; candle runs in BF16 as served. The
 //! engine takes PLE's contribution from candle's own PLE block, run on the
 //! engine's residual, and candle's state is restored around that so its
@@ -72,7 +72,10 @@ fn main() -> Result<()> {
         text.num_experts,
         text.hidden_size,
         text.moe_intermediate_size,
-        None,
+        // NEURON_EXPERT_CACHE_MB, as served: a VRAM tier (filled from
+        // NEURON_EXPERT_PROFILE) changes where experts are read, not what
+        // they compute.
+        neuron::harness::arch::qwen3_5::expert_tier::configured_budget_mb(),
     )?);
     let dense: Arc<dyn LinearSource> = Arc::new(GgufDenseSource::open(
         gguf_path,
@@ -135,6 +138,19 @@ fn main() -> Result<()> {
         }
         Ok(())
     };
+    if let Some(n) = std::env::var("PROBE_TIMING")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        return time_steps(
+            &mut engine,
+            &mut model,
+            &cuda,
+            &tokens,
+            n.min(tokens.len()),
+            wide,
+        );
+    }
     let (mut kl_sum, mut agree, mut worst, mut kl_head_sum) = (0f64, 0usize, 0f64, 0f64);
     let lm_head = vb
         .pp("lm_head")
@@ -217,5 +233,94 @@ fn main() -> Result<()> {
         kl_sum / steps as f64,
         kl_head_sum / steps as f64
     );
+    Ok(())
+}
+
+/// Engine-only decode timing: the same tokens eagerly, then with each
+/// segment replayed from its graph. Per step: write the inputs, adapt the
+/// tier, segment one, PLE (eager, on the host-gathered n-grams), segment
+/// two, read the logits.
+fn time_steps(
+    engine: &mut NativeDecoder,
+    model: &mut Qwen4ExpForCausalLM,
+    cuda: &candle_core::CudaDevice,
+    tokens: &[u32],
+    n: usize,
+    wide: usize,
+) -> Result<()> {
+    let device = Device::Cuda(cuda.clone());
+    let mut eager_logits: Vec<Vec<f32>> = Vec::new();
+    for graphs in [false, true] {
+        engine.reset()?;
+        model.clear_kv_cache()?;
+        let mut times = Vec::with_capacity(n);
+        let mut first = Vec::new();
+        let (mut worst_kl, mut agree) = (0f64, 0usize);
+        for (pos, &token) in tokens.iter().take(n).enumerate() {
+            let started = std::time::Instant::now();
+            let ids = Tensor::new(&[[token]], &device)?;
+            engine.set_step(token, pos)?;
+            engine.adapt()?;
+            if graphs {
+                engine.run_head()?;
+            } else {
+                engine.segment_head()?;
+            }
+            // SAFETY: written in full by the copy below.
+            let mut copy = unsafe { cuda.alloc::<f32>(wide)? };
+            cuda.memcpy_dtod(engine.residual(), &mut copy)?;
+            let residual = Tensor::from((
+                Storage::Cuda(CudaStorage::wrap_cuda_slice(copy, cuda.clone())),
+                (1, 1, wide),
+            ));
+            if let Some(ple) = model.ple_contribution(&ids, &residual)? {
+                let ple = ple.to_dtype(DType::F32)?.contiguous()?;
+                let (storage, layout) = ple.storage_and_layout();
+                let Storage::Cuda(storage) = &*storage else {
+                    bail!("PLE ran off the GPU");
+                };
+                let slice = storage.as_cuda_slice::<f32>()?;
+                engine.add_to_residual(
+                    slice.device_ptr(slice.stream()).0 + (layout.start_offset() * 4) as u64,
+                )?;
+            }
+            if graphs {
+                engine.run_tail()?;
+            } else {
+                engine.segment_tail()?;
+            }
+            let logits = engine.logits()?;
+            times.push(started.elapsed().as_secs_f64() * 1e3);
+            if graphs {
+                let (p, q) = (softmax(&eager_logits[pos]), softmax(&logits));
+                let kl: f64 = p
+                    .iter()
+                    .zip(&q)
+                    .filter(|(a, _)| **a > 0.0)
+                    .map(|(a, b)| a * (a / b.max(1e-30)).ln())
+                    .sum();
+                worst_kl = worst_kl.max(kl);
+                agree += usize::from(argmax(&eager_logits[pos]) == argmax(&logits));
+            } else {
+                eager_logits.push(logits.clone());
+            }
+            if pos == 0 {
+                first = logits;
+            }
+        }
+        let steady: Vec<f64> = times.iter().skip(3).copied().collect();
+        let mean = steady.iter().sum::<f64>() / steady.len().max(1) as f64;
+        println!(
+            "{}: {n} tokens, steady {mean:.2} ms/token ({:.1} tok/s); first-step top-1 {}",
+            if graphs { "graphs" } else { "eager " },
+            1e3 / mean,
+            argmax(&first)
+        );
+        if graphs {
+            println!(
+                "graphs vs eager over {n} steps: worst KL {worst_kl:.3e}, top-1 agree {agree}/{n}"
+            );
+        }
+    }
     Ok(())
 }

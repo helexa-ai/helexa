@@ -108,6 +108,13 @@ __global__ void gather_blobs_kernel(const unsigned long long* src, const int32_t
     for (unsigned long long t = tail + threadIdx.x; t < hi; t += blockDim.x) to[t] = from[t];
 }
 
+// Copies `n` 32-bit words, e.g. into mapped pinned host memory: a kernel
+// rather than a memcpy so the copy captures like any other launch.
+__global__ void copy_words_kernel(uint32_t* dst, const uint32_t* src, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) dst[i] = src[i];
+}
+
 }  // namespace
 
 extern "C" {
@@ -204,6 +211,13 @@ int neuron_strata_gather_blobs(const unsigned long long* src, const int32_t* n_m
     if (cap <= 0) return 0;
     gather_blobs_kernel<<<dim3((unsigned) cap, kGatherSplit), 256, 0, static_cast<cudaStream_t>(stream)>>>(
         src, n_miss, dst, bytes);
+    return cudaGetLastError();
+}
+
+int neuron_strata_last_error() { return cudaGetLastError(); }
+
+int neuron_strata_copy_words(uint32_t* dst, const uint32_t* src, int n, void* stream) {
+    copy_words_kernel<<<(n + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(dst, src, n);
     return cudaGetLastError();
 }
 

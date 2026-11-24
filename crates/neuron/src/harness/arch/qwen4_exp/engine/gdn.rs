@@ -164,6 +164,14 @@ pub struct GdnState {
 }
 
 impl GdnState {
+    /// Zeroes the state in place: a captured step keeps its addresses.
+    pub fn clear(&mut self, device: &CudaDevice) -> Result<()> {
+        let stream = device.cuda_stream();
+        stream.memset_zeros(&mut self.recurrent)?;
+        stream.memset_zeros(&mut self.conv)?;
+        Ok(())
+    }
+
     pub fn zeroed(device: &CudaDevice, s: &GdnShapes) -> Result<Self> {
         Ok(Self {
             recurrent: device.alloc_zeros::<f32>(STATE_SIZE * s.v_heads * STATE_SIZE)?,

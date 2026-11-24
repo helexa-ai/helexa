@@ -131,6 +131,15 @@ pub struct AttnCache {
 }
 
 impl AttnCache {
+    /// Zeroes the caches in place: a captured step keeps its addresses.
+    pub fn clear(&mut self, device: &CudaDevice) -> Result<()> {
+        let stream = device.cuda_stream();
+        stream.memset_zeros(&mut self.k)?;
+        stream.memset_zeros(&mut self.v)?;
+        stream.memset_zeros(&mut self.index_keys)?;
+        Ok(())
+    }
+
     pub fn new(device: &CudaDevice, a: &AttnShapes) -> Result<Self> {
         Ok(Self {
             k: device.alloc_zeros::<f32>(a.max_len * a.kv_width())?,

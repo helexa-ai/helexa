@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, bail, ensure};
 use candle_core::CudaDevice;
-use candle_core::cuda_backend::cudarc::driver::{CudaSlice, DevicePtr};
+use candle_core::cuda_backend::cudarc::driver::{CudaGraph, CudaSlice, DevicePtr, sys};
 
 use super::attn::{self, AttnCache, AttnScratch, AttnShapes, AttnWeights};
 use super::gdn::{self, GdnScratch, GdnShapes, GdnState, GdnWeights, check};
@@ -56,7 +56,18 @@ impl Drop for HostStep {
     }
 }
 
+/// A captured segment.
+struct Graph(CudaGraph);
+
+// SAFETY: a graph is launched only from the device worker that owns the
+// decoder, on the stream it was captured on.
+unsafe impl Send for Graph {}
+
 pub struct NativeDecoder {
+    /// Captured segments, once a warm step has run.
+    head_graph: Option<Graph>,
+    tail_graph: Option<Graph>,
+    warmed: bool,
     device: CudaDevice,
     s: GdnShapes,
     a: AttnShapes,
@@ -156,6 +167,9 @@ impl NativeDecoder {
         ensure!(!host.is_null(), "cannot pin the step buffer");
         let wide = s.hc * s.n_embd;
         Ok(Self {
+            head_graph: None,
+            tail_graph: None,
+            warmed: false,
             gdn_sc: GdnScratch::new(&device, &s)?,
             attn_sc: AttnScratch::new(&device, &s, &a)?,
             moe_sc: MoeScratch::new(&device, &s, &m)?,
@@ -319,6 +333,64 @@ impl NativeDecoder {
         Ok(())
     }
 
+    /// Segment one, from its graph: captured on first use after a warm
+    /// eager step (which sizes every buffer the segment touches), then
+    /// replayed. The first call of all runs it eagerly.
+    pub fn run_head(&mut self) -> Result<()> {
+        self.run_captured(true)
+    }
+
+    /// Segment two, as [`Self::run_head`].
+    pub fn run_tail(&mut self) -> Result<()> {
+        self.run_captured(false)
+    }
+
+    fn run_captured(&mut self, head: bool) -> Result<()> {
+        if !self.warmed {
+            if head {
+                self.segment_head()?;
+            } else {
+                self.segment_tail()?;
+                self.warmed = true;
+            }
+            return Ok(());
+        }
+        let has = if head {
+            self.head_graph.is_some()
+        } else {
+            self.tail_graph.is_some()
+        };
+        if !has {
+            let stream = self.device.cuda_stream();
+            stream.begin_capture(sys::CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_THREAD_LOCAL)?;
+            let ran = if head {
+                self.segment_head()
+            } else {
+                self.segment_tail()
+            };
+            let graph = stream.end_capture(
+                sys::CUgraphInstantiate_flags::CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH,
+            );
+            ran.context("while capturing")?;
+            let graph = graph?.context("capture produced no graph")?;
+            if head {
+                self.head_graph = Some(Graph(graph));
+            } else {
+                self.tail_graph = Some(Graph(graph));
+            }
+        }
+        let graph = if head {
+            &self.head_graph
+        } else {
+            &self.tail_graph
+        };
+        graph.as_ref().expect("captured above").0.launch()?;
+        if !head {
+            self.usage_replayed();
+        }
+        Ok(())
+    }
+
     /// Adds `contribution` (`hc * n_embd` f32 on the device) to the
     /// residual: the PLE layer's addition before its attention half.
     pub fn add_to_residual(&mut self, contribution: u64) -> Result<()> {
@@ -392,14 +464,12 @@ impl NativeDecoder {
         Ok(self.device.clone_dtoh(&self.logits)?)
     }
 
-    /// Clears every sequence state, for a new request.
+    /// Clears every sequence state, in place, for a new request.
     pub fn reset(&mut self) -> Result<()> {
-        let s = self.s;
-        let a = self.a;
         for layer in &mut self.layers {
             match &mut layer.mixer {
-                Mixer::Linear(_, state) => *state = GdnState::zeroed(&self.device, &s)?,
-                Mixer::Full(_, cache) => *cache = AttnCache::new(&self.device, &a)?,
+                Mixer::Linear(_, state) => state.clear(&self.device)?,
+                Mixer::Full(_, cache) => cache.clear(&self.device)?,
             }
         }
         Ok(())
