@@ -131,6 +131,21 @@ pub struct AttnCache {
 }
 
 impl AttnCache {
+    /// Fills the front of the caches from rows already in the engine's
+    /// layout: K and V `(len, kv_heads, head_dim)`, keys `(len, index_dim)`.
+    pub fn import(
+        &mut self,
+        device: &CudaDevice,
+        k: &candle_core::Tensor,
+        v: &candle_core::Tensor,
+        index_keys: &candle_core::Tensor,
+    ) -> Result<()> {
+        use super::decoder::copy_into;
+        copy_into(device, k, &mut self.k)?;
+        copy_into(device, v, &mut self.v)?;
+        copy_into(device, index_keys, &mut self.index_keys)
+    }
+
     /// Zeroes the caches in place: a captured step keeps its addresses.
     pub fn clear(&mut self, device: &CudaDevice) -> Result<()> {
         let stream = device.cuda_stream();

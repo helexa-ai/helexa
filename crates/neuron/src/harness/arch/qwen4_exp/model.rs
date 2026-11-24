@@ -123,6 +123,21 @@ pub struct Qwen4ExpForCausalLM {
     hc_count: usize,
     device: Device,
     dtype: DType,
+    /// The native decode engine (#427), when attached: single-token
+    /// forwards go through it after candle's prefill.
+    #[cfg(feature = "strata-kernels")]
+    native: Option<NativeDecode>,
+}
+
+/// The native engine and whether it holds this sequence's state.
+#[cfg(feature = "strata-kernels")]
+struct NativeDecode {
+    decoder: super::engine::decoder::NativeDecoder,
+    /// True once candle's state has been handed over: from then on the
+    /// engine's state is the sequence's, and candle's is stale.
+    active: bool,
+    /// Probes switch it off to run candle's own decode beside it.
+    enabled: bool,
 }
 
 impl Qwen4ExpForCausalLM {
@@ -215,6 +230,8 @@ impl Qwen4ExpForCausalLM {
             hc_count: text.hc_count,
             device: device.clone(),
             dtype,
+            #[cfg(feature = "strata-kernels")]
+            native: None,
         })
     }
 
@@ -259,7 +276,137 @@ impl Qwen4ExpForCausalLM {
 
     /// Logits for the **last** position, `(B, 1, vocab)`.
     pub fn forward(&mut self, input_ids: &Tensor, offset: usize) -> Result<Tensor> {
+        #[cfg(feature = "strata-kernels")]
+        if let Some(logits) = self.native_forward(input_ids, offset)? {
+            return Ok(logits);
+        }
         Ok(self.forward_inner(input_ids, offset)?.0)
+    }
+
+    /// Attaches the native decode engine (#427): from now on a batch-1,
+    /// single-token forward runs on it.
+    #[cfg(feature = "strata-kernels")]
+    pub fn attach_native_decoder(&mut self, decoder: super::engine::decoder::NativeDecoder) {
+        self.native = Some(NativeDecode {
+            decoder,
+            active: false,
+            enabled: true,
+        });
+    }
+
+    /// Switches the attached engine on or off (probes run candle's own
+    /// decode beside it). Switching changes nothing about either state.
+    #[cfg(feature = "strata-kernels")]
+    pub fn set_native_decode(&mut self, on: bool) {
+        if let Some(native) = &mut self.native {
+            native.enabled = on;
+        }
+    }
+
+    /// One decode token on the native engine, or `None` when this forward
+    /// is not one for it. The first after a prefill hands candle's state
+    /// to the engine; PLE's contribution still comes from candle's block.
+    #[cfg(feature = "strata-kernels")]
+    fn native_forward(&mut self, input_ids: &Tensor, offset: usize) -> Result<Option<Tensor>> {
+        let Some(mut native) = self.native.take() else {
+            return Ok(None);
+        };
+        let out = self.native_step(&mut native, input_ids, offset);
+        self.native = Some(native);
+        out
+    }
+
+    #[cfg(feature = "strata-kernels")]
+    fn native_step(
+        &mut self,
+        native: &mut NativeDecode,
+        input_ids: &Tensor,
+        offset: usize,
+    ) -> Result<Option<Tensor>> {
+        if !native.enabled {
+            return Ok(None);
+        }
+        let (batch, seq_len) = input_ids.dims2()?;
+        if batch != 1 || seq_len != 1 {
+            ensure!(
+                !native.active,
+                "the native engine holds this sequence's state; clear the cache \
+                 before a multi-token forward"
+            );
+            return Ok(None);
+        }
+        let dec = &mut native.decoder;
+        if !native.active {
+            self.hand_over(dec, offset)?;
+            native.active = true;
+        }
+        let token = input_ids.flatten_all()?.to_vec1::<u32>()?[0];
+        dec.set_step(token, offset)?;
+        dec.adapt()?;
+        dec.run_head()?;
+        let cuda = self.device.as_cuda_device()?;
+        let wide = dec.residual().len();
+        // SAFETY: written in full by the copy below.
+        let mut copy = unsafe { cuda.alloc::<f32>(wide)? };
+        cuda.memcpy_dtod(dec.residual(), &mut copy)?;
+        let residual = Tensor::from((
+            candle_core::Storage::Cuda(candle_core::CudaStorage::wrap_cuda_slice(
+                copy,
+                cuda.clone(),
+            )),
+            (1, 1, wide),
+        ));
+        if let Some(ple) = self.ple_contribution(input_ids, &residual)? {
+            let ple = ple.to_dtype(DType::F32)?.contiguous()?;
+            let (storage, layout) = ple.storage_and_layout();
+            let candle_core::Storage::Cuda(storage) = &*storage else {
+                anyhow::bail!("PLE ran off the GPU");
+            };
+            let slice = storage.as_cuda_slice::<f32>()?;
+            use candle_core::cuda_backend::cudarc::driver::DevicePtr;
+            dec.add_to_residual(
+                slice.device_ptr(slice.stream()).0 + (layout.start_offset() * 4) as u64,
+            )?;
+        }
+        dec.run_tail()?;
+        let logits = dec.logits()?;
+        let vocab = logits.len();
+        Ok(Some(Tensor::from_vec(logits, (1, 1, vocab), &self.device)?))
+    }
+
+    /// Hands candle's per-layer state, after a prefill of `offset`
+    /// positions, to the engine.
+    #[cfg(feature = "strata-kernels")]
+    fn hand_over(
+        &self,
+        dec: &mut super::engine::decoder::NativeDecoder,
+        offset: usize,
+    ) -> Result<()> {
+        use crate::harness::arch::snapshot::LayerKvSnapshot;
+        dec.reset()?;
+        for (i, layer) in self.layers.iter().enumerate() {
+            match layer.snapshot_kv()? {
+                LayerKvSnapshot::Linear {
+                    conv_state: Some(conv),
+                    recurrent_state: Some(rec),
+                } => dec.import_linear(i, &conv, &rec)?,
+                LayerKvSnapshot::FullSparse {
+                    kv: Some((k, v)),
+                    indexer_keys: Some(keys),
+                } => {
+                    ensure!(
+                        k.dim(2)? == offset,
+                        "layer {i} caches {} positions, decode starts at {offset}",
+                        k.dim(2)?
+                    );
+                    dec.import_full(i, &k, &v, &keys)?;
+                }
+                // Nothing prefilled: the engine's zeroed state is right.
+                _ if offset == 0 => {}
+                _ => anyhow::bail!("layer {i} has no state to hand over at position {offset}"),
+            }
+        }
+        Ok(())
     }
 
     /// Logits, plus the four-stream residual as it stood *before* the
@@ -367,6 +514,12 @@ impl Qwen4ExpForCausalLM {
     /// Replace the live state from a snapshot. The snapshot stays valid
     /// for further restores.
     pub fn restore_kv_cache(&mut self, snap: &KvCacheSnapshot) -> candle_core::Result<()> {
+        // Candle's state is the sequence's again; the engine takes it
+        // over at the next decode.
+        #[cfg(feature = "strata-kernels")]
+        if let Some(native) = &mut self.native {
+            native.active = false;
+        }
         if snap.layers.len() != self.layers.len() {
             candle_core::bail!(
                 "restore_kv_cache: snapshot has {} layers, model has {}",
@@ -417,6 +570,10 @@ impl Qwen4ExpForCausalLM {
     }
 
     pub fn clear_kv_cache(&mut self) -> Result<()> {
+        #[cfg(feature = "strata-kernels")]
+        if let Some(native) = &mut self.native {
+            native.active = false;
+        }
         for layer in &mut self.layers {
             layer.clear_kv_cache()?;
         }

@@ -138,6 +138,13 @@ fn main() -> Result<()> {
         }
         Ok(())
     };
+    if let Some(n) = std::env::var("PROBE_PREFILL")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    {
+        model.attach_native_decoder(engine);
+        return handover(&mut model, &device, &tokens, n);
+    }
     if let Some(n) = std::env::var("PROBE_TIMING")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
@@ -322,5 +329,77 @@ fn time_steps(
             );
         }
     }
+    Ok(())
+}
+
+/// Teacher-forced decode after a candle prefill of `n` tokens, twice: on
+/// candle alone, then on the attached engine (which takes candle's state
+/// over at its first step). Compares every step's next-token
+/// distribution.
+fn handover(
+    model: &mut Qwen4ExpForCausalLM,
+    device: &Device,
+    tokens: &[u32],
+    n: usize,
+) -> Result<()> {
+    if tokens.len() <= n {
+        bail!(
+            "{} tokens leave nothing to decode after a {n}-token prefill",
+            tokens.len()
+        );
+    }
+    let run = |model: &mut Qwen4ExpForCausalLM, native: bool| -> Result<Vec<Vec<f32>>> {
+        model.clear_kv_cache()?;
+        model.set_native_decode(false);
+        let prompt = Tensor::new(&tokens[..n], device)?.unsqueeze(0)?;
+        model.forward(&prompt, 0)?;
+        model.set_native_decode(native);
+        let mut out = Vec::new();
+        for (pos, &token) in tokens.iter().enumerate().skip(n) {
+            let ids = Tensor::new(&[[token]], device)?;
+            out.push(
+                model
+                    .forward(&ids, pos)?
+                    .to_dtype(DType::F32)?
+                    .flatten_all()?
+                    .to_vec1()?,
+            );
+        }
+        Ok(out)
+    };
+    let started = std::time::Instant::now();
+    let want = run(model, false)?;
+    let candle_ms = started.elapsed().as_secs_f64() * 1e3;
+    let started = std::time::Instant::now();
+    let got = run(model, true)?;
+    let engine_ms = started.elapsed().as_secs_f64() * 1e3;
+    let (mut kl_sum, mut worst, mut agree) = (0f64, 0f64, 0usize);
+    for (i, (w, g)) in want.iter().zip(&got).enumerate() {
+        let (p, q) = (softmax(w), softmax(g));
+        let kl: f64 = p
+            .iter()
+            .zip(&q)
+            .filter(|(a, _)| **a > 0.0)
+            .map(|(a, b)| a * (a / b.max(1e-30)).ln())
+            .sum();
+        kl_sum += kl;
+        worst = worst.max(kl);
+        let same = argmax(w) == argmax(g);
+        agree += usize::from(same);
+        if i < 4 || !same {
+            println!(
+                "pos {}: KL {kl:.4e} top1 candle {} engine {}",
+                n + i,
+                argmax(w),
+                argmax(g)
+            );
+        }
+    }
+    let m = want.len();
+    println!(
+        "prefill {n}, {m} decode steps: mean KL {:.4e}, worst {worst:.4e}, top-1 {agree}/{m}; \
+         wall (prefill + decode) candle {candle_ms:.0} ms, engine {engine_ms:.0} ms",
+        kl_sum / m as f64
+    );
     Ok(())
 }

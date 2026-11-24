@@ -13,8 +13,8 @@ use std::ffi::c_void;
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail, ensure};
-use candle_core::CudaDevice;
 use candle_core::cuda_backend::cudarc::driver::{CudaGraph, CudaSlice, DevicePtr, sys};
+use candle_core::{CudaDevice, Storage, Tensor};
 
 use super::attn::{self, AttnCache, AttnScratch, AttnShapes, AttnWeights};
 use super::gdn::{self, GdnScratch, GdnShapes, GdnState, GdnWeights, check};
@@ -464,6 +464,89 @@ impl NativeDecoder {
         Ok(self.device.clone_dtoh(&self.logits)?)
     }
 
+    /// How many layers there are, and whether layer `i` is linear.
+    pub fn layer_is_linear(&self, i: usize) -> Option<bool> {
+        self.layers
+            .get(i)
+            .map(|l| matches!(l.mixer, Mixer::Linear(..)))
+    }
+
+    /// Takes layer `i`'s linear-attention state from candle after a
+    /// prefill (#427): `conv` is candle's `(1, channels, 4)` window and
+    /// `recurrent` its `(1, v_heads, 128, 128)` state, both in the
+    /// checkpoint's head order. The engine keeps the GGUF's order (value
+    /// heads tiled by key head) and Strata's layouts: a `[channel][3]`
+    /// history of the last three inputs, and `[row][head][col]` state.
+    pub fn import_linear(&mut self, i: usize, conv: &Tensor, recurrent: &Tensor) -> Result<()> {
+        let s = self.s;
+        let (hk, hv) = (s.k_heads, s.v_heads);
+        let r = hv / hk;
+        // GGUF value head p = g * hk + k holds checkpoint head r * k + g.
+        let head_src: Vec<u32> = (0..hv).map(|p| ((p % hk) * r + p / hk) as u32).collect();
+        let qk = 2 * hk * 128;
+        let mut channel_src: Vec<u32> = (0..qk as u32).collect();
+        for &h in &head_src {
+            channel_src.extend((0..128u32).map(|d| qk as u32 + h * 128 + d));
+        }
+        let device = candle_core::Device::Cuda(self.device.clone());
+        let channels = Tensor::new(channel_src.as_slice(), &device)?;
+        let heads = Tensor::new(head_src.as_slice(), &device)?;
+        let width = conv.dim(2)?;
+        ensure!(width >= 3, "conv state is {width} wide");
+        let conv = conv
+            .squeeze(0)?
+            .narrow(1, width - 3, 3)?
+            .contiguous()?
+            .index_select(&channels, 0)?
+            .to_dtype(candle_core::DType::F32)?
+            .contiguous()?;
+        let rec = recurrent
+            .squeeze(0)?
+            .to_dtype(candle_core::DType::F32)?
+            .contiguous()?
+            .index_select(&heads, 0)?
+            .permute((1, 0, 2))?
+            .contiguous()?;
+        let Mixer::Linear(_, state) = &mut self.layers[i].mixer else {
+            bail!("layer {i} is not linear attention");
+        };
+        copy_into(&self.device, &conv, &mut state.conv)?;
+        copy_into(&self.device, &rec, &mut state.recurrent)
+    }
+
+    /// Takes layer `i`'s attention caches from candle after a prefill:
+    /// K and V `(1, kv_heads, len, head_dim)` (normed and rotated) and the
+    /// indexer's raw keys `(1, len, index_dim)`.
+    pub fn import_full(
+        &mut self,
+        i: usize,
+        k: &Tensor,
+        v: &Tensor,
+        index_keys: &Tensor,
+    ) -> Result<()> {
+        let len = k.dim(2)?;
+        ensure!(
+            len <= self.a.max_len,
+            "{len} cached positions, the engine holds {}",
+            self.a.max_len
+        );
+        let rows = |t: &Tensor| -> Result<Tensor> {
+            Ok(t.squeeze(0)?
+                .transpose(0, 1)?
+                .to_dtype(candle_core::DType::F32)?
+                .contiguous()?)
+        };
+        let (k, v) = (rows(k)?, rows(v)?);
+        let index_keys = index_keys
+            .squeeze(0)?
+            .to_dtype(candle_core::DType::F32)?
+            .contiguous()?;
+        let Mixer::Full(_, cache) = &mut self.layers[i].mixer else {
+            bail!("layer {i} is not full attention");
+        };
+        cache.import(&self.device, &k, &v, &index_keys)
+    }
+
     /// Clears every sequence state, in place, for a new request.
     pub fn reset(&mut self) -> Result<()> {
         for layer in &mut self.layers {
@@ -474,4 +557,20 @@ impl NativeDecoder {
         }
         Ok(())
     }
+}
+
+/// Copies a contiguous f32 tensor's values into the front of `dst`.
+pub(crate) fn copy_into(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<f32>) -> Result<()> {
+    let n = src.elem_count();
+    ensure!(n <= dst.len(), "{n} values into a buffer of {}", dst.len());
+    let (storage, layout) = src.storage_and_layout();
+    let Storage::Cuda(storage) = &*storage else {
+        bail!("expected a CUDA tensor");
+    };
+    let slice = storage.as_cuda_slice::<f32>()?;
+    let start = layout.start_offset();
+    device
+        .cuda_stream()
+        .memcpy_dtod(&slice.slice(start..start + n), &mut dst.slice_mut(0..n))?;
+    Ok(())
 }

@@ -1438,7 +1438,7 @@ fn load_dense_inner(
             // activations) is the operator's trade to make.
             let tier_budget = crate::harness::arch::qwen3_5::expert_tier::configured_budget_mb()
                 .filter(|_| experts_on_host);
-            let external_experts =
+            let (external_experts, native_experts) =
                 native_expert_source(&cfg, device, experts_on_host, tier_budget)?;
             let dense = native_dense_source(&cfg, device, external_experts.is_some())?;
             let expert_tier = tier_budget
@@ -1447,7 +1447,8 @@ fn load_dense_inner(
                     tracing::info!(budget_mb = mb, "VRAM expert tier enabled (#318)");
                     crate::harness::arch::qwen3_5::moe::DeviceExpertTier::new(mb << 20)
                 });
-            let model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
+            #[allow(unused_mut)]
+            let mut model = crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM::load(
                 &cfg,
                 dtype,
                 device,
@@ -1471,6 +1472,10 @@ fn load_dense_inner(
                 },
             )
             .context("build qwen4_exp model")?;
+            #[cfg(feature = "strata-kernels")]
+            attach_native_decoder(&mut model, &cfg, device, native_experts)?;
+            #[cfg(not(feature = "strata-kernels"))]
+            let () = native_experts;
             Ok(ModelArch::Qwen4Exp(Box::new(model)))
         }
         other => anyhow::bail!(
@@ -1481,20 +1486,25 @@ fn load_dense_inner(
     }
 }
 
-/// Strata's kernels over the GGUF named by `NEURON_STRATA_EXPERT_GGUF`.
+type ExternalExperts =
+    Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>;
+
+/// Strata's kernels over the GGUF named by `NEURON_STRATA_EXPERT_GGUF`:
+/// the model's expert source, and the same source for the native engine.
 #[cfg(feature = "strata-kernels")]
 fn native_expert_source(
     cfg: &crate::harness::arch::qwen4_exp::config::Config,
     device: &candle_core::Device,
     experts_on_host: bool,
     tier_budget_mb: Option<u64>,
-) -> anyhow::Result<
-    Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>,
-> {
+) -> anyhow::Result<(
+    ExternalExperts,
+    Option<std::sync::Arc<crate::harness::arch::qwen4_exp::native_experts::GgufExpertSource>>,
+)> {
     use crate::harness::arch::qwen4_exp::native_experts::{GgufExpertSource, NativeExpertFactory};
     let Some(path) = std::env::var_os("NEURON_STRATA_EXPERT_GGUF").filter(|_| experts_on_host)
     else {
-        return Ok(None);
+        return Ok((None, None));
     };
     let text = &cfg.text_config;
     let source = GgufExpertSource::open(
@@ -1506,9 +1516,51 @@ fn native_expert_source(
         text.moe_intermediate_size,
         tier_budget_mb,
     )?;
-    Ok(Some(std::sync::Arc::new(NativeExpertFactory(
-        std::sync::Arc::new(source),
-    ))))
+    let source = std::sync::Arc::new(source);
+    Ok((
+        Some(std::sync::Arc::new(NativeExpertFactory(source.clone()))),
+        Some(source),
+    ))
+}
+
+/// With `NEURON_NATIVE_DECODE=1` and native experts that route on the
+/// device, attaches the native decode engine (#427): decode tokens then
+/// run on it, as captured graphs, after candle's prefill. Its attention
+/// caches hold `NEURON_ENGINE_MAX_LEN` positions (default: the prompt cap
+/// plus 8,192).
+#[cfg(feature = "strata-kernels")]
+fn attach_native_decoder(
+    model: &mut crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM,
+    cfg: &crate::harness::arch::qwen4_exp::config::Config,
+    device: &candle_core::Device,
+    experts: Option<
+        std::sync::Arc<crate::harness::arch::qwen4_exp::native_experts::GgufExpertSource>,
+    >,
+) -> anyhow::Result<()> {
+    use crate::harness::arch::qwen4_exp::engine::{decoder::NativeDecoder, weights::Gguf};
+    let enabled = std::env::var("NEURON_NATIVE_DECODE").is_ok_and(|v| v == "1");
+    let (Some(experts), Some(path)) = (experts, std::env::var_os("NEURON_STRATA_EXPERT_GGUF"))
+    else {
+        return Ok(());
+    };
+    if !enabled {
+        return Ok(());
+    }
+    let env_usize = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<usize>().ok());
+    let max_len = env_usize("NEURON_ENGINE_MAX_LEN")
+        .or_else(|| env_usize("NEURON_MAX_PROMPT_TOKENS").map(|n| n + 8192))
+        .unwrap_or(32768);
+    let started = std::time::Instant::now();
+    let gguf = Gguf::open(std::path::Path::new(&path), device.as_cuda_device()?)?;
+    let decoder = NativeDecoder::load(&gguf, &cfg.text_config, experts, max_len)
+        .context("load the native decode engine")?;
+    model.attach_native_decoder(decoder);
+    tracing::info!(
+        max_len,
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "native decode engine attached (#427)"
+    );
+    Ok(())
 }
 
 #[cfg(not(feature = "strata-kernels"))]
@@ -1517,10 +1569,8 @@ fn native_expert_source(
     _device: &candle_core::Device,
     _experts_on_host: bool,
     _tier_budget_mb: Option<u64>,
-) -> anyhow::Result<
-    Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>,
-> {
-    Ok(None)
+) -> anyhow::Result<(ExternalExperts, ())> {
+    Ok((None, ()))
 }
 
 /// The GGUF's quantized dense weights, when `NEURON_STRATA_DENSE=1`
