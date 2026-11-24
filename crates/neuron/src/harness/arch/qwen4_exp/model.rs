@@ -283,6 +283,21 @@ impl Qwen4ExpForCausalLM {
         Ok(self.forward_inner(input_ids, offset)?.0)
     }
 
+    /// The embedding and LM head the native engine (#427) can read in
+    /// place rather than load again: both `(vocab, hidden)` in the model
+    /// dtype. `None` when the head is not a plain dense one.
+    #[cfg(feature = "strata-kernels")]
+    pub fn engine_shared_weights(&self) -> Option<super::engine::decoder::SharedWeights> {
+        use crate::harness::arch::qwen3_5::proj::Proj;
+        let Proj::Dense(head) = &self.lm_head else {
+            return None;
+        };
+        Some(super::engine::decoder::SharedWeights {
+            embed: self.embed_tokens.embeddings().clone(),
+            head: head.weight().clone(),
+        })
+    }
+
     /// Attaches the native decode engine (#427): from now on a batch-1,
     /// single-token forward runs on it.
     #[cfg(feature = "strata-kernels")]

@@ -1440,7 +1440,8 @@ fn load_dense_inner(
                 .filter(|_| experts_on_host);
             let (external_experts, native_experts) =
                 native_expert_source(&cfg, device, experts_on_host, tier_budget)?;
-            let dense = native_dense_source(&cfg, device, external_experts.is_some())?;
+            let dense_source = native_dense_source(&cfg, device, external_experts.is_some())?;
+            let dense = native_dense_dyn(&dense_source);
             let expert_tier = tier_budget
                 .filter(|_| external_experts.is_none())
                 .map(|mb| {
@@ -1473,9 +1474,9 @@ fn load_dense_inner(
             )
             .context("build qwen4_exp model")?;
             #[cfg(feature = "strata-kernels")]
-            attach_native_decoder(&mut model, &cfg, device, native_experts)?;
+            attach_native_decoder(&mut model, &cfg, device, native_experts, dense_source)?;
             #[cfg(not(feature = "strata-kernels"))]
-            let () = native_experts;
+            let _ = (native_experts, dense_source);
             Ok(ModelArch::Qwen4Exp(Box::new(model)))
         }
         other => anyhow::bail!(
@@ -1536,6 +1537,7 @@ fn attach_native_decoder(
     experts: Option<
         std::sync::Arc<crate::harness::arch::qwen4_exp::native_experts::GgufExpertSource>,
     >,
+    dense: DenseSource,
 ) -> anyhow::Result<()> {
     use crate::harness::arch::qwen4_exp::engine::{decoder::NativeDecoder, weights::Gguf};
     let enabled = std::env::var("NEURON_NATIVE_DECODE").is_ok_and(|v| v == "1");
@@ -1551,8 +1553,12 @@ fn attach_native_decoder(
         .or_else(|| env_usize("NEURON_MAX_PROMPT_TOKENS").map(|n| n + 8192))
         .unwrap_or(32768);
     let started = std::time::Instant::now();
-    let gguf = Gguf::open(std::path::Path::new(&path), device.as_cuda_device()?)?;
-    let decoder = NativeDecoder::load(&gguf, &cfg.text_config, experts, max_len)
+    let mut gguf = Gguf::open(std::path::Path::new(&path), device.as_cuda_device()?)?;
+    if let Some(dense) = dense {
+        gguf = gguf.sharing(dense);
+    }
+    let shared = model.engine_shared_weights();
+    let decoder = NativeDecoder::load(&gguf, &cfg.text_config, experts, max_len, shared)
         .context("load the native decode engine")?;
     model.attach_native_decoder(decoder);
     tracing::info!(
@@ -1576,11 +1582,34 @@ fn native_expert_source(
 /// The GGUF's quantized dense weights, when `NEURON_STRATA_DENSE=1`
 /// and the experts already come from that GGUF.
 #[cfg(feature = "strata-kernels")]
+type DenseSource =
+    Option<std::sync::Arc<crate::harness::arch::qwen4_exp::gguf_dense::GgufDenseSource>>;
+/// Nothing to share without the native kernels.
+#[cfg(not(feature = "strata-kernels"))]
+type DenseSource = Option<std::convert::Infallible>;
+
+#[cfg(feature = "strata-kernels")]
+fn native_dense_dyn(
+    source: &DenseSource,
+) -> Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>> {
+    source
+        .clone()
+        .map(|s| s as std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>)
+}
+
+#[cfg(not(feature = "strata-kernels"))]
+fn native_dense_dyn(
+    _source: &DenseSource,
+) -> Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>> {
+    None
+}
+
+#[cfg(feature = "strata-kernels")]
 fn native_dense_source(
     cfg: &crate::harness::arch::qwen4_exp::config::Config,
     device: &candle_core::Device,
     native_experts: bool,
-) -> anyhow::Result<Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>>> {
+) -> anyhow::Result<DenseSource> {
     use crate::harness::arch::qwen4_exp::gguf_dense::{GgufDenseSource, Heads};
     let text = &cfg.text_config;
     let enabled = std::env::var("NEURON_STRATA_DENSE").is_ok_and(|v| v == "1");
@@ -1604,7 +1633,7 @@ fn native_dense_source(
     _cfg: &crate::harness::arch::qwen4_exp::config::Config,
     _device: &candle_core::Device,
     _native_experts: bool,
-) -> anyhow::Result<Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>>> {
+) -> anyhow::Result<DenseSource> {
     Ok(None)
 }
 

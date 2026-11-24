@@ -43,6 +43,13 @@ struct Layer {
     moe: MoeWeights,
 }
 
+/// Weights the engine reads from candle's model instead of loading its
+/// own: the embedding and the LM head, both `(vocab, hidden)` BF16.
+pub struct SharedWeights {
+    pub embed: Tensor,
+    pub head: Tensor,
+}
+
 /// Pinned host memory the step inputs are copied from.
 struct HostStep(*mut i32);
 
@@ -109,6 +116,7 @@ impl NativeDecoder {
         cfg: &TextConfig,
         experts: Arc<GgufExpertSource>,
         max_len: usize,
+        shared: Option<SharedWeights>,
     ) -> Result<Self> {
         gdn::configure();
         let device = gguf.device().clone();
@@ -147,13 +155,26 @@ impl NativeDecoder {
                 moe: MoeWeights::load(gguf, i, &s, &m)?,
             });
         }
-        let embed = gguf.upload_raw("token_embd.weight", row_bytes)?;
+        let (embed, head) = match shared {
+            // Candle's own BF16 embedding and LM head, read in place: the
+            // checkpoint's values, and no second copy on the card.
+            Some(w) => {
+                let dims = vec![s.n_embd as u64, cfg.vocab_size as u64];
+                (
+                    DeviceTensor::from_tensor(w.embed, dims.clone())?,
+                    DeviceTensor::from_tensor(w.head, dims)?,
+                )
+            }
+            None => (
+                gguf.upload_raw("token_embd.weight", row_bytes)?,
+                gguf.upload_bf16("output.weight")?,
+            ),
+        };
         ensure!(
             embed.dims == [s.n_embd as u64, cfg.vocab_size as u64],
             "token_embd is {:?}",
             embed.dims
         );
-        let head = gguf.upload_bf16("output.weight")?;
         ensure!(
             head.dims == [s.n_embd as u64, cfg.vocab_size as u64],
             "output is {:?}",
@@ -307,7 +328,11 @@ impl NativeDecoder {
                 ffi::neuron_embed_rows(
                     self.embed.ggml_type as i32,
                     self.embed.address() as *const c_void,
-                    row_bytes(self.embed.ggml_type, n_embd as u64),
+                    if self.embed.ggml_type == super::weights::GGML_BF16 {
+                        n_embd * 2
+                    } else {
+                        row_bytes(self.embed.ggml_type, n_embd as u64)
+                    },
                     token as *const i32,
                     1,
                     n_embd as i64,

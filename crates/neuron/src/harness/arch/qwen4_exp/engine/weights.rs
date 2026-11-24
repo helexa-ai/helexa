@@ -141,6 +141,7 @@ pub use device::{DeviceTensor, Gguf};
 mod device {
     use std::fs::File;
     use std::path::Path;
+    use std::sync::Arc;
 
     use anyhow::{Context, Result, bail, ensure};
     use candle_core::CudaDevice;
@@ -148,11 +149,22 @@ mod device {
     use memmap2::Mmap;
 
     use super::{GGML_BF16, GGML_F32, f32_to_bf16, tensor_bytes, to_f32};
+    use crate::harness::arch::qwen4_exp::gguf_dense::GgufDenseSource;
     use crate::harness::arch::qwen4_exp::gguf_index::{GgufIndex, GgufTensor};
+
+    /// Where a device tensor's bytes live.
+    enum Backing {
+        /// Uploaded by the engine.
+        Owned(CudaSlice<u8>),
+        /// Uploaded by candle's GGUF dense source, in the same layout.
+        Shared(Arc<CudaSlice<u8>>),
+        /// One of candle's own tensors (the embedding, the LM head).
+        Tensor(candle_core::Tensor),
+    }
 
     /// A tensor on the device, in whatever form it was uploaded.
     pub struct DeviceTensor {
-        buf: CudaSlice<u8>,
+        buf: Backing,
         pub ggml_type: u32,
         /// ggml order: `dims[0]` is the fastest-varying (the input width
         /// of a projection).
@@ -161,7 +173,49 @@ mod device {
 
     impl DeviceTensor {
         pub fn address(&self) -> u64 {
-            self.buf.device_ptr(self.buf.stream()).0
+            match &self.buf {
+                Backing::Owned(s) => s.device_ptr(s.stream()).0,
+                Backing::Shared(s) => s.device_ptr(s.stream()).0,
+                Backing::Tensor(t) => {
+                    let (storage, layout) = t.storage_and_layout();
+                    let candle_core::Storage::Cuda(storage) = &*storage else {
+                        unreachable!("checked CUDA in from_tensor");
+                    };
+                    let (base, size) = match t.dtype() {
+                        candle_core::DType::BF16 => {
+                            let s = storage.as_cuda_slice::<half::bf16>().expect("checked bf16");
+                            (s.device_ptr(s.stream()).0, 2)
+                        }
+                        _ => {
+                            let s = storage.as_cuda_slice::<f32>().expect("checked f32");
+                            (s.device_ptr(s.stream()).0, 4)
+                        }
+                    };
+                    base + (layout.start_offset() * size) as u64
+                }
+            }
+        }
+
+        /// Wraps a contiguous BF16 or f32 candle tensor on the GPU, which
+        /// the engine then reads in place. `dims` in ggml order.
+        pub fn from_tensor(t: candle_core::Tensor, dims: Vec<u64>) -> Result<Self> {
+            ensure!(t.device().is_cuda(), "a shared tensor must be on the GPU");
+            ensure!(t.is_contiguous(), "a shared tensor must be contiguous");
+            let ggml_type = match t.dtype() {
+                candle_core::DType::BF16 => GGML_BF16,
+                candle_core::DType::F32 => GGML_F32,
+                other => bail!("cannot share a {other:?} tensor"),
+            };
+            ensure!(
+                t.elem_count() as u64 == dims.iter().product::<u64>(),
+                "a {:?} tensor is not {dims:?}",
+                t.dims()
+            );
+            Ok(Self {
+                buf: Backing::Tensor(t),
+                ggml_type,
+                dims,
+            })
         }
 
         pub fn values(&self) -> usize {
@@ -174,6 +228,9 @@ mod device {
         pub index: GgufIndex,
         maps: Vec<Mmap>,
         device: CudaDevice,
+        /// Candle's dense source, whose uploads in the GGUF's own layout
+        /// the engine shares instead of uploading again.
+        shared: Option<Arc<GgufDenseSource>>,
     }
 
     impl Gguf {
@@ -192,7 +249,15 @@ mod device {
                 index,
                 maps,
                 device: device.clone(),
+                shared: None,
             })
+        }
+
+        /// Shares `source`'s uploads wherever it has the same tensor in
+        /// the same layout.
+        pub fn sharing(mut self, source: Arc<GgufDenseSource>) -> Self {
+            self.shared = Some(source);
+            self
         }
 
         fn tensor(&self, name: &str) -> Result<&GgufTensor> {
@@ -217,7 +282,7 @@ mod device {
             let mut buf = unsafe { self.device.alloc::<u8>(host.len().max(1)) }?;
             self.device.memcpy_htod(host, &mut buf)?;
             Ok(DeviceTensor {
-                buf,
+                buf: Backing::Owned(buf),
                 ggml_type,
                 dims,
             })
@@ -235,6 +300,18 @@ mod device {
             let size = row_bytes(t.ggml_type, t.dims[0]) * rows as usize;
             ensure!(size > 0, "{name}: no row size for type {}", t.ggml_type);
             let host = self.bytes(name, size)?;
+            if let Some(buf) = self.shared.as_ref().and_then(|s| s.shared(name)) {
+                ensure!(
+                    buf.len() == size,
+                    "{name}: the shared copy is {} bytes, not {size}",
+                    buf.len()
+                );
+                return Ok(DeviceTensor {
+                    buf: Backing::Shared(buf),
+                    ggml_type: t.ggml_type,
+                    dims: t.dims.clone(),
+                });
+            }
             self.upload(host, t.ggml_type, t.dims.clone())
         }
 

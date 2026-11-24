@@ -80,7 +80,7 @@ fn main() -> Result<()> {
         // they compute.
         neuron::harness::arch::qwen3_5::expert_tier::configured_budget_mb(),
     )?);
-    let dense: Arc<dyn LinearSource> = Arc::new(GgufDenseSource::open(
+    let dense_source = Arc::new(GgufDenseSource::open(
         gguf_path,
         &device,
         Heads {
@@ -110,12 +110,20 @@ fn main() -> Result<()> {
             experts_vb: None,
             expert_tier: None,
             external_experts: Some(Arc::new(NativeExpertFactory(experts.clone()))),
-            dense: Some(dense),
+            dense: Some(dense_source.clone() as Arc<dyn LinearSource>),
         },
     )?;
 
-    let gguf = Gguf::open(gguf_path, &cuda)?;
-    let mut engine = NativeDecoder::load(&gguf, text, experts.clone(), steps.max(16))?;
+    // Shared as served: the engine reads candle's embedding, LM head and
+    // GGUF uploads where they match, rather than holding its own.
+    let gguf = Gguf::open(gguf_path, &cuda)?.sharing(dense_source);
+    let mut engine = NativeDecoder::load(
+        &gguf,
+        text,
+        experts.clone(),
+        steps.max(16),
+        model.engine_shared_weights(),
+    )?;
     let wide = text.hidden_size * text.hc_count;
 
     // PROBE_TOKENS: a comma-separated id file (a real prompt); else a

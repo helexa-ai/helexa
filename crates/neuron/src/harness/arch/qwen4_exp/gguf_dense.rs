@@ -167,6 +167,17 @@ mod kernels {
         maps: Vec<Mmap>,
         heads: Heads,
         key_dim: usize,
+        /// Uploads stored as the GGUF has them (no reorder), by GGUF
+        /// name, for the native engine to share rather than upload again.
+        uploaded: std::sync::Mutex<std::collections::HashMap<String, Arc<CudaSlice<u8>>>>,
+    }
+
+    impl GgufDenseSource {
+        /// The device copy of GGUF tensor `name`, if this source uploaded
+        /// it in the GGUF's own layout.
+        pub fn shared(&self, name: &str) -> Option<Arc<CudaSlice<u8>>> {
+            self.uploaded.lock().ok()?.get(name).cloned()
+        }
     }
 
     impl GgufDenseSource {
@@ -192,6 +203,7 @@ mod kernels {
                 maps,
                 heads,
                 key_dim,
+                uploaded: Default::default(),
             })
         }
     }
@@ -259,6 +271,12 @@ mod kernels {
             // SAFETY: written in full by the copy below.
             let mut weight = unsafe { self.device.alloc::<u8>(bytes) }?;
             self.device.memcpy_htod(&host, &mut weight)?;
+            let weight = Arc::new(weight);
+            if how == super::Reorder::None
+                && let Ok(mut uploaded) = self.uploaded.lock()
+            {
+                uploaded.insert(gguf.clone(), weight.clone());
+            }
             Ok(Some(Arc::new(QuantLinear {
                 device: self.device.clone(),
                 weight,
@@ -271,7 +289,7 @@ mod kernels {
 
     struct QuantLinear {
         device: CudaDevice,
-        weight: CudaSlice<u8>,
+        weight: Arc<CudaSlice<u8>>,
         ty: i32,
         n_in: usize,
         n_out: usize,
@@ -309,7 +327,7 @@ mod kernels {
                 );
                 ffi::neuron_strata_mmvq(
                     self.ty,
-                    address(&self.weight) as *const c_void,
+                    address(self.weight.as_ref()) as *const c_void,
                     address(&q8) as *const c_void,
                     address(&out) as *mut f32,
                     self.n_in as i32,
@@ -335,7 +353,7 @@ mod kernels {
             unsafe {
                 ffi::neuron_strata_dequant_f32(
                     self.ty,
-                    address(&self.weight) as *const c_void,
+                    address(self.weight.as_ref()) as *const c_void,
                     n as i64,
                     address(&out) as *mut f32,
                     self.stream(),
