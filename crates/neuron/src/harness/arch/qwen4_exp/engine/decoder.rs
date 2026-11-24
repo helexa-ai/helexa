@@ -514,6 +514,78 @@ impl NativeDecoder {
         copy_into(&self.device, &rec, &mut state.recurrent)
     }
 
+    /// The engine's linear-attention state of layer `i` back in candle's
+    /// form (the inverse of [`Self::import_linear`]): the conv window
+    /// `(1, channels, 4)` in `dtype` (its first column, which candle's
+    /// next step shifts out, zero) and the recurrent state
+    /// `(1, v_heads, 128, 128)` f32, both in the checkpoint's head order.
+    pub fn export_linear(&self, i: usize, dtype: candle_core::DType) -> Result<(Tensor, Tensor)> {
+        let s = self.s;
+        let (hk, hv) = (s.k_heads, s.v_heads);
+        let r = hv / hk;
+        // Checkpoint head h = r * k + g sits at GGUF position g * hk + k.
+        let head_at: Vec<u32> = (0..hv).map(|h| ((h % r) * hk + h / r) as u32).collect();
+        let qk = 2 * hk * 128;
+        let mut channel_at: Vec<u32> = (0..qk as u32).collect();
+        for &p in &head_at {
+            channel_at.extend((0..128u32).map(|d| qk as u32 + p * 128 + d));
+        }
+        let device = candle_core::Device::Cuda(self.device.clone());
+        let Mixer::Linear(_, state) = &self.layers[i].mixer else {
+            bail!("layer {i} is not linear attention");
+        };
+        let channels = s.channels_total();
+        let hist = tensor_of(&self.device, &state.conv, (channels, 3))?;
+        let conv = Tensor::cat(
+            &[
+                &Tensor::zeros((channels, 1), candle_core::DType::F32, &device)?,
+                &hist,
+            ],
+            1,
+        )?
+        .index_select(&Tensor::new(channel_at.as_slice(), &device)?, 0)?
+        .to_dtype(dtype)?
+        .unsqueeze(0)?;
+        let rec = tensor_of(&self.device, &state.recurrent, (128, hv, 128))?
+            .permute((1, 0, 2))?
+            .contiguous()?
+            .index_select(&Tensor::new(head_at.as_slice(), &device)?, 0)?
+            .unsqueeze(0)?;
+        Ok((conv, rec))
+    }
+
+    /// The engine's attention caches of layer `i` for the first `len`
+    /// positions, in candle's form: K and V `(1, kv_heads, len, head_dim)`
+    /// and the indexer keys `(1, len, index_dim)`, in `dtype`.
+    pub fn export_full(
+        &self,
+        i: usize,
+        len: usize,
+        dtype: candle_core::DType,
+    ) -> Result<(Tensor, Tensor, Tensor)> {
+        let a = self.a;
+        let Mixer::Full(_, cache) = &self.layers[i].mixer else {
+            bail!("layer {i} is not full attention");
+        };
+        let (k, v, keys) = cache.slices();
+        let kv = |c: &CudaSlice<f32>| -> Result<Tensor> {
+            Ok(
+                tensor_of(&self.device, c, (a.max_len, a.kv_heads, a.head_dim))?
+                    .narrow(0, 0, len)?
+                    .transpose(0, 1)?
+                    .to_dtype(dtype)?
+                    .contiguous()?
+                    .unsqueeze(0)?,
+            )
+        };
+        let keys = tensor_of(&self.device, keys, (a.max_len, a.index_dim))?
+            .narrow(0, 0, len)?
+            .to_dtype(dtype)?
+            .contiguous()?
+            .unsqueeze(0)?;
+        Ok((kv(k)?, kv(v)?, keys))
+    }
+
     /// Takes layer `i`'s attention caches from candle after a prefill:
     /// K and V `(1, kv_heads, len, head_dim)` (normed and rotated) and the
     /// indexer's raw keys `(1, len, index_dim)`.
@@ -573,4 +645,27 @@ pub(crate) fn copy_into(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<f
         .cuda_stream()
         .memcpy_dtod(&slice.slice(start..start + n), &mut dst.slice_mut(0..n))?;
     Ok(())
+}
+
+/// A copy of a device buffer's front as a candle tensor of `shape`.
+fn tensor_of<S: Into<candle_core::Shape>>(
+    device: &CudaDevice,
+    src: &CudaSlice<f32>,
+    shape: S,
+) -> Result<Tensor> {
+    let shape = shape.into();
+    let n = shape.elem_count();
+    ensure!(n <= src.len(), "{n} values from a buffer of {}", src.len());
+    // SAFETY: written in full by the copy below.
+    let mut copy = unsafe { device.alloc::<f32>(n)? };
+    device
+        .cuda_stream()
+        .memcpy_dtod(&src.slice(0..n), &mut copy)?;
+    Ok(Tensor::from((
+        Storage::Cuda(candle_core::CudaStorage::wrap_cuda_slice(
+            copy,
+            device.clone(),
+        )),
+        shape,
+    )))
 }

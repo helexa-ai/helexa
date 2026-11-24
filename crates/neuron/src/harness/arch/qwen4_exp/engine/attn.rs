@@ -131,6 +131,11 @@ pub struct AttnCache {
 }
 
 impl AttnCache {
+    /// K, V and the indexer keys, for export.
+    pub fn slices(&self) -> (&CudaSlice<f32>, &CudaSlice<f32>, &CudaSlice<f32>) {
+        (&self.k, &self.v, &self.index_keys)
+    }
+
     /// Fills the front of the caches from rows already in the engine's
     /// layout: K and V `(len, kv_heads, head_dim)`, keys `(len, index_dim)`.
     pub fn import(

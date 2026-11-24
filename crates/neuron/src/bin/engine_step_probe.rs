@@ -45,6 +45,9 @@ fn argmax(x: &[f32]) -> usize {
 }
 
 fn main() -> Result<()> {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .try_init();
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 3 {
         bail!(

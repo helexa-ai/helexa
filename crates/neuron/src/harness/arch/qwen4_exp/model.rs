@@ -335,7 +335,27 @@ impl Qwen4ExpForCausalLM {
             );
             return Ok(None);
         }
+        // The engine's attention is dense, which is QSA exactly while the
+        // selection keeps every position. Past that, candle (which
+        // selects) carries the sequence: the engine hands it back, or never
+        // takes it.
+        let dense = self
+            .layers
+            .iter()
+            .find_map(|l| l.attention_is_dense(offset + 1))
+            .unwrap_or(true);
         let dec = &mut native.decoder;
+        if !dense {
+            if native.active {
+                self.hand_back(dec, offset)?;
+                native.active = false;
+                tracing::info!(
+                    offset,
+                    "context past QSA's budget: decode returns to candle"
+                );
+            }
+            return Ok(None);
+        }
         if !native.active {
             self.hand_over(dec, offset)?;
             native.active = true;
@@ -372,6 +392,38 @@ impl Qwen4ExpForCausalLM {
         let logits = dec.logits()?;
         let vocab = logits.len();
         Ok(Some(Tensor::from_vec(logits, (1, 1, vocab), &self.device)?))
+    }
+
+    /// Returns the engine's state at `offset` positions to candle's layers.
+    #[cfg(feature = "strata-kernels")]
+    fn hand_back(
+        &mut self,
+        dec: &super::engine::decoder::NativeDecoder,
+        offset: usize,
+    ) -> Result<()> {
+        use crate::harness::arch::snapshot::LayerKvSnapshot;
+        let dtype = self.dtype;
+        for (i, layer) in self.layers.iter_mut().enumerate() {
+            let snap = match dec.layer_is_linear(i) {
+                Some(true) => {
+                    let (conv, rec) = dec.export_linear(i, dtype)?;
+                    LayerKvSnapshot::Linear {
+                        conv_state: Some(conv),
+                        recurrent_state: Some(rec),
+                    }
+                }
+                Some(false) => {
+                    let (k, v, keys) = dec.export_full(i, offset, dtype)?;
+                    LayerKvSnapshot::FullSparse {
+                        kv: Some((k, v)),
+                        indexer_keys: Some(keys),
+                    }
+                }
+                None => anyhow::bail!("the engine has no layer {i}"),
+            };
+            layer.restore_kv(&snap)?;
+        }
+        Ok(())
     }
 
     /// Hands candle's per-layer state, after a prefill of `offset`

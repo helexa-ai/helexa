@@ -66,6 +66,11 @@ pub struct GdnShapes {
 }
 
 impl GdnShapes {
+    /// q, k and v channels together: the conv's width.
+    pub fn channels_total(&self) -> usize {
+        self.channels()
+    }
+
     fn qk(&self) -> usize {
         self.k_heads * STATE_SIZE
     }

@@ -249,6 +249,15 @@ impl DecoderLayer {
         })
     }
 
+    /// Whether this layer's attention is still exact-dense at `n` visible
+    /// positions (QSA keeps them all), or `None` for a linear layer.
+    pub fn attention_is_dense(&self, n: usize) -> Option<bool> {
+        match &self.mixer {
+            Mixer::Full(attn) => Some(attn.indexer().selector().is_dense(n)),
+            Mixer::Linear(_) => None,
+        }
+    }
+
     /// Replace this layer's attention-side state. A variant mismatch
     /// means the snapshot came from a different model, or from the same
     /// model with a different `layer_types` — either way, restoring it
