@@ -181,6 +181,20 @@ impl<T> ExpertTier<T> {
         Ok(value)
     }
 
+    /// Counts a use of the expert and refreshes it if held. Returns
+    /// whether it was held. A caller that admits on a budget uses this
+    /// for the uses it will not admit, so they still count as misses.
+    pub fn touch(&self, block: u32, expert: u32) -> bool {
+        let mut state = self.state.lock().expect("expert tier lock");
+        let held = state.lru.get((block, expert)).is_some();
+        if held {
+            state.hits += 1;
+        } else {
+            state.misses += 1;
+        }
+        held
+    }
+
     /// The expert if it is held, without admitting it or refreshing it.
     ///
     /// A prompt chunk touches more experts than the tier holds, once
@@ -312,6 +326,25 @@ mod tests {
         fetch(&tier, 3, 10, &loads);
         assert!(tier.peek(0, 1).is_none(), "1 was still the oldest");
         assert!(tier.peek(0, 2).is_some());
+    }
+
+    /// A touch refreshes what is held, so it survives the next eviction,
+    /// and counts what is not as a miss without admitting it.
+    #[test]
+    fn a_touch_refreshes_without_admitting() {
+        let tier = ExpertTier::new(20);
+        let loads = Cell::new(0);
+        fetch(&tier, 1, 10, &loads);
+        fetch(&tier, 2, 10, &loads);
+        assert!(tier.touch(0, 1));
+        assert!(!tier.touch(0, 9));
+        fetch(&tier, 3, 10, &loads);
+        assert!(tier.peek(0, 1).is_some(), "the touch made 1 newer than 2");
+        assert!(tier.peek(0, 2).is_none());
+        assert!(tier.peek(0, 9).is_none(), "a touch never admits");
+        assert_eq!(loads.get(), 3);
+        let stats = tier.stats();
+        assert_eq!((stats.hits, stats.misses), (1, 4));
     }
 
     #[test]

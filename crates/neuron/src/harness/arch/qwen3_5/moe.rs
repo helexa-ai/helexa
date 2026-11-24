@@ -100,6 +100,24 @@ pub trait ExternalExperts: Send + Sync {
         weights_for: &[Vec<f32>],
         k: usize,
     ) -> candle_core::Result<Tensor>;
+
+    /// Whether [`Self::forward_device`] takes a forward of `rows` rows.
+    fn routes_on_device(&self, _rows: usize) -> bool {
+        false
+    }
+
+    /// The same, from routing left on the device: `ids` is `(rows, k)`
+    /// u32 and `weights` `(rows, k)` f32, both where `xs` is. Saves the
+    /// host round-trip a per-expert token list costs (#425).
+    fn forward_device(
+        &self,
+        _xs: &Tensor,
+        _ids: &Tensor,
+        _weights: &Tensor,
+        _k: usize,
+    ) -> candle_core::Result<Tensor> {
+        candle_core::bail!("these experts do not take device routing")
+    }
 }
 
 /// Supplies each MoE layer's [`ExternalExperts`] at load.
@@ -637,21 +655,7 @@ pub(crate) fn route_scatter(
     norm_topk_prob: bool,
 ) -> candle_core::Result<ExpertAssignments> {
     let n_tokens = xs_flat.dim(0)?;
-    // Router probabilities in f32 (reference uses float softmax
-    // regardless of activations dtype).
-    let router_logits = gate.forward(xs_flat)?;
-    let probs = candle_nn::ops::softmax_last_dim(&router_logits.to_dtype(DType::F32)?)?;
-
-    // Top-k selection: descending argsort, take the first k. The
-    // renormalisation (iff norm_topk_prob) divides by the sum of
-    // the selected global-softmax values.
-    let sorted = probs.arg_sort_last_dim(false)?;
-    let topk_idx = sorted.narrow(1, 0, num_experts_per_tok)?.contiguous()?;
-    let mut topk_w = probs.gather(&topk_idx, 1)?;
-    if norm_topk_prob {
-        let denom = topk_w.sum_keepdim(1)?;
-        topk_w = topk_w.broadcast_div(&denom)?;
-    }
+    let (topk_idx, topk_w) = route_topk(gate, xs_flat, num_experts_per_tok, norm_topk_prob)?;
 
     // Host-side scatter: token row lists per expert. Cheap relative
     // to the expert GEMMs; replaced by grouped-GEMM in slice 4.
@@ -669,10 +673,53 @@ pub(crate) fn route_scatter(
     Ok((tokens_for, weights_for))
 }
 
+/// The router's top-k, left where the activations are: ids `(rows, k)`
+/// u32 and weights `(rows, k)` f32.
+pub(crate) fn route_topk(
+    gate: &Linear,
+    xs_flat: &Tensor,
+    num_experts_per_tok: usize,
+    norm_topk_prob: bool,
+) -> candle_core::Result<(Tensor, Tensor)> {
+    // Router probabilities in f32 (reference uses float softmax
+    // regardless of activations dtype).
+    let router_logits = gate.forward(xs_flat)?;
+    let probs = candle_nn::ops::softmax_last_dim(&router_logits.to_dtype(DType::F32)?)?;
+
+    // Top-k selection: descending argsort, take the first k. The
+    // renormalisation (iff norm_topk_prob) divides by the sum of
+    // the selected global-softmax values.
+    let sorted = probs.arg_sort_last_dim(false)?;
+    let topk_idx = sorted.narrow(1, 0, num_experts_per_tok)?.contiguous()?;
+    let mut topk_w = probs.gather(&topk_idx, 1)?;
+    if norm_topk_prob {
+        let denom = topk_w.sum_keepdim(1)?;
+        topk_w = topk_w.broadcast_div(&denom)?;
+    }
+    Ok((topk_idx, topk_w))
+}
+
 impl Module for Qwen3_5MoeBlock {
     fn forward(&self, xs: &Tensor) -> candle_core::Result<Tensor> {
         let (b, l, hidden) = xs.dims3()?;
         let xs_flat = xs.reshape(((), hidden))?;
+
+        if let Experts::External { inner, .. } = &self.experts
+            && inner.routes_on_device(xs_flat.dim(0)?)
+        {
+            let (ids, weights) = route_topk(
+                &self.gate,
+                &xs_flat,
+                self.num_experts_per_tok,
+                self.norm_topk_prob,
+            )?;
+            let ys = inner
+                .forward_device(&xs_flat, &ids, &weights, self.num_experts_per_tok)?
+                .to_dtype(xs.dtype())?;
+            return self
+                .add_shared_expert(ys, &xs_flat)?
+                .reshape((b, l, hidden));
+        }
 
         // Routing stays where the activations are: it is one small
         // matmul against `gate` and a host-side top-k, and the router
