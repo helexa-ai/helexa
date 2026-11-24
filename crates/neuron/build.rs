@@ -120,6 +120,7 @@ fn build_strata_kernels(build_dir: &std::path::Path) {
         "native_gr_postops",
         "gr",
         "native_router",
+        "native_rope",
         "native_moe",
         "quantize_act",
         "bf16_gemv",

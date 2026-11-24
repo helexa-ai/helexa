@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <cstring>
 #include <exception>
+#include <stdexcept>
 #include <string>
 
 #include <cuda_runtime.h>
@@ -20,6 +21,7 @@
 #include "strata/kernels/gr.hpp"
 #include "strata/kernels/native_gdn.hpp"
 #include "strata/kernels/native_moe.hpp"
+#include "strata/kernels/native_rope.hpp"
 #include "strata/kernels/native_router.hpp"
 #include "strata/kernels/pdl.hpp"
 
@@ -75,6 +77,89 @@ __global__ void swiglu_kernel(const float* gate, const float* up, float* out, in
 __global__ void scale_by_sigmoid_kernel(float* x, const float* gate, int n) {
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) x[i] *= 1.0f / (1.0f + expf(-gate[0]));
+}
+
+// ---- dense decode attention over a cache allocated once (#427).
+//
+// The cache is `[position][kv_head][head_dim]` f32. The current position
+// lives in device memory (`pos[0]`), so nothing here takes a per-token
+// argument and the step can be captured.
+
+// Writes one token's rows (`width` floats each, `src_b` optional) into
+// `dst_a[pos * width]` and `dst_b[pos * width]`.
+__global__ void append_rows_kernel(const float* src_a, const float* src_b, float* dst_a, float* dst_b,
+                                   const int* pos, int width) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= width) return;
+    const size_t at = (size_t) pos[0] * width + i;
+    dst_a[at] = src_a[i];
+    if (src_b != nullptr) dst_b[at] = src_b[i];
+}
+
+__device__ __forceinline__ float warp_sum(float v) {
+#pragma unroll
+    for (int o = 16; o > 0; o >>= 1) v += __shfl_xor_sync(0xffffffffu, v, o);
+    return v;
+}
+
+// One block of 8 warps per query head, D = 256 (8 values per lane). Each
+// warp takes positions w, w + 8, ... up to pos[0], keeping an online
+// softmax; the warps' partial results are merged at the end. The output
+// is multiplied by sigmoid(gate) (Qwen's per-head output gate), the gate
+// row of head h at `gate[h * gate_stride]`.
+template <int D>
+__global__ void __launch_bounds__(256) decode_attn_kernel(const float* q, const float* kc, const float* vc,
+                                                          const int* pos, int kv_heads, int group, float scale,
+                                                          const float* gate, int gate_stride, float* out) {
+    constexpr int PER = D / 32;
+    constexpr int WARPS = 8;
+    const int h = blockIdx.x, kvh = h / group;
+    const int warp = threadIdx.x / 32, lane = threadIdx.x % 32;
+    const int n = pos[0] + 1;
+    float qv[PER], acc[PER];
+#pragma unroll
+    for (int i = 0; i < PER; ++i) {
+        qv[i] = q[(size_t) h * D + lane * PER + i];
+        acc[i] = 0.0f;
+    }
+    float m = -INFINITY, l = 0.0f;
+    for (int p = warp; p < n; p += WARPS) {
+        const float* kr = kc + ((size_t) p * kv_heads + kvh) * D + lane * PER;
+        float dot = 0.0f;
+#pragma unroll
+        for (int i = 0; i < PER; ++i) dot += qv[i] * kr[i];
+        const float sc = warp_sum(dot) * scale;
+        const float m_new = fmaxf(m, sc);
+        const float corr = expf(m - m_new), e = expf(sc - m_new);
+        l = l * corr + e;
+        const float* vr = vc + ((size_t) p * kv_heads + kvh) * D + lane * PER;
+#pragma unroll
+        for (int i = 0; i < PER; ++i) acc[i] = acc[i] * corr + e * vr[i];
+        m = m_new;
+    }
+    __shared__ float s_m[WARPS], s_l[WARPS];
+    __shared__ float s_acc[WARPS][D];
+    if (lane == 0) {
+        s_m[warp] = m;
+        s_l[warp] = l;
+    }
+#pragma unroll
+    for (int i = 0; i < PER; ++i) s_acc[warp][lane * PER + i] = acc[i];
+    __syncthreads();
+    float mx = -INFINITY;
+#pragma unroll
+    for (int w = 0; w < WARPS; ++w) mx = fmaxf(mx, s_m[w]);
+    float total = 0.0f;
+#pragma unroll
+    for (int w = 0; w < WARPS; ++w) total += s_m[w] == -INFINITY ? 0.0f : s_l[w] * expf(s_m[w] - mx);
+    for (int d = threadIdx.x; d < D; d += blockDim.x) {
+        float v = 0.0f;
+#pragma unroll
+        for (int w = 0; w < WARPS; ++w)
+            if (s_m[w] != -INFINITY) v += s_acc[w][d] * expf(s_m[w] - mx);
+        const float g = gate[(size_t) h * gate_stride + d];
+        out[(size_t) h * D + d] = v / total * (1.0f / (1.0f + expf(-g)));
+    }
 }
 
 k::GrShapes gr_shapes(int64_t n_embd, int64_t hc, int64_t hc_lr) {
@@ -150,6 +235,31 @@ int neuron_router_top10(const float* logits, int32_t* ids, float* weights, void*
 int neuron_moe_combine(const float* parts, const float* weights, const float* shared, float* output, int64_t n_embd,
                        int64_t k_, void* stream) {
     return guarded([&] { k::native_moe_combine(parts, weights, shared, output, n_embd, k_, stream); });
+}
+
+int neuron_append_rows(const float* src_a, const float* src_b, float* dst_a, float* dst_b, const int* pos, int width,
+                       void* stream) {
+    return guarded([&] {
+        append_rows_kernel<<<(width + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(src_a, src_b, dst_a,
+                                                                                              dst_b, pos, width);
+    });
+}
+
+int neuron_decode_attn(const float* q, const float* kc, const float* vc, const int* pos, int heads, int kv_heads,
+                       int head_dim, float scale, const float* gate, int gate_stride, float* out, void* stream) {
+    return guarded([&] {
+        if (head_dim != 256 || heads % kv_heads != 0) throw std::invalid_argument("decode attention: head_dim 256 only");
+        decode_attn_kernel<256><<<heads, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+            q, kc, vc, pos, kv_heads, heads / kv_heads, scale, gate, gate_stride, out);
+    });
+}
+
+int neuron_norm_rope(const float* x, int in_stride, const float* gamma, float* out, int rows, int head_dim, int n_rot,
+                     float eps, const int* positions, void* stream) {
+    return guarded([&] {
+        const k::RopeScaling scaling{};
+        k::native_qsa_rms_norm_rope(x, in_stride, gamma, out, rows, head_dim, n_rot, eps, scaling, positions, stream);
+    });
 }
 
 int neuron_swiglu(const float* gate, const float* up, float* out, int n, void* stream) {

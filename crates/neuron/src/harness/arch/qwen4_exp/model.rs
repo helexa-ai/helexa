@@ -513,7 +513,7 @@ fn ids_to_i64(input_ids: &Tensor) -> Result<Vec<Vec<i64>>> {
 /// identically to Qwen3.6 (spec §7) — so `qwen3_5`'s module is reused
 /// as-is, through the parts it actually needs rather than through a
 /// fabricated config.
-fn rotary_for(cfg: &TextConfig, dtype: DType, device: &Device) -> Result<RotaryEmbedding> {
+pub fn rotary_for(cfg: &TextConfig, dtype: DType, device: &Device) -> Result<RotaryEmbedding> {
     RotaryEmbedding::from_parts(
         dtype,
         cfg.head_dim,

@@ -2,12 +2,14 @@
 //! checkpoint and GGUF.
 //!
 //! ```sh
-//! neuron-engine-layer-probe GGUF_FIRST_SHARD HF_SNAPSHOT_DIR [LAYER] [STEPS] [gdn|moe]
+//! neuron-engine-layer-probe GGUF_FIRST_SHARD HF_SNAPSHOT_DIR [LAYER] [STEPS] [gdn|attn|moe]
 //! ```
 //!
 //! `gdn` (default) runs the mixer half of linear-attention layer `LAYER`
 //! (default 0); `moe` runs the MoE half of any layer, and needs
-//! `NEURON_EXPERT_DEVICE_ROUTING=1` (it pins every expert in host memory).
+//! `NEURON_EXPERT_DEVICE_ROUTING=1` (it pins every expert in host memory);
+//! `attn` runs the mixer half of full-attention layer `LAYER` (3, 7, ...),
+//! the context growing by one each step.
 //! Either runs for `STEPS` decode tokens (default 8), carrying state, through both paths
 //! from the same input: each step's residual is a real token embedding
 //! repeated over the streams. Candle runs in BF16 (as served; its conv
@@ -90,6 +92,12 @@ fn main() -> Result<()> {
     )?;
     let source: Option<&dyn LinearSource> = Some(&dense);
     let lvb = vb.pp(format!("model.language_model.layers.{layer}"));
+    if mode == "attn" {
+        let embed = vb
+            .pp("model.language_model.embed_tokens")
+            .get((text.vocab_size, text.hidden_size), "weight")?;
+        return run_attn(gguf_path, &device, text, &lvb, source, &embed, layer, steps);
+    }
     if mode == "moe" {
         let embed = vb
             .pp("model.language_model.embed_tokens")
@@ -313,5 +321,100 @@ fn run_moe(
         );
     }
     println!("layer {layer} moe: worst {worst:.3e} over {steps} steps");
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_attn(
+    gguf_path: &Path,
+    device: &Device,
+    text: &neuron::harness::arch::qwen4_exp::config::TextConfig,
+    lvb: &candle_nn::var_builder::ShardedVarBuilder,
+    source: Option<&dyn LinearSource>,
+    embed: &Tensor,
+    layer: usize,
+    steps: usize,
+) -> Result<()> {
+    use neuron::harness::arch::qwen4_exp::engine::attn;
+    use neuron::harness::arch::qwen4_exp::full_attn::Attention;
+    use std::sync::Arc;
+
+    let cuda = device.as_cuda_device()?.clone();
+    let shapes = gdn::shapes(text)?;
+    let ashapes = attn::shapes(text, steps.max(16))?;
+    let rotary = Arc::new(neuron::harness::arch::qwen4_exp::model::rotary_for(
+        text,
+        DType::BF16,
+        device,
+    )?);
+    let hc = HyperConnection::load(
+        &lvb.pp("attn_hyper_connection"),
+        text.hidden_size,
+        text.hc_count,
+        text.hc_lowrank,
+        text.rms_norm_eps,
+        true,
+        source,
+    )?;
+    let mut candle_attn = Attention::load(text, rotary.clone(), &lvb.pp("self_attn"), source)?;
+
+    gdn::configure();
+    let gguf = Gguf::open(gguf_path, &cuda)?;
+    let weights = attn::AttnWeights::load(&gguf, layer, &shapes, &ashapes)?;
+    let mut cache = attn::AttnCache::new(&cuda, &ashapes)?;
+    let mut scratch = attn::AttnScratch::new(&cuda, &shapes, &ashapes)?;
+    let mut positions = cuda.alloc_zeros::<i32>(32)?;
+    let out = cuda.alloc_zeros::<f32>(shapes.hc * shapes.n_embd)?;
+    let stream = cuda.cuda_stream().cu_stream() as *mut std::ffi::c_void;
+
+    let mut worst = 0f64;
+    for step in 0..steps {
+        let token = (1000 + 7919 * step) % text.vocab_size;
+        let h = embed
+            .i(token)?
+            .reshape((1, 1, text.hidden_size))?
+            .repeat((1, 1, text.hc_count))?
+            .contiguous()?;
+        let split = hc.split(&h)?;
+        let inject = split
+            .inject
+            .as_ref()
+            .context("a decoder hyper-connection injects")?;
+        let (cos, sin) = rotary.plain_cos_sin(step, 1)?;
+        let mixed = candle_attn.forward(&split.input, None, &cos, &sin, step)?;
+        let want = hc.combine(&split.residual, &mixed, inject)?;
+
+        // A deliberate fault: positions one ahead of candle's.
+        let shift = i32::from(std::env::var_os("PROBE_FAULT_POSITION").is_some());
+        cuda.memcpy_htod(&[step as i32 + shift; 32], &mut positions)?;
+        let h32 = h.to_dtype(DType::F32)?.contiguous()?;
+        attn::forward(
+            &weights,
+            &mut cache,
+            &mut scratch,
+            &shapes,
+            &ashapes,
+            positions.device_ptr(positions.stream()).0,
+            address(&h32)?,
+            out.device_ptr(out.stream()).0,
+            stream,
+        )?;
+        cuda.cuda_stream().synchronize()?;
+        let input: Vec<f32> = h32.flatten_all()?.to_vec1()?;
+        let want: Vec<f32> = want.to_dtype(DType::F32)?.flatten_all()?.to_vec1()?;
+        let got = cuda.clone_dtoh(&out)?;
+        let delta = |r: &[f32]| -> Vec<f32> { r.iter().zip(&input).map(|(a, b)| a - b).collect() };
+        let err = rel(&delta(&got), &delta(&want));
+        worst = worst.max(err);
+        println!(
+            "layer {layer} attn step {step} token {token}: contribution rel err {err:.3e}, |out-in| {:.3e}",
+            delta(&want)
+                .iter()
+                .map(|v| f64::from(*v).powi(2))
+                .sum::<f64>()
+                .sqrt()
+        );
+    }
+    println!("layer {layer} attn: worst {worst:.3e} over {steps} steps");
     Ok(())
 }

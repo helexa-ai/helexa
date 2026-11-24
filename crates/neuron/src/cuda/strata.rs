@@ -246,4 +246,41 @@ unsafe extern "C" {
         n: i32,
         stream: *mut c_void,
     ) -> i32;
+    pub fn neuron_append_rows(
+        src_a: *const f32,
+        src_b: *const f32,
+        dst_a: *mut f32,
+        dst_b: *mut f32,
+        pos: *const i32,
+        width: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_decode_attn(
+        q: *const f32,
+        kc: *const f32,
+        vc: *const f32,
+        pos: *const i32,
+        heads: i32,
+        kv_heads: i32,
+        head_dim: i32,
+        scale: f32,
+        gate: *const f32,
+        gate_stride: i32,
+        out: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_norm_rope(
+        x: *const f32,
+        in_stride: i32,
+        gamma: *const f32,
+        out: *mut f32,
+        rows: i32,
+        head_dim: i32,
+        n_rot: i32,
+        eps: f32,
+        positions: *const i32,
+        stream: *mut c_void,
+    ) -> i32;
 }
