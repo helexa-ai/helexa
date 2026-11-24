@@ -104,13 +104,13 @@ unicode-properties = "0.1"
 # candle for in-process inference. CUDA support is gated behind the
 # crate's `cuda` feature (default off) so the workspace builds on
 # non-CUDA hosts and CI runners.
-candle-core = "0.11.0"
-candle-nn = "0.11.0"
-candle-transformers = "0.11.0"
+candle-core = "0.11.1"
+candle-nn = "0.11.1"
+candle-transformers = "0.11.1"
 # Direct dependency so `candle_flash_attn::flash_attn` is nameable in
 # the attention core (#95); the candle-transformers feature alone only
 # enables flash inside ITS models.
-candle-flash-attn = { version = "0.11.0", optional = true }
+candle-flash-attn = { version = "0.11.1", optional = true }
 # Direct dep on cudarc (matching candle's transitive version) so the
 # TP worker pool can call cudarc::nccl::{Comm, Id} directly. Gated on
 # the `cuda` feature; same toolchain requirement as candle's CUDA path.
