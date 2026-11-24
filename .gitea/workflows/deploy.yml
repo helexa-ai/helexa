@@ -254,7 +254,11 @@ jobs:
           # dense weights come from the UD-IQ4_XS GGUF on the NVMe /models
           # (the HF cache is on spinning disk), on Strata's kernels, with
           # every expert pinned in host memory (55 GiB, hence the
-          # unlimited memlock) and decode routed on the device. The 16k
+          # unlimited memlock) and decode routed on the device, decode
+          # itself on the native engine's captured graphs. The expert
+          # tier is 8 GB while candle (the prompt path) and the engine
+          # each hold their own dense weights; it grows as they come to
+          # share them. The 16k
           # prompt cap is the longest context measured on this stack so
           # far; it rises with QSA selection and the KV work (#423).
           - host: beast.hanzalova.internal
@@ -265,8 +269,9 @@ jobs:
             model_env: >-
               NEURON_STRATA_EXPERT_GGUF=/models/qwen3.8-flash-next/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
               NEURON_EXPERT_PROFILE=/models/qwen3.8-flash-next/expert-profile.bin
-              NEURON_EXPERT_CACHE_MB=13000
+              NEURON_EXPERT_CACHE_MB=8000
               NEURON_EXPERT_DEVICE_ROUTING=1
+              NEURON_NATIVE_DECODE=1
               NEURON_STRATA_DENSE=1
               STRATA_EXP_MODE=8
               NEURON_PREFILL_CHUNK_TOKENS=2048
