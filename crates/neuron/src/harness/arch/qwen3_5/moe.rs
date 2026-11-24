@@ -106,6 +106,20 @@ pub trait ExternalExperts: Send + Sync {
         false
     }
 
+    /// Before a captured decode step is replayed: the work a device-
+    /// routed layer does on the host between steps (#426).
+    fn graph_prepare(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// While a decode step is being captured, host-side work that must
+    /// not be baked into the graph is skipped (#426).
+    fn graph_capturing(&self, _on: bool) {}
+
+    /// After a captured step was replayed: the host bookkeeping its
+    /// capture did once (#426).
+    fn graph_replayed(&self) {}
+
     /// The same, from routing left on the device: `ids` is `(rows, k)`
     /// u32 and `weights` `(rows, k)` f32, both where `xs` is. Saves the
     /// host round-trip a per-expert token list costs (#425).
@@ -822,6 +836,14 @@ impl Module for Qwen3_5MoeBlock {
 
 impl Qwen3_5MoeBlock {
     /// Adds the sigmoid-gated shared expert, when the model has one.
+    /// The externally served experts, if this block has them.
+    pub fn external_experts(&self) -> Option<&dyn ExternalExperts> {
+        match &self.experts {
+            Experts::External { inner, .. } => Some(inner.as_ref()),
+            _ => None,
+        }
+    }
+
     fn add_shared_expert(&self, ys: Tensor, xs_flat: &Tensor) -> candle_core::Result<Tensor> {
         match (&self.shared_expert, &self.shared_expert_gate) {
             (Some(shared), Some(gate)) => {

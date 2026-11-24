@@ -291,6 +291,53 @@ impl GatedDeltaNet {
         self.state = GatedDeltaNetState::default();
     }
 
+    /// Moves the decode state into buffers that never move, so a
+    /// captured decode step can keep updating it in place (#426).
+    ///
+    /// Decode already updates both states in place, so once they live
+    /// in `pinned` every later step writes the same addresses. A new
+    /// request's prefill (or a restored snapshot) leaves them somewhere
+    /// else; this copies them back. Returns false when there is no state
+    /// to pin yet.
+    pub fn pin_state(
+        &mut self,
+        pinned: &mut Option<(Tensor, Tensor)>,
+    ) -> candle_core::Result<bool> {
+        // A state stored below f32 is re-cast every step, a new buffer
+        // each time, which no captured step can follow.
+        if !self.state_f32 {
+            return Ok(false);
+        }
+        let (Some(conv), Some(rec)) = (&self.state.conv_state, &self.state.recurrent_state) else {
+            return Ok(false);
+        };
+        let conv = conv.contiguous()?;
+        let rec = rec.to_dtype(candle_core::DType::F32)?.contiguous()?;
+        let same = |a: &Tensor, b: &Tensor| -> bool {
+            a.dims() == b.dims()
+                && a.dtype() == b.dtype()
+                && std::ptr::eq(
+                    &*a.storage_and_layout().0 as *const _,
+                    &*b.storage_and_layout().0 as *const _,
+                )
+        };
+        match pinned {
+            Some((pc, pr)) if pc.dims() == conv.dims() && pr.dims() == rec.dims() => {
+                if !same(pc, &conv) {
+                    pc.slice_set(&conv, 0, 0)?;
+                }
+                if !same(pr, &rec) {
+                    pr.slice_set(&rec, 0, 0)?;
+                }
+            }
+            _ => *pinned = Some((conv.copy()?, rec.copy()?)),
+        }
+        let (pc, pr) = pinned.as_ref().expect("set above");
+        self.state.conv_state = Some(pc.clone());
+        self.state.recurrent_state = Some(pr.clone());
+        Ok(true)
+    }
+
     /// Deep-copy the recurrent state for a prefix snapshot. Must be a
     /// real copy (`Tensor::copy`), not a refcount clone: the CUDA
     /// delta-rule kernels write the state buffer in place, so a

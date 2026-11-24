@@ -161,6 +161,15 @@ struct DeviceRouting {
     pending: Vec<Mutex<Option<Pending>>>,
     /// Misses a layer may admit to the tier per step.
     admit_per_layer: usize,
+    /// Buffers for device-routed layers only, sized once for the largest
+    /// decode batch so they never move: a captured decode step holds
+    /// their addresses (#426). Prompt chunks use `GgufExpertSource::workspace`.
+    workspace: Mutex<Workspace>,
+    /// Set while a decode step is being captured: the host-side tier
+    /// work is then done before each replay instead.
+    capturing: std::sync::atomic::AtomicBool,
+    /// The largest blob of any layer, which sizes the decode arena.
+    max_blob_bytes: usize,
 }
 
 /// A CUDA memory pool for the tier's experts alone.
@@ -676,6 +685,9 @@ impl GgufExpertSource {
             host_table: host_table_d,
             pending,
             admit_per_layer,
+            workspace: Mutex::new(Workspace::default()),
+            capturing: std::sync::atomic::AtomicBool::new(false),
+            max_blob_bytes: self.layers.iter().map(|l| l.blob_bytes).max().unwrap_or(0),
         })
     }
 
@@ -792,30 +804,41 @@ impl GgufExpertSource {
         let (rows, hidden) = xs.dims2()?;
         let entries = rows * k;
         let experts = routing.table.len() / self.layers.len();
-        self.adapt(layer_index)?;
+        if !routing.capturing.load(std::sync::atomic::Ordering::Relaxed) {
+            self.adapt(layer_index)?;
+        }
 
-        let mut workspace = self.workspace.lock().map_err(candle_err)?;
+        let mut workspace = routing.workspace.lock().map_err(candle_err)?;
         let ws = &mut *workspace;
         let cap_groups = entries.min(experts);
-        ensure_capacity(&self.device, &mut ws.grp_ptr, cap_groups)?;
-        ensure_capacity(&self.device, &mut ws.grp_start, cap_groups + 1)?;
+        // Sized for the largest batch this path takes, once, so nothing
+        // here is ever reallocated under a captured step.
+        let max_entries = TIER_ADMIT_MAX_ROWS * k;
+        let max_groups = max_entries.min(experts);
+        ensure_capacity(&self.device, &mut ws.grp_ptr, max_groups)?;
+        ensure_capacity(&self.device, &mut ws.grp_start, max_groups + 1)?;
         ensure_capacity(&self.device, &mut ws.n_groups, 1)?;
-        ensure_capacity(&self.device, &mut ws.ent_dst, entries)?;
-        ensure_capacity(&self.device, &mut ws.ent_tok, entries)?;
-        ensure_capacity(&self.device, &mut ws.miss_src, cap_groups)?;
+        ensure_capacity(&self.device, &mut ws.ent_dst, max_entries)?;
+        ensure_capacity(&self.device, &mut ws.ent_tok, max_entries)?;
+        ensure_capacity(&self.device, &mut ws.miss_src, max_groups)?;
         ensure_capacity(&self.device, &mut ws.n_miss, 1)?;
         // A miss is copied into the arena by the gather below, so the
         // expert kernel reads VRAM only: reading host memory from the
         // kernel itself is latency-bound at decode's few warps.
-        ensure_capacity(&self.device, &mut ws.arena, cap_groups * layer.blob_bytes)?;
+        ensure_capacity(
+            &self.device,
+            &mut ws.arena,
+            max_groups * routing.max_blob_bytes,
+        )?;
         ensure_capacity(
             &self.device,
             &mut ws.q8,
-            rows * (hidden / Q8_1_BLOCK_VALUES) * Q8_1_BLOCK_BYTES,
+            TIER_ADMIT_MAX_ROWS * (hidden / Q8_1_BLOCK_VALUES) * Q8_1_BLOCK_BYTES,
         )?;
         // SAFETY: a pure function of its integer arguments.
-        let scratch_bytes =
-            unsafe { ffi::neuron_strata_expert_scratch_bytes(entries as i64, self.n_ff as i64) };
+        let scratch_bytes = unsafe {
+            ffi::neuron_strata_expert_scratch_bytes(max_entries as i64, self.n_ff as i64)
+        };
         ensure_capacity(&self.device, &mut ws.scratch, scratch_bytes)?;
 
         let ids = ids.to_dtype(DType::U32)?.contiguous()?;
@@ -921,8 +944,11 @@ impl GgufExpertSource {
         };
         let mut guard = routing.pending[layer_index].lock().map_err(candle_err)?;
         if guard.as_ref().is_none_or(|p| p.ids.len < entries * 4) {
+            // Sized once for the largest batch: a captured step copies
+            // into this address on every replay.
+            let k = entries / ids.dim(0)?.max(1);
             *guard = Some(Pending {
-                ids: PinnedBuffer::new((entries * 4).max(256))?,
+                ids: PinnedBuffer::new((TIER_ADMIT_MAX_ROWS * k * 4).max(entries * 4))?,
                 entries: 0,
                 event: Event::new()?,
                 recorded: false,
@@ -1154,6 +1180,29 @@ impl ExternalExperts for NativeBlock {
     ) -> candle_core::Result<Tensor> {
         self.source
             .forward_layer_device(self.layer, xs, ids, weights, k)
+    }
+
+    fn graph_prepare(&self) -> Result<()> {
+        Ok(self.source.adapt(self.layer)?)
+    }
+
+    fn graph_capturing(&self, on: bool) {
+        if let Some(routing) = &self.source.routing {
+            routing
+                .capturing
+                .store(on, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    fn graph_replayed(&self) {
+        if let Some(routing) = &self.source.routing
+            && let Ok(mut guard) = routing.pending[self.layer].lock()
+            && let Some(pending) = guard.as_mut()
+        {
+            // The replay queued the same copy and event record the
+            // capture did; mark them for the next `adapt`.
+            pending.recorded = true;
+        }
     }
 
     fn forward(
