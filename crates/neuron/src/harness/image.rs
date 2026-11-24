@@ -18,15 +18,15 @@
 //! Everything in this module except [`ZImagePipeline::load`] and the
 //! forward passes is pure CPU logic, unit-testable without weights.
 
-use anyhow::{Context, Result};
-use candle_core::quantized::GgmlDType;
-use candle_core::{DType, Device, IndexOp, Tensor};
-use candle_nn::VarBuilder;
-use candle_transformers::models::z_image::{
+use crate::harness::arch::z_image::{
     AutoEncoderKL, Config as DitConfig, FlowMatchEulerDiscreteScheduler,
     QuantizedZImageTransformer2DModel, SchedulerConfig, TextEncoderConfig, VaeConfig,
     ZImageTextEncoder, ZImageTransformer2DModel, calculate_shift, get_noise, postprocess_image,
 };
+use anyhow::{Context, Result};
+use candle_core::quantized::GgmlDType;
+use candle_core::{DType, Device, IndexOp, Tensor};
+use candle_nn::VarBuilder;
 use std::path::PathBuf;
 
 /// Scheduler shift constants from the reference pipeline. Identical to

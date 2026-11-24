@@ -27,3 +27,4 @@ pub mod phase_probe;
 pub mod qwen3_5;
 pub mod qwen4_exp;
 pub mod snapshot;
+pub mod z_image;

@@ -68,21 +68,10 @@ eventsource-stream = "0.2"
 cortex-core = { path = "crates/cortex-core" }
 cortex-gateway = { path = "crates/cortex-gateway" }
 
-# Patched cudarc (affects neuron's 0.19.x only; candle's 0.17.x is
-# untouched since the fork is 0.19.8, rebased for the candle 0.11 bump, and now also serves candle's ^0.19.8 req — one unified cudarc). Adds
-# Comm::abort / get_async_error / raw comm() — needed for #17 Stage 2 TP
-# hang-recovery (abort a wedged collective from another thread, then
-# rebuild the comm). Pinned to a fork revision pending upstream review
-# (grenade/cudarc @ nccl-comm-abort).
+# Patched cudarc: upstream v0.19.10 plus three NCCL commits —
+# Comm::abort / get_async_error / raw cu_comm(), and a Drop that does not
+# panic — needed for #17's TP hang recovery (abort a wedged collective
+# from another thread, then rebuild the comm). Upstream PR:
+# chelsea0x3b/cudarc#585. Drop the patch when it is released (#426).
 [patch.crates-io]
-cudarc = { git = "https://github.com/grenade/cudarc", rev = "6904cf2e651a0384eac318f003ce6417f47f5d94" }
-# Patched candle (#199): z_image all-ones attention-mask elision so the
-# flash-attn path actually engages — unlocks >=1536^2 denoising on the
-# blackwell (flash-attn) builds. Upstream PR:
-# https://github.com/huggingface/candle/pull/3798 — drop this pin (and
-# the fork) when it lands in a release. All four crates pin to the same
-# rev so candle types unify across the graph.
-candle-core = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
-candle-nn = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
-candle-transformers = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
-candle-flash-attn = { git = "https://github.com/grenade/candle", rev = "f8fa85fd2753b334cb4f42e7357f8ba9d9bb2940" }
+cudarc = { git = "https://github.com/grenade/cudarc", rev = "89d05580391bcede857e178ce6f4d853baa885aa" }
