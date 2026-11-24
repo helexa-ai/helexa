@@ -16,7 +16,8 @@ Do not edit these files in place; neuron's adapter is `crates/neuron/src/cuda/st
 Added from the same Strata revision for neuron's native qwen4_exp decode
 engine, unmodified: `native_gdn`, `native_gdn_preprocess`, `fused_gdn`,
 `native_gr_norm`, `native_gr_postops`, `gr`, `native_router`, `native_moe`,
-`quantize_act`, `bf16_gemv`, `native_bf16` and `native_ple_postops`
+`quantize_act`, `bf16_gemv`, `native_bf16`, `native_ple_postops`,
+`native_qsa_indexer`, `qsa`, `qsa_select` and `qsa_decode_attn`
 (`engine/src/kernels/cuda/`),
 with the headers they include. neuron calls them through
 `src/cuda/strata_adapter/engine_shim.cu`.

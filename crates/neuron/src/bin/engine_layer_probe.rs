@@ -364,7 +364,8 @@ fn run_attn(
     let weights = attn::AttnWeights::load(&gguf, layer, &shapes, &ashapes)?;
     let mut cache = attn::AttnCache::new(&cuda, &ashapes)?;
     let mut scratch = attn::AttnScratch::new(&cuda, &shapes, &ashapes)?;
-    let mut positions = cuda.alloc_zeros::<i32>(32)?;
+    // 32 rotary positions, then (16-byte aligned) QSA's step.
+    let mut positions = cuda.alloc_zeros::<i32>(40)?;
     let out = cuda.alloc_zeros::<f32>(shapes.hc * shapes.n_embd)?;
     let stream = cuda.cuda_stream().cu_stream() as *mut std::ffi::c_void;
 
@@ -387,7 +388,12 @@ fn run_attn(
 
         // A deliberate fault: positions one ahead of candle's.
         let shift = i32::from(std::env::var_os("PROBE_FAULT_POSITION").is_some());
-        cuda.memcpy_htod(&[step as i32 + shift; 32], &mut positions)?;
+        let pos = step as i32 + shift;
+        let mut host = [pos; 40];
+        let n_kv = pos + 1;
+        host[32..36].fill(0);
+        host[36..].copy_from_slice(&[pos, n_kv, n_kv / 4, n_kv.min(ashapes.cap as i32)]);
+        cuda.memcpy_htod(&host, &mut positions)?;
         let h32 = h.to_dtype(DType::F32)?.contiguous()?;
         attn::forward(
             &weights,
@@ -396,6 +402,7 @@ fn run_attn(
             &shapes,
             &ashapes,
             positions.device_ptr(positions.stream()).0,
+            positions.device_ptr(positions.stream()).0 + 36 * 4,
             address(&h32)?,
             out.device_ptr(out.stream()).0,
             stream,

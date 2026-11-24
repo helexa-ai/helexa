@@ -1538,7 +1538,7 @@ fn native_expert_source(
 /// device, attaches the native decode engine (#427): decode tokens then
 /// run on it, as captured graphs, after candle's prefill. Its attention
 /// caches hold `NEURON_ENGINE_MAX_LEN` positions (default: the prompt cap
-/// plus 8,192).
+/// plus 8,192); a longer sequence returns to candle.
 #[cfg(feature = "strata-kernels")]
 fn attach_native_decoder(
     model: &mut crate::harness::arch::qwen4_exp::model::Qwen4ExpForCausalLM,
@@ -1561,7 +1561,7 @@ fn attach_native_decoder(
     let env_usize = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<usize>().ok());
     let max_len = env_usize("NEURON_ENGINE_MAX_LEN")
         .or_else(|| env_usize("NEURON_MAX_PROMPT_TOKENS").map(|n| n + 8192))
-        .unwrap_or(32768);
+        .unwrap_or(24576);
     let started = std::time::Instant::now();
     let mut gguf = Gguf::open(std::path::Path::new(&path), device.as_cuda_device()?)?;
     if let Some(dense) = dense {

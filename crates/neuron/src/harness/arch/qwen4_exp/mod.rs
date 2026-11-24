@@ -54,6 +54,7 @@ pub mod ple;
 #[cfg(any(test, feature = "strata-kernels"))]
 pub mod ple_gguf;
 pub mod qsa;
+pub mod tier_policy;
 
 /// What a load needs to know beyond the config and the weights.
 ///

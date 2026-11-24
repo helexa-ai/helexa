@@ -397,23 +397,16 @@ impl Qwen4ExpForCausalLM {
             );
             return Ok(None);
         }
-        // The engine's attention is dense, which is QSA exactly while the
-        // selection keeps every position. Past that, candle (which
-        // selects) carries the sequence: the engine hands it back, or never
-        // takes it.
-        let dense = self
-            .layers
-            .iter()
-            .find_map(|l| l.attention_is_dense(offset + 1))
-            .unwrap_or(true);
+        // Past the engine's attention caches, candle carries the
+        // sequence: the engine hands it back, or never takes it.
         let dec = &mut native.decoder;
-        if !dense {
+        if offset >= dec.max_len() {
             if native.active {
                 self.hand_back(dec, offset)?;
                 native.active = false;
                 tracing::info!(
                     offset,
-                    "context past QSA's budget: decode returns to candle"
+                    "context past the native engine's cache: decode returns to candle"
                 );
             }
             return Ok(None);
@@ -588,6 +581,12 @@ impl Qwen4ExpForCausalLM {
     /// vision-induced skew, so the field is recorded as zero. When the
     /// vision tower lands (#314) that stops being true.
     pub fn snapshot_kv_cache(&self) -> candle_core::Result<KvCacheSnapshot> {
+        // While the native engine holds the sequence, candle's state stops
+        // at the hand-over: a snapshot of it would be stale.
+        #[cfg(feature = "strata-kernels")]
+        if self.native.as_ref().is_some_and(|n| n.active) {
+            candle_core::bail!("the native engine holds this sequence; no candle snapshot");
+        }
         let layers = self
             .layers
             .iter()

@@ -180,14 +180,24 @@ struct DeviceRouting {
     /// the expert is a miss.
     host_table: CudaSlice<u64>,
     pending: Vec<Mutex<Option<Pending>>>,
-    /// Misses a layer may admit to the tier per step.
+    /// Misses a layer may admit to the tier per step (LRU admission).
     admit_per_layer: usize,
+    /// Decayed-count admission instead (`NEURON_EXPERT_ADMIT=decayed`).
+    decayed: Option<Mutex<Decayed>>,
+    experts: usize,
     /// Buffers for device-routed layers only, sized once for the largest
     /// decode batch so they never move: a captured decode step holds
     /// their addresses (#427). Prompt chunks use the source's workspace.
     workspace: Mutex<Workspace>,
     /// The largest blob of any layer, which sizes the decode arena.
     max_blob_bytes: usize,
+}
+
+/// Routing counts for [`super::tier_policy`], and the steps since load.
+struct Decayed {
+    policy: super::tier_policy::DecayedPolicy,
+    usage: Vec<f32>,
+    steps: usize,
 }
 
 /// A CUDA memory pool for the tier's experts alone.
@@ -691,10 +701,26 @@ impl GgufExpertSource {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1);
+        let decayed =
+            (std::env::var("NEURON_EXPERT_ADMIT").as_deref() == Ok("decayed")).then(|| {
+                let mut policy = super::tier_policy::DecayedPolicy::default();
+                if let Some(n) = std::env::var("NEURON_EXPERT_SWAPS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                {
+                    policy.max_swaps = n;
+                }
+                Mutex::new(Decayed {
+                    policy,
+                    usage: vec![0.0; self.layers.len() * experts],
+                    steps: 0,
+                })
+            });
         tracing::info!(
             gib = format!("{:.1}", bytes_total as f64 / (1u64 << 30) as f64),
             elapsed_ms = started.elapsed().as_millis() as u64,
             admit_per_layer,
+            admission = if decayed.is_some() { "decayed" } else { "lru" },
             "expert host store pinned; decode routes on the device"
         );
         Ok(DeviceRouting {
@@ -703,6 +729,8 @@ impl GgufExpertSource {
             host_table: host_table_d,
             pending,
             admit_per_layer,
+            decayed,
+            experts,
             workspace: Mutex::new(Workspace::default()),
             max_blob_bytes: self.layers.iter().map(|l| l.blob_bytes).max().unwrap_or(0),
         })
@@ -751,6 +779,23 @@ impl GgufExpertSource {
         // into this buffer is only queued after this read.
         let ids =
             unsafe { std::slice::from_raw_parts(pending.ids.ptr.cast::<u32>(), pending.entries) };
+        if let Some(decayed) = &routing.decayed {
+            let mut d = decayed.lock().map_err(candle_err)?;
+            let base = layer_index * routing.experts;
+            for &e in ids {
+                if let Some(c) = d.usage.get_mut(base + e as usize) {
+                    *c += 1.0;
+                }
+            }
+            drop(guard);
+            if layer_index + 1 == self.layers.len() {
+                d.steps += 1;
+                if d.steps.is_multiple_of(d.policy.every.max(1)) {
+                    self.swap_round(&mut d, routing.experts, tier)?;
+                }
+            }
+            return Ok(());
+        }
         let mut used: Vec<u32> = ids.to_vec();
         used.sort_unstable();
         used.dedup();
@@ -772,25 +817,69 @@ impl GgufExpertSource {
                 layer.blob_bytes as u64,
                 || -> candle_core::Result<_> {
                     admitted += 1;
-                    let blob = self.tier_pool.alloc(&self.device, layer.blob_bytes)?;
-                    // SAFETY: the source is this expert's pinned copy and
-                    // the slot was just allocated at its size.
-                    let status = unsafe {
-                        ffi::neuron_strata_copy_to_device(
-                            device_address(&blob) as *mut c_void,
-                            host_base.add(e * layer.blob_bytes).cast(),
-                            layer.blob_bytes,
-                            stream,
-                        )
-                    };
-                    if status != 0 {
-                        candle_core::bail!(
-                            "expert admission copy failed with CUDA status {status}"
-                        );
-                    }
-                    let repoint = self.point_table_at(layer_index, e, device_address(&blob))?;
-                    Ok(ExpertSlot { blob, repoint })
+                    self.admit_slot(layer_index, e, host_base, stream)
                 },
+            )?;
+        }
+        Ok(())
+    }
+
+    /// A tier slot for `layer`/`expert`, copied from the pinned store and
+    /// with the table pointed at it (both queued on `stream`).
+    fn admit_slot(
+        &self,
+        layer_index: usize,
+        e: usize,
+        host_base: *mut u8,
+        stream: *mut c_void,
+    ) -> candle_core::Result<ExpertSlot> {
+        let layer = &self.layers[layer_index];
+        let blob = self.tier_pool.alloc(&self.device, layer.blob_bytes)?;
+        // SAFETY: the source is this expert's pinned copy and the slot was
+        // just allocated at its size.
+        let status = unsafe {
+            ffi::neuron_strata_copy_to_device(
+                device_address(&blob) as *mut c_void,
+                host_base.add(e * layer.blob_bytes).cast(),
+                layer.blob_bytes,
+                stream,
+            )
+        };
+        if status != 0 {
+            candle_core::bail!("expert admission copy failed with CUDA status {status}");
+        }
+        let repoint = self.point_table_at(layer_index, e, device_address(&blob))?;
+        Ok(ExpertSlot { blob, repoint })
+    }
+
+    /// One round of decayed-count admission: plan from the counts so far,
+    /// decay them, and carry out the swaps (each victim's table entry goes
+    /// back to its host copy before its slot's bytes are reused).
+    fn swap_round(
+        &self,
+        d: &mut Decayed,
+        experts: usize,
+        tier: &ExpertTier<ExpertSlot>,
+    ) -> candle_core::Result<()> {
+        let Some(routing) = &self.routing else {
+            return Ok(());
+        };
+        let swaps =
+            super::tier_policy::plan_swaps(&d.policy, &d.usage, experts, |l| tier.held(l as u32));
+        let decay = d.policy.decay;
+        d.usage.iter_mut().for_each(|c| *c *= decay);
+        let stream = self.device.cuda_stream().cu_stream() as *mut c_void;
+        for swap in swaps {
+            let layer = &self.layers[swap.layer];
+            if !tier.remove(swap.layer as u32, swap.evict) {
+                continue;
+            }
+            let host_base = routing.store.layers[swap.layer].0;
+            tier.get_or_load(
+                swap.layer as u32,
+                swap.admit,
+                layer.blob_bytes as u64,
+                || self.admit_slot(swap.layer, swap.admit as usize, host_base, stream),
             )?;
         }
         Ok(())

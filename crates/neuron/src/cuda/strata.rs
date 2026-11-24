@@ -335,6 +335,87 @@ unsafe extern "C" {
         result: *mut f32,
         stream: *mut c_void,
     ) -> i32;
+    /// The widest selection QSA can return: Strata's 2,048-cell budget
+    /// plus a partial block.
+    pub fn neuron_qsa_cap() -> i64;
+    pub fn neuron_qsa_attn_scratch_floats(cap: i64) -> u64;
+    /// Appends this step's K and V (f32) to the fp16 paged pools, at the
+    /// position in `step` (Strata's QSA step: pos, n_kv, n_bid, width).
+    pub fn neuron_qsa_kv_append(
+        k_pool: *mut u16,
+        v_pool: *mut u16,
+        page_table: *const i32,
+        step: *const i32,
+        k: *const f32,
+        v: *const f32,
+        stream: *mut c_void,
+    ) -> i32;
+    /// Appends this step's raw indexer key: the raw tail, and on a block's
+    /// completion its pooled, normed, rotated key.
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_qsa_indexer_append(
+        raw: *const f32,
+        step: *const i32,
+        gamma: *const f32,
+        eps: f32,
+        tail: *mut f32,
+        dead: *mut f32,
+        pooled: *mut f32,
+        block_pos: *mut i32,
+        max_cells: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    /// `n` raw keys from position 0, as `n` single appends would leave
+    /// the buffers.
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_qsa_indexer_append_batch(
+        raw: *const f32,
+        n: i64,
+        gamma: *const f32,
+        eps: f32,
+        tail: *mut f32,
+        dead: *mut f32,
+        pooled: *mut f32,
+        block_pos: *mut i32,
+        max_cells: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    /// Block scores and the top-k cells, ascending, into `ids`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_qsa_select(
+        pooled: *const f32,
+        dead: *const f32,
+        q_idx: *const f32,
+        step: *const i32,
+        max_blocks: i64,
+        cap: i64,
+        scores: *mut f32,
+        ids: *mut i32,
+        stream: *mut c_void,
+    ) -> i32;
+    /// Split-K attention of `q` over the selected cells of the pools.
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_qsa_decode_attn(
+        q: *const f32,
+        k_pool: *const u16,
+        v_pool: *const u16,
+        page_table: *const i32,
+        ids: *const i32,
+        step: *const i32,
+        cap: i64,
+        scratch: *mut f32,
+        attn: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    /// `x[h * dim + d] *= sigmoid(gate[h * gate_stride + d])`.
+    pub fn neuron_gate_strided(
+        x: *mut f32,
+        gate: *const f32,
+        heads: i32,
+        dim: i32,
+        gate_stride: i32,
+        stream: *mut c_void,
+    ) -> i32;
     /// Shifts PLE's row-fastest conv history by one and appends `normalized`.
     pub fn neuron_ple_history_advance(
         hist: *mut f32,

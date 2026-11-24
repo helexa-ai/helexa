@@ -215,6 +215,32 @@ impl<T> ExpertTier<T> {
         value
     }
 
+    /// The experts of `block` the tier holds, in no particular order.
+    pub fn held(&self, block: u32) -> Vec<u32> {
+        let state = self.state.lock().expect("expert tier lock");
+        state
+            .lru
+            .entries
+            .keys()
+            .filter(|(b, _)| *b == block)
+            .map(|&(_, e)| e)
+            .collect()
+    }
+
+    /// Releases the expert if held, returning its bytes to the budget.
+    /// Returns whether it was held. The value itself drops when the last
+    /// user lets go of it.
+    pub fn remove(&self, block: u32, expert: u32) -> bool {
+        let mut state = self.state.lock().expect("expert tier lock");
+        let Some(entry) = state.lru.entries.remove(&(block, expert)) else {
+            return false;
+        };
+        state.lru.by_age.remove(&entry.stamp);
+        state.lru.used -= entry.bytes;
+        state.evictions += 1;
+        true
+    }
+
     /// The byte budget.
     pub fn capacity_bytes(&self) -> u64 {
         self.state.lock().expect("expert tier lock").lru.capacity
@@ -345,6 +371,29 @@ mod tests {
         assert_eq!(loads.get(), 3);
         let stats = tier.stats();
         assert_eq!((stats.hits, stats.misses), (1, 4));
+    }
+
+    #[test]
+    fn a_removal_frees_its_bytes_and_only_its_expert() {
+        let tier = ExpertTier::new(20);
+        let loads = Cell::new(0);
+        fetch(&tier, 1, 10, &loads);
+        fetch(&tier, 2, 10, &loads);
+        let mut held = tier.held(0);
+        held.sort_unstable();
+        assert_eq!(held, [1, 2]);
+        assert!(tier.remove(0, 1));
+        assert!(!tier.remove(0, 1), "already gone");
+        assert!(
+            !tier.remove(1, 2),
+            "another block's expert 2 is not this one"
+        );
+        assert_eq!(tier.held(0), [2]);
+        assert_eq!(tier.stats().used_bytes, 10);
+        // The freed room takes a new expert without evicting 2.
+        fetch(&tier, 3, 10, &loads);
+        assert!(tier.peek(0, 2).is_some());
+        assert_eq!(tier.stats().used_bytes, 20);
     }
 
     #[test]

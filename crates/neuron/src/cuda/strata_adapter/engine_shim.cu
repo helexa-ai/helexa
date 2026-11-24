@@ -23,6 +23,10 @@
 #include "strata/kernels/native_gdn.hpp"
 #include "strata/kernels/native_moe.hpp"
 #include "strata/kernels/native_ple_postops.hpp"
+#include "strata/kernels/native_qsa_indexer.hpp"
+#include "strata/kernels/qsa.hpp"
+#include "strata/kernels/qsa_decode_attn.hpp"
+#include "strata/kernels/qsa_select.hpp"
 #include "strata/kernels/native_rope.hpp"
 #include "strata/kernels/native_router.hpp"
 #include "strata/kernels/pdl.hpp"
@@ -188,6 +192,16 @@ __global__ void ple_history_kernel(float* hist, const float* normalized, int cha
     row[8] = normalized[c];
 }
 
+// x[h * dim + d] *= sigmoid(gate[h * gate_stride + d]): the attention
+// output gated by the second half of each head's [query | gate] row.
+__global__ void gate_strided_kernel(float* x, const float* gate, int heads, int dim, int gate_stride) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i >= heads * dim) return;
+    const int h = i / dim, d = i - h * dim;
+    const float g = gate[(size_t) h * gate_stride + d];
+    x[i] *= 1.0f / (1.0f + expf(-g));
+}
+
 k::GrShapes gr_shapes(int64_t n_embd, int64_t hc, int64_t hc_lr) {
     k::GrShapes s;
     s.n_embd = n_embd;
@@ -320,6 +334,67 @@ int neuron_ple_history_advance(float* hist, const float* normalized, int channel
     return guarded([&] {
         ple_history_kernel<<<(channels + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(
             hist, normalized, channels);
+    });
+}
+
+// ---- QSA (sparse attention), at Strata's geometry for this model:
+// 4-cell pages, a 2,048-cell budget, the indexer's 4 x 128 query.
+
+int64_t neuron_qsa_cap() { return k::qsa_selection_width(k::kTopkMaxCells, k::qsa_real_shapes()); }
+
+uint64_t neuron_qsa_attn_scratch_floats(int64_t cap) {
+    return k::qsa_decode_attn_scratch_floats(cap, k::qsa_real_shapes());
+}
+
+int neuron_qsa_kv_append(uint16_t* k_pool, uint16_t* v_pool, const int32_t* page_table, const int32_t* step,
+                         const float* k, const float* v, void* stream) {
+    return guarded([&] { k::kv_append_step(k_pool, v_pool, page_table, step, k, v, k::qsa_real_shapes(), stream); });
+}
+
+int neuron_qsa_indexer_append(const float* raw, const int32_t* step, const float* gamma, float eps, float* tail,
+                              float* dead, float* pooled, int32_t* block_pos, int64_t max_cells, void* stream) {
+    return guarded([&] {
+        const k::QsaIndexerBuffers b{tail, dead, pooled, block_pos};
+        k::native_qsa_indexer_append(raw, step + k::kStepPos, 0, gamma, eps, b, k::qsa_real_shapes(), max_cells,
+                                     k::RopeScaling{}, stream);
+    });
+}
+
+int neuron_qsa_indexer_append_batch(const float* raw, int64_t n, const float* gamma, float eps, float* tail,
+                                    float* dead, float* pooled, int32_t* block_pos, int64_t max_cells, void* stream) {
+    return guarded([&] {
+        const k::QsaIndexerBuffers b{tail, dead, pooled, block_pos};
+        k::native_qsa_indexer_append_batch(raw, n, 0, 0, gamma, eps, b, k::qsa_real_shapes(), max_cells,
+                                           k::RopeScaling{}, stream);
+    });
+}
+
+int neuron_qsa_select(const float* pooled, const float* dead, const float* q_idx, const int32_t* step,
+                      int64_t max_blocks, int64_t cap, float* scores, int32_t* ids, void* stream) {
+    return guarded([&] {
+        const k::QsaShapes s = k::qsa_real_shapes();
+        k::qsa_block_scores(pooled, dead, q_idx, step, 1, max_blocks, s, scores, stream);
+        k::qsa_block_topk(scores, step, 1, max_blocks, cap, s, ids, stream);
+    });
+}
+
+int neuron_qsa_decode_attn(const float* q, const uint16_t* k_pool, const uint16_t* v_pool, const int32_t* page_table,
+                           const int32_t* ids, const int32_t* step, int64_t cap, float* scratch, float* attn,
+                           void* stream) {
+    return guarded([&] {
+        k::QsaAttnPools pools;
+        pools.k_pool = k_pool;
+        pools.v_pool = v_pool;
+        pools.page_table = page_table;
+        k::qsa_decode_attn_step(q, pools, ids, step, cap, k::qsa_real_shapes(), scratch, attn, stream);
+    });
+}
+
+int neuron_gate_strided(float* x, const float* gate, int heads, int dim, int gate_stride, void* stream) {
+    return guarded([&] {
+        const int n = heads * dim;
+        gate_strided_kernel<<<(n + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(x, gate, heads, dim,
+                                                                                           gate_stride);
     });
 }
 

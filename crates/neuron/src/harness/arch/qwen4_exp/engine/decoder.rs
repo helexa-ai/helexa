@@ -26,8 +26,13 @@ use crate::harness::arch::qwen4_exp::native_experts::GgufExpertSource;
 
 /// Positions are written for every query-head row the rotary reads.
 const POSITION_SLOTS: usize = 32;
-/// The step buffer: `POSITION_SLOTS` positions, then the token id.
-const STEP_SLOTS: usize = POSITION_SLOTS + 1;
+/// QSA's step: pos, n_kv, completed blocks, selection width.
+const QSA_STEP_SLOTS: usize = 4;
+/// The step buffer: `POSITION_SLOTS` positions, the token id, QSA's step.
+const STEP_SLOTS: usize = QSA_STEP_AT + QSA_STEP_SLOTS;
+/// Where QSA's step starts in the step buffer, in i32s. Kept 16-byte
+/// aligned for the kernels that read it as a vector.
+const QSA_STEP_AT: usize = POSITION_SLOTS + 4;
 
 fn address<T>(slice: &CudaSlice<T>) -> u64 {
     slice.device_ptr(slice.stream()).0
@@ -248,6 +253,15 @@ impl NativeDecoder {
         let host = unsafe { std::slice::from_raw_parts_mut(self.host_step.0, STEP_SLOTS) };
         host[..POSITION_SLOTS].fill(pos as i32);
         host[POSITION_SLOTS] = token as i32;
+        // Strata's `qsa_step_write`: every count derived from `pos` here,
+        // in one place.
+        let n_kv = pos + 1;
+        host[QSA_STEP_AT..STEP_SLOTS].copy_from_slice(&[
+            pos as i32,
+            n_kv as i32,
+            (n_kv / attn::BLOCK) as i32,
+            n_kv.min(self.a.cap) as i32,
+        ]);
         Ok(())
     }
 
@@ -271,6 +285,7 @@ impl NativeDecoder {
         let stream = self.stream();
         let (r0, r1) = (address(&self.residual[0]), address(&self.residual[1]));
         let positions = address(&self.step);
+        let qsa_step = positions + (QSA_STEP_AT * 4) as u64;
         let layer = &mut self.layers[i];
         match &mut layer.mixer {
             Mixer::Linear(w, state) => {
@@ -283,6 +298,7 @@ impl NativeDecoder {
                 &self.s,
                 &self.a,
                 positions,
+                qsa_step,
                 r0,
                 r1,
                 stream,
@@ -551,27 +567,10 @@ impl NativeDecoder {
         len: usize,
         dtype: candle_core::DType,
     ) -> Result<(Tensor, Tensor, Tensor)> {
-        let a = self.a;
         let Mixer::Full(_, cache) = &self.layers[i].mixer else {
             bail!("layer {i} is not full attention");
         };
-        let (k, v, keys) = cache.slices();
-        let kv = |c: &CudaSlice<f32>| -> Result<Tensor> {
-            Ok(
-                tensor_of(&self.device, c, (a.max_len, a.kv_heads, a.head_dim))?
-                    .narrow(0, 0, len)?
-                    .transpose(0, 1)?
-                    .to_dtype(dtype)?
-                    .contiguous()?
-                    .unsqueeze(0)?,
-            )
-        };
-        let keys = tensor_of(&self.device, keys, (a.max_len, a.index_dim))?
-            .narrow(0, 0, len)?
-            .to_dtype(dtype)?
-            .contiguous()?
-            .unsqueeze(0)?;
-        Ok((kv(k)?, kv(v)?, keys))
+        cache.export(&self.device, &self.a, len, dtype)
     }
 
     /// Takes layer `i`'s attention caches from candle after a prefill:
@@ -584,27 +583,15 @@ impl NativeDecoder {
         v: &Tensor,
         index_keys: &Tensor,
     ) -> Result<()> {
-        let len = k.dim(2)?;
-        ensure!(
-            len <= self.a.max_len,
-            "{len} cached positions, the engine holds {}",
-            self.a.max_len
-        );
-        let rows = |t: &Tensor| -> Result<Tensor> {
-            Ok(t.squeeze(0)?
-                .transpose(0, 1)?
-                .to_dtype(candle_core::DType::F32)?
-                .contiguous()?)
-        };
-        let (k, v) = (rows(k)?, rows(v)?);
-        let index_keys = index_keys
-            .squeeze(0)?
-            .to_dtype(candle_core::DType::F32)?
-            .contiguous()?;
-        let Mixer::Full(_, cache) = &mut self.layers[i].mixer else {
+        let Mixer::Full(w, cache) = &mut self.layers[i].mixer else {
             bail!("layer {i} is not full attention");
         };
-        cache.import(&self.device, &k, &v, &index_keys)
+        cache.import(&self.device, &self.a, k, v, index_keys, w, self.s.eps)
+    }
+
+    /// How many positions the attention caches hold.
+    pub fn max_len(&self) -> usize {
+        self.a.max_len
     }
 
     /// Takes PLE's rolling conv context from candle after a prefill
@@ -631,15 +618,19 @@ impl NativeDecoder {
     }
 }
 
-/// Copies a contiguous f32 tensor's values into the front of `dst`.
-pub(crate) fn copy_into(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<f32>) -> Result<()> {
+/// Copies a contiguous tensor's values into the front of `dst` (the
+/// tensor's dtype must be `T`).
+pub(crate) fn copy_into<T>(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<T>) -> Result<()>
+where
+    T: candle_core::cuda_backend::CudaDType + candle_core::cuda_backend::cudarc::driver::DeviceRepr,
+{
     let n = src.elem_count();
     ensure!(n <= dst.len(), "{n} values into a buffer of {}", dst.len());
     let (storage, layout) = src.storage_and_layout();
     let Storage::Cuda(storage) = &*storage else {
         bail!("expected a CUDA tensor");
     };
-    let slice = storage.as_cuda_slice::<f32>()?;
+    let slice = storage.as_cuda_slice::<T>()?;
     let start = layout.start_offset();
     device
         .cuda_stream()
@@ -648,16 +639,19 @@ pub(crate) fn copy_into(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<f
 }
 
 /// A copy of a device buffer's front as a candle tensor of `shape`.
-pub(super) fn tensor_of<S: Into<candle_core::Shape>>(
+pub(super) fn tensor_of<T, S: Into<candle_core::Shape>>(
     device: &CudaDevice,
-    src: &CudaSlice<f32>,
+    src: &CudaSlice<T>,
     shape: S,
-) -> Result<Tensor> {
+) -> Result<Tensor>
+where
+    T: candle_core::cuda_backend::CudaDType + candle_core::cuda_backend::cudarc::driver::DeviceRepr,
+{
     let shape = shape.into();
     let n = shape.elem_count();
     ensure!(n <= src.len(), "{n} values from a buffer of {}", src.len());
     // SAFETY: written in full by the copy below.
-    let mut copy = unsafe { device.alloc::<f32>(n)? };
+    let mut copy = unsafe { device.alloc::<T>(n)? };
     device
         .cuda_stream()
         .memcpy_dtod(&src.slice(0..n), &mut copy)?;
