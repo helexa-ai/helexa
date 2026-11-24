@@ -283,4 +283,23 @@ unsafe extern "C" {
         positions: *const i32,
         stream: *mut c_void,
     ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_embed_rows(
+        ggml_type: i32,
+        table: *const c_void,
+        row_bytes: usize,
+        tokens: *const i32,
+        n_tok: i64,
+        n_embd: i64,
+        out: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_repeat_row(
+        src: *const f32,
+        dst: *mut f32,
+        n: i32,
+        times: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_add_inplace(x: *mut f32, y: *const f32, n: i32, stream: *mut c_void) -> i32;
 }

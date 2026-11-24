@@ -19,6 +19,7 @@
 #include "strata/kernels/bf16_gemv.hpp"
 #include "strata/kernels/fused_gdn.hpp"
 #include "strata/kernels/gr.hpp"
+#include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/native_gdn.hpp"
 #include "strata/kernels/native_moe.hpp"
 #include "strata/kernels/native_rope.hpp"
@@ -162,6 +163,18 @@ __global__ void __launch_bounds__(256) decode_attn_kernel(const float* q, const 
     }
 }
 
+// `dst` = `times` copies of the `n`-float row `src` (the embedding into
+// every residual stream).
+__global__ void repeat_row_kernel(const float* src, float* dst, int n, int times) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n * times) dst[i] = src[i % n];
+}
+
+__global__ void add_inplace_kernel(float* x, const float* y, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) x[i] += y[i];
+}
+
 k::GrShapes gr_shapes(int64_t n_embd, int64_t hc, int64_t hc_lr) {
     k::GrShapes s;
     s.n_embd = n_embd;
@@ -259,6 +272,23 @@ int neuron_norm_rope(const float* x, int in_stride, const float* gamma, float* o
     return guarded([&] {
         const k::RopeScaling scaling{};
         k::native_qsa_rms_norm_rope(x, in_stride, gamma, out, rows, head_dim, n_rot, eps, scaling, positions, stream);
+    });
+}
+
+int neuron_embed_rows(int ggml_type, const void* table, size_t row_bytes, const int32_t* tokens, int64_t n_tok,
+                      int64_t n_embd, float* out, void* stream) {
+    return guarded([&] { k::iq_embed_rows(ggml_type, table, row_bytes, tokens, n_tok, n_embd, out, stream); });
+}
+
+int neuron_repeat_row(const float* src, float* dst, int n, int times, void* stream) {
+    return guarded([&] {
+        repeat_row_kernel<<<(n * times + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(src, dst, n, times);
+    });
+}
+
+int neuron_add_inplace(float* x, const float* y, int n, void* stream) {
+    return guarded([&] {
+        add_inplace_kernel<<<(n + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(x, y, n);
     });
 }
 

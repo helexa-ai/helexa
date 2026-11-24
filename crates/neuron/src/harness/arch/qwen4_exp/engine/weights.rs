@@ -12,6 +12,7 @@
 pub const GGML_F32: u32 = 0;
 pub const GGML_F16: u32 = 1;
 pub const GGML_Q8_0: u32 = 8;
+pub const GGML_Q6_K: u32 = 14;
 pub const GGML_BF16: u32 = 30;
 
 const Q8_0_BLOCK_VALUES: usize = 32;
@@ -56,6 +57,40 @@ pub fn q8_0_to_f32(bytes: &[u8]) -> Vec<f32> {
     out
 }
 
+const Q6_K_BLOCK_VALUES: usize = 256;
+const Q6_K_BLOCK_BYTES: usize = 210;
+
+/// Q6_K blocks to f32, as ggml's `dequantize_row_q6_K`: per 256 values,
+/// 128 bytes of low nibbles, 64 of high bit pairs, 16 signed scales and
+/// an f16 scale.
+pub fn q6_k_to_f32(bytes: &[u8]) -> Vec<f32> {
+    let mut out = Vec::with_capacity(bytes.len() / Q6_K_BLOCK_BYTES * Q6_K_BLOCK_VALUES);
+    for block in bytes.as_chunks::<Q6_K_BLOCK_BYTES>().0 {
+        let (ql, rest) = block.split_at(128);
+        let (qh, rest) = rest.split_at(64);
+        let (sc, d) = rest.split_at(16);
+        let d = f16_to_f32(u16::from_le_bytes([d[0], d[1]]));
+        let mut y = [0f32; Q6_K_BLOCK_VALUES];
+        for half in 0..2 {
+            let (ql, qh, sc) = (&ql[64 * half..], &qh[32 * half..], &sc[8 * half..]);
+            let y = &mut y[128 * half..];
+            for l in 0..32 {
+                let is = l / 16;
+                let q = |low: u8, shift: u32| -> f32 {
+                    f32::from(((low | (((qh[l] >> shift) & 3) << 4)) as i8) - 32)
+                };
+                let s = |i: usize| f32::from(sc[i] as i8);
+                y[l] = d * s(is) * q(ql[l] & 0xf, 0);
+                y[l + 32] = d * s(is + 2) * q(ql[l + 32] & 0xf, 2);
+                y[l + 64] = d * s(is + 4) * q(ql[l] >> 4, 4);
+                y[l + 96] = d * s(is + 6) * q(ql[l + 32] >> 4, 6);
+            }
+        }
+        out.extend_from_slice(&y);
+    }
+    out
+}
+
 /// A tensor's values as f32, from the GGUF types the engine converts.
 pub fn to_f32(bytes: &[u8], ggml_type: u32) -> Option<Vec<f32>> {
     Some(match ggml_type {
@@ -78,6 +113,7 @@ pub fn to_f32(bytes: &[u8], ggml_type: u32) -> Option<Vec<f32>> {
             .map(|&b| f32::from_bits(u32::from(u16::from_le_bytes(b)) << 16))
             .collect(),
         GGML_Q8_0 => q8_0_to_f32(bytes),
+        GGML_Q6_K => q6_k_to_f32(bytes),
         _ => return None,
     })
 }
@@ -90,6 +126,9 @@ pub fn tensor_bytes(ggml_type: u32, values: usize) -> Option<usize> {
         GGML_F16 | GGML_BF16 => values * 2,
         GGML_Q8_0 if values.is_multiple_of(Q8_0_BLOCK_VALUES) => {
             values / Q8_0_BLOCK_VALUES * Q8_0_BLOCK_BYTES
+        }
+        GGML_Q6_K if values.is_multiple_of(Q6_K_BLOCK_VALUES) => {
+            values / Q6_K_BLOCK_VALUES * Q6_K_BLOCK_BYTES
         }
         _ => return None,
     })
@@ -260,6 +299,33 @@ mod tests {
         // Just past halfway rounds up.
         assert_eq!(f32_to_bf16(1.0 + 2f32.powi(-8) + 2f32.powi(-20)), 0x3f81);
         assert_eq!(f32_to_bf16(-2.5), 0xc020);
+    }
+
+    /// One Q6_K block built by hand: every 6-bit value is assembled from
+    /// its low nibble and high bit pair, offset by 32, and scaled by its
+    /// group's scale and the block scale.
+    #[test]
+    fn q6_k_assembles_six_bit_values() {
+        let mut block = vec![0u8; 210];
+        // Value 0: low nibble 5, high bits 0b10 -> 0b10_0101 = 37, -32 = 5.
+        block[0] = 0x05;
+        block[128] = 0b10;
+        // Value 96 (fourth quarter: ql[32]'s high nibble, qh[0] bits 6-7):
+        // nibble 0xf, high bits 0b01 -> 0b01_1111 = 31, -32 = -1.
+        block[32] = 0xf0;
+        block[128] |= 0b01 << 6;
+        // Scales: group 0 = 3, group 6 (value 96's) = -2.
+        block[192] = 3;
+        block[198] = (-2i8) as u8;
+        block[208..210].copy_from_slice(&0x3800u16.to_le_bytes()); // 0.5
+        let y = q6_k_to_f32(&block);
+        assert_eq!(y.len(), 256);
+        assert_eq!(y[0], 0.5 * 3.0 * 5.0);
+        // scale 0.5, group scale -2, value -1.
+        assert_eq!(y[96], 1.0);
+        // An all-zero position reads 0 - 32 = -32 times its scale.
+        assert_eq!(y[1], 0.5 * 3.0 * -32.0);
+        assert_eq!(tensor_bytes(GGML_Q6_K, 512), Some(420));
     }
 
     #[test]

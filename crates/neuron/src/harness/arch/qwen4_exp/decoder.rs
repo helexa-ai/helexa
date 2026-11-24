@@ -211,6 +211,16 @@ impl DecoderLayer {
         through(mlp_hc, &h, |x| Ok(mlp.forward(x)?))
     }
 
+    /// This layer's PLE contribution for residual `h` and gathered
+    /// n-gram embedding `e`, or `None` when it carries no PLE block. The
+    /// native engine (#427) adds it to its own residual.
+    pub fn ple_contribution(&mut self, h: &Tensor, e: &Tensor) -> Result<Option<Tensor>> {
+        match &mut self.ple {
+            Some(block) => Ok(Some(block.forward(h, e)?)),
+            None => Ok(None),
+        }
+    }
+
     pub fn clear_kv_cache(&mut self) -> Result<()> {
         match &mut self.mixer {
             Mixer::Full(attn) => attn.clear_kv_cache(),

@@ -238,6 +238,25 @@ impl Qwen4ExpForCausalLM {
         Ok(self.lm_head.forward(&x)?)
     }
 
+    /// The PLE contribution for one decode token, from the native
+    /// engine's residual `h` (`(1, 1, hidden * hc)`, any float dtype): the
+    /// n-gram rows are gathered for `input_ids` (advancing the carried
+    /// ids, as a forward would) and the PLE layer's block run on them.
+    /// `None` without PLE. Returned in `h`'s dtype.
+    pub fn ple_contribution(&mut self, input_ids: &Tensor, h: &Tensor) -> Result<Option<Tensor>> {
+        let Some(ngram) = &mut self.ngram else {
+            return Ok(None);
+        };
+        let e = ngram.forward(&ids_to_i64(input_ids)?, &self.device, self.dtype)?;
+        let hm = h.to_dtype(self.dtype)?;
+        for layer in &mut self.layers {
+            if let Some(out) = layer.ple_contribution(&hm, &e)? {
+                return Ok(Some(out.to_dtype(h.dtype())?));
+            }
+        }
+        Ok(None)
+    }
+
     /// Logits for the **last** position, `(B, 1, vocab)`.
     pub fn forward(&mut self, input_ids: &Tensor, offset: usize) -> Result<Tensor> {
         Ok(self.forward_inner(input_ids, offset)?.0)
