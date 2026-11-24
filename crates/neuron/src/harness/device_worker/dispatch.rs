@@ -319,6 +319,7 @@ pub(crate) fn run(device_index: u32, rx: Receiver<Job>, poisoned: Arc<AtomicBool
                 reply,
             } => {
                 let result = forward_logits(&mut state, handle, &tokens, offset);
+                trace_device_pool(&state, "forward", tokens.len());
                 if crate::harness::arch::qwen3_5::moe::prompt_chunk_streams_experts(tokens.len()) {
                     trim_device_pool(&state);
                 }
@@ -1065,6 +1066,63 @@ fn trim_device_pool(state: &DeviceWorkerState) {
         "trim_device_pool: trimmed pool"
     );
 }
+
+/// Logs the device pool after a job when `NEURON_VRAM_TRACE` is set:
+/// bytes live now, the job's peak, and bytes the pool holds from the
+/// driver. The peak counter is reset, so each line covers one job.
+/// Memory the driver reports used beyond `reserved` was allocated
+/// outside the pool (context, library workspaces, synchronous allocs).
+#[cfg(feature = "cuda")]
+fn trace_device_pool(state: &DeviceWorkerState, job: &str, tokens: usize) {
+    use candle_core::cuda::cudarc::driver::{
+        result::{device, mem_pool},
+        sys::CUmemPool_attribute,
+    };
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if !*ENABLED.get_or_init(|| std::env::var_os("NEURON_VRAM_TRACE").is_some()) {
+        return;
+    }
+    let Some(ctx) = state.ctx.as_ref() else {
+        return;
+    };
+    let Ok(pool) = (unsafe { device::get_default_mem_pool(ctx.cu_device()) }) else {
+        return;
+    };
+    let read = |attr: CUmemPool_attribute| -> u64 {
+        let mut value = 0_u64;
+        // SAFETY: these attributes are all cuuint64_t.
+        match unsafe { mem_pool::get_attribute(pool, attr, (&raw mut value).cast()) } {
+            Ok(()) => value >> 20,
+            Err(_) => 0,
+        }
+    };
+    let used = read(CUmemPool_attribute::CU_MEMPOOL_ATTR_USED_MEM_CURRENT);
+    let peak = read(CUmemPool_attribute::CU_MEMPOOL_ATTR_USED_MEM_HIGH);
+    let reserved = read(CUmemPool_attribute::CU_MEMPOOL_ATTR_RESERVED_MEM_CURRENT);
+    let mut zero = 0_u64;
+    // SAFETY: writing zero resets the high-water mark.
+    let _ = unsafe {
+        mem_pool::set_attribute(
+            pool,
+            CUmemPool_attribute::CU_MEMPOOL_ATTR_USED_MEM_HIGH,
+            (&raw mut zero).cast(),
+        )
+    };
+    let (free, total) = query_vram(state).unwrap_or((0, 0));
+    tracing::info!(
+        device_index = state.device_index,
+        job,
+        tokens,
+        pool_used_mb = used,
+        pool_peak_mb = peak,
+        pool_reserved_mb = reserved,
+        device_used_mb = total.saturating_sub(free),
+        "vram trace"
+    );
+}
+
+#[cfg(not(feature = "cuda"))]
+fn trace_device_pool(_state: &DeviceWorkerState, _job: &str, _tokens: usize) {}
 
 #[cfg(not(feature = "cuda"))]
 fn trim_device_pool(_state: &DeviceWorkerState) {}

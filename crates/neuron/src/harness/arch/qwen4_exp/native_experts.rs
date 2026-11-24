@@ -16,7 +16,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result, ensure};
-use candle_core::cuda_backend::cudarc::driver::{CudaSlice, DevicePtr, DeviceSlice};
+use candle_core::cuda_backend::cudarc::driver::result::mem_pool;
+use candle_core::cuda_backend::cudarc::driver::{CudaSlice, DevicePtr, DeviceSlice, sys};
 use candle_core::{CudaDevice, CudaStorage, DType, Device, Storage, Tensor};
 use memmap2::{Advice, Mmap};
 use rayon::prelude::*;
@@ -66,6 +67,67 @@ impl Drop for PinnedBuffer {
 /// An expert's blob held in VRAM.
 pub struct ExpertSlot {
     blob: CudaSlice<u8>,
+}
+
+/// A CUDA memory pool for the tier's experts alone.
+///
+/// Thousands of long-lived expert blobs allocated from the default pool
+/// sit among the forward pass's transient tensors and pin the blocks
+/// they share, so the pool cannot hand those blocks back: measured on
+/// one 5090, 29 GB reserved against a 21 GB peak of live data. With
+/// their own pool the experts only ever share blocks with each other,
+/// and the default pool's trims return the transients' memory.
+struct TierPool(sys::CUmemoryPool);
+
+// SAFETY: a pool handle may be used from any thread of its context, and
+// the source is only used from its device worker.
+unsafe impl Send for TierPool {}
+// SAFETY: as above; allocation from a pool is thread-safe in the driver.
+unsafe impl Sync for TierPool {}
+
+impl TierPool {
+    fn new(ordinal: usize) -> candle_core::Result<Self> {
+        // SAFETY: an all-zero props struct is valid; the fields that
+        // matter are set below, and zero handle types means none.
+        let mut props: sys::CUmemPoolProps = unsafe { std::mem::zeroed() };
+        props.allocType = sys::CUmemAllocationType::CU_MEM_ALLOCATION_TYPE_PINNED;
+        props.location.type_ = sys::CUmemLocationType::CU_MEM_LOCATION_TYPE_DEVICE;
+        props.location.id = ordinal as i32;
+        // SAFETY: `props` describes this device.
+        let pool = unsafe { mem_pool::create(&props) }.map_err(candle_err)?;
+        // Keep what eviction frees: the next admission reuses it.
+        let mut keep = u64::MAX;
+        // SAFETY: the release threshold is a cuuint64_t.
+        unsafe {
+            mem_pool::set_attribute(
+                pool,
+                sys::CUmemPool_attribute::CU_MEMPOOL_ATTR_RELEASE_THRESHOLD,
+                (&raw mut keep).cast(),
+            )
+        }
+        .map_err(candle_err)?;
+        Ok(Self(pool))
+    }
+
+    fn alloc(&self, device: &CudaDevice, bytes: usize) -> candle_core::Result<CudaSlice<u8>> {
+        let stream = device.cuda_stream();
+        let mut ptr: sys::CUdeviceptr = 0;
+        // SAFETY: the pool and stream belong to this device's context.
+        unsafe { sys::cuMemAllocFromPoolAsync(&mut ptr, bytes, self.0, stream.cu_stream()) }
+            .result()
+            .map_err(candle_err)?;
+        // SAFETY: `ptr` is a fresh allocation of `bytes` bytes. Its drop
+        // frees it stream-ordered, which returns it to this pool.
+        Ok(unsafe { stream.upgrade_device_ptr(ptr, bytes) })
+    }
+}
+
+impl Drop for TierPool {
+    fn drop(&mut self) {
+        // SAFETY: created by `new`; the driver defers the destruction
+        // until every allocation from it has been freed.
+        let _ = unsafe { mem_pool::destroy(self.0) };
+    }
 }
 
 fn device_address<T: candle_core::cuda_backend::cudarc::driver::DeviceRepr + 'static>(
@@ -159,6 +221,8 @@ pub struct GgufExpertSource {
     layers: Vec<Layer>,
     tier: Option<Arc<ExpertTier<ExpertSlot>>>,
     workspace: Mutex<Workspace>,
+    /// Declared after `tier`, so the experts are freed first.
+    tier_pool: TierPool,
 }
 
 fn role(
@@ -259,6 +323,7 @@ impl GgufExpertSource {
             });
         }
         let tier = tier_budget_mb.map(|mb| ExpertTier::new(mb << 20));
+        let tier_pool = TierPool::new(device.cuda_stream().context().ordinal())?;
         let profile = std::env::var_os("NEURON_EXPERT_PROFILE")
             .map(|path| read_expert_profile(Path::new(&path), layers, experts))
             .transpose()?;
@@ -276,6 +341,7 @@ impl GgufExpertSource {
             layers: parsed,
             tier,
             workspace: Mutex::new(Workspace::default()),
+            tier_pool,
         };
         if let Some(ranked) = profile {
             let started = std::time::Instant::now();
@@ -380,8 +446,8 @@ impl GgufExpertSource {
             used += bytes;
             let pending = &mut by_layer[l];
             tier.get_or_load(l as u32, e as u32, bytes, || -> candle_core::Result<_> {
-                // SAFETY: filled by `stage_blobs` before first use.
-                let blob = unsafe { self.device.alloc::<u8>(bytes as usize)? };
+                // Filled by `stage_blobs` before first use.
+                let blob = self.tier_pool.alloc(&self.device, bytes as usize)?;
                 pending.push(Upload {
                     expert: e,
                     address: device_address(&blob),
@@ -439,8 +505,8 @@ impl GgufExpertSource {
                     e as u32,
                     layer.blob_bytes as u64,
                     || -> candle_core::Result<_> {
-                        // SAFETY: filled by `stage_blobs` before the launch.
-                        let blob = unsafe { self.device.alloc::<u8>(layer.blob_bytes)? };
+                        // Filled by `stage_blobs` before the launch.
+                        let blob = self.tier_pool.alloc(&self.device, layer.blob_bytes)?;
                         uploads.push(Upload {
                             expert: e,
                             address: device_address(&blob),

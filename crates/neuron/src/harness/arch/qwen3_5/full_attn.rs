@@ -154,6 +154,10 @@ pub(crate) fn attention_context(
         }
     }
 
+    if let AttnMask::Additive(m) = attn_mask {
+        return masked_attention(q, k, v, m, num_kv_groups, scale);
+    }
+
     // Eager fallback: materialise GQA-repeated K/V and the score matrix.
     let k = repeat_kv(k.clone(), num_kv_groups)?.contiguous()?;
     let v = repeat_kv(v.clone(), num_kv_groups)?.contiguous()?;
@@ -163,6 +167,77 @@ pub(crate) fn attention_context(
     }
     let probs = candle_nn::ops::softmax_last_dim(&scores)?;
     probs.matmul(&v)
+}
+
+/// Score elements one query tile may hold: 2^26, about 0.75 GB across
+/// the bf16 scores and the f32 softmax. A tile is as many queries as fit.
+const SCORE_TILE_ELEMENTS: usize = 1 << 26;
+
+/// Attention under an arbitrary additive mask, `(B, 1, L, S)` — the
+/// path every [`AttnMask::Additive`] takes.
+///
+/// Equal to plain eager attention, with two changes
+/// that bound its memory so long prompts can be read in large chunks:
+///
+/// - GQA without copying K/V: each KV head's query heads are folded
+///   into the row axis, so the matmul reads the shared K/V once rather
+///   than a 12x repeat of the whole cache.
+/// - Queries are processed in tiles sized to [`SCORE_TILE_ELEMENTS`],
+///   so a chunk of `L` queries over `S` positions never holds the full
+///   `heads * L * S` scores.
+///
+/// The mask add and softmax run in f32, as the reference does.
+fn masked_attention(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    mask: &Tensor,
+    num_kv_groups: usize,
+    scale: f64,
+) -> candle_core::Result<Tensor> {
+    masked_attention_tiled(q, k, v, mask, num_kv_groups, scale, SCORE_TILE_ELEMENTS)
+}
+
+fn masked_attention_tiled(
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    mask: &Tensor,
+    num_kv_groups: usize,
+    scale: f64,
+    tile_elements: usize,
+) -> candle_core::Result<Tensor> {
+    let (b, heads, l, d) = q.dims4()?;
+    let (_, kv_heads, s, _) = k.dims4()?;
+    let kt = k.transpose(2, 3)?.contiguous()?;
+    let v = v.contiguous()?;
+    let tile = (tile_elements / (heads * s).max(1)).clamp(1, l);
+    let mut out = Vec::with_capacity(l.div_ceil(tile));
+    let mut start = 0;
+    while start < l {
+        let t = tile.min(l - start);
+        // (B, H, t, D) -> (B, Hkv, G * t, D): head h = kv * G + g.
+        let qt =
+            q.narrow(2, start, t)?
+                .contiguous()?
+                .reshape((b, kv_heads, num_kv_groups * t, d))?;
+        let scores = (qt.matmul(&kt)? * scale)?
+            .to_dtype(candle_core::DType::F32)?
+            .reshape((b, kv_heads, num_kv_groups, t, s))?;
+        let m = mask
+            .narrow(2, start, t)?
+            .to_dtype(candle_core::DType::F32)?
+            .unsqueeze(1)?;
+        let probs = candle_nn::ops::softmax_last_dim(&scores.broadcast_add(&m)?)?
+            .to_dtype(q.dtype())?
+            .reshape((b, kv_heads, num_kv_groups * t, s))?;
+        out.push(probs.matmul(&v)?.reshape((b, heads, t, d))?);
+        start += t;
+    }
+    if out.len() == 1 {
+        return Ok(out.remove(0));
+    }
+    Tensor::cat(&out, 2)
 }
 
 pub struct Qwen3_5Attention {
@@ -333,4 +408,95 @@ fn load_linear_no_bias(
         .get((out_dim, in_dim), "weight")
         .with_context(|| format!("load '{}/{name}/weight'", vb.prefix()))?;
     Ok(Linear::new(weight, None))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    /// Plain eager attention: K/V repeated per query head, one score
+    /// matrix, f32 throughout. Independent of the code under test.
+    fn reference(
+        q: &Tensor,
+        k: &Tensor,
+        v: &Tensor,
+        mask: &Tensor,
+        groups: usize,
+        scale: f64,
+    ) -> Vec<f32> {
+        let k = repeat_kv(k.clone(), groups).unwrap();
+        let v = repeat_kv(v.clone(), groups).unwrap();
+        let scores = (q.matmul(&k.transpose(2, 3).unwrap()).unwrap() * scale)
+            .unwrap()
+            .broadcast_add(mask)
+            .unwrap();
+        candle_nn::ops::softmax_last_dim(&scores)
+            .unwrap()
+            .matmul(&v.contiguous().unwrap())
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap()
+    }
+
+    /// The tiled, copy-free GQA attention equals plain eager attention
+    /// under an arbitrary mask, for every tile size: one query per tile,
+    /// a ragged tail, and the whole chunk at once. Each KV head and each
+    /// row's mask differ, so a wrong head fold or a misaligned mask tile
+    /// changes the answer.
+    #[test]
+    fn masked_attention_matches_eager_attention_at_any_tile() {
+        let dev = Device::Cpu;
+        let (heads, kv_heads, l, s, d) = (4, 2, 5, 7, 8);
+        let values = |n: usize, seed: u32| -> Vec<f32> {
+            (0..n)
+                .map(|i| {
+                    let x = (i as u32).wrapping_mul(2_654_435_761).wrapping_add(seed);
+                    ((x >> 8) % 1000) as f32 / 500.0 - 1.0
+                })
+                .collect()
+        };
+        let q = Tensor::from_vec(values(heads * l * d, 1), (1, heads, l, d), &dev).unwrap();
+        let k = Tensor::from_vec(values(kv_heads * s * d, 2), (1, kv_heads, s, d), &dev).unwrap();
+        let v = Tensor::from_vec(values(kv_heads * s * d, 3), (1, kv_heads, s, d), &dev).unwrap();
+        // Row i sees an irregular subset that always includes position i.
+        let mut mask = vec![f32::NEG_INFINITY; l * s];
+        for i in 0..l {
+            for p in 0..s {
+                if p == i || (p * 3 + i) % 4 == 0 {
+                    mask[i * s + p] = 0.0;
+                }
+            }
+        }
+        let mask = Tensor::from_vec(mask, (1, 1, l, s), &dev).unwrap();
+        let scale = 0.35;
+        let want = reference(&q, &k, &v, &mask, 2, scale);
+        for tile_queries in [1, 2, l] {
+            let got: Vec<f32> =
+                masked_attention_tiled(&q, &k, &v, &mask, 2, scale, tile_queries * heads * s)
+                    .unwrap()
+                    .flatten_all()
+                    .unwrap()
+                    .to_vec1()
+                    .unwrap();
+            for (g, w) in got.iter().zip(&want) {
+                assert!(
+                    (g - w).abs() < 1e-5,
+                    "tile of {tile_queries}: got {got:?} want {want:?}"
+                );
+            }
+        }
+        // And the dispatcher routes an additive mask here.
+        let routed: Vec<f32> = attention_context(&q, &k, &v, AttnMask::Additive(&mask), 2, scale)
+            .unwrap()
+            .flatten_all()
+            .unwrap()
+            .to_vec1()
+            .unwrap();
+        for (g, w) in routed.iter().zip(&want) {
+            assert!((g - w).abs() < 1e-5);
+        }
+    }
 }
