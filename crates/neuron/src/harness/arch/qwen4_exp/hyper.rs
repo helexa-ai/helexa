@@ -40,6 +40,7 @@ use candle_core::{D, Module, Tensor};
 use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
+use crate::harness::arch::qwen3_5::proj::{LinearSource, Proj, load_proj};
 use crate::harness::arch::qwen3_5::rmsnorm::Qwen3_5RmsNorm;
 
 /// What a hyper-connection hands its sublayer.
@@ -56,8 +57,8 @@ pub struct HyperSplit {
 /// `Qwen4ExpTextGatedResidual`.
 pub struct HyperConnection {
     hc_norm: Qwen3_5RmsNorm,
-    mix_down: Linear,
-    mix_up: Linear,
+    mix_down: Proj,
+    mix_up: Proj,
     /// Absent on the top-level `hyper_connection_mixer`, which collapses
     /// the streams for the LM head instead of feeding a sublayer.
     block_inject: Option<Linear>,
@@ -73,12 +74,13 @@ impl HyperConnection {
         hc_lowrank: usize,
         eps: f64,
         use_combine: bool,
+        source: Option<&dyn LinearSource>,
     ) -> Result<Self> {
         let wide = hidden_size * hc_count;
         let hc_norm = Qwen3_5RmsNorm::load_grouped(&vb.pp("hc_norm"), wide, hidden_size, eps)
             .with_context(|| format!("load '{}/hc_norm'", vb.prefix()))?;
-        let mix_down = linear(vb, "input_mix_weight_down", wide, hc_lowrank)?;
-        let mix_up = linear(vb, "input_mix_weight_up", hc_lowrank, wide)?;
+        let mix_down = load_proj(vb, "input_mix_weight_down", wide, hc_lowrank, source)?;
+        let mix_up = load_proj(vb, "input_mix_weight_up", hc_lowrank, wide, source)?;
         let block_inject = if use_combine {
             Some(linear(vb, "block_inject_weight", wide, hc_count)?)
         } else {
@@ -123,8 +125,8 @@ impl HyperConnection {
                 1e-6,
                 Some(hidden_size),
             ),
-            mix_down: z(hc_lowrank, wide),
-            mix_up: z(wide, hc_lowrank),
+            mix_down: z(hc_lowrank, wide).into(),
+            mix_up: z(wide, hc_lowrank).into(),
             block_inject: use_combine.then(|| z(hc_count, wide)),
             hidden_size,
             hc_count,

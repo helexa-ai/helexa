@@ -26,14 +26,14 @@
 //!
 //! See `doc/qwen4_exp-port-spec.md` §3 and §4.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use candle_core::{Module, Tensor};
-use candle_nn::Linear;
 use candle_nn::kv_cache::ConcatKvCache;
 use candle_nn::var_builder::ShardedVarBuilder;
 use std::sync::Arc;
 
 use crate::harness::arch::qwen3_5::full_attn::{AttnMask, attention_context};
+use crate::harness::arch::qwen3_5::proj::{LinearSource, Proj, load_proj};
 use crate::harness::arch::qwen3_5::rmsnorm::Qwen3_5RmsNorm;
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
 
@@ -41,10 +41,10 @@ use super::config::TextConfig;
 use super::qsa::Indexer;
 
 pub struct Attention {
-    q_proj: Linear,
-    k_proj: Linear,
-    v_proj: Linear,
-    o_proj: Linear,
+    q_proj: Proj,
+    k_proj: Proj,
+    v_proj: Proj,
+    o_proj: Proj,
     q_norm: Qwen3_5RmsNorm,
     k_norm: Qwen3_5RmsNorm,
     /// The sparse-attention side channel. Owns its own KV cache, which
@@ -66,6 +66,7 @@ impl Attention {
         cfg: &TextConfig,
         rotary: Arc<RotaryEmbedding>,
         vb: &ShardedVarBuilder,
+        source: Option<&dyn LinearSource>,
     ) -> Result<Self> {
         let head_dim = cfg.head_dim;
         let num_heads = cfg.num_attention_heads;
@@ -78,10 +79,22 @@ impl Attention {
         let attn_width = num_heads * head_dim;
         Ok(Self {
             // Doubled output: query and gate, interleaved per head.
-            q_proj: linear(vb, "q_proj", cfg.hidden_size, attn_width * 2)?,
-            k_proj: linear(vb, "k_proj", cfg.hidden_size, num_kv_heads * head_dim)?,
-            v_proj: linear(vb, "v_proj", cfg.hidden_size, num_kv_heads * head_dim)?,
-            o_proj: linear(vb, "o_proj", attn_width, cfg.hidden_size)?,
+            q_proj: load_proj(vb, "q_proj", cfg.hidden_size, attn_width * 2, source)?,
+            k_proj: load_proj(
+                vb,
+                "k_proj",
+                cfg.hidden_size,
+                num_kv_heads * head_dim,
+                source,
+            )?,
+            v_proj: load_proj(
+                vb,
+                "v_proj",
+                cfg.hidden_size,
+                num_kv_heads * head_dim,
+                source,
+            )?,
+            o_proj: load_proj(vb, "o_proj", attn_width, cfg.hidden_size, source)?,
             q_norm: Qwen3_5RmsNorm::load(&vb.pp("q_norm"), head_dim, cfg.rms_norm_eps)?,
             k_norm: Qwen3_5RmsNorm::load(&vb.pp("k_norm"), head_dim, cfg.rms_norm_eps)?,
             // The indexer is a submodule of the attention block, not a
@@ -210,20 +223,13 @@ impl Attention {
     }
 }
 
-fn linear(vb: &ShardedVarBuilder, name: &str, in_dim: usize, out_dim: usize) -> Result<Linear> {
-    let weight = vb
-        .pp(name)
-        .get((out_dim, in_dim), "weight")
-        .with_context(|| format!("load '{}/{name}/weight'", vb.prefix()))?;
-    Ok(Linear::new(weight, None))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::harness::arch::qwen3_5::TextConfig as Qwen3_5TextConfig;
     use crate::harness::arch::qwen4_exp::qsa::BlockSelector;
     use candle_core::{DType, Device};
+    use candle_nn::Linear;
 
     const HIDDEN: usize = 4;
     const HEADS: usize = 2;
@@ -272,10 +278,10 @@ mod tests {
     fn layer(budget: usize) -> Attention {
         let attn_width = HEADS * HEAD_DIM;
         Attention {
-            q_proj: from_first_column(&[1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0], HIDDEN),
-            k_proj: from_first_column(&[0.0; HEAD_DIM], HIDDEN),
-            v_proj: from_first_column(&[1.0; HEAD_DIM], HIDDEN),
-            o_proj: eye(attn_width),
+            q_proj: from_first_column(&[1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0], HIDDEN).into(),
+            k_proj: from_first_column(&[0.0; HEAD_DIM], HIDDEN).into(),
+            v_proj: from_first_column(&[1.0; HEAD_DIM], HIDDEN).into(),
+            o_proj: eye(attn_width).into(),
             q_norm: Qwen3_5RmsNorm::from_weight(
                 Tensor::zeros(HEAD_DIM, DType::F32, &Device::Cpu).unwrap(),
                 1e-6,

@@ -163,10 +163,11 @@ pub fn load(
     };
 
     let (shared_expert, shared_expert_gate) = if cfg.shared_expert_intermediate_size > 0 {
-        let shared = Qwen3_5MLP::load_with_dims(
+        let shared = Qwen3_5MLP::load_with_source(
             &vb.pp("shared_expert"),
             h,
             cfg.shared_expert_intermediate_size,
+            opts.dense.as_deref(),
         )
         .context("load shared_expert")?;
         let gate_w = vb

@@ -3069,6 +3069,7 @@ impl CandleHarness {
                             experts_vb: None,
                             expert_tier: None,
                             external_experts: None,
+                            dense: None,
                         },
                     )
                     .context("build qwen4_exp model")?;

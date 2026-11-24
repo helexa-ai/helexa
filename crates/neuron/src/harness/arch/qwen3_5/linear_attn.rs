@@ -67,6 +67,7 @@ use candle_nn::var_builder::ShardedVarBuilder;
 #[cfg(test)]
 use super::RopeParameters;
 use super::TextConfig;
+use super::proj::{LinearSource, Proj, load_proj};
 use super::rmsnorm::{OutputGate, Qwen3_5RmsNormGated, l2norm};
 
 /// Per-rank, per-layer state for the linear-attention block.
@@ -81,11 +82,11 @@ pub struct GatedDeltaNetState {
 
 pub struct GatedDeltaNet {
     // Projections.
-    in_proj_qkv: Linear,
-    in_proj_z: Linear,
+    in_proj_qkv: Proj,
+    in_proj_z: Proj,
     in_proj_b: Linear,
     in_proj_a: Linear,
-    out_proj: Linear,
+    out_proj: Proj,
 
     // Depthwise causal Conv1d weight; shape (conv_dim, 1, kernel_size).
     // No bias (Python sets bias=False).
@@ -170,6 +171,16 @@ impl GatedDeltaNet {
     }
 
     pub fn load_with_params(cfg: GatedDeltaNetParams, vb: &ShardedVarBuilder) -> Result<Self> {
+        Self::load_with_source(cfg, vb, None)
+    }
+
+    /// As [`Self::load_with_params`], taking `in_proj_qkv`, `in_proj_z`
+    /// and `out_proj` from `source` where it has them.
+    pub fn load_with_source(
+        cfg: GatedDeltaNetParams,
+        vb: &ShardedVarBuilder,
+        source: Option<&dyn LinearSource>,
+    ) -> Result<Self> {
         let num_v_heads = cfg.num_value_heads;
         let num_k_heads = cfg.num_key_heads;
         let head_k_dim = cfg.key_head_dim;
@@ -216,20 +227,20 @@ impl GatedDeltaNet {
                     split_fused_qkvz(&qkvz, num_k_heads, num_v_heads, head_k_dim, head_v_dim)?;
                 let (b_w, a_w) = split_fused_ba(&ba, num_k_heads, num_v_heads)?;
                 (
-                    Linear::new(qkv_w, None),
-                    Linear::new(z_w, None),
+                    Linear::new(qkv_w, None).into(),
+                    Linear::new(z_w, None).into(),
                     Linear::new(b_w, None),
                     Linear::new(a_w, None),
                 )
             } else {
                 (
-                    load_linear_no_bias(vb, "in_proj_qkv", cfg.hidden_size, conv_dim)?,
-                    load_linear_no_bias(vb, "in_proj_z", cfg.hidden_size, value_dim)?,
+                    load_proj(vb, "in_proj_qkv", cfg.hidden_size, conv_dim, source)?,
+                    load_proj(vb, "in_proj_z", cfg.hidden_size, value_dim, source)?,
                     load_linear_no_bias(vb, "in_proj_b", cfg.hidden_size, num_v_heads)?,
                     load_linear_no_bias(vb, "in_proj_a", cfg.hidden_size, num_v_heads)?,
                 )
             };
-        let out_proj = load_linear_no_bias(vb, "out_proj", value_dim, cfg.hidden_size)?;
+        let out_proj = load_proj(vb, "out_proj", value_dim, cfg.hidden_size, source)?;
 
         // ----- Conv1d weight (depthwise, bias=False). -----
         let conv1d_weight = vb
@@ -1435,11 +1446,11 @@ mod tests {
         let value_dim = cfg.linear_value_head_dim * cfg.linear_num_value_heads;
         let conv_dim = key_dim * 2 + value_dim;
         let mut net = GatedDeltaNet {
-            in_proj_qkv: Linear::new(zeros(&[conv_dim, cfg.hidden_size]), None),
-            in_proj_z: Linear::new(zeros(&[value_dim, cfg.hidden_size]), None),
+            in_proj_qkv: Linear::new(zeros(&[conv_dim, cfg.hidden_size]), None).into(),
+            in_proj_z: Linear::new(zeros(&[value_dim, cfg.hidden_size]), None).into(),
             in_proj_b: Linear::new(zeros(&[cfg.linear_num_value_heads, cfg.hidden_size]), None),
             in_proj_a: Linear::new(zeros(&[cfg.linear_num_value_heads, cfg.hidden_size]), None),
-            out_proj: Linear::new(zeros(&[cfg.hidden_size, value_dim]), None),
+            out_proj: Linear::new(zeros(&[cfg.hidden_size, value_dim]), None).into(),
             conv1d_weight: zeros(&[conv_dim, 1, cfg.linear_conv_kernel_dim]),
             dt_bias: zeros(&[cfg.linear_num_value_heads]),
             a_log: zeros(&[cfg.linear_num_value_heads]),

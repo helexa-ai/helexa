@@ -35,10 +35,11 @@
 
 use anyhow::{Context, Result, ensure};
 use candle_core::{DType, Device, IndexOp, Module, Tensor};
+use candle_nn::Embedding;
 use candle_nn::var_builder::ShardedVarBuilder;
-use candle_nn::{Embedding, Linear};
 use std::sync::Arc;
 
+use crate::harness::arch::qwen3_5::proj::{Proj, load_proj};
 use crate::harness::arch::qwen3_5::rope::RotaryEmbedding;
 
 use super::config::{Config, TextConfig};
@@ -116,7 +117,7 @@ pub struct Qwen4ExpForCausalLM {
     /// `hyper_connection_mixer` — `use_combine = false`, so it collapses
     /// rather than scatters, and there is no final norm beside it.
     mixer: HyperConnection,
-    lm_head: Linear,
+    lm_head: Proj,
     ngram: Option<NGramEmbedding>,
     rotary: Arc<RotaryEmbedding>,
     hc_count: usize,
@@ -191,19 +192,24 @@ impl Qwen4ExpForCausalLM {
             // No block_inject_weight in the checkpoint: this one ends
             // the streams rather than feeding a sublayer.
             false,
+            opts.dense.as_deref(),
         )
         .context("load hyper_connection_mixer")?;
 
-        let lm_head_weight = vb
-            .pp("lm_head")
-            .get((text.vocab_size, text.hidden_size), "weight")
-            .context("load 'lm_head.weight'")?;
+        let lm_head = load_proj(
+            vb,
+            "lm_head",
+            text.hidden_size,
+            text.vocab_size,
+            opts.dense.as_deref(),
+        )
+        .context("load 'lm_head.weight'")?;
 
         Ok(Self {
             embed_tokens,
             layers,
             mixer,
-            lm_head: Linear::new(lm_head_weight, None),
+            lm_head,
             ngram,
             rotary,
             hc_count: text.hc_count,
@@ -851,6 +857,7 @@ mod tests {
                 experts_vb: None,
                 expert_tier: None,
                 external_experts: None,
+                dense: None,
             },
         )
         .unwrap();

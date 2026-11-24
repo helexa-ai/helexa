@@ -32,6 +32,23 @@ void neuron_strata_quantize_q8_1(const float* x, int64_t n_rows, int64_t n_cols,
     k::quantize_q8_1_rows(x, n_rows, n_cols, y, stream);
 }
 
+int neuron_strata_mmvq_supported(int ggml_type) {
+    switch (ggml_type) {
+        // iq_kernels.cu's STRATA_MMVQ_FMTS.
+        case 16: case 17: case 18: case 20: case 21: case 22: case 23: case 29: case 42:
+        case 10: case 11: case 12: case 13: case 7: case 6: case 2: case 3: case 8: case 40:
+        case 144: case 145: case 146: case 147: case 148: case 149:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
+void neuron_strata_mmvq(int ggml_type, const void* w, const void* x_q8_1, float* y, int n_in, int n_out, int ncols,
+                        void* stream) {
+    k::iq_mmvq(ggml_type, w, x_q8_1, y, n_in, n_out, ncols, stream);
+}
+
 void neuron_strata_dequant_f32(int ggml_type, const void* src, int64_t n, float* dst, void* stream) {
     k::iq_dequant_f32(ggml_type, src, n, dst, stream);
 }

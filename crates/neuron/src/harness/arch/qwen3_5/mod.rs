@@ -79,6 +79,7 @@ pub mod linear_attn;
 pub mod mlp;
 pub mod moe;
 pub mod mtp;
+pub mod proj;
 pub mod rmsnorm;
 pub mod rope;
 pub mod vision;

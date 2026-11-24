@@ -31,10 +31,15 @@ use crate::harness::arch::qwen3_5::linear_attn::{
 };
 
 use super::config::TextConfig;
+use crate::harness::arch::qwen3_5::proj::LinearSource;
 
 /// `vb` should be `.pp(...)`-ed to the layer's `linear_attn` prefix.
-pub fn load(cfg: &TextConfig, vb: &ShardedVarBuilder) -> Result<GatedDeltaNet> {
-    GatedDeltaNet::load_with_params(params(cfg)?, vb)
+pub fn load(
+    cfg: &TextConfig,
+    vb: &ShardedVarBuilder,
+    source: Option<&dyn LinearSource>,
+) -> Result<GatedDeltaNet> {
+    GatedDeltaNet::load_with_source(params(cfg)?, vb, source)
 }
 
 /// The settings this architecture asks for, as opposed to the ones

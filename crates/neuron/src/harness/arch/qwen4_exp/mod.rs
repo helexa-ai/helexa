@@ -38,6 +38,8 @@ pub mod config;
 pub mod decoder;
 pub mod full_attn;
 #[cfg(any(test, feature = "strata-kernels"))]
+pub mod gguf_dense;
+#[cfg(any(test, feature = "strata-kernels"))]
 pub mod gguf_index;
 pub mod hyper;
 pub mod linear_attn;
@@ -97,4 +99,8 @@ pub struct LoadOptions<'a> {
     /// Routed experts served outside candle. When set, the checkpoint's
     /// expert tensors are not read at all.
     pub external_experts: Option<std::sync::Arc<dyn super::qwen3_5::moe::ExternalExpertSource>>,
+    /// Dense projections served outside candle (a GGUF's quantized
+    /// blocks). Each is asked for by checkpoint name; what it declines
+    /// is read from the checkpoint.
+    pub dense: Option<std::sync::Arc<dyn super::qwen3_5::proj::LinearSource>>,
 }

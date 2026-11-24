@@ -110,12 +110,17 @@ impl DecoderLayer {
         opts: &super::LoadOptions<'_>,
     ) -> Result<Self> {
         let mixer = match layer_type {
-            "full_attention" => {
-                Mixer::Full(Box::new(Attention::load(cfg, rotary, &vb.pp("self_attn"))?))
-            }
-            "linear_attention" => {
-                Mixer::Linear(Box::new(linear_attn::load(cfg, &vb.pp("linear_attn"))?))
-            }
+            "full_attention" => Mixer::Full(Box::new(Attention::load(
+                cfg,
+                rotary,
+                &vb.pp("self_attn"),
+                opts.dense.as_deref(),
+            )?)),
+            "linear_attention" => Mixer::Linear(Box::new(linear_attn::load(
+                cfg,
+                &vb.pp("linear_attn"),
+                opts.dense.as_deref(),
+            )?)),
             other => anyhow::bail!(
                 "unknown layer_type '{other}' (expected 'full_attention' or \
                  'linear_attention')"
@@ -132,6 +137,7 @@ impl DecoderLayer {
                 // Decoder hyper-connections always scatter back; only
                 // the top-level mixer does not.
                 true,
+                opts.dense.as_deref(),
             )
         };
 

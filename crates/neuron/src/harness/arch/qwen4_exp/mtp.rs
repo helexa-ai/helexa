@@ -126,6 +126,7 @@ impl MtpHead {
                     experts_vb: None,
                     expert_tier: None,
                     external_experts: None,
+                    dense: None,
                 },
             )
             .context("load mtp.layers.0")?,
@@ -136,6 +137,7 @@ impl MtpHead {
                 cfg.hc_lowrank,
                 cfg.rms_norm_eps,
                 false,
+                None,
             )
             .context("load mtp.hyper_connection_mixer")?,
             hidden_size: h,

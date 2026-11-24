@@ -43,6 +43,20 @@ unsafe extern "C" {
         y: *mut c_void,
         stream: *mut c_void,
     );
+    /// Whether `neuron_strata_mmvq` takes weights of `ggml_type`.
+    pub fn neuron_strata_mmvq_supported(ggml_type: i32) -> i32;
+    /// `y[c][r] = W[r] . x[c]` for `ncols` q8_1 activation rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_strata_mmvq(
+        ggml_type: i32,
+        w: *const c_void,
+        x_q8_1: *const c_void,
+        y: *mut f32,
+        n_in: i32,
+        n_out: i32,
+        ncols: i32,
+        stream: *mut c_void,
+    );
     pub fn neuron_strata_dequant_f32(
         ggml_type: i32,
         src: *const c_void,

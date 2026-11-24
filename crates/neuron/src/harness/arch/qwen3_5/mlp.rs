@@ -3,17 +3,17 @@
 //! Identical to plain Qwen3's MLP: `down(silu(gate(x)) * up(x))` with
 //! no bias on any of the three projections.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use candle_core::{Module, Tensor};
-use candle_nn::Linear;
 use candle_nn::var_builder::ShardedVarBuilder;
 
 use super::TextConfig;
+use super::proj::{LinearSource, Proj, load_proj};
 
 pub struct Qwen3_5MLP {
-    gate_proj: Linear,
-    up_proj: Linear,
-    down_proj: Linear,
+    gate_proj: Proj,
+    up_proj: Proj,
+    down_proj: Proj,
 }
 
 impl Qwen3_5MLP {
@@ -25,11 +25,15 @@ impl Qwen3_5MLP {
     /// test that proves banking neutral still needs it, to express the
     /// same weights in the layout it is being compared against.
     #[cfg(test)]
-    pub(crate) fn from_weights(gate_proj: Linear, up_proj: Linear, down_proj: Linear) -> Self {
+    pub(crate) fn from_weights(
+        gate_proj: candle_nn::Linear,
+        up_proj: candle_nn::Linear,
+        down_proj: candle_nn::Linear,
+    ) -> Self {
         Self {
-            gate_proj,
-            up_proj,
-            down_proj,
+            gate_proj: gate_proj.into(),
+            up_proj: up_proj.into(),
+            down_proj: down_proj.into(),
         }
     }
 
@@ -46,9 +50,20 @@ impl Qwen3_5MLP {
         hidden: usize,
         intermediate: usize,
     ) -> Result<Self> {
-        let gate_proj = load_linear_no_bias(vb, "gate_proj", hidden, intermediate)?;
-        let up_proj = load_linear_no_bias(vb, "up_proj", hidden, intermediate)?;
-        let down_proj = load_linear_no_bias(vb, "down_proj", intermediate, hidden)?;
+        Self::load_with_source(vb, hidden, intermediate, None)
+    }
+
+    /// As [`Self::load_with_dims`], taking projections from `source`
+    /// where it has them.
+    pub fn load_with_source(
+        vb: &ShardedVarBuilder,
+        hidden: usize,
+        intermediate: usize,
+        source: Option<&dyn LinearSource>,
+    ) -> Result<Self> {
+        let gate_proj = load_proj(vb, "gate_proj", hidden, intermediate, source)?;
+        let up_proj = load_proj(vb, "up_proj", hidden, intermediate, source)?;
+        let down_proj = load_proj(vb, "down_proj", intermediate, hidden, source)?;
         Ok(Self {
             gate_proj,
             up_proj,
@@ -63,17 +78,4 @@ impl Module for Qwen3_5MLP {
         let rhs = self.up_proj.forward(x)?;
         self.down_proj.forward(&(lhs * rhs)?)
     }
-}
-
-fn load_linear_no_bias(
-    vb: &ShardedVarBuilder,
-    name: &str,
-    in_dim: usize,
-    out_dim: usize,
-) -> Result<Linear> {
-    let weight = vb
-        .pp(name)
-        .get((out_dim, in_dim), "weight")
-        .with_context(|| format!("load '{}/{name}/weight'", vb.prefix()))?;
-    Ok(Linear::new(weight, None))
 }

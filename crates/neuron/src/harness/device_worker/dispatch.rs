@@ -1415,6 +1415,7 @@ fn load_dense_inner(
                 .filter(|_| experts_on_host);
             let external_experts =
                 native_expert_source(&cfg, device, experts_on_host, tier_budget)?;
+            let dense = native_dense_source(&cfg, device, external_experts.is_some())?;
             let expert_tier = tier_budget
                 .filter(|_| external_experts.is_none())
                 .map(|mb| {
@@ -1433,6 +1434,7 @@ fn load_dense_inner(
                     experts_vb: host_vb.as_ref(),
                     expert_tier,
                     external_experts,
+                    dense,
                     // Host residency (#318) is what makes a model whose
                     // experts exceed VRAM loadable; everything else in
                     // the model still lands on the device.
@@ -1493,6 +1495,41 @@ fn native_expert_source(
 ) -> anyhow::Result<
     Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::moe::ExternalExpertSource>>,
 > {
+    Ok(None)
+}
+
+/// The GGUF's quantized dense weights, when `NEURON_STRATA_DENSE=1`
+/// and the experts already come from that GGUF.
+#[cfg(feature = "strata-kernels")]
+fn native_dense_source(
+    cfg: &crate::harness::arch::qwen4_exp::config::Config,
+    device: &candle_core::Device,
+    native_experts: bool,
+) -> anyhow::Result<Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>>> {
+    use crate::harness::arch::qwen4_exp::gguf_dense::{GgufDenseSource, Heads};
+    let text = &cfg.text_config;
+    let enabled = std::env::var("NEURON_STRATA_DENSE").is_ok_and(|v| v == "1");
+    let Some(path) =
+        std::env::var_os("NEURON_STRATA_EXPERT_GGUF").filter(|_| enabled && native_experts)
+    else {
+        return Ok(None);
+    };
+    let heads = Heads {
+        key_heads: text.linear_num_key_heads,
+        value_heads: text.linear_num_value_heads,
+        head_dim: text.linear_value_head_dim,
+    };
+    let key_dim = text.linear_num_key_heads * text.linear_key_head_dim;
+    let source = GgufDenseSource::open(std::path::Path::new(&path), device, heads, key_dim)?;
+    Ok(Some(std::sync::Arc::new(source)))
+}
+
+#[cfg(not(feature = "strata-kernels"))]
+fn native_dense_source(
+    _cfg: &crate::harness::arch::qwen4_exp::config::Config,
+    _device: &candle_core::Device,
+    _native_experts: bool,
+) -> anyhow::Result<Option<std::sync::Arc<dyn crate::harness::arch::qwen3_5::proj::LinearSource>>> {
     Ok(None)
 }
 
