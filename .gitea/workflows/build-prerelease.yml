@@ -559,8 +559,10 @@ jobs:
             nvcc_threads: 4
             # flash-attn on blackwell first (#95): beast carries the
             # agentic prefill pain. NEURON_FLASH_ATTN=0 is the runtime
-            # rollback.
-            cargo_features: "cuda cudnn flash-attn"
+            # rollback. strata-kernels (#422, #427): the vendored Strata
+            # kernels Qwen3.8-Flash-Next's native experts and decode
+            # engine run on, all opt-in at runtime.
+            cargo_features: "cuda cudnn flash-attn strata-kernels"
     runs-on: ${{ matrix.runner }}
     env:
       SCCACHE_BUCKET: sccache
