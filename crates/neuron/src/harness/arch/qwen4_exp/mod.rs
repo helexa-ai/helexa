@@ -36,6 +36,8 @@
 
 pub mod config;
 pub mod decoder;
+#[cfg(any(test, feature = "strata-kernels"))]
+pub mod engine;
 pub mod full_attn;
 #[cfg(any(test, feature = "strata-kernels"))]
 pub mod gguf_dense;

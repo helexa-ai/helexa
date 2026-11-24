@@ -22,6 +22,11 @@ path = "src/bin/strata_expert_probe.rs"
 required-features = ["strata-kernels"]
 
 [[bin]]
+name = "neuron-engine-layer-probe"
+path = "src/bin/engine_layer_probe.rs"
+required-features = ["strata-kernels"]
+
+[[bin]]
 name = "neuron-mtp-probe"
 path = "src/bin/mtp_probe.rs"
 

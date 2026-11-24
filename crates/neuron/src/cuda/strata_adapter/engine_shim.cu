@@ -21,8 +21,22 @@
 #include "strata/kernels/native_gdn.hpp"
 #include "strata/kernels/native_moe.hpp"
 #include "strata/kernels/native_router.hpp"
+#include "strata/kernels/pdl.hpp"
 
 namespace k = strata::kernels;
+
+// Programmatic dependent launch is defined upstream in verify_kernels.cu,
+// with the verify-window machinery the engine does not use. With
+// `pdl_scope()` off, `launch_pdl` takes its ordinary launch, which is all
+// the decode kernels need; PDL comes in with the verify windows (#313).
+namespace strata::kernels {
+bool& pdl_scope() {
+    static thread_local bool on = false;
+    return on;
+}
+bool pdl_supported() { return false; }
+bool pdl_launch_ok(const void*, cudaStream_t) { return false; }
+}  // namespace strata::kernels
 
 namespace {
 
