@@ -136,4 +136,101 @@ unsafe extern "C" {
         out: *mut f32,
         stream: *mut c_void,
     );
+
+    // ---- the native decode engine's kernels (#427): see engine_shim.cu.
+    // Each returns 0, a CUDA error code, or -1 with a message from
+    // `neuron_engine_last_error`.
+    pub fn neuron_engine_last_error() -> *const c_char;
+    pub fn neuron_engine_configure();
+    pub fn neuron_gr_workspace_bytes(n_embd: i64, hc: i64, hc_lr: i64) -> usize;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_gr_read(
+        residual: *const f32,
+        w_norm: *const f32,
+        w_down: *const u16,
+        w_up: *const u16,
+        w_inject: *const u16,
+        eps: f32,
+        n_embd: i64,
+        hc: i64,
+        hc_lr: i64,
+        workspace: *mut c_void,
+        mixed: *mut f32,
+        inject: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_gr_write(
+        residual: *const f32,
+        block_out: *const f32,
+        inject: *const f32,
+        n_embd: i64,
+        hc: i64,
+        hc_lr: i64,
+        residual_out: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_gdn_conv_l2(
+        history: *mut f32,
+        qkv: *const f32,
+        conv_w: *const f32,
+        h: *mut f32,
+        channels: i32,
+        qk_heads: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_gdn_ab(
+        x: *const f32,
+        w_alpha: *const u16,
+        w_beta: *const u16,
+        dt: *const f32,
+        ssm_a: *const f32,
+        gate: *mut f32,
+        beta: *mut f32,
+        n_embd: i32,
+        h_v: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_gdn_step_norm(
+        state: *mut f32,
+        q: *const f32,
+        k: *const f32,
+        v: *const f32,
+        gate: *const f32,
+        beta: *const f32,
+        z: *const f32,
+        gamma: *const f32,
+        eps: f32,
+        y: *mut f32,
+        h_k: i32,
+        h_v: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_bf16_gemv(
+        x: *const f32,
+        w: *const u16,
+        y: *mut f32,
+        n_in: i64,
+        n_out: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_router_top10(
+        logits: *const f32,
+        ids: *mut i32,
+        weights: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_moe_combine(
+        parts: *const f32,
+        weights: *const f32,
+        shared: *const f32,
+        output: *mut f32,
+        n_embd: i64,
+        k: i64,
+        stream: *mut c_void,
+    ) -> i32;
 }

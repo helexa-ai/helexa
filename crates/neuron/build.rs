@@ -83,50 +83,84 @@ fn build_strata_kernels(build_dir: &std::path::Path) {
     println!("cargo:rerun-if-changed=vendor/strata");
     println!("cargo:rerun-if-changed=src/cuda/strata_adapter/strata_shim.cu");
     println!("cargo:rerun-if-changed=src/cuda/strata_adapter/strata_probe.cu");
+    println!("cargo:rerun-if-changed=src/cuda/strata_adapter/engine_shim.cu");
     println!("cargo:rerun-if-env-changed=CUDA_COMPUTE_CAP");
     let cap = std::env::var("CUDA_COMPUTE_CAP").expect("strata-kernels needs CUDA_COMPUTE_CAP");
     let root = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     let vendor = root.join("vendor/strata/engine");
-    let sources = [
+    let mut sources = vec![
         // UD-IQ4_XS has no NVFP4 experts, so upstream's stub satisfies
         // the reference from the grouped dispatch.
         (
-            "strata_nvfp4_absent.o",
+            "strata_nvfp4_absent.o".to_string(),
             vendor.join("src/kernels/cuda/nvfp4_decode_sm120_absent.cpp"),
         ),
         (
-            "strata_iq_kernels.o",
-            vendor.join("src/kernels/cuda/iq_kernels.cu"),
-        ),
-        (
-            "strata_shim.o",
+            "strata_shim.o".to_string(),
             root.join("src/cuda/strata_adapter/strata_shim.cu"),
         ),
         (
-            "strata_probe.o",
+            "strata_probe.o".to_string(),
             root.join("src/cuda/strata_adapter/strata_probe.cu"),
         ),
+        (
+            "engine_shim.o".to_string(),
+            root.join("src/cuda/strata_adapter/engine_shim.cu"),
+        ),
     ];
-    let mut objects = Vec::new();
-    for (name, source) in &sources {
-        let object = build_dir.join(name);
-        let status = Command::new("nvcc")
-            .args(["-O3", "-DNDEBUG", "-std=c++20"])
-            .arg(format!(
-                "--generate-code=arch=compute_{cap},code=[compute_{cap},sm_{cap}]"
-            ))
-            .args(["-DSTRATA_Q6K_EXPERTS=1", "-DSTRATA_VERIFY_MAX_T=8"])
-            .arg(format!("-I{}", vendor.join("third_party/ggml").display()))
-            .arg(format!("-I{}", vendor.join("include").display()))
-            .args(["--compiler-options", "-fPIC", "-c"])
-            .arg(source)
-            .arg("-o")
-            .arg(&object)
-            .status()
-            .expect("run nvcc");
-        assert!(status.success(), "nvcc failed on {}", source.display());
-        objects.push(object);
+    // The experts, then the decode kernels the native engine (#427)
+    // drives: linear attention, hyper-connections, router, MoE combine,
+    // activation quantisation and the BF16 projections.
+    for kernel in [
+        "iq_kernels",
+        "native_gdn",
+        "native_gdn_preprocess",
+        "fused_gdn",
+        "native_gr_norm",
+        "native_gr_postops",
+        "gr",
+        "native_router",
+        "native_moe",
+        "quantize_act",
+        "bf16_gemv",
+        "native_bf16",
+    ] {
+        sources.push((
+            format!("strata_{kernel}.o"),
+            vendor.join(format!("src/kernels/cuda/{kernel}.cu")),
+        ));
     }
+    // Independent translation units: compile them side by side.
+    let objects: Vec<std::path::PathBuf> = std::thread::scope(|scope| {
+        let jobs: Vec<_> = sources
+            .iter()
+            .map(|(name, source)| {
+                let object = build_dir.join(name);
+                let (cap, vendor) = (&cap, &vendor);
+                scope.spawn(move || {
+                    let status = Command::new("nvcc")
+                        .args(["-O3", "-DNDEBUG", "-std=c++20"])
+                        .arg(format!(
+                            "--generate-code=arch=compute_{cap},code=[compute_{cap},sm_{cap}]"
+                        ))
+                        .args(["-DSTRATA_Q6K_EXPERTS=1", "-DSTRATA_VERIFY_MAX_T=8"])
+                        .arg(format!("-I{}", vendor.join("third_party/ggml").display()))
+                        .arg(format!("-I{}", vendor.join("include").display()))
+                        .args(["--compiler-options", "-fPIC", "-c"])
+                        .arg(source)
+                        .arg("-o")
+                        .arg(&object)
+                        .status()
+                        .expect("run nvcc");
+                    assert!(status.success(), "nvcc failed on {}", source.display());
+                    object
+                })
+            })
+            .collect();
+        jobs.into_iter()
+            .map(|j| j.join().expect("nvcc thread"))
+            .collect()
+    });
     let library = build_dir.join("libneuronstrata.a");
     let _ = std::fs::remove_file(&library);
     let status = Command::new("ar")
