@@ -161,6 +161,12 @@ struct DeviceRouting {
     pending: Vec<Mutex<Option<Pending>>>,
     /// Misses a layer may admit to the tier per step.
     admit_per_layer: usize,
+    /// Buffers for device-routed layers only, sized once for the largest
+    /// decode batch so they never move: a captured decode step holds
+    /// their addresses (#427). Prompt chunks use the source's workspace.
+    workspace: Mutex<Workspace>,
+    /// The largest blob of any layer, which sizes the decode arena.
+    max_blob_bytes: usize,
 }
 
 /// A CUDA memory pool for the tier's experts alone.
@@ -676,6 +682,8 @@ impl GgufExpertSource {
             host_table: host_table_d,
             pending,
             admit_per_layer,
+            workspace: Mutex::new(Workspace::default()),
+            max_blob_bytes: self.layers.iter().map(|l| l.blob_bytes).max().unwrap_or(0),
         })
     }
 
@@ -709,7 +717,7 @@ impl GgufExpertSource {
     /// Lets the tier learn from `layer`'s previous device-routed step:
     /// counts its uses and admits up to `admit_per_layer` misses, each a
     /// queued copy from the host store and a table write.
-    fn adapt(&self, layer_index: usize) -> candle_core::Result<()> {
+    pub fn adapt(&self, layer_index: usize) -> candle_core::Result<()> {
         let (Some(routing), Some(tier)) = (&self.routing, &self.tier) else {
             return Ok(());
         };
@@ -784,40 +792,9 @@ impl GgufExpertSource {
         weights: &Tensor,
         k: usize,
     ) -> candle_core::Result<Tensor> {
-        let routing = self
-            .routing
-            .as_ref()
-            .ok_or_else(|| candle_err("device routing is not enabled"))?;
-        let layer = &self.layers[layer_index];
         let (rows, hidden) = xs.dims2()?;
         let entries = rows * k;
-        let experts = routing.table.len() / self.layers.len();
         self.adapt(layer_index)?;
-
-        let mut workspace = self.workspace.lock().map_err(candle_err)?;
-        let ws = &mut *workspace;
-        let cap_groups = entries.min(experts);
-        ensure_capacity(&self.device, &mut ws.grp_ptr, cap_groups)?;
-        ensure_capacity(&self.device, &mut ws.grp_start, cap_groups + 1)?;
-        ensure_capacity(&self.device, &mut ws.n_groups, 1)?;
-        ensure_capacity(&self.device, &mut ws.ent_dst, entries)?;
-        ensure_capacity(&self.device, &mut ws.ent_tok, entries)?;
-        ensure_capacity(&self.device, &mut ws.miss_src, cap_groups)?;
-        ensure_capacity(&self.device, &mut ws.n_miss, 1)?;
-        // A miss is copied into the arena by the gather below, so the
-        // expert kernel reads VRAM only: reading host memory from the
-        // kernel itself is latency-bound at decode's few warps.
-        ensure_capacity(&self.device, &mut ws.arena, cap_groups * layer.blob_bytes)?;
-        ensure_capacity(
-            &self.device,
-            &mut ws.q8,
-            rows * (hidden / Q8_1_BLOCK_VALUES) * Q8_1_BLOCK_BYTES,
-        )?;
-        // SAFETY: a pure function of its integer arguments.
-        let scratch_bytes =
-            unsafe { ffi::neuron_strata_expert_scratch_bytes(entries as i64, self.n_ff as i64) };
-        ensure_capacity(&self.device, &mut ws.scratch, scratch_bytes)?;
-
         let ids = ids.to_dtype(DType::U32)?.contiguous()?;
         let weights = weights.to_dtype(DType::F32)?.contiguous()?;
         let x = xs.to_dtype(DType::F32)?.contiguous()?;
@@ -826,18 +803,111 @@ impl GgufExpertSource {
         // SAFETY: written in full by the expert kernel.
         let out = unsafe { self.device.alloc::<f32>(entries * hidden)? };
         let stream = self.device.cuda_stream().cu_stream() as *mut c_void;
+        self.launch_routed(
+            layer_index,
+            tensor_address::<f32>(&x)?,
+            tensor_address::<u32>(&ids)?,
+            tensor_address::<f32>(&weights)?,
+            rows,
+            k,
+            device_address(&out),
+            device_address(&w_route),
+            stream,
+        )?;
+        self.record_usage(layer_index, tensor_address::<u32>(&ids)?, entries)?;
+
+        let out = Tensor::from((
+            Storage::Cuda(CudaStorage::wrap_cuda_slice(out, self.device.clone())),
+            (rows, k, hidden),
+        ));
+        let w_route = Tensor::from((
+            Storage::Cuda(CudaStorage::wrap_cuda_slice(w_route, self.device.clone())),
+            (rows, k, 1),
+        ));
+        out.broadcast_mul(&w_route)?.sum(1)
+    }
+
+    /// The routed experts of one device-routed layer, over device
+    /// pointers: `x` is `(rows, n_embd)` f32, `ids` `(rows, k)` 32-bit
+    /// expert ids and `weights` `(rows, k)` f32. Writes `parts`
+    /// `(rows, k, n_embd)` f32, each token's outputs ordered by ascending
+    /// expert id, and `w_route` `(rows, k)`, the weights in that order.
+    ///
+    /// Once its buffers exist (first call) this allocates nothing and
+    /// does not wait, so it can be captured. It does not adapt the tier:
+    /// the caller does that between steps.
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_routed(
+        &self,
+        layer_index: usize,
+        x: u64,
+        ids: u64,
+        weights: u64,
+        rows: usize,
+        k: usize,
+        parts: u64,
+        w_route: u64,
+        stream: *mut c_void,
+    ) -> candle_core::Result<()> {
+        let routing = self
+            .routing
+            .as_ref()
+            .ok_or_else(|| candle_err("device routing is not enabled"))?;
+        if rows > TIER_ADMIT_MAX_ROWS {
+            candle_core::bail!(
+                "device routing takes at most {TIER_ADMIT_MAX_ROWS} rows, got {rows}"
+            );
+        }
+        let layer = &self.layers[layer_index];
+        let hidden = self.n_embd;
+        let entries = rows * k;
+        let experts = routing.table.len() / self.layers.len();
+
+        let mut workspace = routing.workspace.lock().map_err(candle_err)?;
+        let ws = &mut *workspace;
+        let cap_groups = entries.min(experts);
+        // Sized for the largest batch this path takes, once, so nothing
+        // here is reallocated under a captured step.
+        let max_entries = TIER_ADMIT_MAX_ROWS * k;
+        let max_groups = max_entries.min(experts);
+        ensure_capacity(&self.device, &mut ws.grp_ptr, max_groups)?;
+        ensure_capacity(&self.device, &mut ws.grp_start, max_groups + 1)?;
+        ensure_capacity(&self.device, &mut ws.n_groups, 1)?;
+        ensure_capacity(&self.device, &mut ws.ent_dst, max_entries)?;
+        ensure_capacity(&self.device, &mut ws.ent_tok, max_entries)?;
+        ensure_capacity(&self.device, &mut ws.miss_src, max_groups)?;
+        ensure_capacity(&self.device, &mut ws.n_miss, 1)?;
+        // A miss is copied into the arena by the gather below, so the
+        // expert kernel reads VRAM only: reading host memory from the
+        // kernel itself is latency-bound at decode's few warps.
+        ensure_capacity(
+            &self.device,
+            &mut ws.arena,
+            max_groups * routing.max_blob_bytes,
+        )?;
+        ensure_capacity(
+            &self.device,
+            &mut ws.q8,
+            TIER_ADMIT_MAX_ROWS * (hidden / Q8_1_BLOCK_VALUES) * Q8_1_BLOCK_BYTES,
+        )?;
+        // SAFETY: a pure function of its integer arguments.
+        let scratch_bytes = unsafe {
+            ffi::neuron_strata_expert_scratch_bytes(max_entries as i64, self.n_ff as i64)
+        };
+        ensure_capacity(&self.device, &mut ws.scratch, scratch_bytes)?;
+
         let table_row = device_address(&routing.table) + (layer_index * experts * 8) as u64;
         let host_row = device_address(&routing.host_table) + (layer_index * experts * 8) as u64;
         let arena = device_address(ws.arena.as_ref().expect("allocated"));
         let miss_src = device_address(ws.miss_src.as_ref().expect("allocated"));
         let n_miss = device_address(ws.n_miss.as_ref().expect("allocated"));
         let q8 = device_address(ws.q8.as_ref().expect("allocated"));
-        // SAFETY: every pointer is a live device allocation sized above,
-        // and every kernel is ordered on the one stream.
+        // SAFETY: every pointer is a live device allocation sized above or
+        // by the caller, and every kernel is ordered on the one stream.
         unsafe {
             let status = ffi::neuron_strata_route_groups(
-                tensor_address::<u32>(&ids)? as *const u32,
-                tensor_address::<f32>(&weights)? as *const f32,
+                ids as *const u32,
+                weights as *const f32,
                 rows as i32,
                 k as i32,
                 table_row as *const u64,
@@ -850,7 +920,7 @@ impl GgufExpertSource {
                 device_address(ws.n_groups.as_ref().expect("allocated")) as *mut i32,
                 device_address(ws.ent_dst.as_ref().expect("allocated")) as *mut i32,
                 device_address(ws.ent_tok.as_ref().expect("allocated")) as *mut i32,
-                device_address(&w_route) as *mut f32,
+                w_route as *mut f32,
                 miss_src as *mut u64,
                 n_miss as *mut i32,
                 stream,
@@ -870,7 +940,7 @@ impl GgufExpertSource {
                 candle_core::bail!("miss gather failed with status {status}");
             }
             ffi::neuron_strata_quantize_q8_1(
-                tensor_address::<f32>(&x)? as *const f32,
+                x as *const f32,
                 rows as i64,
                 hidden as i64,
                 q8 as *mut c_void,
@@ -890,30 +960,19 @@ impl GgufExpertSource {
                 entries as i64,
                 q8 as *const c_void,
                 device_address(ws.scratch.as_ref().expect("allocated")) as *mut c_void,
-                device_address(&out) as *mut f32,
+                parts as *mut f32,
                 stream,
             );
         }
-        drop(workspace);
-        self.record_usage(layer_index, &ids, entries)?;
-
-        let out = Tensor::from((
-            Storage::Cuda(CudaStorage::wrap_cuda_slice(out, self.device.clone())),
-            (rows, k, hidden),
-        ));
-        let w_route = Tensor::from((
-            Storage::Cuda(CudaStorage::wrap_cuda_slice(w_route, self.device.clone())),
-            (rows, k, 1),
-        ));
-        out.broadcast_mul(&w_route)?.sum(1)
+        Ok(())
     }
 
     /// Queues this step's ids for the host, for `adapt` to read next
-    /// time the layer runs.
-    fn record_usage(
+    /// time the layer runs. `ids` is `entries` 32-bit ids on the device.
+    pub fn record_usage(
         &self,
         layer_index: usize,
-        ids: &Tensor,
+        ids: u64,
         entries: usize,
     ) -> candle_core::Result<()> {
         let (Some(routing), Some(_)) = (&self.routing, &self.tier) else {
@@ -921,8 +980,10 @@ impl GgufExpertSource {
         };
         let mut guard = routing.pending[layer_index].lock().map_err(candle_err)?;
         if guard.as_ref().is_none_or(|p| p.ids.len < entries * 4) {
+            // Sized once for the largest batch: a captured step copies
+            // into this address on every replay.
             *guard = Some(Pending {
-                ids: PinnedBuffer::new((entries * 4).max(256))?,
+                ids: PinnedBuffer::new((TIER_ADMIT_MAX_ROWS * 64 * 4).max(entries * 4))?,
                 entries: 0,
                 event: Event::new()?,
                 recorded: false,
@@ -935,7 +996,7 @@ impl GgufExpertSource {
         unsafe {
             let status = ffi::neuron_strata_copy_to_host(
                 pending.ids.ptr.cast(),
-                tensor_address::<u32>(ids)? as *const c_void,
+                ids as *const c_void,
                 entries * 4,
                 stream,
             );
@@ -950,6 +1011,17 @@ impl GgufExpertSource {
         pending.entries = entries;
         pending.recorded = true;
         Ok(())
+    }
+
+    /// After a captured step's replay: the usage copies it queued are
+    /// the ones its capture recorded, so mark them for `adapt`.
+    pub fn usage_replayed(&self, layer_index: usize) {
+        if let Some(routing) = &self.routing
+            && let Ok(mut guard) = routing.pending[layer_index].lock()
+            && let Some(pending) = guard.as_mut()
+        {
+            pending.recorded = true;
+        }
     }
 
     fn forward_layer(

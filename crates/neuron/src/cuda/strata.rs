@@ -233,4 +233,17 @@ unsafe extern "C" {
         k: i64,
         stream: *mut c_void,
     ) -> i32;
+    pub fn neuron_swiglu(
+        gate: *const f32,
+        up: *const f32,
+        out: *mut f32,
+        n: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    pub fn neuron_scale_by_sigmoid(
+        x: *mut f32,
+        gate: *const f32,
+        n: i32,
+        stream: *mut c_void,
+    ) -> i32;
 }

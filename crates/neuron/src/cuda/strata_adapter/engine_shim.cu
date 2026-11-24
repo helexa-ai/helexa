@@ -61,6 +61,22 @@ int guarded(F&& f) {
     return 0;
 }
 
+// The shared expert's elementwise steps, which upstream fuses into code
+// the engine does not vendor: SiLU(gate) * up, and scaling the expert's
+// output by the sigmoid of its one-scalar gate.
+__global__ void swiglu_kernel(const float* gate, const float* up, float* out, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) {
+        const float g = gate[i];
+        out[i] = g / (1.0f + expf(-g)) * up[i];
+    }
+}
+
+__global__ void scale_by_sigmoid_kernel(float* x, const float* gate, int n) {
+    const int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < n) x[i] *= 1.0f / (1.0f + expf(-gate[0]));
+}
+
 k::GrShapes gr_shapes(int64_t n_embd, int64_t hc, int64_t hc_lr) {
     k::GrShapes s;
     s.n_embd = n_embd;
@@ -134,6 +150,18 @@ int neuron_router_top10(const float* logits, int32_t* ids, float* weights, void*
 int neuron_moe_combine(const float* parts, const float* weights, const float* shared, float* output, int64_t n_embd,
                        int64_t k_, void* stream) {
     return guarded([&] { k::native_moe_combine(parts, weights, shared, output, n_embd, k_, stream); });
+}
+
+int neuron_swiglu(const float* gate, const float* up, float* out, int n, void* stream) {
+    return guarded([&] {
+        swiglu_kernel<<<(n + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(gate, up, out, n);
+    });
+}
+
+int neuron_scale_by_sigmoid(float* x, const float* gate, int n, void* stream) {
+    return guarded([&] {
+        scale_by_sigmoid_kernel<<<(n + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(x, gate, n);
+    });
 }
 
 }  // extern "C"

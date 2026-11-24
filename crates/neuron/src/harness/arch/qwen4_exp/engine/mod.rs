@@ -10,3 +10,5 @@ pub mod weights;
 
 #[cfg(feature = "strata-kernels")]
 pub mod gdn;
+#[cfg(feature = "strata-kernels")]
+pub mod moe;
