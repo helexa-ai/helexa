@@ -412,6 +412,29 @@ impl LoadedHandle {
     }
 }
 
+/// Whether a load holds its routed experts in host memory (#318).
+///
+/// The spec decides when it says. When it does not — a cortex cold load
+/// leaves it unset, since residency is the host's call — a qwen4_exp
+/// model on a host configured with native GGUF experts
+/// (`NEURON_STRATA_EXPERT_GGUF`) is host-resident: that host serves it
+/// no other way, and 241 GB of experts fit no card.
+fn experts_on_host(spec: &ModelSpec, config_path: &std::path::Path) -> bool {
+    match spec.expert_residency {
+        Some(cortex_core::harness::ExpertResidency::Host) => true,
+        Some(cortex_core::harness::ExpertResidency::Device) => false,
+        None => {
+            std::env::var_os("NEURON_STRATA_EXPERT_GGUF").is_some()
+                && std::fs::read_to_string(config_path)
+                    .ok()
+                    .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                    .is_some_and(|v| {
+                        v.get("model_type").and_then(|x| x.as_str()) == Some("qwen4_exp")
+                    })
+        }
+    }
+}
+
 /// The serviceability decision, split from [`LoadedHandle::servability`] so
 /// it can be tested without a loaded model on a GPU.
 fn servability_from(
@@ -4105,6 +4128,9 @@ impl Harness for CandleHarness {
     }
 
     async fn load_model(&self, spec: &ModelSpec) -> Result<()> {
+        // Set by the dense load below; the KV budget reserves the expert
+        // tier's VRAM when it is true.
+        let mut experts_on_host_resolved = false;
         if spec.harness != "candle" {
             anyhow::bail!("expected harness=candle, got harness={}", spec.harness);
         }
@@ -4270,10 +4296,8 @@ impl Harness for CandleHarness {
                     spec.quant.as_deref(),
                     &safetensors_paths,
                 );
-                let experts_on_host = matches!(
-                    spec.expert_residency,
-                    Some(cortex_core::harness::ExpertResidency::Host)
-                );
+                let experts_on_host = experts_on_host(spec, &config_path);
+                experts_on_host_resolved = experts_on_host;
                 if experts_on_host {
                     tracing::info!(
                         model = %spec.model_id,
@@ -4494,10 +4518,7 @@ impl Harness for CandleHarness {
             // some running sequence's reservations.
             // The expert tier fills after this reading, so what it may
             // come to hold is not available to KV.
-            let tier_reserved_mb = if matches!(
-                spec.expert_residency,
-                Some(cortex_core::harness::ExpertResidency::Host)
-            ) {
+            let tier_reserved_mb = if experts_on_host_resolved {
                 super::arch::qwen3_5::expert_tier::configured_budget_mb().unwrap_or(0)
             } else {
                 0

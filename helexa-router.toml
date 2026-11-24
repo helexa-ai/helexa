@@ -31,7 +31,8 @@ region = "eu-central"
 # needs benjy, and while benjy serves nothing an alias aimed there made
 # anonymous chat answer "no operator serves model 'Qwen/Qwen3-8B'".
 "helexa/small" = "Qwen/Qwen3-1.7B"
-"helexa/balanced" = "Qwen/Qwen3.8-27B"
+# Qwen3.8-Flash-Next is beast's resident model since #427 (the 27B before).
+"helexa/balanced" = "Qwen/Qwen3.8-Flash-Next"
 # System-One decisions (#333). Also the model /v1/systemone falls back
 # to when a request names none or names a service no operator serves.
 "helexa/one" = "convaiinnovations/laya"

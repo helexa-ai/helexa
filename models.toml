@@ -98,6 +98,25 @@ cost.output = 1.60
 # at equal rank need a *reason* to both be present, and once the
 # comparison is over one of them is just a way for a stale alias to take
 # the node down.
+# Qwen3.8-Flash-Next (qwen4_exp, #307) is beast's resident model from
+# #427 on: a 48-layer, 512-expert MoE whose 241 GB of BF16 experts fit
+# no card, served from the UD-IQ4_XS GGUF with every expert in host
+# memory and the hottest ~5,600 in a 13 GB VRAM tier, on one 5090. The
+# GGUF path and the rest of that setup are beast's own (deploy.yml
+# model_env); a cortex cold load leaves residency to the neuron, which
+# makes it host-resident there. Text only: its vision tower is #314.
+[[models]]
+id = "Qwen/Qwen3.8-Flash-Next"
+harness = "candle"
+quant = "q4k"
+vram_mb = 30000
+min_devices = 1
+min_device_vram_mb = 30000
+pinned_on = ["beast"]
+residency_priority = 300
+
+# Below Flash-Next's class while Flash-Next is the resident model, so a
+# request for the 27B cannot evict it; it no longer has a host.
 [[models]]
 id = "Qwen/Qwen3.8-27B"
 harness = "candle"
@@ -106,7 +125,7 @@ vram_mb = 42000
 min_devices = 2
 min_device_vram_mb = 24000
 pinned_on = ["beast"]
-residency_priority = 300
+residency_priority = 200
 cost.input = 0.30
 cost.output = 1.20
 
@@ -197,7 +216,7 @@ cost.output = 0.0
 [aliases]
 "helexa/small" = "Qwen/Qwen3-1.7B"
 "helexa/balanced" = "Qwen/Qwen3-8B"
-"helexa/large" = "Qwen/Qwen3.8-27B"
+"helexa/large" = "Qwen/Qwen3.8-Flash-Next"
 "helexa/image" = "Tongyi-MAI/Z-Image-Turbo"
 # The System-One decision class: the default /v1/systemone resolves to
 # for a request with no model, or one naming a service this fleet does

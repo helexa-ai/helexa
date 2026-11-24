@@ -247,10 +247,30 @@ jobs:
           # 32GB) has ample KV headroom; benjy (Qwen3-8B dense, ~6GB free)
           # is VRAM-bound and stays at the default; quadbrat (Qwen3-1.7B)
           # likewise conservative.
+          #
+          # model_env: per-host environment for the resident model,
+          # space-separated KEY=VALUE pairs, written to the same drop-in.
+          # beast serves Qwen3.8-Flash-Next (#427): its routed experts and
+          # dense weights come from the UD-IQ4_XS GGUF on the NVMe /models
+          # (the HF cache is on spinning disk), on Strata's kernels, with
+          # every expert pinned in host memory (55 GiB, hence the
+          # unlimited memlock) and decode routed on the device. The 16k
+          # prompt cap is the longest context measured on this stack so
+          # far; it rises with QSA selection and the KV work (#423).
           - host: beast.hanzalova.internal
             flavour: blackwell
             load_timeout: 900
-            max_prompt_tokens: 131072
+            max_prompt_tokens: 16384
+            limit_memlock: infinity
+            model_env: >-
+              NEURON_STRATA_EXPERT_GGUF=/models/qwen3.8-flash-next/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS-00001-of-00003.gguf
+              NEURON_EXPERT_PROFILE=/models/qwen3.8-flash-next/expert-profile.bin
+              NEURON_EXPERT_CACHE_MB=13000
+              NEURON_EXPERT_DEVICE_ROUTING=1
+              NEURON_STRATA_DENSE=1
+              STRATA_EXP_MODE=8
+              NEURON_PREFILL_CHUNK_TOKENS=2048
+              NEURON_CUDA_EVENT_TRACKING=0
           # benjy: the everyday class (Qwen3-8B) plus the cold-swap
           # targets that take turns with it -- Z-Image and ACE-Step music.
           - host: benjy.hanzalova.internal
@@ -322,6 +342,8 @@ jobs:
           set -eu
           pkg=helexa-neuron-${{ matrix.flavour }}
           max_prompt_tokens="${{ matrix.max_prompt_tokens }}"
+          model_env="${{ matrix.model_env }}"
+          limit_memlock="${{ matrix.limit_memlock }}"
           # A neuron.toml change counts as a config change for the
           # restart decision below, exactly like the drop-in.
           neuron_toml_changed="${{ steps.neuronconf.outputs.changed }}"
@@ -354,6 +376,12 @@ jobs:
           if [ -n "${max_prompt_tokens}" ]; then
             desired=$(printf '%s\n%s' "${desired}" \
               "Environment=NEURON_MAX_PROMPT_TOKENS=${max_prompt_tokens}")
+          fi
+          for kv in ${model_env}; do
+            desired=$(printf '%s\n%s' "${desired}" "Environment=${kv}")
+          done
+          if [ -n "${limit_memlock}" ]; then
+            desired=$(printf '%s\n%s' "${desired}" "LimitMEMLOCK=${limit_memlock}")
           fi
           [ "${desired}" = "$(cat "${conf}" 2>/dev/null || true)" ] || config_changed=1
 
