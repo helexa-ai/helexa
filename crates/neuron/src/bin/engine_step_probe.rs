@@ -111,6 +111,7 @@ fn main() -> Result<()> {
             expert_tier: None,
             external_experts: Some(Arc::new(NativeExpertFactory(experts.clone()))),
             dense: Some(dense_source.clone() as Arc<dyn LinearSource>),
+            ngram_gguf: Some(gguf_path),
         },
     )?;
 
@@ -178,26 +179,16 @@ fn main() -> Result<()> {
         let snapshot = model.snapshot_kv_cache()?;
 
         engine.set_step(token, pos)?;
-        engine.segment_head()?;
-        // SAFETY: written in full by the copy below.
-        let mut copy = unsafe { cuda.alloc::<f32>(wide)? };
-        cuda.memcpy_dtod(engine.residual(), &mut copy)?;
-        let residual = Tensor::from((
-            Storage::Cuda(CudaStorage::wrap_cuda_slice(copy, cuda.clone())),
-            (1, 1, wide),
-        ));
-        if let Some(ple) = model.ple_contribution(&ids, &residual)? {
-            let ple = ple.to_dtype(DType::F32)?.contiguous()?;
-            let (storage, layout) = ple.storage_and_layout();
-            let Storage::Cuda(storage) = &*storage else {
-                bail!("PLE ran off the GPU");
-            };
-            let slice = storage.as_cuda_slice::<f32>()?;
-            engine.add_to_residual(
-                slice.device_ptr(slice.stream()).0 + (layout.start_offset() * 4) as u64,
-            )?;
+        model.ngram_step_into(token, engine.ple_input())?;
+        // Faults the comparison must catch: no n-gram rows, or a PLE conv
+        // history that never accumulates.
+        if std::env::var_os("PROBE_FAULT_PLE_ROWS").is_some() {
+            engine.ple_input().fill(0.0);
         }
-        engine.segment_tail()?;
+        if std::env::var_os("PROBE_FAULT_PLE_HISTORY").is_some() {
+            engine.import_ple(None)?;
+        }
+        engine.segment()?;
         let got = engine.logits()?;
         // The engine's final hidden state through candle's own BF16 head:
         // separates the Q6_K head from everything before it.
@@ -246,6 +237,15 @@ fn main() -> Result<()> {
             if same { "same" } else { "DIFFERENT" }
         );
     }
+    // PLE's conv history after the same tokens, engine against candle:
+    // the logits barely see it over a short run, so it is checked here.
+    if let Some(want) = model.ple_conv_state()? {
+        let want = want.to_dtype(DType::F32)?.flatten_all()?;
+        let got = engine.export_ple(DType::F32)?.flatten_all()?;
+        let diff = (&got - &want)?.sqr()?.sum_all()?.to_scalar::<f32>()?.sqrt();
+        let norm = want.sqr()?.sum_all()?.to_scalar::<f32>()?.sqrt();
+        println!("PLE history: relative L2 {:.4e}", diff / norm.max(1e-30));
+    }
     println!(
         "{steps} steps: mean KL {:.4e} (through candle's BF16 head {:.4e}), worst {worst:.4e}, top-1 agree {agree}/{steps}",
         kl_sum / steps as f64,
@@ -278,34 +278,12 @@ fn time_steps(
             let started = std::time::Instant::now();
             let ids = Tensor::new(&[[token]], &device)?;
             engine.set_step(token, pos)?;
+            model.ngram_step_into(token, engine.ple_input())?;
             engine.adapt()?;
             if graphs {
-                engine.run_head()?;
+                engine.run_step()?;
             } else {
-                engine.segment_head()?;
-            }
-            // SAFETY: written in full by the copy below.
-            let mut copy = unsafe { cuda.alloc::<f32>(wide)? };
-            cuda.memcpy_dtod(engine.residual(), &mut copy)?;
-            let residual = Tensor::from((
-                Storage::Cuda(CudaStorage::wrap_cuda_slice(copy, cuda.clone())),
-                (1, 1, wide),
-            ));
-            if let Some(ple) = model.ple_contribution(&ids, &residual)? {
-                let ple = ple.to_dtype(DType::F32)?.contiguous()?;
-                let (storage, layout) = ple.storage_and_layout();
-                let Storage::Cuda(storage) = &*storage else {
-                    bail!("PLE ran off the GPU");
-                };
-                let slice = storage.as_cuda_slice::<f32>()?;
-                engine.add_to_residual(
-                    slice.device_ptr(slice.stream()).0 + (layout.start_offset() * 4) as u64,
-                )?;
-            }
-            if graphs {
-                engine.run_tail()?;
-            } else {
-                engine.segment_tail()?;
+                engine.segment()?;
             }
             let logits = engine.logits()?;
             times.push(started.elapsed().as_secs_f64() * 1e3);

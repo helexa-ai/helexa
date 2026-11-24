@@ -1,13 +1,12 @@
 //! The native decode step (#427): every layer of the model for one token,
 //! over buffers allocated once.
 //!
-//! A step is two segments around the PLE layer: `[embedding, layers
-//! before PLE]`, then (after the caller adds PLE's contribution to the
-//! residual) `[layers from PLE on, the final mixer, the LM head]`. Each
-//! segment is fixed work over fixed addresses, with the token and
-//! position read from a device buffer filled from pinned host memory at
-//! the start of the step, so each can be captured as a CUDA graph and
-//! replayed. PLE's n-gram gather stays on the host for now.
+//! A step is the embedding, the layers before PLE, the PLE block, the
+//! layers from PLE on, the final mixer and the LM head: fixed work over
+//! fixed addresses, with the token, its position and its n-gram rows
+//! read from pinned host memory at the start of the step, so the whole
+//! step is captured as one CUDA graph and replayed. Only the n-gram hash
+//! and the table read stay on the host, between steps.
 
 use std::ffi::c_void;
 use std::sync::Arc;
@@ -19,6 +18,7 @@ use candle_core::{CudaDevice, Storage, Tensor};
 use super::attn::{self, AttnCache, AttnScratch, AttnShapes, AttnWeights};
 use super::gdn::{self, GdnScratch, GdnShapes, GdnState, GdnWeights, check};
 use super::moe::{self, MoeScratch, MoeShapes, MoeWeights};
+use super::ple::PleNative;
 use super::weights::{DeviceTensor, Gguf};
 use crate::cuda::strata as ffi;
 use crate::harness::arch::qwen4_exp::config::TextConfig;
@@ -71,10 +71,10 @@ struct Graph(CudaGraph);
 unsafe impl Send for Graph {}
 
 pub struct NativeDecoder {
-    /// Captured segments, once a warm step has run.
-    head_graph: Option<Graph>,
-    tail_graph: Option<Graph>,
+    /// The captured step, once a warm step has run.
+    graph: Option<Graph>,
     warmed: bool,
+    ple: PleNative,
     device: CudaDevice,
     s: GdnShapes,
     a: AttnShapes,
@@ -188,8 +188,7 @@ impl NativeDecoder {
         ensure!(!host.is_null(), "cannot pin the step buffer");
         let wide = s.hc * s.n_embd;
         Ok(Self {
-            head_graph: None,
-            tail_graph: None,
+            graph: None,
             warmed: false,
             gdn_sc: GdnScratch::new(&device, &s)?,
             attn_sc: AttnScratch::new(&device, &s, &a)?,
@@ -211,6 +210,7 @@ impl NativeDecoder {
             step: device.alloc_zeros::<i32>(STEP_SLOTS)?,
             host_step: HostStep(host),
             vocab: cfg.vocab_size,
+            ple: PleNative::load(gguf, ple_layers[0], &s)?,
             ple_layer: ple_layers[0],
             device,
             s,
@@ -225,9 +225,10 @@ impl NativeDecoder {
         self.device.cuda_stream().cu_stream() as *mut c_void
     }
 
-    /// The residual between the segments, `hc * n_embd` f32.
-    pub fn residual(&self) -> &CudaSlice<f32> {
-        &self.residual[0]
+    /// Where the step's n-gram rows go (`n_embd` f32): written by the
+    /// caller between steps, with [`Self::set_step`].
+    pub fn ple_input(&mut self) -> &mut [f32] {
+        self.ple.input()
     }
 
     pub fn shapes(&self) -> (GdnShapes, AttnShapes, MoeShapes) {
@@ -300,10 +301,19 @@ impl NativeDecoder {
         )
     }
 
-    /// Segment one: the step inputs, the embedding into every stream,
-    /// and the layers before the PLE layer. Leaves the residual for the
-    /// caller to add PLE's contribution to.
-    pub fn segment_head(&mut self) -> Result<()> {
+    /// The step, eagerly: [`Self::set_step`] and [`Self::ple_input`]
+    /// must have been written.
+    pub fn segment(&mut self) -> Result<()> {
+        self.segment_head()?;
+        self.ple
+            .forward(address(&self.residual[0]), self.stream())
+            .with_context(|| format!("PLE (layer {})", self.ple_layer))?;
+        self.segment_tail()
+    }
+
+    /// The step inputs, the embedding into every stream, and the layers
+    /// before the PLE layer.
+    fn segment_head(&mut self) -> Result<()> {
         let stream = self.stream();
         // SAFETY: the pinned source holds STEP_SLOTS i32 and the device
         // buffer as many; both live as long as `self`.
@@ -358,85 +368,33 @@ impl NativeDecoder {
         Ok(())
     }
 
-    /// Segment one, from its graph: captured on first use after a warm
-    /// eager step (which sizes every buffer the segment touches), then
+    /// The step, from its graph: captured on first use after a warm
+    /// eager step (which sizes every buffer the step touches), then
     /// replayed. The first call of all runs it eagerly.
-    pub fn run_head(&mut self) -> Result<()> {
-        self.run_captured(true)
-    }
-
-    /// Segment two, as [`Self::run_head`].
-    pub fn run_tail(&mut self) -> Result<()> {
-        self.run_captured(false)
-    }
-
-    fn run_captured(&mut self, head: bool) -> Result<()> {
+    pub fn run_step(&mut self) -> Result<()> {
         if !self.warmed {
-            if head {
-                self.segment_head()?;
-            } else {
-                self.segment_tail()?;
-                self.warmed = true;
-            }
+            self.segment()?;
+            self.warmed = true;
             return Ok(());
         }
-        let has = if head {
-            self.head_graph.is_some()
-        } else {
-            self.tail_graph.is_some()
-        };
-        if !has {
+        if self.graph.is_none() {
             let stream = self.device.cuda_stream();
             stream.begin_capture(sys::CUstreamCaptureMode::CU_STREAM_CAPTURE_MODE_THREAD_LOCAL)?;
-            let ran = if head {
-                self.segment_head()
-            } else {
-                self.segment_tail()
-            };
+            let ran = self.segment();
             let graph = stream.end_capture(
                 sys::CUgraphInstantiate_flags::CUDA_GRAPH_INSTANTIATE_FLAG_AUTO_FREE_ON_LAUNCH,
             );
             ran.context("while capturing")?;
-            let graph = graph?.context("capture produced no graph")?;
-            if head {
-                self.head_graph = Some(Graph(graph));
-            } else {
-                self.tail_graph = Some(Graph(graph));
-            }
+            self.graph = Some(Graph(graph?.context("capture produced no graph")?));
         }
-        let graph = if head {
-            &self.head_graph
-        } else {
-            &self.tail_graph
-        };
-        graph.as_ref().expect("captured above").0.launch()?;
-        if !head {
-            self.usage_replayed();
-        }
+        self.graph.as_ref().expect("captured above").0.launch()?;
+        self.usage_replayed();
         Ok(())
     }
 
-    /// Adds `contribution` (`hc * n_embd` f32 on the device) to the
-    /// residual: the PLE layer's addition before its attention half.
-    pub fn add_to_residual(&mut self, contribution: u64) -> Result<()> {
-        let n = (self.s.hc * self.s.n_embd) as i32;
-        // SAFETY: both buffers hold `n` floats.
-        unsafe {
-            check(
-                ffi::neuron_add_inplace(
-                    address(&self.residual[0]) as *mut f32,
-                    contribution as *const f32,
-                    n,
-                    self.stream(),
-                ),
-                "ple add",
-            )
-        }
-    }
-
-    /// Segment two: the layers from the PLE layer on, the final mixer and
-    /// the LM head, into the logits buffer.
-    pub fn segment_tail(&mut self) -> Result<()> {
+    /// The layers from the PLE layer on, the final mixer and the LM head,
+    /// into the logits buffer.
+    fn segment_tail(&mut self) -> Result<()> {
         for i in self.ple_layer..self.layers.len() {
             self.run_layer(i).with_context(|| format!("layer {i}"))?;
         }
@@ -487,6 +445,11 @@ impl NativeDecoder {
     /// The logits of the last step (waits for it).
     pub fn logits(&self) -> Result<Vec<f32>> {
         Ok(self.device.clone_dtoh(&self.logits)?)
+    }
+
+    /// The layer that carries PLE.
+    pub fn ple_layer(&self) -> usize {
+        self.ple_layer
     }
 
     /// How many layers there are, and whether layer `i` is linear.
@@ -644,8 +607,20 @@ impl NativeDecoder {
         cache.import(&self.device, &k, &v, &index_keys)
     }
 
+    /// Takes PLE's rolling conv context from candle after a prefill
+    /// (`(1, channels, 9)`, or `None` before any).
+    pub fn import_ple(&mut self, state: Option<&Tensor>) -> Result<()> {
+        self.ple.import(&self.device, state)
+    }
+
+    /// PLE's conv context in candle's form, for a hand-back.
+    pub fn export_ple(&self, dtype: candle_core::DType) -> Result<Tensor> {
+        self.ple.export(&self.device, dtype)
+    }
+
     /// Clears every sequence state, in place, for a new request.
     pub fn reset(&mut self) -> Result<()> {
+        self.ple.clear(&self.device)?;
         for layer in &mut self.layers {
             match &mut layer.mixer {
                 Mixer::Linear(_, state) => state.clear(&self.device)?,
@@ -673,7 +648,7 @@ pub(crate) fn copy_into(device: &CudaDevice, src: &Tensor, dst: &mut CudaSlice<f
 }
 
 /// A copy of a device buffer's front as a candle tensor of `shape`.
-fn tensor_of<S: Into<candle_core::Shape>>(
+pub(super) fn tensor_of<S: Into<candle_core::Shape>>(
     device: &CudaDevice,
     src: &CudaSlice<f32>,
     shape: S,

@@ -223,6 +223,7 @@ fn run_moe(
         expert_tier: None,
         external_experts: Some(Arc::new(NativeExpertFactory(experts.clone()))),
         dense: Some(dense.clone()),
+        ngram_gguf: Some(gguf_path),
     };
     let hc = HyperConnection::load(
         &lvb.pp("mlp_hyper_connection"),

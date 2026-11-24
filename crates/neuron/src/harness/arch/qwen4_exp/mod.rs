@@ -51,6 +51,8 @@ pub mod mtp;
 #[cfg(feature = "strata-kernels")]
 pub mod native_experts;
 pub mod ple;
+#[cfg(any(test, feature = "strata-kernels"))]
+pub mod ple_gguf;
 pub mod qsa;
 
 /// What a load needs to know beyond the config and the weights.
@@ -105,4 +107,7 @@ pub struct LoadOptions<'a> {
     /// blocks). Each is asked for by checkpoint name; what it declines
     /// is read from the checkpoint.
     pub dense: Option<std::sync::Arc<dyn super::qwen3_5::proj::LinearSource>>,
+    /// A GGUF (its first shard) to read the PLE n-gram table from, as
+    /// IQ4_NL, instead of the checkpoint's BF16 shards.
+    pub ngram_gguf: Option<&'a std::path::Path>,
 }

@@ -110,7 +110,7 @@ fn build_strata_kernels(build_dir: &std::path::Path) {
     ];
     // The experts, then the decode kernels the native engine (#427)
     // drives: linear attention, hyper-connections, router, MoE combine,
-    // activation quantisation and the BF16 projections.
+    // activation quantisation, the BF16 projections and PLE.
     for kernel in [
         "iq_kernels",
         "native_gdn",
@@ -125,6 +125,7 @@ fn build_strata_kernels(build_dir: &std::path::Path) {
         "quantize_act",
         "bf16_gemv",
         "native_bf16",
+        "native_ple_postops",
     ] {
         sources.push((
             format!("strata_{kernel}.o"),

@@ -16,3 +16,5 @@ pub mod decoder;
 pub mod gdn;
 #[cfg(feature = "strata-kernels")]
 pub mod moe;
+#[cfg(feature = "strata-kernels")]
+pub mod ple;

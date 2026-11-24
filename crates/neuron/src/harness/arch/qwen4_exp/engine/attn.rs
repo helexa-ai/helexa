@@ -209,7 +209,7 @@ impl AttnScratch {
     }
 }
 
-fn mmvq(w: &DeviceTensor, x_q8: u64, y: u64, stream: *mut c_void) {
+pub(super) fn mmvq(w: &DeviceTensor, x_q8: u64, y: u64, stream: *mut c_void) {
     // SAFETY: `w` is `dims[1]` rows of `dims[0]`, `x_q8` holds `dims[0]`
     // values in q8_1 and `y` has room for `dims[1]` floats.
     unsafe {
@@ -226,7 +226,7 @@ fn mmvq(w: &DeviceTensor, x_q8: u64, y: u64, stream: *mut c_void) {
     }
 }
 
-fn quantize(x: u64, n: usize, q8: u64, stream: *mut c_void) {
+pub(super) fn quantize(x: u64, n: usize, q8: u64, stream: *mut c_void) {
     // SAFETY: `x` holds `n` floats and `q8` room for their q8_1 blocks.
     unsafe {
         ffi::neuron_strata_quantize_q8_1(x as *const f32, 1, n as i64, q8 as *mut c_void, stream)

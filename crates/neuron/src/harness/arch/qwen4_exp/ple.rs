@@ -220,6 +220,24 @@ pub trait NGramTable: Send + Sync {
     /// `[rows.len(), head_dim]`.
     fn gather(&self, rows: &[i64]) -> Result<Tensor>;
 
+    /// The same rows as f32 into host memory (`rows.len() * head_dim`):
+    /// what a decode step that feeds the native engine reads.
+    fn gather_into(&self, rows: &[i64], out: &mut [f32]) -> Result<()> {
+        let values = self
+            .gather(rows)?
+            .to_dtype(DType::F32)?
+            .flatten_all()?
+            .to_vec1::<f32>()?;
+        ensure!(
+            values.len() == out.len(),
+            "{} values for {}",
+            values.len(),
+            out.len()
+        );
+        out.copy_from_slice(&values);
+        Ok(())
+    }
+
     /// Width of one row — `ple_embed_dim / ngram_heads`, 160.
     fn head_dim(&self) -> usize;
 }

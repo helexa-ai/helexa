@@ -38,6 +38,40 @@ pub fn f16_to_f32(h: u16) -> f32 {
 }
 
 /// Single to BF16 bits, round to nearest even (NaN stays NaN).
+/// f32 to IEEE half, rounded to nearest even; out-of-range values
+/// saturate to infinity and NaN stays NaN.
+pub fn f32_to_f16(x: f32) -> u16 {
+    let bits = x.to_bits();
+    let sign = ((bits >> 16) & 0x8000) as u16;
+    let exp = ((bits >> 23) & 0xff) as i32;
+    let man = bits & 0x7f_ffff;
+    if exp == 0xff {
+        return sign | 0x7c00 | if man != 0 { 0x200 } else { 0 };
+    }
+    let e = exp - 127 + 15;
+    if e >= 0x1f {
+        return sign | 0x7c00;
+    }
+    if e <= 0 {
+        // Subnormal (or zero) in half precision.
+        if e < -10 {
+            return sign;
+        }
+        let m = man | 0x80_0000;
+        let shift = (14 - e) as u32;
+        let half = m >> shift;
+        let rest = m & ((1 << shift) - 1);
+        let mid = 1 << (shift - 1);
+        let round = rest > mid || (rest == mid && half & 1 == 1);
+        return sign | (half + u32::from(round)) as u16;
+    }
+    let half = ((e as u32) << 10) | (man >> 13);
+    let rest = man & 0x1fff;
+    let round = rest > 0x1000 || (rest == 0x1000 && half & 1 == 1);
+    // A carry out of the mantissa correctly bumps the exponent.
+    sign | (half + u32::from(round)) as u16
+}
+
 pub fn f32_to_bf16(x: f32) -> u16 {
     let bits = x.to_bits();
     if x.is_nan() {
@@ -148,7 +182,7 @@ mod device {
     use candle_core::cuda_backend::cudarc::driver::{CudaSlice, DevicePtr};
     use memmap2::Mmap;
 
-    use super::{GGML_BF16, GGML_F32, f32_to_bf16, tensor_bytes, to_f32};
+    use super::{GGML_BF16, GGML_F16, GGML_F32, f32_to_bf16, f32_to_f16, tensor_bytes, to_f32};
     use crate::harness::arch::qwen4_exp::gguf_dense::GgufDenseSource;
     use crate::harness::arch::qwen4_exp::gguf_index::{GgufIndex, GgufTensor};
 
@@ -333,6 +367,16 @@ mod device {
             self.upload(&host, GGML_F32, dims)
         }
 
+        /// The tensor as IEEE half, rounded to nearest even.
+        pub fn upload_f16(&self, name: &str) -> Result<DeviceTensor> {
+            let (values, dims) = self.values_f32(name)?;
+            let host: Vec<u8> = values
+                .iter()
+                .flat_map(|&v| f32_to_f16(v).to_le_bytes())
+                .collect();
+            self.upload(&host, GGML_F16, dims)
+        }
+
         /// The tensor as BF16, rounded to nearest even.
         pub fn upload_bf16(&self, name: &str) -> Result<DeviceTensor> {
             let (values, dims) = self.values_f32(name)?;
@@ -352,6 +396,30 @@ mod device {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every finite half survives the trip through f32 and back, and
+    /// values between two halves round to the nearer (the even one on a
+    /// tie).
+    #[test]
+    fn f32_to_half_round_trips_and_rounds_to_nearest_even() {
+        for h in 0..=u16::MAX {
+            if h & 0x7c00 == 0x7c00 {
+                continue;
+            }
+            assert_eq!(f32_to_f16(f16_to_f32(h)), h, "{h:#06x}");
+        }
+        // 1 + 2^-11 is halfway between 1 and the next half: ties to even (1).
+        assert_eq!(f32_to_f16(1.0 + 2f32.powi(-11)), 0x3c00);
+        // Just above halfway rounds up.
+        assert_eq!(f32_to_f16(1.0 + 2f32.powi(-11) + 2f32.powi(-20)), 0x3c01);
+        // 1 + 3 * 2^-11 is halfway between 0x3c01 and 0x3c02: even is 0x3c02.
+        assert_eq!(f32_to_f16(1.0 + 3.0 * 2f32.powi(-11)), 0x3c02);
+        assert_eq!(f32_to_f16(1e6), 0x7c00);
+        assert_eq!(f32_to_f16(-1e-10), 0x8000);
+        // The largest value below 2^-24's half rounds to zero, above to it.
+        assert_eq!(f32_to_f16(2f32.powi(-25)), 0x0000);
+        assert_eq!(f32_to_f16(2f32.powi(-25) * 1.5), 0x0001);
+    }
 
     #[test]
     fn half_precision_converts_exactly() {

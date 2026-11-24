@@ -127,6 +127,7 @@ impl MtpHead {
                     expert_tier: None,
                     external_experts: None,
                     dense: None,
+                    ngram_gguf: None,
                 },
             )
             .context("load mtp.layers.0")?,

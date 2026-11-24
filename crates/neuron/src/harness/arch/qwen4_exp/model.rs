@@ -104,6 +104,29 @@ impl NGramEmbedding {
         self.carried = carried.to_vec();
     }
 
+    #[cfg(feature = "strata-kernels")]
+    /// One decode token of batch row 0, on the host: hashes it against
+    /// the carried ids and dequantises its rows into `out`
+    /// (`heads * head_dim` f32), advancing the carried ids as
+    /// [`Self::forward`] would.
+    fn step_into(&mut self, id: i64, out: &mut [f32]) -> Result<()> {
+        if self.carried.is_empty() {
+            self.carried.push(Vec::new());
+        }
+        let mut history = self.carried[0].clone();
+        history.push(id);
+        let rows: Vec<i64> = self
+            .hasher
+            .rows(&history, 1)?
+            .into_iter()
+            .flatten()
+            .collect();
+        self.table.gather_into(&rows, out)?;
+        let keep = self.hasher.context_len().min(history.len());
+        self.carried[0] = history[history.len() - keep..].to_vec();
+        Ok(())
+    }
+
     fn reset(&mut self) {
         for row in &mut self.carried {
             row.clear();
@@ -182,6 +205,7 @@ impl Qwen4ExpForCausalLM {
         // quantised, or — since they do not currently fit — never.
         let ngram = match text.ple_layers().first() {
             Some(layer) => Some(load_ngram(
+                opts.ngram_gguf,
                 text,
                 &layers_vb.pp(*layer).pp("ple"),
                 opts.safetensors_paths,
@@ -283,6 +307,29 @@ impl Qwen4ExpForCausalLM {
         Ok(self.forward_inner(input_ids, offset)?.0)
     }
 
+    /// PLE's rolling conv context as candle holds it, `(1, channels, 9)`,
+    /// or `None` before any token.
+    pub fn ple_conv_state(&self) -> Result<Option<Tensor>> {
+        for layer in &self.layers {
+            if let Some(state) = layer.snapshot_ple()? {
+                return Ok(Some(state));
+            }
+        }
+        Ok(None)
+    }
+
+    /// One decode token's n-gram rows into `out` (`hidden` f32), on the
+    /// host, advancing the carried ids as a forward would: what the
+    /// native engine's PLE block (#427) reads.
+    #[cfg(feature = "strata-kernels")]
+    pub fn ngram_step_into(&mut self, token: u32, out: &mut [f32]) -> Result<()> {
+        let ngram = self
+            .ngram
+            .as_mut()
+            .context("the native engine needs a PLE layer")?;
+        ngram.step_into(i64::from(token), out)
+    }
+
     /// The embedding and LM head the native engine (#427) can read in
     /// place rather than load again: both `(vocab, hidden)` in the model
     /// dtype. `None` when the head is not a plain dense one.
@@ -377,33 +424,9 @@ impl Qwen4ExpForCausalLM {
         }
         let token = input_ids.flatten_all()?.to_vec1::<u32>()?[0];
         dec.set_step(token, offset)?;
+        self.ngram_step_into(token, dec.ple_input())?;
         dec.adapt()?;
-        dec.run_head()?;
-        let cuda = self.device.as_cuda_device()?;
-        let wide = dec.residual().len();
-        // SAFETY: written in full by the copy below.
-        let mut copy = unsafe { cuda.alloc::<f32>(wide)? };
-        cuda.memcpy_dtod(dec.residual(), &mut copy)?;
-        let residual = Tensor::from((
-            candle_core::Storage::Cuda(candle_core::CudaStorage::wrap_cuda_slice(
-                copy,
-                cuda.clone(),
-            )),
-            (1, 1, wide),
-        ));
-        if let Some(ple) = self.ple_contribution(input_ids, &residual)? {
-            let ple = ple.to_dtype(DType::F32)?.contiguous()?;
-            let (storage, layout) = ple.storage_and_layout();
-            let candle_core::Storage::Cuda(storage) = &*storage else {
-                anyhow::bail!("PLE ran off the GPU");
-            };
-            let slice = storage.as_cuda_slice::<f32>()?;
-            use candle_core::cuda_backend::cudarc::driver::DevicePtr;
-            dec.add_to_residual(
-                slice.device_ptr(slice.stream()).0 + (layout.start_offset() * 4) as u64,
-            )?;
-        }
-        dec.run_tail()?;
+        dec.run_step()?;
         let logits = dec.logits()?;
         let vocab = logits.len();
         Ok(Some(Tensor::from_vec(logits, (1, 1, vocab), &self.device)?))
@@ -437,6 +460,9 @@ impl Qwen4ExpForCausalLM {
                 None => anyhow::bail!("the engine has no layer {i}"),
             };
             layer.restore_kv(&snap)?;
+            if i == dec.ple_layer() {
+                layer.restore_ple(Some(&dec.export_ple(dtype)?))?;
+            }
         }
         Ok(())
     }
@@ -473,6 +499,13 @@ impl Qwen4ExpForCausalLM {
                 _ => anyhow::bail!("layer {i} has no state to hand over at position {offset}"),
             }
         }
+        let ple = self
+            .layers
+            .iter()
+            .map(|l| l.snapshot_ple())
+            .find_map(|r| r.transpose())
+            .transpose()?;
+        dec.import_ple(ple.as_ref())?;
         Ok(())
     }
 
@@ -662,7 +695,34 @@ impl Qwen4ExpForCausalLM {
     }
 }
 
+#[cfg(any(test, feature = "strata-kernels"))]
+fn gguf_ngram_table(
+    gguf: &std::path::Path,
+    rows: usize,
+    head_dim: usize,
+    device: &Device,
+) -> Result<Box<dyn NGramTable>> {
+    let table = super::ple_gguf::GgufNGramTable::open(gguf, head_dim, device)?;
+    ensure!(
+        table.rows() == rows,
+        "the GGUF's n-gram table has {} rows, the checkpoint {rows}",
+        table.rows()
+    );
+    Ok(Box::new(table))
+}
+
+#[cfg(not(any(test, feature = "strata-kernels")))]
+fn gguf_ngram_table(
+    _gguf: &std::path::Path,
+    _rows: usize,
+    _head_dim: usize,
+    _device: &Device,
+) -> Result<Box<dyn NGramTable>> {
+    anyhow::bail!("reading the n-gram table from a GGUF needs the strata-kernels feature")
+}
+
 fn load_ngram(
+    gguf: Option<&std::path::Path>,
     cfg: &TextConfig,
     ple_vb: &ShardedVarBuilder,
     safetensors_paths: &[std::path::PathBuf],
@@ -698,7 +758,9 @@ fn load_ngram(
     // layer index — the two cannot disagree that way, and getting it
     // wrong is a 102.4 GB read of the wrong thing.
     let ngram_vb = vb.pp("ngram_embedding");
-    let table: Box<dyn NGramTable> = if safetensors_paths.is_empty() {
+    let table: Box<dyn NGramTable> = if let Some(gguf) = gguf {
+        gguf_ngram_table(gguf, rows, head_dim, device)?
+    } else if safetensors_paths.is_empty() {
         Box::new(ShardedNGramTable::load(
             &ngram_vb,
             cfg.split_ngram_parts,
@@ -1101,6 +1163,7 @@ mod tests {
                 expert_tier: None,
                 external_experts: None,
                 dense: None,
+                ngram_gguf: None,
             },
         )
         .unwrap();

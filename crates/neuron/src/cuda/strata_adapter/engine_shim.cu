@@ -22,6 +22,7 @@
 #include "strata/kernels/iq_kernels.hpp"
 #include "strata/kernels/native_gdn.hpp"
 #include "strata/kernels/native_moe.hpp"
+#include "strata/kernels/native_ple_postops.hpp"
 #include "strata/kernels/native_rope.hpp"
 #include "strata/kernels/native_router.hpp"
 #include "strata/kernels/pdl.hpp"
@@ -175,6 +176,18 @@ __global__ void add_inplace_kernel(float* x, const float* y, int n) {
     if (i < n) x[i] += y[i];
 }
 
+// PLE's conv history, row-fastest (`hist[row + 9 * channel]`): drop the
+// oldest row and append this token's normalized value. One thread owns a
+// channel, so the in-place shift is well defined.
+__global__ void ple_history_kernel(float* hist, const float* normalized, int channels) {
+    const int c = blockIdx.x * blockDim.x + threadIdx.x;
+    if (c >= channels) return;
+    float* row = hist + (size_t) c * 9;
+#pragma unroll
+    for (int r = 0; r < 8; ++r) row[r] = row[r + 1];
+    row[8] = normalized[c];
+}
+
 k::GrShapes gr_shapes(int64_t n_embd, int64_t hc, int64_t hc_lr) {
     k::GrShapes s;
     s.n_embd = n_embd;
@@ -283,6 +296,30 @@ int neuron_embed_rows(int ggml_type, const void* table, size_t row_bytes, const 
 int neuron_repeat_row(const float* src, float* dst, int n, int times, void* stream) {
     return guarded([&] {
         repeat_row_kernel<<<(n * times + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(src, dst, n, times);
+    });
+}
+
+int neuron_ple_postops(const float* projected_key, const float* hidden, const float* value,
+                       const float* history, const float* norm_key, const float* norm_query,
+                       const float* norm_conv, const uint16_t* conv1d_f16, float* key, float* normalized,
+                       float* gate, float* gated, float* conv, float* result, void* stream) {
+    return guarded([&] {
+        k::PleWeights w;
+        w.norm_key = norm_key;
+        w.norm_query = norm_query;
+        w.norm_conv = norm_conv;
+        w.conv1d_f16 = conv1d_f16;
+        // The query's scratch is reused for the normalized gated values,
+        // the one alias the kernel allows besides result == hidden.
+        k::NativePlePostopsBuffers b{key, normalized, gate, gated, normalized, conv, result};
+        k::native_ple_postops(projected_key, hidden, value, history, w, b, stream);
+    });
+}
+
+int neuron_ple_history_advance(float* hist, const float* normalized, int channels, void* stream) {
+    return guarded([&] {
+        ple_history_kernel<<<(channels + 255) / 256, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+            hist, normalized, channels);
     });
 }
 

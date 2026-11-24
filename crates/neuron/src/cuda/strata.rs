@@ -313,4 +313,33 @@ unsafe extern "C" {
         stream: *mut c_void,
     ) -> i32;
     pub fn neuron_add_inplace(x: *mut f32, y: *const f32, n: i32, stream: *mut c_void) -> i32;
+    /// Strata's PLE block after its two projections, for one token:
+    /// `result = hidden + gated + silu(conv(normalized))`. `result` may be
+    /// `hidden`; `key`, `normalized`, `gate`, `gated`, `conv` are scratch
+    /// (`normalized` is left holding this token's conv input).
+    #[allow(clippy::too_many_arguments)]
+    pub fn neuron_ple_postops(
+        projected_key: *const f32,
+        hidden: *const f32,
+        value: *const f32,
+        history: *const f32,
+        norm_key: *const f32,
+        norm_query: *const f32,
+        norm_conv: *const f32,
+        conv1d_f16: *const u16,
+        key: *mut f32,
+        normalized: *mut f32,
+        gate: *mut f32,
+        gated: *mut f32,
+        conv: *mut f32,
+        result: *mut f32,
+        stream: *mut c_void,
+    ) -> i32;
+    /// Shifts PLE's row-fastest conv history by one and appends `normalized`.
+    pub fn neuron_ple_history_advance(
+        hist: *mut f32,
+        normalized: *const f32,
+        channels: i32,
+        stream: *mut c_void,
+    ) -> i32;
 }

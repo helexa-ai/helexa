@@ -1442,6 +1442,15 @@ fn load_dense_inner(
                 native_expert_source(&cfg, device, experts_on_host, tier_budget)?;
             let dense_source = native_dense_source(&cfg, device, external_experts.is_some())?;
             let dense = native_dense_dyn(&dense_source);
+            // The GGUF that serves the dense projections serves PLE's
+            // n-gram table too: 27 GB of IQ4_NL on the model's disk rather
+            // than the checkpoint's 102 GB of BF16.
+            let ngram_gguf = dense_source
+                .is_some()
+                .then(|| {
+                    std::env::var_os("NEURON_STRATA_EXPERT_GGUF").map(std::path::PathBuf::from)
+                })
+                .flatten();
             let expert_tier = tier_budget
                 .filter(|_| external_experts.is_none())
                 .map(|mb| {
@@ -1462,6 +1471,7 @@ fn load_dense_inner(
                     expert_tier,
                     external_experts,
                     dense,
+                    ngram_gguf: ngram_gguf.as_deref(),
                     // Host residency (#318) is what makes a model whose
                     // experts exceed VRAM loadable; everything else in
                     // the model still lands on the device.
